@@ -1,0 +1,42 @@
+[profile.default]
+optimizer = true
+optimizer_runs = 44_444_444
+fs_permissions = [{ access = "read-write", path = "./"}]
+verbosity = 3
+via_ir = true
+dynamic_test_linking = true
+ffi = true
+
+[fuzz]
+runs = 32
+
+[fmt]
+line_length = 100
+tab_width = 2
+quote_style = 'single'
+number_underscore = 'thousands'
+sort_imports = true
+
+[lint]
+lint_on_build = false
+
+[rpc_endpoints]
+mainnet = "${RPC_1}"
+bsc_mainnet = "${RPC_56}"
+polygon_mainnet = "${RPC_137}"
+avalanche_mainnet = "${RPC_43114}"
+arbitrum_mainnet = "${RPC_42161}"
+optimism_mainnet = "${RPC_10}"
+linea_mainnet = "${RPC_59144}"
+base_mainnet = "${RPC_8453}"
+mantle_mainnet = "${RPC_5000}"
+bera_mainnet = "${RPC_80094}"
+ronin_mainnet = "${RPC_2020}"
+uni_mainnet = "${RPC_130}"
+etherlink_mainnet = "${RPC_42793}"
+plasma_mainnet = "${RPC_9745}"
+hyperevm_mainnet = "${RPC_999}"
+sonic_mainnet = "${RPC_146}"
+monad_mainnet = "${RPC_143}"
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
