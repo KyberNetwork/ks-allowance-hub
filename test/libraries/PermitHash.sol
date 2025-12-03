@@ -52,9 +52,9 @@ library PermitHash {
     );
   }
 
-  function hash(ISignatureTransfer.PermitBatchTransferFrom memory permit)
+  function hash(ISignatureTransfer.PermitBatchTransferFrom memory permit, address spender)
     internal
-    view
+    pure
     returns (bytes32)
   {
     uint256 numPermitted = permit.permitted.length;
@@ -68,7 +68,7 @@ library PermitHash {
       abi.encode(
         _PERMIT_BATCH_TRANSFER_FROM_TYPEHASH,
         keccak256(abi.encodePacked(tokenPermissionHashes)),
-        msg.sender,
+        spender,
         permit.nonce,
         permit.deadline
       )
@@ -77,9 +77,10 @@ library PermitHash {
 
   function hashWithWitness(
     ISignatureTransfer.PermitBatchTransferFrom memory permit,
+    address spender,
     bytes32 witness,
     string calldata witnessTypeString
-  ) internal view returns (bytes32) {
+  ) internal pure returns (bytes32) {
     bytes32 typeHash = keccak256(
       abi.encodePacked(_PERMIT_BATCH_WITNESS_TRANSFER_FROM_TYPEHASH_STUB, witnessTypeString)
     );
@@ -95,7 +96,7 @@ library PermitHash {
       abi.encode(
         typeHash,
         keccak256(abi.encodePacked(tokenPermissionHashes)),
-        msg.sender,
+        spender,
         permit.nonce,
         permit.deadline,
         witness

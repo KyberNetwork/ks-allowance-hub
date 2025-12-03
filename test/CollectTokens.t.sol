@@ -51,7 +51,6 @@ contract CollectTokensTest is Test {
     RouterParams memory routerParams = RouterParams({
       erc20Params: new ERC20Params[](1),
       erc721Params: new ERC721Params[](0),
-      permit2Data: '',
       executorCalls: new ExecutorCall[](0),
       deadline: block.timestamp + 1 days
     });
@@ -85,21 +84,21 @@ contract CollectTokensTest is Test {
     } else {
       USDC.safeApprove(PERMIT2, type(uint256).max);
 
-      IAllowanceTransfer.PermitBatch memory permitBatch = IAllowanceTransfer.PermitBatch({
-        details: new IAllowanceTransfer.PermitDetails[](1),
-        spender: address(universalRouter),
-        sigDeadline: block.timestamp + 1 days
-      });
-      permitBatch.details[0] = IAllowanceTransfer.PermitDetails({
-        token: USDC, amount: amount, expiration: uint48(block.timestamp + 1 days), nonce: 0
-      });
+      ISignatureTransfer.PermitBatchTransferFrom memory permit =
+        ISignatureTransfer.PermitBatchTransferFrom({
+          permitted: new ISignatureTransfer.TokenPermissions[](1),
+          nonce: 0,
+          deadline: block.timestamp + 1 days
+        });
+      permit.permitted[0] = ISignatureTransfer.TokenPermissions({token: USDC, amount: amount});
 
-      bytes32 structHash = MessageHashUtils.toTypedDataHash(
-        IERC20Permit(PERMIT2).DOMAIN_SEPARATOR(), PermitHash.hash(permitBatch)
+      bytes32 hash = MessageHashUtils.toTypedDataHash(
+        IERC20Permit(PERMIT2).DOMAIN_SEPARATOR(), PermitHash.hash(permit, address(universalRouter))
       );
 
-      (uint8 v, bytes32 r, bytes32 s) = vm.sign(senderPrivateKey, structHash);
-      routerParams.permit2Data = abi.encode(permitBatch, abi.encodePacked(r, s, v));
+      (uint8 v, bytes32 r, bytes32 s) = vm.sign(senderPrivateKey, hash);
+      routerParams.erc20Params[0].permitData =
+        abi.encode(0, block.timestamp + 1 days, abi.encodePacked(r, s, v));
     }
 
     deal(USDC, sender, amount);
@@ -128,7 +127,6 @@ contract CollectTokensTest is Test {
     RouterParams memory routerParams = RouterParams({
       erc20Params: new ERC20Params[](0),
       erc721Params: new ERC721Params[](2),
-      permit2Data: '',
       executorCalls: new ExecutorCall[](0),
       deadline: block.timestamp + 1 days
     });

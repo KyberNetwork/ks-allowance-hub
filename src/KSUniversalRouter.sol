@@ -8,16 +8,13 @@ import {RouterParams} from './types/RouterParams.sol';
 import {ManagementBase} from 'ks-common-sc/src/base/ManagementBase.sol';
 import {ManagementPausable} from 'ks-common-sc/src/base/ManagementPausable.sol';
 import {ManagementRescuable} from 'ks-common-sc/src/base/ManagementRescuable.sol';
-import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
+import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 
 import {KSRoles} from 'ks-common-sc/src/libraries/KSRoles.sol';
-import {PermitHelper} from 'ks-common-sc/src/libraries/token/PermitHelper.sol';
 
 contract KSUniversalRouter is IKSUniversalRouter, ManagementPausable, ManagementRescuable {
-  using PermitHelper for IAllowanceTransfer;
-
   /// @inheritdoc IKSUniversalRouter
-  IAllowanceTransfer public immutable PERMIT2;
+  ISignatureTransfer public immutable PERMIT2;
 
   constructor(
     address initialAdmin,
@@ -28,18 +25,13 @@ contract KSUniversalRouter is IKSUniversalRouter, ManagementPausable, Management
     _batchGrantRole(KSRoles.GUARDIAN_ROLE, initialGuardians);
     _batchGrantRole(KSRoles.RESCUER_ROLE, initialRescuers);
 
-    PERMIT2 = IAllowanceTransfer(permit2);
+    PERMIT2 = ISignatureTransfer(permit2);
   }
 
   /// @inheritdoc IKSUniversalRouter
   function execute(RouterParams calldata params) external payable returns (bytes[] memory results) {
     if (params.deadline < block.timestamp) {
       revert DeadlinePassed(params.deadline, block.timestamp);
-    }
-
-    /// @dev Calls PERMIT2 if needed
-    if (params.permit2Data.length > 0) {
-      PERMIT2.callPermit2(msg.sender, params.permit2Data);
     }
 
     /// @dev Collects the ERC20 tokens
