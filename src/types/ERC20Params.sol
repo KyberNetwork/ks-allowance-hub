@@ -44,7 +44,10 @@ library ERC20ParamsLibrary {
 
       for (uint256 i = 0; i < self.targets.length; i++) {
         details[i] = IAllowanceTransfer.AllowanceTransferDetails({
-          from: msg.sender, to: self.targets[i], amount: self.amounts[i].toUint160(), token: self.token
+          from: msg.sender,
+          to: self.targets[i],
+          amount: self.amounts[i].toUint160(),
+          token: self.token
         });
       }
 

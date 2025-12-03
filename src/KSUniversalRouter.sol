@@ -10,8 +10,8 @@ import {ManagementPausable} from 'ks-common-sc/src/base/ManagementPausable.sol';
 import {ManagementRescuable} from 'ks-common-sc/src/base/ManagementRescuable.sol';
 import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
 
-import {PermitHelper} from 'ks-common-sc/src/libraries/token/PermitHelper.sol';
 import {KSRoles} from 'ks-common-sc/src/libraries/KSRoles.sol';
+import {PermitHelper} from 'ks-common-sc/src/libraries/token/PermitHelper.sol';
 
 contract KSUniversalRouter is IKSUniversalRouter, ManagementPausable, ManagementRescuable {
   using PermitHelper for IAllowanceTransfer;
@@ -33,6 +33,10 @@ contract KSUniversalRouter is IKSUniversalRouter, ManagementPausable, Management
 
   /// @inheritdoc IKSUniversalRouter
   function execute(RouterParams calldata params) external payable returns (bytes[] memory results) {
+    if (params.deadline < block.timestamp) {
+      revert DeadlinePassed(params.deadline, block.timestamp);
+    }
+
     /// @dev Calls PERMIT2 if needed
     if (params.permit2Data.length > 0) {
       PERMIT2.callPermit2(msg.sender, params.permit2Data);

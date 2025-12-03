@@ -8,6 +8,9 @@ import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer
 /// @title IKSUniversalRouter
 /// @notice Interface for the KSUniversalRouter
 interface IKSUniversalRouter {
+  /// @notice Thrown when the deadline is passed
+  error DeadlinePassed(uint256 deadline, uint256 blockTimestamp);
+
   /**
    * @notice Collects tokens and executes calls with the executors
    * @param params The parameters for the execution

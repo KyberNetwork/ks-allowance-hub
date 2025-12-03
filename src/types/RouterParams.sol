@@ -11,10 +11,12 @@ import {ExecutorCall} from './ExecutorCall.sol';
  * @param erc721Params The parameters for collecting ERC721 tokens
  * @param executorCalls The calls to make with the executors
  * @param permit2Data The permit data for the PERMIT2 contract
+ * @param deadline The deadline for the execution
  */
 struct RouterParams {
   ERC20Params[] erc20Params;
   ERC721Params[] erc721Params;
   ExecutorCall[] executorCalls;
   bytes permit2Data;
+  uint256 deadline;
 }
