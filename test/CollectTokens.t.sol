@@ -265,8 +265,6 @@ contract CollectTokensTest is Test {
   function _prepareGenericCalls() internal view returns (GenericCall[] memory genericCalls) {
     genericCalls = new GenericCall[](1);
 
-    genericCalls[0] = GenericCall({
-      router: address(genericRouter), value: 0, data: abi.encodeCall(IGenericRouter.execute, (''))
-    });
+    genericCalls[0] = GenericCall({router: address(genericRouter), value: 0, data: ''});
   }
 }

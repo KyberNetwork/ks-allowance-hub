@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IGenericRouter} from '../interfaces/IGenericRouter.sol';
+import {IKSGenericRouter} from '../interfaces/IKSGenericRouter.sol';
 
 /**
  * @notice Parameters for calling a generic router
@@ -24,7 +24,7 @@ library GenericCallLibrary {
 
   /// @notice Executes a generic call
   function execute(GenericCall calldata self) internal returns (bytes memory) {
-    return IGenericRouter(self.router).execute{value: self.value}(self.data);
+    return IKSGenericRouter(self.router).ksExecute{value: self.value}(self.data);
   }
 
   function hash(GenericCall memory self) internal pure returns (bytes32) {

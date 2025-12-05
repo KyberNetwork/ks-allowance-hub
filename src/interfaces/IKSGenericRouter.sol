@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-/// @title IGenericRouter
+/// @title IKSGenericRouter
 /// @notice Generic interface for routers used by KyberSwap
-interface IGenericRouter {
+interface IKSGenericRouter {
   /// @notice Executes with given data
-  function execute(bytes calldata data) external payable returns (bytes memory);
+  function ksExecute(bytes calldata data) external payable returns (bytes memory);
 }
