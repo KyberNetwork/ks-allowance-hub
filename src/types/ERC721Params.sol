@@ -25,9 +25,9 @@ using ERC721ParamsLibrary for ERC721Params global;
 library ERC721ParamsLibrary {
   using PermitHelper for address;
 
-  /// @notice Collects an ERC721 token from `msg.sender`
-  function collect(ERC721Params calldata self) internal {
-    /// @dev Permits the token if needed
+  /// @notice Permits and collects an ERC721 token from `msg.sender`
+  function process(ERC721Params calldata self) internal {
+    /// @dev Permits the token if provided
     self.token.callERC721Permit(self.tokenId, self.permitData);
 
     /// @dev Transfers the token to the target

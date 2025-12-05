@@ -1,8 +1,8 @@
 {
   "lib/ks-common-sc": {
     "tag": {
-      "name": "v2.1.0",
-      "rev": "37c4f85d19afd8059e9b0fa173a9f89a696d0c13"
+      "name": "v2.3.0",
+      "rev": "78bb2f90e3294f6537ee7353c213804a42cdab6b"
     }
   }
 }

@@ -4,6 +4,8 @@ pragma solidity ^0.8.0;
 import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 
+import {console} from 'forge-std/console.sol';
+
 library PermitHash {
   bytes32 public constant _PERMIT_DETAILS_TYPEHASH =
     keccak256('PermitDetails(address token,uint160 amount,uint48 expiration,uint48 nonce)');
@@ -79,7 +81,7 @@ library PermitHash {
     ISignatureTransfer.PermitBatchTransferFrom memory permit,
     address spender,
     bytes32 witness,
-    string calldata witnessTypeString
+    string memory witnessTypeString
   ) internal pure returns (bytes32) {
     bytes32 typeHash = keccak256(
       abi.encodePacked(_PERMIT_BATCH_WITNESS_TRANSFER_FROM_TYPEHASH_STUB, witnessTypeString)
