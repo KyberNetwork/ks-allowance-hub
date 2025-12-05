@@ -18,7 +18,7 @@ interface IKSApprovalProxy {
     ERC20Params[] calldata erc20Params,
     ERC721Params[] calldata erc721Params,
     GenericCall[] calldata genericCalls
-  ) external returns (bytes[] memory results);
+  ) external payable returns (bytes[] memory results);
 
   /// @notice Transfers ERC20 tokens using Permit2, permits and transfers ERC721 tokens, executes generic calls
   function permit2TransferAndExecute(
@@ -27,7 +27,7 @@ interface IKSApprovalProxy {
     ERC721Params[] calldata erc721Params,
     GenericCall[] calldata genericCalls,
     bytes calldata signature
-  ) external returns (bytes[] memory results);
+  ) external payable returns (bytes[] memory results);
 
   /// @notice Relays Permit2 transfer and generic calls execution on behalf of the owner
   function relayPermit2TransferAndExecute(
@@ -36,7 +36,7 @@ interface IKSApprovalProxy {
     GenericCall[] calldata genericCalls,
     address owner,
     bytes calldata signature
-  ) external returns (bytes[] memory results);
+  ) external payable returns (bytes[] memory results);
 
   /// @notice Returns the address of the Permit2 contract
   function PERMIT2() external view returns (ISignatureTransfer);

@@ -38,7 +38,7 @@ contract KSApprovalProxy is IKSApprovalProxy, ManagementPausable, ManagementResc
     ERC20Params[] calldata erc20Params,
     ERC721Params[] calldata erc721Params,
     GenericCall[] calldata genericCalls
-  ) external returns (bytes[] memory results) {
+  ) external payable returns (bytes[] memory results) {
     /// @dev Processes the ERC20 tokens
     for (uint256 i = 0; i < erc20Params.length; i++) {
       erc20Params[i].process();
@@ -59,7 +59,7 @@ contract KSApprovalProxy is IKSApprovalProxy, ManagementPausable, ManagementResc
     ERC721Params[] calldata erc721Params,
     GenericCall[] calldata genericCalls,
     bytes calldata signature
-  ) external returns (bytes[] memory results) {
+  ) external payable returns (bytes[] memory results) {
     /// @dev Transfers the ERC20 tokens using Permit2
     _permit2Transfer(permit, targets, msg.sender, 0, signature);
 
@@ -79,7 +79,7 @@ contract KSApprovalProxy is IKSApprovalProxy, ManagementPausable, ManagementResc
     GenericCall[] calldata genericCalls,
     address owner,
     bytes calldata signature
-  ) external returns (bytes[] memory results) {
+  ) external payable returns (bytes[] memory results) {
     /// @dev Prepares the witness
     RelayerWitness memory witness =
       RelayerWitness({relayer: msg.sender, targets: targets, genericCalls: genericCalls});
