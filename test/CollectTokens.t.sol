@@ -126,6 +126,7 @@ contract CollectTokensTest is Test {
     deal(WETH, sender, wethAmount);
     deal(USDC, sender, usdcAmount);
 
+    ERC721Params[] memory erc721Params = _prepareERC721Params();
     GenericCall[] memory genericCalls = _prepareGenericCalls();
 
     ISignatureTransfer.PermitBatchTransferFrom memory permit =
@@ -139,13 +140,16 @@ contract CollectTokensTest is Test {
     permit.permitted[1] = ISignatureTransfer.TokenPermissions({token: USDC, amount: usdcAmount});
 
     RelayerWitness memory witness = RelayerWitness({
-      relayer: relayer, targets: [recipient, recipient].toMemoryArray(), genericCalls: genericCalls
+      relayer: relayer,
+      targets: [recipient, recipient].toMemoryArray(),
+      erc721Params: erc721Params,
+      genericCalls: genericCalls
     });
 
     bytes32 structHash = PermitHash.hashWithWitness(
       permit,
       address(approvalProxy),
-      RelayerWitnessLibrary.hash(witness),
+      this._hash(witness),
       RelayerWitnessLibrary.RELAYER_WITNESS_PERMIT2_TYPE_STRING
     );
     bytes32 hash = MessageHashUtils.toTypedDataHash(
@@ -157,7 +161,7 @@ contract CollectTokensTest is Test {
 
     vm.prank(relayer);
     approvalProxy.relayPermit2TransferAndExecute(
-      permit, [recipient, recipient].toMemoryArray(), genericCalls, sender, signature
+      permit, [recipient, recipient].toMemoryArray(), erc721Params, genericCalls, sender, signature
     );
   }
 
@@ -266,5 +270,9 @@ contract CollectTokensTest is Test {
     genericCalls = new GenericCall[](1);
 
     genericCalls[0] = GenericCall({router: address(genericRouter), value: 0, data: ''});
+  }
+
+  function _hash(RelayerWitness calldata witness) public pure returns (bytes32) {
+    return RelayerWitnessLibrary.hash(witness);
   }
 }

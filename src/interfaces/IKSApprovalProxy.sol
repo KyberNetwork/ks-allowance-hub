@@ -33,6 +33,7 @@ interface IKSApprovalProxy {
   function relayPermit2TransferAndExecute(
     ISignatureTransfer.PermitBatchTransferFrom memory permit,
     address[] calldata targets,
+    ERC721Params[] calldata erc721Params,
     GenericCall[] calldata genericCalls,
     address owner,
     bytes calldata signature

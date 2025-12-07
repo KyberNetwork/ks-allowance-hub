@@ -6,7 +6,7 @@ import {IKSApprovalProxy} from './interfaces/IKSApprovalProxy.sol';
 import {ERC20Params} from './types/ERC20Params.sol';
 import {ERC721Params} from './types/ERC721Params.sol';
 import {GenericCall} from './types/GenericCall.sol';
-import {RelayerWitness, RelayerWitnessLibrary} from './types/RelayerWitness.sol';
+import {RelayerWitnessLibrary} from './types/RelayerWitness.sol';
 
 import {ManagementBase} from 'ks-common-sc/src/base/ManagementBase.sol';
 import {ManagementPausable} from 'ks-common-sc/src/base/ManagementPausable.sol';
@@ -46,7 +46,7 @@ contract KSApprovalProxy is IKSApprovalProxy, ManagementPausable, ManagementResc
 
     /// @dev Processes the ERC721 tokens
     for (uint256 i = 0; i < erc721Params.length; i++) {
-      erc721Params[i].process();
+      erc721Params[i].process(msg.sender);
     }
 
     /// @dev Executes the generic calls
@@ -65,7 +65,7 @@ contract KSApprovalProxy is IKSApprovalProxy, ManagementPausable, ManagementResc
 
     /// @dev Processes the ERC721 tokens
     for (uint256 i = 0; i < erc721Params.length; i++) {
-      erc721Params[i].process();
+      erc721Params[i].process(msg.sender);
     }
 
     /// @dev Executes the generic calls
@@ -76,16 +76,21 @@ contract KSApprovalProxy is IKSApprovalProxy, ManagementPausable, ManagementResc
   function relayPermit2TransferAndExecute(
     ISignatureTransfer.PermitBatchTransferFrom calldata permit,
     address[] calldata targets,
+    ERC721Params[] calldata erc721Params,
     GenericCall[] calldata genericCalls,
     address owner,
     bytes calldata signature
   ) external payable returns (bytes[] memory results) {
     /// @dev Prepares the witness
-    RelayerWitness memory witness =
-      RelayerWitness({relayer: msg.sender, targets: targets, genericCalls: genericCalls});
+    bytes32 witness = RelayerWitnessLibrary.hash(msg.sender, targets, erc721Params, genericCalls);
 
     /// @dev Transfers the tokens using Permit2
-    _permit2Transfer(permit, targets, owner, RelayerWitnessLibrary.hash(witness), signature);
+    _permit2Transfer(permit, targets, owner, witness, signature);
+
+    /// @dev Processes the ERC721 tokens
+    for (uint256 i = 0; i < erc721Params.length; i++) {
+      erc721Params[i].process(owner);
+    }
 
     /// @dev Executes the generic calls
     results = _executeGenericCalls(genericCalls);

@@ -27,7 +27,7 @@ library GenericCallLibrary {
     return IKSGenericRouter(self.router).ksExecute{value: self.value}(self.data);
   }
 
-  function hash(GenericCall memory self) internal pure returns (bytes32) {
+  function hash(GenericCall calldata self) internal pure returns (bytes32) {
     return
       keccak256(abi.encode(GENERIC_CALL_TYPEHASH, self.router, self.value, keccak256(self.data)));
   }
