@@ -10,28 +10,33 @@ import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer
 /// @title IKSApprovalProxy
 /// @notice Interface for the KSApprovalProxy
 interface IKSApprovalProxy {
-  /// @notice Thrown when the deadline is passed
-  error DeadlinePassed(uint256 deadline, uint256 blockTimestamp);
-
-  /// @notice Permits, transfers ERC20 and ERC721 tokens, executes generic calls
+  /**
+   * @notice Permits, transfers ERC20 and ERC721 tokens, executes generic calls
+   * @param erc20Params The ERC20 tokens to transfer
+   * @param erc721Params The ERC721 tokens to transfer
+   * @param genericCalls The generic calls to execute
+   * @return results The results of the generic calls
+   */
   function permitTransferAndExecute(
     ERC20Params[] calldata erc20Params,
     ERC721Params[] calldata erc721Params,
     GenericCall[] calldata genericCalls
   ) external payable returns (bytes[] memory results);
 
-  /// @notice Transfers ERC20 tokens using Permit2, permits and transfers ERC721 tokens, executes generic calls
+  /**
+   * @notice Transfers ERC20 tokens using Permit2
+   * @notice Permits and transfers ERC721 tokens
+   * @notice Executes generic calls on behalf of the owner
+   * @param permit The permit data for transferring the ERC20 tokens
+   * @param targets The addresses to transfer the tokens to
+   * @param erc721Params The ERC721 tokens to transfer
+   * @param genericCalls The generic calls to execute
+   * @param owner The owner of the tokens
+   * @param signature The signature of the owner
+   * @return results The results of the generic calls
+   */
   function permit2TransferAndExecute(
     ISignatureTransfer.PermitBatchTransferFrom calldata permit,
-    address[] calldata targets,
-    ERC721Params[] calldata erc721Params,
-    GenericCall[] calldata genericCalls,
-    bytes calldata signature
-  ) external payable returns (bytes[] memory results);
-
-  /// @notice Relays Permit2 transfer and generic calls execution on behalf of the owner
-  function relayPermit2TransferAndExecute(
-    ISignatureTransfer.PermitBatchTransferFrom memory permit,
     address[] calldata targets,
     ERC721Params[] calldata erc721Params,
     GenericCall[] calldata genericCalls,

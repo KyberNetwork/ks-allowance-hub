@@ -75,7 +75,7 @@ contract CollectTokensTest is Test {
     assertEq(UNISWAP_V4_NFT.ownerOf(tokenId), recipient);
   }
 
-  function test_permit2TransferAndExecute(uint256 wethAmount, uint256 usdcAmount) public {
+  function test_permit2TransferAndExecute_direct(uint256 wethAmount, uint256 usdcAmount) public {
     wethAmount = bound(wethAmount, 1, type(uint128).max);
     usdcAmount = bound(usdcAmount, 1, type(uint128).max);
 
@@ -110,11 +110,11 @@ contract CollectTokensTest is Test {
 
     vm.prank(sender);
     approvalProxy.permit2TransferAndExecute(
-      permit, [recipient, recipient].toMemoryArray(), erc721Params, genericCalls, signature
+      permit, [recipient, recipient].toMemoryArray(), erc721Params, genericCalls, sender, signature
     );
   }
 
-  function test_relayPermit2TransferAndExecute(uint256 wethAmount, uint256 usdcAmount) public {
+  function test_permit2TransferAndExecute_relayed(uint256 wethAmount, uint256 usdcAmount) public {
     wethAmount = bound(wethAmount, 1, type(uint128).max);
     usdcAmount = bound(usdcAmount, 1, type(uint128).max);
 
@@ -160,7 +160,7 @@ contract CollectTokensTest is Test {
     bytes memory signature = abi.encodePacked(r, s, v);
 
     vm.prank(relayer);
-    approvalProxy.relayPermit2TransferAndExecute(
+    approvalProxy.permit2TransferAndExecute(
       permit, [recipient, recipient].toMemoryArray(), erc721Params, genericCalls, sender, signature
     );
   }

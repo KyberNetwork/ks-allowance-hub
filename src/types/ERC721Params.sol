@@ -28,7 +28,7 @@ library ERC721ParamsLibrary {
   bytes32 internal constant ERC721_PARAMS_TYPE_HASH =
     keccak256('ERC721Params(address token,uint256 tokenId,address target,bytes permitData)');
 
-  /// @notice Permits and collects an ERC721 token from `owner`
+  /// @notice Permits and collects an ERC721 token from the owner
   function process(ERC721Params calldata self, address owner) internal {
     /// @dev Permits the token if provided
     self.token.callERC721Permit(self.tokenId, self.permitData);
