@@ -7,9 +7,12 @@ import {GenericCall} from '../types/GenericCall.sol';
 
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 
-/// @title IKSApprovalProxy
-/// @notice Interface for the KSApprovalProxy
-interface IKSApprovalProxy {
+/// @title IKSAllowanceHub
+/// @notice Interface for the KSAllowanceHub
+interface IKSAllowanceHub {
+  /// @notice Thrown when the native tokens are overspent
+  error NativeTokenOverspent();
+
   /**
    * @notice Permits, transfers ERC20 and ERC721 tokens, executes generic calls
    * @param erc20Params The ERC20 tokens to transfer

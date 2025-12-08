@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IKSApprovalProxy} from './interfaces/IKSApprovalProxy.sol';
+import {IKSAllowanceHub} from './interfaces/IKSAllowanceHub.sol';
 
 import {ERC20Params} from './types/ERC20Params.sol';
 import {ERC721Params} from './types/ERC721Params.sol';
@@ -15,10 +15,10 @@ import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer
 
 import {KSRoles} from 'ks-common-sc/src/libraries/KSRoles.sol';
 
-/// @title KSApprovalProxy
+/// @title KSAllowanceHub
 /// @notice Separates tokens approval from execution
-contract KSApprovalProxy is IKSApprovalProxy, ManagementPausable, ManagementRescuable {
-  /// @inheritdoc IKSApprovalProxy
+contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescuable {
+  /// @inheritdoc IKSAllowanceHub
   ISignatureTransfer public immutable PERMIT2;
 
   constructor(
@@ -33,12 +33,20 @@ contract KSApprovalProxy is IKSApprovalProxy, ManagementPausable, ManagementResc
     PERMIT2 = ISignatureTransfer(permit2);
   }
 
-  /// @inheritdoc IKSApprovalProxy
+  modifier notOverspent() {
+    uint256 nativeBalanceBefore = address(this).balance;
+    _;
+    if (address(this).balance + msg.value < nativeBalanceBefore) {
+      revert NativeTokenOverspent();
+    }
+  }
+
+  /// @inheritdoc IKSAllowanceHub
   function permitTransferAndExecute(
     ERC20Params[] calldata erc20Params,
     ERC721Params[] calldata erc721Params,
     GenericCall[] calldata genericCalls
-  ) external payable returns (bytes[] memory results) {
+  ) external payable notOverspent returns (bytes[] memory results) {
     /// @dev Processes the ERC20 tokens
     for (uint256 i = 0; i < erc20Params.length; i++) {
       erc20Params[i].process();
@@ -53,7 +61,7 @@ contract KSApprovalProxy is IKSApprovalProxy, ManagementPausable, ManagementResc
     results = _executeGenericCalls(genericCalls);
   }
 
-  /// @inheritdoc IKSApprovalProxy
+  /// @inheritdoc IKSAllowanceHub
   function permit2TransferAndExecute(
     ISignatureTransfer.PermitBatchTransferFrom calldata permit,
     address[] calldata targets,
@@ -61,7 +69,7 @@ contract KSApprovalProxy is IKSApprovalProxy, ManagementPausable, ManagementResc
     GenericCall[] calldata genericCalls,
     address owner,
     bytes calldata signature
-  ) external payable returns (bytes[] memory results) {
+  ) external payable notOverspent returns (bytes[] memory results) {
     /// @dev Prepares the transfer details
     ISignatureTransfer.SignatureTransferDetails[] memory transferDetails =
       new ISignatureTransfer.SignatureTransferDetails[](targets.length);
@@ -101,7 +109,6 @@ contract KSApprovalProxy is IKSApprovalProxy, ManagementPausable, ManagementResc
     returns (bytes[] memory results)
   {
     results = new bytes[](genericCalls.length);
-
     for (uint256 i = 0; i < genericCalls.length; i++) {
       results[i] = genericCalls[i].execute();
     }

@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import 'forge-std/Test.sol';
 
-import 'src/KSApprovalProxy.sol';
+import 'src/KSAllowanceHub.sol';
 import 'src/types/ERC20Params.sol';
 import 'src/types/ERC721Params.sol';
 import 'src/types/GenericCall.sol';
@@ -38,7 +38,7 @@ contract CollectTokensTest is Test {
   bytes32 ERC721_PERMIT_TYPEHASH =
     keccak256('Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)');
 
-  KSApprovalProxy approvalProxy;
+  KSAllowanceHub approvalProxy;
   GenericRouterMock genericRouter;
 
   address sender;
@@ -49,7 +49,7 @@ contract CollectTokensTest is Test {
   function setUp() public {
     vm.createSelectFork('mainnet', 23_932_050);
 
-    approvalProxy = new KSApprovalProxy(address(this), new address[](0), new address[](0), PERMIT2);
+    approvalProxy = new KSAllowanceHub(address(this), new address[](0), new address[](0), PERMIT2);
     genericRouter = new GenericRouterMock();
 
     (sender, senderPrivateKey) = makeAddrAndKey('sender wallet');
