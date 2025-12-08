@@ -19,7 +19,7 @@ import 'openzeppelin-contracts/contracts/utils/cryptography/MessageHashUtils.sol
 
 import 'ks-common-sc/src/libraries/token/TokenHelper.sol';
 
-contract CollectTokensTest is Test {
+contract KSAllowanceHubTest is Test {
   using TokenHelper for address;
   using ArrayHelper for *;
 
@@ -38,7 +38,7 @@ contract CollectTokensTest is Test {
   bytes32 ERC721_PERMIT_TYPEHASH =
     keccak256('Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)');
 
-  KSAllowanceHub approvalProxy;
+  KSAllowanceHub allowanceHub;
   GenericRouterMock genericRouter;
 
   address sender;
@@ -49,7 +49,7 @@ contract CollectTokensTest is Test {
   function setUp() public {
     vm.createSelectFork('mainnet', 23_932_050);
 
-    approvalProxy = new KSAllowanceHub(address(this), new address[](0), new address[](0), PERMIT2);
+    allowanceHub = new KSAllowanceHub(address(this), new address[](0), new address[](0), PERMIT2);
     genericRouter = new GenericRouterMock();
 
     (sender, senderPrivateKey) = makeAddrAndKey('sender wallet');
@@ -66,7 +66,7 @@ contract CollectTokensTest is Test {
     GenericCall[] memory genericCalls = _prepareGenericCalls();
 
     vm.prank(sender);
-    approvalProxy.permitTransferAndExecute(erc20Params, erc721Params, genericCalls);
+    allowanceHub.permitTransferAndExecute(erc20Params, erc721Params, genericCalls);
 
     assertEq(WETH.balanceOf(recipient), wethAmount);
     assertEq(USDC.balanceOf(recipient), usdcAmount);
@@ -97,7 +97,7 @@ contract CollectTokensTest is Test {
     permit.permitted[0] = ISignatureTransfer.TokenPermissions({token: WETH, amount: wethAmount});
     permit.permitted[1] = ISignatureTransfer.TokenPermissions({token: USDC, amount: usdcAmount});
 
-    bytes32 structHash = PermitHash.hash(permit, address(approvalProxy));
+    bytes32 structHash = PermitHash.hash(permit, address(allowanceHub));
     bytes32 hash = MessageHashUtils.toTypedDataHash(
       IERC20Permit(address(PERMIT2)).DOMAIN_SEPARATOR(), structHash
     );
@@ -109,7 +109,7 @@ contract CollectTokensTest is Test {
     GenericCall[] memory genericCalls = _prepareGenericCalls();
 
     vm.prank(sender);
-    approvalProxy.permit2TransferAndExecute(
+    allowanceHub.permit2TransferAndExecute(
       permit, [recipient, recipient].toMemoryArray(), erc721Params, genericCalls, sender, signature
     );
   }
@@ -148,7 +148,7 @@ contract CollectTokensTest is Test {
 
     bytes32 structHash = PermitHash.hashWithWitness(
       permit,
-      address(approvalProxy),
+      address(allowanceHub),
       this._hash(witness),
       RelayerWitnessLibrary.RELAYER_WITNESS_PERMIT2_TYPE_STRING
     );
@@ -160,8 +160,37 @@ contract CollectTokensTest is Test {
     bytes memory signature = abi.encodePacked(r, s, v);
 
     vm.prank(relayer);
-    approvalProxy.permit2TransferAndExecute(
+    allowanceHub.permit2TransferAndExecute(
       permit, [recipient, recipient].toMemoryArray(), erc721Params, genericCalls, sender, signature
+    );
+  }
+
+  function test_nativeTokenOverspent(
+    uint256 currentBalance,
+    uint256 msgValue,
+    uint256 amountToTransfer
+  ) public {
+    currentBalance = bound(currentBalance, 0, 1000 ether);
+    msgValue = bound(msgValue, 0, 1000 ether);
+    amountToTransfer = bound(amountToTransfer, 0, currentBalance + msgValue);
+
+    deal(address(allowanceHub), currentBalance);
+    deal(sender, msgValue);
+
+    if (amountToTransfer > msgValue) {
+      vm.expectRevert(IKSAllowanceHub.NativeTokenOverspent.selector);
+    }
+
+    GenericCall[] memory genericCalls = new GenericCall[](1);
+    genericCalls[0] = GenericCall({
+      router: address(genericRouter),
+      value: amountToTransfer,
+      data: abi.encode(TokenHelper.NATIVE_ADDRESS, amountToTransfer, recipient)
+    });
+
+    vm.prank(sender);
+    allowanceHub.permitTransferAndExecute{value: msgValue}(
+      new ERC20Params[](0), new ERC721Params[](0), genericCalls
     );
   }
 
@@ -175,7 +204,7 @@ contract CollectTokensTest is Test {
     deal(USDC, sender, usdcAmount);
 
     vm.prank(sender);
-    WETH.safeApprove(address(approvalProxy), wethAmount);
+    WETH.safeApprove(address(allowanceHub), wethAmount);
     erc20Params[0] = ERC20Params({
       token: WETH,
       targets: [recipient].toMemoryArray(),
@@ -188,7 +217,7 @@ contract CollectTokensTest is Test {
         abi.encode(
           ERC20_PERMIT_TYPEHASH,
           sender,
-          address(approvalProxy),
+          address(allowanceHub),
           usdcAmount,
           0,
           block.timestamp + 1 days
@@ -215,7 +244,7 @@ contract CollectTokensTest is Test {
     BAYC_NFT.transferFrom(owner, sender, tokenId);
 
     vm.prank(sender);
-    BAYC_NFT.approve(address(approvalProxy), tokenId);
+    BAYC_NFT.approve(address(allowanceHub), tokenId);
     erc721Params[0] =
       ERC721Params({token: address(BAYC_NFT), tokenId: tokenId, target: recipient, permitData: ''});
 
@@ -226,7 +255,7 @@ contract CollectTokensTest is Test {
     {
       bytes32 structHash = keccak256(
         abi.encode(
-          ERC721_PERMIT_TYPEHASH, address(approvalProxy), tokenId, 0, block.timestamp + 1 days
+          ERC721_PERMIT_TYPEHASH, address(allowanceHub), tokenId, 0, block.timestamp + 1 days
         )
       );
       bytes32 hash = MessageHashUtils.toTypedDataHash(
@@ -249,7 +278,7 @@ contract CollectTokensTest is Test {
     {
       bytes32 structHash = keccak256(
         abi.encode(
-          ERC721_PERMIT_TYPEHASH, address(approvalProxy), tokenId, 0, block.timestamp + 1 days
+          ERC721_PERMIT_TYPEHASH, address(allowanceHub), tokenId, 0, block.timestamp + 1 days
         )
       );
       bytes32 hash = MessageHashUtils.toTypedDataHash(

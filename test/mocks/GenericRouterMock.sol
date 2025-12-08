@@ -3,8 +3,16 @@ pragma solidity ^0.8.0;
 
 import {IKSGenericRouter} from 'src/interfaces/IKSGenericRouter.sol';
 
+import {TokenHelper} from 'ks-common-sc/src/libraries/token/TokenHelper.sol';
+
 contract GenericRouterMock is IKSGenericRouter {
+  using TokenHelper for address;
+
   function ksExecute(bytes calldata data) external payable returns (bytes memory) {
-    return data;
+    if (data.length > 0) {
+      (address token, uint256 amount, address recipient) =
+        abi.decode(data, (address, uint256, address));
+      token.safeTransfer(recipient, amount);
+    }
   }
 }
