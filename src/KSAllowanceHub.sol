@@ -15,9 +15,18 @@ import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer
 
 import {KSRoles} from 'ks-common-sc/src/libraries/KSRoles.sol';
 
+import {
+  ReentrancyGuardTransient
+} from 'openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol';
+
 /// @title KSAllowanceHub
 /// @notice Separates tokens approval from execution
-contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescuable {
+contract KSAllowanceHub is
+  IKSAllowanceHub,
+  ManagementPausable,
+  ManagementRescuable,
+  ReentrancyGuardTransient
+{
   /// @inheritdoc IKSAllowanceHub
   ISignatureTransfer public immutable PERMIT2;
 
@@ -46,7 +55,7 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
     ERC20Params[] calldata erc20Params,
     ERC721Params[] calldata erc721Params,
     GenericCall[] calldata genericCalls
-  ) external payable notOverspent returns (bytes[] memory results) {
+  ) external payable notOverspent nonReentrant returns (bytes[] memory results) {
     /// @dev Processes the ERC20 tokens
     for (uint256 i = 0; i < erc20Params.length; i++) {
       erc20Params[i].process();
@@ -69,7 +78,7 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
     GenericCall[] calldata genericCalls,
     address owner,
     bytes calldata signature
-  ) external payable notOverspent returns (bytes[] memory results) {
+  ) external payable notOverspent nonReentrant returns (bytes[] memory results) {
     /// @dev Prepares the transfer details
     ISignatureTransfer.SignatureTransferDetails[] memory transferDetails =
       new ISignatureTransfer.SignatureTransferDetails[](targets.length);
