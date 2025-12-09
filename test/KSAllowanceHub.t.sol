@@ -298,7 +298,8 @@ contract KSAllowanceHubTest is Test {
   function _prepareGenericCalls() internal view returns (GenericCall[] memory genericCalls) {
     genericCalls = new GenericCall[](1);
 
-    genericCalls[0] = GenericCall({router: address(genericRouter), value: 0, data: ''});
+    genericCalls[0] =
+      GenericCall({router: address(genericRouter), value: 0, data: abi.encode(sender)});
   }
 
   function _hash(RelayerWitness calldata witness) public pure returns (bytes32) {

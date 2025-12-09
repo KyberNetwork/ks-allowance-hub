@@ -30,6 +30,10 @@ contract KSAllowanceHub is
   /// @inheritdoc IKSAllowanceHub
   ISignatureTransfer public immutable PERMIT2;
 
+  /// @notice The slot holding the msg.sender, transiently. bytes32(uint256(keccak256("MsgSender")) - 1)
+  bytes32 internal constant MSG_SENDER_SLOT =
+    0x1b9f6ca674ad582e8456f46124f629b489b9f44c7683704064683354005562b9;
+
   constructor(
     address initialAdmin,
     address[] memory initialGuardians,
@@ -50,12 +54,34 @@ contract KSAllowanceHub is
     }
   }
 
+  /// @dev Sets the current 
+  modifier setMsgSender(address sender) {
+    assembly ('memory-safe') {
+      tstore(MSG_SENDER_SLOT, sender)
+    }
+    _;
+  }
+
+  /// @inheritdoc IKSAllowanceHub
+  function msgSender() external view returns (address sender) {
+    assembly ('memory-safe') {
+      sender := tload(MSG_SENDER_SLOT)
+    }
+  }
+
   /// @inheritdoc IKSAllowanceHub
   function permitTransferAndExecute(
     ERC20Params[] calldata erc20Params,
     ERC721Params[] calldata erc721Params,
     GenericCall[] calldata genericCalls
-  ) external payable notOverspent nonReentrant returns (bytes[] memory results) {
+  )
+    external
+    payable
+    notOverspent
+    nonReentrant
+    setMsgSender(msg.sender)
+    returns (bytes[] memory results)
+  {
     /// @dev Processes the ERC20 tokens
     for (uint256 i = 0; i < erc20Params.length; i++) {
       erc20Params[i].process();
@@ -78,7 +104,14 @@ contract KSAllowanceHub is
     GenericCall[] calldata genericCalls,
     address owner,
     bytes calldata signature
-  ) external payable notOverspent nonReentrant returns (bytes[] memory results) {
+  )
+    external
+    payable
+    notOverspent
+    nonReentrant
+    setMsgSender(owner)
+    returns (bytes[] memory results)
+  {
     /// @dev Prepares the transfer details
     ISignatureTransfer.SignatureTransferDetails[] memory transferDetails =
       new ISignatureTransfer.SignatureTransferDetails[](targets.length);

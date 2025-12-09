@@ -49,4 +49,10 @@ interface IKSAllowanceHub {
 
   /// @notice Returns the address of the Permit2 contract
   function PERMIT2() external view returns (ISignatureTransfer);
+
+  /**
+   * @notice For `permitTransferAndExecute`, returns `msg.sender`
+   * @notice For `permit2TransferAndExecute`, returns `owner`
+   */
+  function msgSender() external view returns (address);
 }
