@@ -2,7 +2,9 @@
 pragma solidity ^0.8.0;
 
 import {ERC20Params} from '../types/ERC20Params.sol';
+import {ERC20Transfer} from '../types/ERC20Transfer.sol';
 import {ERC721Params} from '../types/ERC721Params.sol';
+import {ERC721Transfer} from '../types/ERC721Transfer.sol';
 import {GenericCall} from '../types/GenericCall.sol';
 
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
@@ -12,6 +14,11 @@ import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer
 interface IKSAllowanceHub {
   /// @notice Thrown when the native tokens are overspent
   error NativeTokenOverspent();
+
+  /// @notice Emits when tokens are collected
+  event CollectTokens(
+    address indexed owner, ERC20Transfer[] erc20Transfers, ERC721Transfer[] erc721Transfers
+  );
 
   /**
    * @notice Permits, transfers ERC20 and ERC721 tokens, executes generic calls

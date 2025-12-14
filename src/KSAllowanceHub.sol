@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity 0.8.30;
 
 import {IKSAllowanceHub} from './interfaces/IKSAllowanceHub.sol';
 
@@ -7,6 +7,9 @@ import {ERC20Params} from './types/ERC20Params.sol';
 import {ERC721Params} from './types/ERC721Params.sol';
 import {GenericCall} from './types/GenericCall.sol';
 import {RelayerWitnessLibrary} from './types/RelayerWitness.sol';
+
+import {ERC20TransferLibrary} from './types/ERC20Transfer.sol';
+import {ERC721TransferLibrary} from './types/ERC721Transfer.sol';
 
 import {ManagementBase} from 'ks-common-sc/src/base/ManagementBase.sol';
 import {ManagementPausable} from 'ks-common-sc/src/base/ManagementPausable.sol';
@@ -27,6 +30,9 @@ contract KSAllowanceHub is
   ManagementRescuable,
   ReentrancyGuardTransient
 {
+  using ERC20TransferLibrary for *;
+  using ERC721TransferLibrary for *;
+
   /// @inheritdoc IKSAllowanceHub
   ISignatureTransfer public immutable PERMIT2;
 
@@ -54,7 +60,7 @@ contract KSAllowanceHub is
     }
   }
 
-  /// @dev Sets the current 
+  /// @dev Sets the current
   modifier setMsgSender(address sender) {
     assembly ('memory-safe') {
       tstore(MSG_SENDER_SLOT, sender)
@@ -77,8 +83,8 @@ contract KSAllowanceHub is
   )
     external
     payable
-    notOverspent
     nonReentrant
+    notOverspent
     setMsgSender(msg.sender)
     returns (bytes[] memory results)
   {
@@ -92,8 +98,10 @@ contract KSAllowanceHub is
       erc721Params[i].process(msg.sender);
     }
 
+    emit CollectTokens(msg.sender, erc20Params.toTransfers(), erc721Params.toTransfers());
+
     /// @dev Executes the generic calls
-    results = _executeGenericCalls(genericCalls);
+    return _executeGenericCalls(genericCalls);
   }
 
   /// @inheritdoc IKSAllowanceHub
@@ -107,8 +115,8 @@ contract KSAllowanceHub is
   )
     external
     payable
-    notOverspent
     nonReentrant
+    notOverspent
     setMsgSender(owner)
     returns (bytes[] memory results)
   {
@@ -142,8 +150,10 @@ contract KSAllowanceHub is
       erc721Params[i].process(owner);
     }
 
+    emit CollectTokens(owner, permit.permitted.toTransfers(targets), erc721Params.toTransfers());
+
     /// @dev Executes the generic calls
-    results = _executeGenericCalls(genericCalls);
+    return _executeGenericCalls(genericCalls);
   }
 
   function _executeGenericCalls(GenericCall[] calldata genericCalls)
