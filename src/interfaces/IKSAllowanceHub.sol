@@ -26,12 +26,13 @@ interface IKSAllowanceHub {
    * @param erc721Params The ERC721 tokens to transfer
    * @param genericCalls The generic calls to execute
    * @return results The results of the generic calls
+   * @return gasUsed The amount of gas used
    */
   function permitTransferAndExecute(
     ERC20Params[] calldata erc20Params,
     ERC721Params[] calldata erc721Params,
     GenericCall[] calldata genericCalls
-  ) external payable returns (bytes[] memory results);
+  ) external payable returns (bytes[] memory results, uint256 gasUsed);
 
   /**
    * @notice Transfers ERC20 tokens using Permit2
@@ -44,6 +45,7 @@ interface IKSAllowanceHub {
    * @param owner The owner of the tokens
    * @param signature The signature of the owner
    * @return results The results of the generic calls
+   * @return gasUsed The amount of gas used
    */
   function permit2TransferAndExecute(
     ISignatureTransfer.PermitBatchTransferFrom calldata permit,
@@ -52,7 +54,7 @@ interface IKSAllowanceHub {
     GenericCall[] calldata genericCalls,
     address owner,
     bytes calldata signature
-  ) external payable returns (bytes[] memory results);
+  ) external payable returns (bytes[] memory results, uint256 gasUsed);
 
   /// @notice Returns the address of the Permit2 contract
   function PERMIT2() external view returns (ISignatureTransfer);

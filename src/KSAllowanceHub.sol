@@ -86,8 +86,10 @@ contract KSAllowanceHub is
     nonReentrant
     notOverspent
     setMsgSender(msg.sender)
-    returns (bytes[] memory results)
+    returns (bytes[] memory results, uint256 gasUsed)
   {
+    uint256 gasStart = gasleft();
+
     /// @dev Processes the ERC20 tokens
     for (uint256 i = 0; i < erc20Params.length; i++) {
       erc20Params[i].process();
@@ -101,7 +103,8 @@ contract KSAllowanceHub is
     emit CollectTokens(msg.sender, erc20Params.toTransfers(), erc721Params.toTransfers());
 
     /// @dev Executes the generic calls
-    return _executeGenericCalls(genericCalls);
+    results = _executeGenericCalls(genericCalls);
+    gasUsed = gasStart - gasleft();
   }
 
   /// @inheritdoc IKSAllowanceHub
@@ -118,8 +121,10 @@ contract KSAllowanceHub is
     nonReentrant
     notOverspent
     setMsgSender(owner)
-    returns (bytes[] memory results)
+    returns (bytes[] memory results, uint256 gasUsed)
   {
+    uint256 gasStart = gasleft();
+
     /// @dev Prepares the transfer details
     ISignatureTransfer.SignatureTransferDetails[] memory transferDetails =
       new ISignatureTransfer.SignatureTransferDetails[](targets.length);
@@ -153,7 +158,8 @@ contract KSAllowanceHub is
     emit CollectTokens(owner, permit.permitted.toTransfers(targets), erc721Params.toTransfers());
 
     /// @dev Executes the generic calls
-    return _executeGenericCalls(genericCalls);
+    results = _executeGenericCalls(genericCalls);
+    gasUsed = gasStart - gasleft();
   }
 
   function _executeGenericCalls(GenericCall[] calldata genericCalls)

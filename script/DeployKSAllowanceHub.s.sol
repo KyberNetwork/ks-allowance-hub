@@ -5,7 +5,7 @@ import 'ks-common-sc/script/Base.s.sol';
 import 'src/KSAllowanceHub.sol';
 
 contract DeployKSAllowanceHubScript is BaseScript {
-  string salt = '251215';
+  string salt = '251215_1';
 
   function run(string[] memory chainIds) public multiChain(chainIds) {
     address admin = _readAddress('admin');
