@@ -17,7 +17,11 @@ interface IKSAllowanceHub {
 
   /// @notice Emits when tokens are collected
   event CollectTokens(
-    address indexed owner, ERC20Transfer[] erc20Transfers, ERC721Transfer[] erc721Transfers
+    address indexed caller,
+    address indexed owner,
+    uint256 msgValue,
+    ERC20Transfer[] erc20Transfers,
+    ERC721Transfer[] erc721Transfers
   );
 
   /**

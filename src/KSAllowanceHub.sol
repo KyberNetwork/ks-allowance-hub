@@ -100,7 +100,9 @@ contract KSAllowanceHub is
       erc721Params[i].process(msg.sender);
     }
 
-    emit CollectTokens(msg.sender, erc20Params.toTransfers(), erc721Params.toTransfers());
+    emit CollectTokens(
+      msg.sender, msg.sender, msg.value, erc20Params.toTransfers(), erc721Params.toTransfers()
+    );
 
     /// @dev Executes the generic calls
     results = _executeGenericCalls(genericCalls);
@@ -155,7 +157,13 @@ contract KSAllowanceHub is
       erc721Params[i].process(owner);
     }
 
-    emit CollectTokens(owner, permit.permitted.toTransfers(targets), erc721Params.toTransfers());
+    emit CollectTokens(
+      msg.sender,
+      owner,
+      msg.value,
+      permit.permitted.toTransfers(targets),
+      erc721Params.toTransfers()
+    );
 
     /// @dev Executes the generic calls
     results = _executeGenericCalls(genericCalls);

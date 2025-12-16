@@ -33,12 +33,18 @@ library ERC20ParamsLibrary {
       revert ICommon.MismatchedArrayLengths();
     }
 
-    /// @dev Permits the tokens if provided
-    self.token.callERC20Permit(msg.sender, self.permitData);
+    if (self.token.isNative()) {
+      for (uint256 i = 0; i < self.targets.length; i++) {
+        self.targets[i].safeTransferNative(self.amounts[i]);
+      }
+    } else {
+      /// @dev Permits the tokens if provided
+      self.token.callERC20Permit(msg.sender, self.permitData);
 
-    /// @dev Transfers the tokens to the targets
-    for (uint256 i = 0; i < self.targets.length; i++) {
-      self.token.safeTransferFrom(msg.sender, self.targets[i], self.amounts[i]);
+      /// @dev Transfers the tokens to the targets
+      for (uint256 i = 0; i < self.targets.length; i++) {
+        self.token.safeTransferFrom(msg.sender, self.targets[i], self.amounts[i]);
+      }
     }
   }
 }
