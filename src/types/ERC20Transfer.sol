@@ -27,10 +27,12 @@ library ERC20TransferLibrary {
       length += params[i].targets.length;
     }
 
+    uint256 index = 0;
     transfers = new ERC20Transfer[](length);
+
     for (uint256 i = 0; i < params.length; i++) {
       for (uint256 j = 0; j < params[i].targets.length; j++) {
-        transfers[--length] = ERC20Transfer({
+        transfers[index++] = ERC20Transfer({
           token: params[i].token, target: params[i].targets[j], amount: params[i].amounts[j]
         });
       }

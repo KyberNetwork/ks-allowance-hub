@@ -21,6 +21,7 @@ import {KSRoles} from 'ks-common-sc/src/libraries/KSRoles.sol';
 import {
   ReentrancyGuardTransient
 } from 'openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol';
+import {TransientSlot} from 'openzeppelin-contracts/contracts/utils/TransientSlot.sol';
 
 /// @title KSAllowanceHub
 /// @notice Separates tokens approval from execution
@@ -32,6 +33,7 @@ contract KSAllowanceHub is
 {
   using ERC20TransferLibrary for *;
   using ERC721TransferLibrary for *;
+  using TransientSlot for *;
 
   /// @inheritdoc IKSAllowanceHub
   ISignatureTransfer public immutable PERMIT2;
@@ -62,17 +64,14 @@ contract KSAllowanceHub is
 
   /// @dev Sets the current
   modifier setMsgSender(address sender) {
-    assembly ('memory-safe') {
-      tstore(MSG_SENDER_SLOT, sender)
-    }
+    MSG_SENDER_SLOT.asAddress().tstore(sender);
     _;
+    MSG_SENDER_SLOT.asAddress().tstore(address(0));
   }
 
   /// @inheritdoc IKSAllowanceHub
-  function msgSender() external view returns (address sender) {
-    assembly ('memory-safe') {
-      sender := tload(MSG_SENDER_SLOT)
-    }
+  function msgSender() external view returns (address) {
+    return MSG_SENDER_SLOT.asAddress().tload();
   }
 
   /// @inheritdoc IKSAllowanceHub
@@ -84,6 +83,7 @@ contract KSAllowanceHub is
     external
     payable
     nonReentrant
+    whenNotPaused
     notOverspent
     setMsgSender(msg.sender)
     returns (bytes[] memory results, uint256 gasUsed)
@@ -106,7 +106,9 @@ contract KSAllowanceHub is
 
     /// @dev Executes the generic calls
     results = _executeGenericCalls(genericCalls);
-    gasUsed = gasStart - gasleft();
+    unchecked {
+      gasUsed = gasStart - gasleft();
+    }
   }
 
   /// @inheritdoc IKSAllowanceHub
@@ -121,6 +123,7 @@ contract KSAllowanceHub is
     external
     payable
     nonReentrant
+    whenNotPaused
     notOverspent
     setMsgSender(owner)
     returns (bytes[] memory results, uint256 gasUsed)
@@ -167,7 +170,9 @@ contract KSAllowanceHub is
 
     /// @dev Executes the generic calls
     results = _executeGenericCalls(genericCalls);
-    gasUsed = gasStart - gasleft();
+    unchecked {
+      gasUsed = gasStart - gasleft();
+    }
   }
 
   function _executeGenericCalls(GenericCall[] calldata genericCalls)
