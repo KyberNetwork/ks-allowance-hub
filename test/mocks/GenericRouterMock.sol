@@ -6,7 +6,9 @@ import {IKSGenericRouter} from 'src/interfaces/IKSGenericRouter.sol';
 
 import {TokenHelper} from 'ks-common-sc/src/libraries/token/TokenHelper.sol';
 
-contract GenericRouterMock is IKSGenericRouter {
+import {ERC721Holder} from 'openzeppelin-contracts/contracts/token/ERC721/utils/ERC721Holder.sol';
+
+contract GenericRouterMock is IKSGenericRouter, ERC721Holder {
   using TokenHelper for address;
 
   error InvalidSender();

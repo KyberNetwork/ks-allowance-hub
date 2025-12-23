@@ -34,7 +34,7 @@ library ERC721ParamsLibrary {
     self.token.callERC721Permit(self.tokenId, self.permitData);
 
     /// @dev Transfers the token to the target
-    IERC721(self.token).transferFrom(owner, self.target, self.tokenId);
+    IERC721(self.token).safeTransferFrom(owner, self.target, self.tokenId);
   }
 
   function hash(ERC721Params calldata self) internal pure returns (bytes32) {
