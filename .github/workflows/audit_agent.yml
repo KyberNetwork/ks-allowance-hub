@@ -1,0 +1,20 @@
+name: Audit Agent
+
+on:
+  workflow_dispatch:
+
+jobs:
+  quick-scan:
+    runs-on: ubuntu-latest
+    env:
+      AUDIT_AGENT_TOKEN: ${{ secrets.AUDIT_AGENT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Quick Scan
+        run: |
+          curl -X POST \-H "Content-Type: application/json" \-H "X-Api-Key: $AUDIT_AGENT_TOKEN" \-d '{
+              "githubUrl": "${{ github.event.repository.html_url }}",
+              "branchName": "${{ github.ref }}",
+              "commitHash": "${{ github.sha }}",
+              "contractFiles": ["src/KSAllowanceHub.sol","src/types/ERC20Params.sol","src/types/ERC20Transfer.sol","src/types/ERC721Params.sol","src/types/ERC721Transfer.sol","src/types/GenericCall.sol","src/types/RelayerWitness.sol"]
+            }' \https://api.auditagent.nethermind.io/api/v1/scanner/quick-scan/launch
