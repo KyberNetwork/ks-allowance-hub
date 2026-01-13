@@ -25,23 +25,12 @@ using ERC721ParamsLibrary for ERC721Params global;
 library ERC721ParamsLibrary {
   using PermitHelper for address;
 
-  bytes32 internal constant ERC721_PARAMS_TYPE_HASH =
-    keccak256('ERC721Params(address token,uint256 tokenId,address target,bytes permitData)');
-
-  /// @notice Permits and collects an ERC721 token from the owner
-  function process(ERC721Params calldata self, address owner) internal {
+  /// @notice Permits and transfers an ERC721 token from the owner
+  function permitTransfer(ERC721Params calldata self, address owner) internal {
     /// @dev Permits the token if provided
     self.token.callERC721Permit(self.tokenId, self.permitData);
 
     /// @dev Transfers the token to the target
     IERC721(self.token).safeTransferFrom(owner, self.target, self.tokenId);
-  }
-
-  function hash(ERC721Params calldata self) internal pure returns (bytes32) {
-    return keccak256(
-      abi.encode(
-        ERC721_PARAMS_TYPE_HASH, self.token, self.tokenId, self.target, keccak256(self.permitData)
-      )
-    );
   }
 }

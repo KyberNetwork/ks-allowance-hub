@@ -4,7 +4,9 @@ pragma solidity 0.8.30;
 import {IKSAllowanceHub} from './interfaces/IKSAllowanceHub.sol';
 
 import {ERC20Params} from './types/ERC20Params.sol';
+import {ERC20Transfer} from './types/ERC20Transfer.sol';
 import {ERC721Params} from './types/ERC721Params.sol';
+import {ERC721Transfer} from './types/ERC721Transfer.sol';
 import {GenericCall} from './types/GenericCall.sol';
 import {RelayerWitnessLibrary} from './types/RelayerWitness.sol';
 
@@ -38,9 +40,8 @@ contract KSAllowanceHub is
   /// @inheritdoc IKSAllowanceHub
   ISignatureTransfer public immutable PERMIT2;
 
-  /// @notice The slot holding the msg.sender, transiently. bytes32(uint256(keccak256("MsgSender")) - 1)
-  bytes32 internal constant MSG_SENDER_SLOT =
-    0x1b9f6ca674ad582e8456f46124f629b489b9f44c7683704064683354005562b9;
+  /// @notice The slot holding the address of the tokens owner, transiently.
+  bytes32 internal constant TOKENS_OWNER_SLOT = bytes32(uint256(keccak256('TokensOwner')) - 1);
 
   constructor(
     address initialAdmin,
@@ -63,15 +64,15 @@ contract KSAllowanceHub is
   }
 
   /// @dev Sets the current
-  modifier setMsgSender(address sender) {
-    MSG_SENDER_SLOT.asAddress().tstore(sender);
+  modifier setTokensOwner(address owner) {
+    TOKENS_OWNER_SLOT.asAddress().tstore(owner);
     _;
-    MSG_SENDER_SLOT.asAddress().tstore(address(0));
+    TOKENS_OWNER_SLOT.asAddress().tstore(address(0));
   }
 
   /// @inheritdoc IKSAllowanceHub
   function msgSender() external view returns (address) {
-    return MSG_SENDER_SLOT.asAddress().tload();
+    return TOKENS_OWNER_SLOT.asAddress().tload();
   }
 
   /// @inheritdoc IKSAllowanceHub
@@ -85,22 +86,23 @@ contract KSAllowanceHub is
     nonReentrant
     whenNotPaused
     notOverspent
-    setMsgSender(msg.sender)
+    setTokensOwner(msg.sender)
     returns (bytes[] memory results, uint256 gasUsed)
   {
     uint256 gasStart = gasleft();
 
-    /// @dev Processes the ERC20 tokens
+    /// @dev Permits and transfers the ERC20 tokens
     for (uint256 i = 0; i < erc20Params.length; i++) {
-      erc20Params[i].process();
+      erc20Params[i].permitTransfer();
     }
 
-    /// @dev Processes the ERC721 tokens
+    /// @dev Permits and transfers the ERC721 tokens
     for (uint256 i = 0; i < erc721Params.length; i++) {
-      erc721Params[i].process(msg.sender);
+      erc721Params[i].permitTransfer(msg.sender);
     }
 
-    emit CollectTokens(
+    /// @dev Emits the event
+    emit TransferTokens(
       msg.sender, msg.sender, msg.value, erc20Params.toTransfers(), erc721Params.toTransfers()
     );
 
@@ -125,7 +127,7 @@ contract KSAllowanceHub is
     nonReentrant
     whenNotPaused
     notOverspent
-    setMsgSender(owner)
+    setTokensOwner(owner)
     returns (bytes[] memory results, uint256 gasUsed)
   {
     uint256 gasStart = gasleft();
@@ -139,12 +141,17 @@ contract KSAllowanceHub is
       transferDetails[i].requestedAmount = permit.permitted[i].amount;
     }
 
+    /// @dev Prepares the transfers data for signature verification and event emission
+    ERC20Transfer[] memory erc20Transfers = permit.permitted.toTransfers(targets);
+    ERC721Transfer[] memory erc721Transfers = erc721Params.toTransfers();
+
     /// @dev Transfers the ERC20 tokens using Permit2
     if (owner == msg.sender) {
       PERMIT2.permitTransferFrom(permit, transferDetails, owner, signature);
     } else {
       /// @dev Prepares the witness
-      bytes32 witness = RelayerWitnessLibrary.hash(msg.sender, targets, erc721Params, genericCalls);
+      bytes32 witness =
+        RelayerWitnessLibrary.hash(msg.sender, targets, erc721Transfers, genericCalls);
       PERMIT2.permitWitnessTransferFrom(
         permit,
         transferDetails,
@@ -155,18 +162,13 @@ contract KSAllowanceHub is
       );
     }
 
-    /// @dev Processes the ERC721 tokens
+    /// @dev Permits and transfers the ERC721 tokens
     for (uint256 i = 0; i < erc721Params.length; i++) {
-      erc721Params[i].process(owner);
+      erc721Params[i].permitTransfer(owner);
     }
 
-    emit CollectTokens(
-      msg.sender,
-      owner,
-      msg.value,
-      permit.permitted.toTransfers(targets),
-      erc721Params.toTransfers()
-    );
+    /// @dev Emits the event
+    emit TransferTokens(msg.sender, owner, msg.value, erc20Transfers, erc721Transfers);
 
     /// @dev Executes the generic calls
     results = _executeGenericCalls(genericCalls);

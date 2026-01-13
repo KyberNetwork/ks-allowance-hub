@@ -15,7 +15,16 @@ struct ERC721Transfer {
   address target;
 }
 
+using ERC721TransferLibrary for ERC721Transfer global;
+
 library ERC721TransferLibrary {
+  bytes32 internal constant ERC721_TRANSFER_TYPE_HASH =
+    keccak256('ERC721Transfer(address token,uint256 tokenId,address target)');
+
+  function hash(ERC721Transfer memory self) internal pure returns (bytes32) {
+    return keccak256(abi.encode(ERC721_TRANSFER_TYPE_HASH, self));
+  }
+
   function toTransfers(ERC721Params[] calldata params)
     internal
     pure
