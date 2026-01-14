@@ -142,14 +142,14 @@ contract KSAllowanceHubTest is Test {
     RelayerWitness memory witness = RelayerWitness({
       relayer: relayer,
       targets: [recipient, recipient].toMemoryArray(),
-      erc721Params: erc721Params,
+      erc721Transfers: _toTransfers(erc721Params),
       genericCalls: genericCalls
     });
 
     bytes32 structHash = PermitHash.hashWithWitness(
       permit,
       address(allowanceHub),
-      this._hash(witness),
+      witness.hash(),
       RelayerWitnessLibrary.RELAYER_WITNESS_PERMIT2_TYPE_STRING
     );
     bytes32 hash = MessageHashUtils.toTypedDataHash(
@@ -295,14 +295,23 @@ contract KSAllowanceHubTest is Test {
     }
   }
 
+  function _toTransfers(ERC721Params[] memory params)
+    internal
+    pure
+    returns (ERC721Transfer[] memory transfers)
+  {
+    transfers = new ERC721Transfer[](params.length);
+    for (uint256 i = 0; i < params.length; i++) {
+      transfers[i] = ERC721Transfer({
+        token: params[i].token, tokenId: params[i].tokenId, target: params[i].target
+      });
+    }
+  }
+
   function _prepareGenericCalls() internal view returns (GenericCall[] memory genericCalls) {
     genericCalls = new GenericCall[](1);
 
     genericCalls[0] =
       GenericCall({router: address(genericRouter), value: 0, data: abi.encode(sender)});
-  }
-
-  function _hash(RelayerWitness calldata witness) public pure returns (bytes32) {
-    return RelayerWitnessLibrary.hash(witness);
   }
 }

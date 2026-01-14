@@ -27,8 +27,8 @@ library ERC20ParamsLibrary {
   using PermitHelper for address;
   using TokenHelper for address;
 
-  /// @notice Permits and collects ERC20 tokens from `msg.sender`
-  function process(ERC20Params calldata self) internal {
+  /// @notice Permits and transfers ERC20 tokens from `msg.sender`
+  function permitTransfer(ERC20Params calldata self) internal {
     if (self.targets.length != self.amounts.length) {
       revert ICommon.MismatchedArrayLengths();
     }
