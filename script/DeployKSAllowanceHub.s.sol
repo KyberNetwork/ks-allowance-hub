@@ -17,8 +17,10 @@ contract DeployKSAllowanceHubScript is BaseScript {
       type(KSAllowanceHub).creationCode, abi.encode(admin, guardians, rescuers, permit2)
     );
 
-    address allowanceHub =
+    (address allowanceHub,) =
       _create3Deploy(keccak256(bytes(string.concat('KSAllowanceHub_', salt))), creationCode);
-    _writeAddress('allowance-hub', allowanceHub);
+    if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) {
+      _writeAddress('allowance-hub', allowanceHub);
+    }
   }
 }
