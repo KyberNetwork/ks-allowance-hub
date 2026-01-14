@@ -48,10 +48,11 @@ contract KSAllowanceHub is
     address[] memory initialGuardians,
     address[] memory initialRescuers,
     address permit2
-  ) ManagementBase(0, initialAdmin) {
-    _batchGrantRole(KSRoles.GUARDIAN_ROLE, initialGuardians);
-    _batchGrantRole(KSRoles.RESCUER_ROLE, initialRescuers);
-
+  )
+    ManagementBase(0, initialAdmin)
+    ManagementPausable(initialGuardians)
+    ManagementRescuable(initialRescuers)
+  {
     PERMIT2 = ISignatureTransfer(permit2);
   }
 
