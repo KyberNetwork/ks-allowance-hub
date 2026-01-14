@@ -15,6 +15,9 @@ interface IKSAllowanceHub {
   /// @notice Thrown when the native tokens are overspent
   error NativeTokenOverspent();
 
+  /// @notice Thrown when the contract is already locked
+  error AlreadyLocked();
+
   /// @notice Emits when tokens are transferred
   event TransferTokens(
     address indexed caller,

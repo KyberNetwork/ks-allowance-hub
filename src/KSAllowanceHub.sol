@@ -20,19 +20,11 @@ import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer
 
 import {KSRoles} from 'ks-common-sc/src/libraries/KSRoles.sol';
 
-import {
-  ReentrancyGuardTransient
-} from 'openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol';
 import {TransientSlot} from 'openzeppelin-contracts/contracts/utils/TransientSlot.sol';
 
 /// @title KSAllowanceHub
 /// @notice Separates tokens approval from execution
-contract KSAllowanceHub is
-  IKSAllowanceHub,
-  ManagementPausable,
-  ManagementRescuable,
-  ReentrancyGuardTransient
-{
+contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescuable {
   using ERC20TransferLibrary for *;
   using ERC721TransferLibrary for *;
   using TransientSlot for *;
@@ -56,7 +48,8 @@ contract KSAllowanceHub is
     PERMIT2 = ISignatureTransfer(permit2);
   }
 
-  modifier notOverspent() {
+  /// @dev Ensures the native tokens are not overspent
+  modifier notOverspentNative() {
     uint256 nativeBalanceBefore = address(this).balance;
     _;
     if (address(this).balance + msg.value < nativeBalanceBefore) {
@@ -64,11 +57,15 @@ contract KSAllowanceHub is
     }
   }
 
-  /// @dev Sets the current
-  modifier setTokensOwner(address owner) {
-    TOKENS_OWNER_SLOT.asAddress().tstore(owner);
+  /// @dev Locks the function for further calls, and sets the tokens owner
+  modifier lock(address owner) {
+    TransientSlot.AddressSlot tokensOwner = TOKENS_OWNER_SLOT.asAddress();
+    if (tokensOwner.tload() != address(0)) {
+      revert AlreadyLocked();
+    }
+    tokensOwner.tstore(owner);
     _;
-    TOKENS_OWNER_SLOT.asAddress().tstore(address(0));
+    tokensOwner.tstore(address(0));
   }
 
   /// @inheritdoc IKSAllowanceHub
@@ -84,10 +81,9 @@ contract KSAllowanceHub is
   )
     external
     payable
-    nonReentrant
     whenNotPaused
-    notOverspent
-    setTokensOwner(msg.sender)
+    lock(msg.sender)
+    notOverspentNative
     returns (bytes[] memory results, uint256 gasUsed)
   {
     uint256 gasStart = gasleft();
@@ -125,10 +121,9 @@ contract KSAllowanceHub is
   )
     external
     payable
-    nonReentrant
     whenNotPaused
-    notOverspent
-    setTokensOwner(owner)
+    lock(owner)
+    notOverspentNative
     returns (bytes[] memory results, uint256 gasUsed)
   {
     uint256 gasStart = gasleft();
