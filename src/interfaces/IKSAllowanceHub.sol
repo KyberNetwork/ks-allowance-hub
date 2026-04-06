@@ -18,9 +18,6 @@ interface IKSAllowanceHub {
   /// @notice Thrown when the contract is already locked
   error AlreadyLocked();
 
-  /// @notice Thrown when a router is not whitelisted
-  error UnwhitelistedRouter(address router);
-
   /// @notice Emits when tokens are transferred
   event TransferTokens(
     address indexed caller,
