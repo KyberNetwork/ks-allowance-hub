@@ -35,10 +35,14 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
   /// @notice The slot holding the address of the tokens owner, transiently.
   bytes32 internal constant TOKENS_OWNER_SLOT = bytes32(uint256(keccak256('TokensOwner')) - 1);
 
+  /// @notice The role for whitelisted routers
+  bytes32 internal constant WHITELIST_ROUTER_ROLE = keccak256('WHITELIST_ROUTER_ROLE');
+
   constructor(
     address initialAdmin,
     address[] memory initialGuardians,
     address[] memory initialRescuers,
+    address[] memory initialWhitelistedRouters,
     address permit2
   )
     ManagementBase(0, initialAdmin)
@@ -46,6 +50,7 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
     ManagementRescuable(initialRescuers)
   {
     PERMIT2 = ISignatureTransfer(permit2);
+    _batchGrantRole(WHITELIST_ROUTER_ROLE, initialWhitelistedRouters);
   }
 
   /// @dev Ensures the native tokens are not overspent
@@ -179,6 +184,7 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
   {
     results = new bytes[](genericCalls.length);
     for (uint256 i = 0; i < genericCalls.length; i++) {
+      _checkRole(WHITELIST_ROUTER_ROLE, genericCalls[i].router);
       results[i] = genericCalls[i].execute();
     }
   }
