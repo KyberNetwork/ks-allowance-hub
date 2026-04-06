@@ -13,11 +13,11 @@ import 'test/libraries/ArrayHelper.sol';
 import 'test/libraries/PermitHash.sol';
 import 'test/mocks/GenericRouterMock.sol';
 
+import 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
 import 'openzeppelin-contracts/contracts/interfaces/IERC721.sol';
 import 'openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol';
 import 'openzeppelin-contracts/contracts/utils/cryptography/MessageHashUtils.sol';
 
-import 'ks-common-sc/src/libraries/KSRoles.sol';
 import 'ks-common-sc/src/libraries/token/TokenHelper.sol';
 
 contract KSAllowanceHubTest is Test {
@@ -212,7 +212,9 @@ contract KSAllowanceHubTest is Test {
 
     vm.expectRevert(
       abi.encodeWithSelector(
-        IKSAllowanceHub.UnwhitelistedRouter.selector, address(unwhitelistedRouter)
+        IAccessControl.AccessControlUnauthorizedAccount.selector,
+        address(unwhitelistedRouter),
+        WHITELIST_ROUTER_ROLE
       )
     );
 
@@ -237,7 +239,11 @@ contract KSAllowanceHubTest is Test {
     genericCalls[0] = GenericCall({router: address(newRouter), value: 0, data: abi.encode(sender)});
 
     vm.expectRevert(
-      abi.encodeWithSelector(IKSAllowanceHub.UnwhitelistedRouter.selector, address(newRouter))
+      abi.encodeWithSelector(
+        IAccessControl.AccessControlUnauthorizedAccount.selector,
+        address(newRouter),
+        WHITELIST_ROUTER_ROLE
+      )
     );
 
     vm.prank(sender);
@@ -269,7 +275,11 @@ contract KSAllowanceHubTest is Test {
 
     // Now should revert
     vm.expectRevert(
-      abi.encodeWithSelector(IKSAllowanceHub.UnwhitelistedRouter.selector, address(genericRouter))
+      abi.encodeWithSelector(
+        IAccessControl.AccessControlUnauthorizedAccount.selector,
+        address(genericRouter),
+        WHITELIST_ROUTER_ROLE
+      )
     );
 
     vm.prank(sender);
@@ -310,7 +320,9 @@ contract KSAllowanceHubTest is Test {
 
     vm.expectRevert(
       abi.encodeWithSelector(
-        IKSAllowanceHub.UnwhitelistedRouter.selector, address(unwhitelistedRouter)
+        IAccessControl.AccessControlUnauthorizedAccount.selector,
+        address(unwhitelistedRouter),
+        WHITELIST_ROUTER_ROLE
       )
     );
 

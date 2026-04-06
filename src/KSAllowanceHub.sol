@@ -184,9 +184,7 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
   {
     results = new bytes[](genericCalls.length);
     for (uint256 i = 0; i < genericCalls.length; i++) {
-      if (!hasRole(WHITELIST_ROUTER_ROLE, genericCalls[i].router)) {
-        revert UnwhitelistedRouter(genericCalls[i].router);
-      }
+      _checkRole(WHITELIST_ROUTER_ROLE, genericCalls[i].router);
       results[i] = genericCalls[i].execute();
     }
   }
