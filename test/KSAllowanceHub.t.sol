@@ -17,6 +17,7 @@ import 'openzeppelin-contracts/contracts/interfaces/IERC721.sol';
 import 'openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol';
 import 'openzeppelin-contracts/contracts/utils/cryptography/MessageHashUtils.sol';
 
+import 'ks-common-sc/src/libraries/KSRoles.sol';
 import 'ks-common-sc/src/libraries/token/TokenHelper.sol';
 
 contract KSAllowanceHubTest is Test {
@@ -38,6 +39,8 @@ contract KSAllowanceHubTest is Test {
   bytes32 ERC721_PERMIT_TYPEHASH =
     keccak256('Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)');
 
+  bytes32 WHITELIST_ROUTER_ROLE = keccak256('WHITELIST_ROUTER_ROLE');
+
   KSAllowanceHub allowanceHub;
   GenericRouterMock genericRouter;
 
@@ -49,8 +52,14 @@ contract KSAllowanceHubTest is Test {
   function setUp() public {
     vm.createSelectFork('mainnet', 23_932_050);
 
-    allowanceHub = new KSAllowanceHub(address(this), new address[](0), new address[](0), PERMIT2);
     genericRouter = new GenericRouterMock();
+
+    address[] memory initialWhitelistedRouters = new address[](1);
+    initialWhitelistedRouters[0] = address(genericRouter);
+
+    allowanceHub = new KSAllowanceHub(
+      address(this), new address[](0), new address[](0), initialWhitelistedRouters, PERMIT2
+    );
 
     (sender, senderPrivateKey) = makeAddrAndKey('sender wallet');
     recipient = makeAddr('recipient wallet');
@@ -191,6 +200,123 @@ contract KSAllowanceHubTest is Test {
     vm.prank(sender);
     allowanceHub.permitTransferAndExecute{value: msgValue}(
       new ERC20Params[](0), new ERC721Params[](0), genericCalls
+    );
+  }
+
+  function test_unwhitelistedRouter() public {
+    GenericRouterMock unwhitelistedRouter = new GenericRouterMock();
+
+    GenericCall[] memory genericCalls = new GenericCall[](1);
+    genericCalls[0] =
+      GenericCall({router: address(unwhitelistedRouter), value: 0, data: abi.encode(sender)});
+
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IKSAllowanceHub.UnwhitelistedRouter.selector, address(unwhitelistedRouter)
+      )
+    );
+
+    vm.prank(sender);
+    allowanceHub.permitTransferAndExecute(new ERC20Params[](0), new ERC721Params[](0), genericCalls);
+  }
+
+  function test_whitelistedRouterCanExecute() public {
+    GenericCall[] memory genericCalls = new GenericCall[](1);
+    genericCalls[0] =
+      GenericCall({router: address(genericRouter), value: 0, data: abi.encode(sender)});
+
+    vm.prank(sender);
+    allowanceHub.permitTransferAndExecute(new ERC20Params[](0), new ERC721Params[](0), genericCalls);
+  }
+
+  function test_grantWhitelistRouterRole() public {
+    GenericRouterMock newRouter = new GenericRouterMock();
+
+    // Initially should revert
+    GenericCall[] memory genericCalls = new GenericCall[](1);
+    genericCalls[0] = GenericCall({router: address(newRouter), value: 0, data: abi.encode(sender)});
+
+    vm.expectRevert(
+      abi.encodeWithSelector(IKSAllowanceHub.UnwhitelistedRouter.selector, address(newRouter))
+    );
+
+    vm.prank(sender);
+    allowanceHub.permitTransferAndExecute(new ERC20Params[](0), new ERC721Params[](0), genericCalls);
+
+    // Grant role
+    address[] memory routers = new address[](1);
+    routers[0] = address(newRouter);
+    allowanceHub.batchGrantRole(WHITELIST_ROUTER_ROLE, routers);
+
+    // Now should succeed
+    vm.prank(sender);
+    allowanceHub.permitTransferAndExecute(new ERC20Params[](0), new ERC721Params[](0), genericCalls);
+  }
+
+  function test_revokeWhitelistRouterRole() public {
+    // Initially should work
+    GenericCall[] memory genericCalls = new GenericCall[](1);
+    genericCalls[0] =
+      GenericCall({router: address(genericRouter), value: 0, data: abi.encode(sender)});
+
+    vm.prank(sender);
+    allowanceHub.permitTransferAndExecute(new ERC20Params[](0), new ERC721Params[](0), genericCalls);
+
+    // Revoke role
+    address[] memory routers = new address[](1);
+    routers[0] = address(genericRouter);
+    allowanceHub.batchRevokeRole(WHITELIST_ROUTER_ROLE, routers);
+
+    // Now should revert
+    vm.expectRevert(
+      abi.encodeWithSelector(IKSAllowanceHub.UnwhitelistedRouter.selector, address(genericRouter))
+    );
+
+    vm.prank(sender);
+    allowanceHub.permitTransferAndExecute(new ERC20Params[](0), new ERC721Params[](0), genericCalls);
+  }
+
+  function test_unwhitelistedRouter_permit2() public {
+    GenericRouterMock unwhitelistedRouter = new GenericRouterMock();
+
+    uint256 wethAmount = 1 ether;
+
+    vm.startPrank(sender);
+    WETH.forceApprove(address(PERMIT2), wethAmount);
+    vm.stopPrank();
+
+    deal(WETH, sender, wethAmount);
+
+    ISignatureTransfer.PermitBatchTransferFrom memory permit =
+      ISignatureTransfer.PermitBatchTransferFrom({
+        permitted: new ISignatureTransfer.TokenPermissions[](1),
+        nonce: 0,
+        deadline: block.timestamp + 1 days
+      });
+
+    permit.permitted[0] = ISignatureTransfer.TokenPermissions({token: WETH, amount: wethAmount});
+
+    bytes32 structHash = PermitHash.hash(permit, address(allowanceHub));
+    bytes32 hash = MessageHashUtils.toTypedDataHash(
+      IERC20Permit(address(PERMIT2)).DOMAIN_SEPARATOR(), structHash
+    );
+
+    (uint8 v, bytes32 r, bytes32 s) = vm.sign(senderPrivateKey, hash);
+    bytes memory signature = abi.encodePacked(r, s, v);
+
+    GenericCall[] memory genericCalls = new GenericCall[](1);
+    genericCalls[0] =
+      GenericCall({router: address(unwhitelistedRouter), value: 0, data: abi.encode(sender)});
+
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IKSAllowanceHub.UnwhitelistedRouter.selector, address(unwhitelistedRouter)
+      )
+    );
+
+    vm.prank(sender);
+    allowanceHub.permit2TransferAndExecute(
+      permit, [recipient].toMemoryArray(), new ERC721Params[](0), genericCalls, sender, signature
     );
   }
 
