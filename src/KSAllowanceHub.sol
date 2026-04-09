@@ -51,6 +51,7 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
   {
     PERMIT2 = ISignatureTransfer(permit2);
     _batchGrantRole(WHITELIST_ROUTER_ROLE, initialWhitelistedRouters);
+    _setRoleRevoker(WHITELIST_ROUTER_ROLE, KSRoles.GUARDIAN_ROLE);
   }
 
   /// @dev Ensures the native tokens are not overspent
