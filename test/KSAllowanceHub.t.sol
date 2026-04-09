@@ -18,6 +18,7 @@ import 'openzeppelin-contracts/contracts/interfaces/IERC721.sol';
 import 'openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol';
 import 'openzeppelin-contracts/contracts/utils/cryptography/MessageHashUtils.sol';
 
+import 'ks-common-sc/src/libraries/KSRoles.sol';
 import 'ks-common-sc/src/libraries/token/TokenHelper.sol';
 
 contract KSAllowanceHubTest is Test {
@@ -48,17 +49,23 @@ contract KSAllowanceHubTest is Test {
   uint256 senderPrivateKey;
   address recipient;
   address relayer;
+  address guardian;
 
   function setUp() public {
     vm.createSelectFork('mainnet', 23_932_050);
 
     genericRouter = new GenericRouterMock();
 
+    guardian = makeAddr('guardian wallet');
+
+    address[] memory initialGuardians = new address[](1);
+    initialGuardians[0] = guardian;
+
     address[] memory initialWhitelistedRouters = new address[](1);
     initialWhitelistedRouters[0] = address(genericRouter);
 
     allowanceHub = new KSAllowanceHub(
-      address(this), new address[](0), new address[](0), initialWhitelistedRouters, PERMIT2
+      address(this), initialGuardians, new address[](0), initialWhitelistedRouters, PERMIT2
     );
 
     (sender, senderPrivateKey) = makeAddrAndKey('sender wallet');
@@ -330,6 +337,45 @@ contract KSAllowanceHubTest is Test {
     allowanceHub.permit2TransferAndExecute(
       permit, [recipient].toMemoryArray(), new ERC721Params[](0), genericCalls, sender, signature
     );
+  }
+
+  function test_guardianCanRevokeWhitelistRouterRole() public {
+    // Guardian should be able to revoke WHITELIST_ROUTER_ROLE
+    vm.prank(guardian);
+    allowanceHub.revokeRole(WHITELIST_ROUTER_ROLE, address(genericRouter));
+
+    // Router should no longer be whitelisted
+    GenericCall[] memory genericCalls = new GenericCall[](1);
+    genericCalls[0] =
+      GenericCall({router: address(genericRouter), value: 0, data: abi.encode(sender)});
+
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IAccessControl.AccessControlUnauthorizedAccount.selector,
+        address(genericRouter),
+        WHITELIST_ROUTER_ROLE
+      )
+    );
+
+    vm.prank(sender);
+    allowanceHub.permitTransferAndExecute(new ERC20Params[](0), new ERC721Params[](0), genericCalls);
+  }
+
+  function test_nonGuardianNonAdminCannotRevokeWhitelistRouterRole() public {
+    address nobody = makeAddr('nobody');
+
+    vm.expectRevert();
+    vm.prank(nobody);
+    allowanceHub.revokeRole(WHITELIST_ROUTER_ROLE, address(genericRouter));
+  }
+
+  function test_adminCanRevokeWhitelistRouterRole() public {
+    allowanceHub.revokeRole(WHITELIST_ROUTER_ROLE, address(genericRouter));
+    assertFalse(allowanceHub.hasRole(WHITELIST_ROUTER_ROLE, address(genericRouter)));
+  }
+
+  function test_roleRevokerIsSetForWhitelistRouterRole() public {
+    assertEq(allowanceHub.roleRevokers(WHITELIST_ROUTER_ROLE), KSRoles.GUARDIAN_ROLE);
   }
 
   function _prepareERC20Params(uint256 wethAmount, uint256 usdcAmount)
