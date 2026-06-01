@@ -130,6 +130,7 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
     whenNotPaused
     lock(owner)
     notOverspentNative
+    checkLengths(targets.length, permit.permitted.length)
     returns (bytes[] memory results, uint256 gasUsed)
   {
     uint256 gasStart = gasleft();
