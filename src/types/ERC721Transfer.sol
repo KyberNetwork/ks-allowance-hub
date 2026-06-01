@@ -22,7 +22,7 @@ library ERC721TransferLibrary {
     keccak256('ERC721Transfer(address token,uint256 tokenId,address target)');
 
   function hash(ERC721Transfer memory self) internal pure returns (bytes32) {
-    return keccak256(abi.encode(ERC721_TRANSFER_TYPE_HASH, self));
+    return keccak256(abi.encode(ERC721_TRANSFER_TYPE_HASH, self.token, self.tokenId, self.target));
   }
 
   function toTransfers(ERC721Params[] calldata params)
