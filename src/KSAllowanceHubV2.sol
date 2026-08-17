@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-import {IKSAllowanceHub} from './interfaces/IKSAllowanceHub.sol';
+import {IKSAllowanceHubV2} from './interfaces/IKSAllowanceHubV2.sol';
 
 import {ERC20Params} from './types/ERC20Params.sol';
 import {ERC20Transfer} from './types/ERC20Transfer.sol';
@@ -9,9 +9,12 @@ import {ERC721Params} from './types/ERC721Params.sol';
 import {ERC721Transfer} from './types/ERC721Transfer.sol';
 import {GenericCall} from './types/GenericCall.sol';
 import {RelayerWitnessLibrary} from './types/RelayerWitness.sol';
+import {SolverWitnessLibrary} from './types/SolverWitness.sol';
+import {ValidationParams} from './types/ValidationParams.sol';
 
 import {ERC20TransferLibrary} from './types/ERC20Transfer.sol';
 import {ERC721TransferLibrary} from './types/ERC721Transfer.sol';
+import {NativeTransferLibrary} from './types/NativeTransfer.sol';
 
 import {ManagementBase} from 'ks-common-sc/src/base/ManagementBase.sol';
 import {ManagementPausable} from 'ks-common-sc/src/base/ManagementPausable.sol';
@@ -23,19 +26,20 @@ import {KSRoles} from 'ks-common-sc/src/libraries/KSRoles.sol';
 import {TransientSlot} from 'openzeppelin-contracts/contracts/utils/TransientSlot.sol';
 
 /**
- * @title KSAllowanceHub
+ * @title KSAllowanceHubV2
  * @notice Separates token approval from execution
  * @dev Users grant their allowance to this hub (or to Permit2) once, instead of to every router
  * they interact with. Each entrypoint pulls the tokens directly to the routers that will consume
  * them, then calls those routers. The hub holds no balance between calls and is not meant to be an
  * allowance target for anything but the flows below.
  */
-contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescuable {
+contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRescuable {
   using ERC20TransferLibrary for *;
   using ERC721TransferLibrary for *;
+  using NativeTransferLibrary for *;
   using TransientSlot for *;
 
-  /// @inheritdoc IKSAllowanceHub
+  /// @inheritdoc IKSAllowanceHubV2
   ISignatureTransfer public immutable PERMIT2;
 
   /// @dev The transient slot holding the owner of the tokens spent by the in-flight call
@@ -62,10 +66,11 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
     ManagementPausable(initialGuardians)
     ManagementRescuable(initialRescuers)
   {
-    PERMIT2 = ISignatureTransfer(permit2);
     _batchGrantRole(WHITELIST_ROUTER_ROLE, initialWhitelistedRouters);
     // Lets guardians drop a router from the whitelist without going through the admin
     _setRoleRevoker(WHITELIST_ROUTER_ROLE, KSRoles.GUARDIAN_ROLE);
+
+    PERMIT2 = ISignatureTransfer(permit2);
   }
 
   /**
@@ -99,12 +104,12 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
     tokensOwner.tstore(address(0));
   }
 
-  /// @inheritdoc IKSAllowanceHub
+  /// @inheritdoc IKSAllowanceHubV2
   function msgSender() external view returns (address) {
     return TOKENS_OWNER_SLOT.asAddress().tload();
   }
 
-  /// @inheritdoc IKSAllowanceHub
+  /// @inheritdoc IKSAllowanceHubV2
   function permitTransferAndExecute(
     ERC20Params[] calldata erc20Params,
     ERC721Params[] calldata erc721Params,
@@ -131,7 +136,12 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
 
     // Reports the movements before executing, so the event reflects the funded state
     emit TransferTokens(
-      msg.sender, msg.sender, msg.value, erc20Params.toTransfers(), erc721Params.toTransfers()
+      msg.sender,
+      msg.sender,
+      msg.value,
+      erc20Params.toTransfers(),
+      erc721Params.toTransfers(),
+      genericCalls.toTransfers()
     );
 
     results = _executeGenericCalls(genericCalls);
@@ -141,7 +151,7 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
     }
   }
 
-  /// @inheritdoc IKSAllowanceHub
+  /// @inheritdoc IKSAllowanceHubV2
   function permit2TransferAndExecute(
     ISignatureTransfer.PermitBatchTransferFrom calldata permit,
     address[] calldata targets,
@@ -198,9 +208,88 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
     }
 
     // Reports the movements before executing, so the event reflects the funded state
-    emit TransferTokens(msg.sender, owner, msg.value, erc20Transfers, erc721Transfers);
+    emit TransferTokens(
+      msg.sender, owner, msg.value, erc20Transfers, erc721Transfers, genericCalls.toTransfers()
+    );
 
     results = _executeGenericCalls(genericCalls);
+    // `gasleft()` only decreases within a call, so the subtraction cannot underflow
+    unchecked {
+      gasUsed = gasStart - gasleft();
+    }
+  }
+
+  /// @inheritdoc IKSAllowanceHubV2
+  function permit2TransferAndFillIntent(
+    ISignatureTransfer.PermitBatchTransferFrom calldata permit,
+    address[] calldata targets,
+    ERC721Params[] calldata erc721Params,
+    ValidationParams[] calldata validationParams,
+    GenericCall[] calldata genericCalls,
+    address owner,
+    bytes calldata signature
+  )
+    external
+    payable
+    whenNotPaused
+    lock(owner)
+    notOverspentNative
+    checkLengths(targets.length, permit.permitted.length)
+    returns (bytes[] memory results, uint256 gasUsed)
+  {
+    uint256 gasStart = gasleft();
+
+    // Pairs each permitted token with its target, requesting the full permitted amount
+    ISignatureTransfer.SignatureTransferDetails[] memory transferDetails =
+      new ISignatureTransfer.SignatureTransferDetails[](targets.length);
+
+    for (uint256 i = 0; i < targets.length; i++) {
+      transferDetails[i].to = targets[i];
+      transferDetails[i].requestedAmount = permit.permitted[i].amount;
+    }
+
+    // Built once, then reused for both the witness and the event
+    ERC20Transfer[] memory erc20Transfers = permit.permitted.toTransfers(targets);
+    ERC721Transfer[] memory erc721Transfers = erc721Params.toTransfers();
+
+    // Binds the signature to the solver, to where the funding goes and to the validators that
+    // will judge the fill. `genericCalls` is deliberately left out: the owner signs the outcome it
+    // wants, not the path the solver takes to produce it.
+    bytes32 witness =
+      SolverWitnessLibrary.hash(msg.sender, targets, erc721Transfers, validationParams);
+    PERMIT2.permitWitnessTransferFrom(
+      permit,
+      transferDetails,
+      owner,
+      witness,
+      SolverWitnessLibrary.SOLVER_WITNESS_PERMIT2_TYPE_STRING,
+      signature
+    );
+
+    // Permits and transfers the ERC721 tokens, pulled from the owner rather than the caller
+    for (uint256 i = 0; i < erc721Params.length; i++) {
+      erc721Params[i].permitTransfer(owner);
+    }
+
+    // Reports the movements before executing, so the event reflects the funded state
+    emit TransferTokens(
+      msg.sender, owner, msg.value, erc20Transfers, erc721Transfers, genericCalls.toTransfers()
+    );
+
+    // Snapshots the state each validator needs. This runs after the funding transfers, so a
+    // validator measuring a delta measures what the fill produced, not what the owner paid in.
+    bytes[] memory beforeExecutionOutputs = new bytes[](validationParams.length);
+    for (uint256 i = 0; i < validationParams.length; i++) {
+      beforeExecutionOutputs[i] = validationParams[i].beforeExecution();
+    }
+
+    results = _executeGenericCalls(genericCalls);
+
+    // Rejects the whole fill unless every validator accepts the resulting state transition
+    for (uint256 i = 0; i < validationParams.length; i++) {
+      validationParams[i].afterExecution(beforeExecutionOutputs[i]);
+    }
+
     // `gasleft()` only decreases within a call, so the subtraction cannot underflow
     unchecked {
       gasUsed = gasStart - gasleft();
