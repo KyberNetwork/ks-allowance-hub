@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import {IKSActionValidator} from 'ks-action-validator-sc/src/interfaces/IKSActionValidator.sol';
 
 /**
- * @notice The acceptance criteria an intent fill must satisfy, as signed by the token owner
+ * @notice The acceptance criteria an intent fulfillment must satisfy, as signed by the owner
  * @param validator The validator asked to judge the state transition
  * @param action The action identifier telling the validator what is being validated
  * @param beforeExecutionInput Action-specific input describing what to snapshot

@@ -220,7 +220,7 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRe
   }
 
   /// @inheritdoc IKSAllowanceHubV2
-  function permit2TransferAndFillIntent(
+  function permit2TransferAndFulfill(
     ISignatureTransfer.PermitBatchTransferFrom calldata permit,
     address[] calldata targets,
     ERC721Params[] calldata erc721Params,
@@ -253,7 +253,7 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRe
     ERC721Transfer[] memory erc721Transfers = erc721Params.toTransfers();
 
     // Binds the signature to the solver, to where the funding goes and to the validators that
-    // will judge the fill. `genericCalls` is deliberately left out: the owner signs the outcome it
+    // will judge it. `genericCalls` is deliberately left out: the owner signs the outcome it
     // wants, not the path the solver takes to produce it.
     bytes32 witness =
       SolverWitnessLibrary.hash(msg.sender, targets, erc721Transfers, validationParams);
@@ -277,7 +277,7 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRe
     );
 
     // Snapshots the state each validator needs. This runs after the funding transfers, so a
-    // validator measuring a delta measures what the fill produced, not what the owner paid in.
+    // validator measuring a delta measures what the fulfillment produced, not what the owner paid.
     bytes[] memory beforeExecutionOutputs = new bytes[](validationParams.length);
     for (uint256 i = 0; i < validationParams.length; i++) {
       beforeExecutionOutputs[i] = validationParams[i].beforeExecution();
@@ -285,7 +285,7 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRe
 
     results = _executeGenericCalls(genericCalls);
 
-    // Rejects the whole fill unless every validator accepts the resulting state transition
+    // Rejects the whole fulfillment unless every validator accepts the resulting transition
     for (uint256 i = 0; i < validationParams.length; i++) {
       validationParams[i].afterExecution(beforeExecutionOutputs[i]);
     }

@@ -5,14 +5,14 @@ import {ERC721Transfer} from './ERC721Transfer.sol';
 import {ValidationParams} from './ValidationParams.sol';
 
 /**
- * @notice The extra data an owner signs when a solver fills their intent, pinning the solver, the
- * funding it receives and the criteria its fill is judged by
+ * @notice The extra data an owner signs when a solver fulfills their intent, pinning the solver,
+ * the funding it receives and the criteria it is judged by
  * @dev Deliberately carries no generic calls: the owner signs the outcome it wants, and the solver
- * chooses how to reach it. `validationParams` is therefore the only constraint on the fill.
+ * chooses how to reach it. `validationParams` is therefore the only constraint on the solver.
  * @param solver The only address allowed to submit the signature
  * @param targets The addresses the permitted ERC20 tokens must be transferred to
- * @param erc721Transfers The ERC721 movements funding the fill
- * @param validationParams The acceptance criteria the fill must satisfy
+ * @param erc721Transfers The ERC721 movements funding the fulfillment
+ * @param validationParams The acceptance criteria the fulfillment must satisfy
  */
 struct SolverWitness {
   address solver;
@@ -40,8 +40,8 @@ library SolverWitnessLibrary {
    * without copying it into one.
    * @param solver The only address allowed to submit the signature
    * @param targets The addresses the permitted ERC20 tokens must be transferred to
-   * @param erc721Transfers The ERC721 movements funding the fill
-   * @param validationParams The acceptance criteria the fill must satisfy
+   * @param erc721Transfers The ERC721 movements funding the fulfillment
+   * @param validationParams The acceptance criteria the fulfillment must satisfy
    * @return The EIP-712 hash of the witness
    */
   function hash(

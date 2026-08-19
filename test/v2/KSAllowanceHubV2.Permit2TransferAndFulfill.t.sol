@@ -27,7 +27,7 @@ import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessCon
 import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
 
 /**
- * @notice Batch C — `KSAllowanceHubV2.permit2TransferAndFillIntent`
+ * @notice Batch C — `KSAllowanceHubV2.permit2TransferAndFulfill`
  * @dev Covers the fill flow itself (funding, validator hooks, event payload, results), the
  * `SolverWitness` binding surface — including the deliberate omission of `genericCalls` — and the
  * regression lock for the `whenNotPaused / lock / notOverspentNative / checkLengths` modifier set
@@ -36,7 +36,7 @@ import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
  * `SolverWitnessLibrary` is imported for signing only. Batch D pins the typehash and type string
  * against hand-written literals, so this batch never asserts the witness hash value itself.
  */
-contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Base {
+contract KSAllowanceHubV2Permit2TransferAndFulfillTest is KSAllowanceHubV2Base {
   using ArrayHelper for *;
 
   bytes32 private constant ACTION_A = keccak256('ACTION_A');
@@ -90,7 +90,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
     emit TransferTokens(solver, owner, 1 ether, expectedErc20, _noErc721Transfers(), expectedNative);
 
     vm.prank(solver);
-    (bytes[] memory results,) = hub.permit2TransferAndFillIntent{value: 1 ether}(
+    (bytes[] memory results,) = hub.permit2TransferAndFulfill{value: 1 ether}(
       permit, targets, _noErc721Params(), vps, calls, owner, sig
     );
 
@@ -219,7 +219,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
 
     vm.prank(solver);
     vm.expectRevert(ActionValidatorMock.ValidationFailed.selector);
-    hub.permit2TransferAndFillIntent(
+    hub.permit2TransferAndFulfill(
       permit, _targetsA(), _noErc721Params(), vps, _oneCallToRouterA(), owner, sig
     );
 
@@ -243,7 +243,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
 
     vm.prank(solver);
     vm.expectRevert(ActionValidatorMock.ValidationFailed.selector);
-    hub.permit2TransferAndFillIntent(
+    hub.permit2TransferAndFulfill(
       permit, _targetsA(), _noErc721Params(), vps, _oneCallToRouterA(), owner, sig
     );
 
@@ -284,7 +284,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
 
     vm.prank(relayer);
     vm.expectRevert(Permit2Mock.InvalidSigner.selector);
-    hub.permit2TransferAndFillIntent(
+    hub.permit2TransferAndFulfill(
       permit, _targetsA(), _noErc721Params(), vps, _oneCallToRouterA(), owner, sig
     );
 
@@ -303,7 +303,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
 
     vm.prank(solver);
     vm.expectRevert(Permit2Mock.InvalidSigner.selector);
-    hub.permit2TransferAndFillIntent(
+    hub.permit2TransferAndFulfill(
       permit, tamperedTargets, _noErc721Params(), vps, _oneCallToRouterA(), owner, sig
     );
 
@@ -331,7 +331,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
       _erc721ParamsArray(_erc721Params(address(nft), 7, recipient, ''));
     vm.prank(solver);
     vm.expectRevert(Permit2Mock.InvalidSigner.selector);
-    hub.permit2TransferAndFillIntent(
+    hub.permit2TransferAndFulfill(
       permit, _targetsA(), tamperedTarget, vps, _oneCallToRouterA(), owner, sig
     );
 
@@ -340,7 +340,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
       _erc721ParamsArray(_erc721Params(address(nft), 8, address(nftReceiver), ''));
     vm.prank(solver);
     vm.expectRevert(Permit2Mock.InvalidSigner.selector);
-    hub.permit2TransferAndFillIntent(
+    hub.permit2TransferAndFulfill(
       permit, _targetsA(), tamperedId, vps, _oneCallToRouterA(), owner, sig
     );
 
@@ -366,19 +366,19 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
 
     vm.prank(solver);
     vm.expectRevert(Permit2Mock.InvalidSigner.selector);
-    hub.permit2TransferAndFillIntent(
+    hub.permit2TransferAndFulfill(
       permit, _targetsA(), _noErc721Params(), swappedValidator, _oneCallToRouterA(), owner, sig
     );
 
     vm.prank(solver);
     vm.expectRevert(Permit2Mock.InvalidSigner.selector);
-    hub.permit2TransferAndFillIntent(
+    hub.permit2TransferAndFulfill(
       permit, _targetsA(), _noErc721Params(), swappedAction, _oneCallToRouterA(), owner, sig
     );
 
     vm.prank(solver);
     vm.expectRevert(Permit2Mock.InvalidSigner.selector);
-    hub.permit2TransferAndFillIntent(
+    hub.permit2TransferAndFulfill(
       permit, _targetsA(), _noErc721Params(), swappedInput, _oneCallToRouterA(), owner, sig
     );
 
@@ -406,7 +406,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
     );
 
     vm.prank(solver);
-    (bytes[] memory results,) = hub.permit2TransferAndFillIntent(
+    (bytes[] memory results,) = hub.permit2TransferAndFulfill(
       permit, _targetsA(), _noErc721Params(), vps, unrelatedCalls, owner, sig
     );
 
@@ -459,7 +459,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
     emit TransferTokens(solver, owner, 0, expectedErc20, expectedErc721, new NativeTransfer[](0));
 
     vm.prank(solver);
-    hub.permit2TransferAndFillIntent(
+    hub.permit2TransferAndFulfill(
       permit, _targetsA(), erc721Params, vps, _oneCallToRouterA(), owner, sig
     );
 
@@ -486,7 +486,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
         WHITELIST_ROUTER_ROLE
       )
     );
-    hub.permit2TransferAndFillIntent(permit, _targetsA(), _noErc721Params(), vps, calls, owner, sig);
+    hub.permit2TransferAndFulfill(permit, _targetsA(), _noErc721Params(), vps, calls, owner, sig);
 
     assertEq(unlistedRouter.callCount(), 0, 'unlisted router never reached');
   }
@@ -503,7 +503,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
 
     vm.prank(solver);
     vm.expectRevert(GenericRouterMock.RouterFailed.selector);
-    hub.permit2TransferAndFillIntent(
+    hub.permit2TransferAndFulfill(
       permit, _targetsA(), _noErc721Params(), vps, _oneCallToRouterA(), owner, sig
     );
 
@@ -524,7 +524,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
 
     vm.prank(solver);
     vm.expectRevert(Pausable.EnforcedPause.selector);
-    hub.permit2TransferAndFillIntent(
+    hub.permit2TransferAndFulfill(
       permit, _targetsA(), _noErc721Params(), vps, _oneCallToRouterA(), owner, sig
     );
 
@@ -546,7 +546,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
 
     vm.prank(solver);
     vm.expectRevert(IKSAllowanceHubV2.AlreadyLocked.selector);
-    hub.permit2TransferAndFillIntent(permit, _targetsA(), _noErc721Params(), vps, calls, owner, sig);
+    hub.permit2TransferAndFulfill(permit, _targetsA(), _noErc721Params(), vps, calls, owner, sig);
   }
 
   /* --------------------------------------------- FIL-21b (fix regression) */
@@ -554,7 +554,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
   /**
    * @dev FIL-21b — regression lock for the cross-entrypoint impersonation vector. While
    * `permitTransferAndExecute` holds the lock with the outer owner published in `msgSender()`, a
-   * whitelisted router reenters `permit2TransferAndFillIntent`. Before the modifiers were added to
+   * whitelisted router reenters `permit2TransferAndFulfill`. Before the modifiers were added to
    * that entrypoint the inner call would have executed against the outer owner's identity.
    */
   function test_reentryFromPermitTransferAndExecuteIntoFill_reverts() public {
@@ -590,7 +590,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
 
     vm.prank(solver);
     vm.expectRevert(IKSAllowanceHubV2.NativeTokenOverspent.selector);
-    hub.permit2TransferAndFillIntent{value: 0.5 ether}(
+    hub.permit2TransferAndFulfill{value: 0.5 ether}(
       permit, _targetsA(), _noErc721Params(), vps, calls, owner, sig
     );
 
@@ -599,7 +599,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
 
     // Exactly `msg.value` spent: the boundary is inclusive, and the signature still applies
     vm.prank(solver);
-    hub.permit2TransferAndFillIntent{value: 1 ether}(
+    hub.permit2TransferAndFulfill{value: 1 ether}(
       permit, _targetsA(), _noErc721Params(), vps, calls, owner, sig
     );
 
@@ -620,7 +620,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
 
     vm.prank(solver);
     vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-    hub.permit2TransferAndFillIntent(
+    hub.permit2TransferAndFulfill(
       permit, tooManyTargets, _noErc721Params(), vps, _oneCallToRouterA(), owner, sig
     );
 
@@ -633,7 +633,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
 
     vm.prank(solver);
     vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-    hub.permit2TransferAndFillIntent(
+    hub.permit2TransferAndFulfill(
       twoTokenPermit, _targetsA(), _noErc721Params(), vps, _oneCallToRouterA(), owner, sig
     );
 
@@ -687,7 +687,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
     if (p.revertAfter) {
       vm.prank(solver);
       vm.expectRevert(ActionValidatorMock.ValidationFailed.selector);
-      hub.permit2TransferAndFillIntent{value: msgValue}(
+      hub.permit2TransferAndFulfill{value: msgValue}(
         permit, _targetsA(), _noErc721Params(), vps, _oneCallToRouterA(), owner, sig
       );
 
@@ -698,7 +698,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
       assertEq(address(hub).balance, 0, 'no native retained by a rejected fill');
     } else {
       vm.prank(solver);
-      hub.permit2TransferAndFillIntent{value: msgValue}(
+      hub.permit2TransferAndFulfill{value: msgValue}(
         permit, _targetsA(), _noErc721Params(), vps, _oneCallToRouterA(), owner, sig
       );
 
@@ -762,7 +762,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
     bytes memory sig = _solverSig(permit, solver, targets, erc721Transfers, validationParams);
 
     vm.prank(solver);
-    (results,) = hub.permit2TransferAndFillIntent(
+    (results,) = hub.permit2TransferAndFulfill(
       permit, targets, erc721Params, validationParams, genericCalls, owner, sig
     );
   }
@@ -788,7 +788,7 @@ contract KSAllowanceHubV2Permit2TransferAndFillIntentTest is KSAllowanceHubV2Bas
     permit.deadline = DEFAULT_DEADLINE;
 
     return abi.encodeCall(
-      hub.permit2TransferAndFillIntent,
+      hub.permit2TransferAndFulfill,
       (
         permit,
         new address[](0),

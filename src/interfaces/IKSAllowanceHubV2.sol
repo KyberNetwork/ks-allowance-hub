@@ -83,26 +83,26 @@ interface IKSAllowanceHubV2 {
   ) external payable returns (bytes[] memory results, uint256 gasUsed);
 
   /**
-   * @notice Transfers the owner's tokens to a solver via Permit2, then lets the solver fill the
-   * intent with generic calls whose outcome is enforced by the signed validators
+   * @notice Transfers the owner's tokens to a solver via Permit2, then lets the solver fulfill
+   * the intent with generic calls whose outcome is enforced by the signed validators
    * @dev Unlike `permit2TransferAndExecute`, the signed `SolverWitness` does NOT cover
-   * `genericCalls`: the solver is free to choose how to fill the intent. What the owner signs is
+   * `genericCalls`: the solver is free to choose how to fulfill it. What the owner signs is
    * the funding (`targets`, `erc721Params`) and the acceptance criteria (`validationParams`).
    * Each validator snapshots state before the generic calls and asserts the resulting transition
    * afterwards, which is the only thing constraining the solver's execution path.
-   * @dev Passing an empty `validationParams` leaves the fill completely unconstrained.
+   * @dev Passing an empty `validationParams` leaves the fulfillment completely unconstrained.
    * @param permit The Permit2 batch permit covering the ERC20 tokens to transfer
    * @param targets The addresses to transfer each permitted ERC20 token to, index-aligned with
    * `permit.permitted`
    * @param erc721Params The ERC721 tokens to permit and transfer
    * @param validationParams The validators enforcing the intent's outcome
-   * @param genericCalls The generic calls the solver uses to fill the intent
+   * @param genericCalls The generic calls the solver uses to fulfill the intent
    * @param owner The owner of the tokens
    * @param signature The owner's Permit2 signature over the `SolverWitness`
    * @return results The return data of each generic call, in the same order
    * @return gasUsed The gas consumed by the body of the call
    */
-  function permit2TransferAndFillIntent(
+  function permit2TransferAndFulfill(
     ISignatureTransfer.PermitBatchTransferFrom calldata permit,
     address[] calldata targets,
     ERC721Params[] calldata erc721Params,
