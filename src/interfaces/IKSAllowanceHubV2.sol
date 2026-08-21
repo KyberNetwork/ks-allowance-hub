@@ -63,12 +63,15 @@ interface IKSAllowanceHubV2 {
    * @dev When `msg.sender` is not `owner`, the signature must additionally cover a `RelayerWitness`
    * that pins the relayer, the ERC20 targets, the ERC721 transfers and the generic calls, so a
    * relayer cannot deviate from what the owner signed.
+   * @dev `permissionless` selects a witness signed with `ANY_CALLER` instead of a named relayer,
+   * letting anyone submit it. The witness still pins the generic calls.
    * @param permit The Permit2 batch permit covering the ERC20 tokens to transfer
    * @param targets The addresses to transfer each permitted ERC20 token to, index-aligned with
    * `permit.permitted`
    * @param erc721Params The ERC721 tokens to permit and transfer
    * @param genericCalls The generic calls to execute
    * @param owner The owner of the tokens
+   * @param permissionless Whether the witness names `ANY_CALLER` rather than a specific relayer
    * @param signature The owner's Permit2 signature
    * @return results The return data of each generic call, in the same order
    * @return gasUsed The gas consumed by the body of the call
@@ -79,6 +82,7 @@ interface IKSAllowanceHubV2 {
     ERC721Params[] calldata erc721Params,
     GenericCall[] calldata genericCalls,
     address owner,
+    bool permissionless,
     bytes calldata signature
   ) external payable returns (bytes[] memory results, uint256 gasUsed);
 
@@ -91,6 +95,9 @@ interface IKSAllowanceHubV2 {
    * Each validator snapshots state before the generic calls and asserts the resulting transition
    * afterwards, which is the only thing constraining the solver's execution path.
    * @dev Passing an empty `validationParams` leaves the fulfillment completely unconstrained.
+   * @dev `permissionless` selects a witness signed with `ANY_CALLER` instead of a named solver,
+   * letting anyone fulfill it. Since `genericCalls` is unsigned, such an intent is constrained only
+   * by `validationParams`; leaving those empty too lets any caller do as it likes.
    * @param permit The Permit2 batch permit covering the ERC20 tokens to transfer
    * @param targets The addresses to transfer each permitted ERC20 token to, index-aligned with
    * `permit.permitted`
@@ -98,6 +105,7 @@ interface IKSAllowanceHubV2 {
    * @param validationParams The validators enforcing the intent's outcome
    * @param genericCalls The generic calls the solver uses to fulfill the intent
    * @param owner The owner of the tokens
+   * @param permissionless Whether the witness names `ANY_CALLER` rather than a specific solver
    * @param signature The owner's Permit2 signature over the `SolverWitness`
    * @return results The return data of each generic call, in the same order
    * @return gasUsed The gas consumed by the body of the call
@@ -109,11 +117,18 @@ interface IKSAllowanceHubV2 {
     ValidationParams[] calldata validationParams,
     GenericCall[] calldata genericCalls,
     address owner,
+    bool permissionless,
     bytes calldata signature
   ) external payable returns (bytes[] memory results, uint256 gasUsed);
 
   /// @notice Returns the address of the Permit2 contract
   function PERMIT2() external view returns (ISignatureTransfer);
+
+  /**
+   * @notice The address signed into a witness in place of a named relayer or solver, so anyone
+   * may submit it
+   */
+  function ANY_CALLER() external view returns (address);
 
   /**
    * @notice Returns the owner of the tokens being spent by the call currently in progress

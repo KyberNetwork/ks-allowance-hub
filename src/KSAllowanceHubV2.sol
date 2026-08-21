@@ -48,6 +48,9 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRe
   /// @dev The role held by the routers the hub is allowed to call
   bytes32 internal constant WHITELIST_ROUTER_ROLE = keccak256('WHITELIST_ROUTER_ROLE');
 
+  /// @inheritdoc IKSAllowanceHubV2
+  address public constant ANY_CALLER = address(uint160(uint256(keccak256('ANY_CALLER'))));
+
   /**
    * @param initialAdmin The default admin, able to manage every role
    * @param initialGuardians The accounts able to pause the hub
@@ -158,6 +161,7 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRe
     ERC721Params[] calldata erc721Params,
     GenericCall[] calldata genericCalls,
     address owner,
+    bool permissionless,
     bytes calldata signature
   )
     external
@@ -183,15 +187,16 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRe
     ERC20Transfer[] memory erc20Transfers = permit.permitted.toTransfers(targets);
     ERC721Transfer[] memory erc721Transfers = erc721Params.toTransfers();
 
-    if (owner == msg.sender) {
+    if (!permissionless && owner == msg.sender) {
       // The owner is the caller, so the permit alone already pins everything that follows to the
       // owner's own transaction and no witness is needed.
       PERMIT2.permitTransferFrom(permit, transferDetails, owner, signature);
     } else {
-      // A relayer is spending the owner's tokens, so the signature must additionally commit to
-      // the relayer's identity and to the exact execution it is allowed to perform.
-      bytes32 witness =
-        RelayerWitnessLibrary.hash(msg.sender, targets, erc721Transfers, genericCalls);
+      // Someone other than the owner is spending its tokens, so the signature must also commit to
+      // who may submit it and to the exact execution it is allowed to perform.
+      bytes32 witness = RelayerWitnessLibrary.hash(
+        _witnessCaller(permissionless), targets, erc721Transfers, genericCalls
+      );
       PERMIT2.permitWitnessTransferFrom(
         permit,
         transferDetails,
@@ -227,6 +232,7 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRe
     ValidationParams[] calldata validationParams,
     GenericCall[] calldata genericCalls,
     address owner,
+    bool permissionless,
     bytes calldata signature
   )
     external
@@ -255,8 +261,9 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRe
     // Binds the signature to the solver, to where the funding goes and to the validators that
     // will judge it. `genericCalls` is deliberately left out: the owner signs the outcome it
     // wants, not the path the solver takes to produce it.
-    bytes32 witness =
-      SolverWitnessLibrary.hash(msg.sender, targets, erc721Transfers, validationParams);
+    bytes32 witness = SolverWitnessLibrary.hash(
+      _witnessCaller(permissionless), targets, erc721Transfers, validationParams
+    );
     PERMIT2.permitWitnessTransferFrom(
       permit,
       transferDetails,
@@ -294,6 +301,16 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRe
     unchecked {
       gasUsed = gasStart - gasleft();
     }
+  }
+
+  /**
+   * @dev The submitter a witness commits to. The flag needs no signature of its own: it only picks
+   * which digest to rebuild, and the wrong pick fails verification.
+   * @param permissionless Whether the owner signed for submission by anyone
+   * @return `ANY_CALLER` if permissionless, otherwise `msg.sender`
+   */
+  function _witnessCaller(bool permissionless) internal view returns (address) {
+    return permissionless ? ANY_CALLER : msg.sender;
   }
 
   /**

@@ -25,12 +25,17 @@ import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
 import {Vm} from 'forge-std/Test.sol';
 
 /**
- * @notice Batch B — `permit2TransferAndExecute`, cases P2E-01..P2E-20
- * @dev The witness path is only taken when `owner != msg.sender` (`KSAllowanceHubV2.sol:186`), so
- * the self-submitted cases sign a plain Permit2 batch and the relayer cases sign one carrying a
- * `RelayerWitness`. `RelayerWitnessLibrary` is imported for signing only: its constants are pinned
- * independently against hand-written EIP-712 literals by the TYP batch, so nothing here asserts a
- * hash against the same library that produced it.
+ * @notice Batch B — `permit2TransferAndExecute`, cases P2E-01..P2E-20 plus the `permissionless`
+ * flag
+ * @dev The plain (witness-free) path is only taken when `!permissionless && owner == msg.sender`
+ * (`KSAllowanceHubV2.sol:190`), so the self-submitted cases sign a plain Permit2 batch and every
+ * other case signs one carrying a `RelayerWitness`. That witness pins
+ * `_witnessCaller(permissionless)`: `msg.sender` when the flag is false, `ANY_CALLER` when it is
+ * true — and since `msg.sender` is never the zero address the two digests can never collide, so
+ * the flag authenticates itself.
+ * `RelayerWitnessLibrary` is imported for signing only: its constants are pinned independently
+ * against hand-written EIP-712 literals by the TYP batch, so nothing here asserts a hash against
+ * the same library that produced it.
  */
 contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
   using ArrayHelper for *;
@@ -71,8 +76,9 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     );
 
     vm.prank(owner);
-    (bytes[] memory results,) =
-      hub.permit2TransferAndExecute(permit, targets, _noErc721Params(), calls, owner, signature);
+    (bytes[] memory results,) = hub.permit2TransferAndExecute(
+      permit, targets, _noErc721Params(), calls, owner, false, signature
+    );
 
     assertEq(tokenA.balanceOf(address(routerA)), 3 ether, 'target funded');
     assertEq(tokenA.balanceOf(owner), 7 ether, 'owner debited');
@@ -112,7 +118,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
 
     vm.prank(relayer);
     hub.permit2TransferAndExecute{value: 1 ether}(
-      permit, targets, _noErc721Params(), calls, owner, signature
+      permit, targets, _noErc721Params(), calls, owner, false, signature
     );
 
     assertEq(tokenA.balanceOf(address(routerA)), 4 ether, 'target funded from the owner');
@@ -140,10 +146,14 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     // The signed relayer can spend it
     vm.expectRevert(Permit2Mock.InvalidSigner.selector);
     vm.prank(outsider);
-    hub.permit2TransferAndExecute(permit, targets, _noErc721Params(), calls, owner, signature);
+    hub.permit2TransferAndExecute(
+      permit, targets, _noErc721Params(), calls, owner, false, signature
+    );
 
     vm.prank(relayer);
-    hub.permit2TransferAndExecute(permit, targets, _noErc721Params(), calls, owner, signature);
+    hub.permit2TransferAndExecute(
+      permit, targets, _noErc721Params(), calls, owner, false, signature
+    );
     assertEq(tokenA.balanceOf(address(routerA)), 2 ether, 'the signed relayer still succeeds');
   }
 
@@ -167,12 +177,14 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     vm.expectRevert(Permit2Mock.InvalidSigner.selector);
     vm.prank(relayer);
     hub.permit2TransferAndExecute(
-      permit, alteredTargets, _noErc721Params(), calls, owner, signature
+      permit, alteredTargets, _noErc721Params(), calls, owner, false, signature
     );
 
     // The signed target list is otherwise identical, so only the witness rejected the call above
     vm.prank(relayer);
-    hub.permit2TransferAndExecute(permit, signedTargets, _noErc721Params(), calls, owner, signature);
+    hub.permit2TransferAndExecute(
+      permit, signedTargets, _noErc721Params(), calls, owner, false, signature
+    );
 
     assertEq(tokenA.balanceOf(address(routerB)), 0, 'no tokens reached the altered target');
     assertEq(tokenA.balanceOf(address(routerA)), 2 ether, 'the signed target was funded');
@@ -207,6 +219,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
       _erc721ParamsArray(_erc721Params(address(nft), 2, recipient, '')),
       calls,
       owner,
+      false,
       signature
     );
 
@@ -219,6 +232,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
       _erc721ParamsArray(_erc721Params(address(nft), 1, outsider, '')),
       calls,
       owner,
+      false,
       signature
     );
 
@@ -230,6 +244,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
       _erc721ParamsArray(_erc721Params(address(nft), 1, recipient, '')),
       calls,
       owner,
+      false,
       signature
     );
     assertEq(nft.ownerOf(1), recipient, 'signed ERC721 movement executed');
@@ -260,6 +275,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
       _noErc721Params(),
       _genericCallArray(_genericCall(address(routerA), 0, hex'e6')),
       owner,
+      false,
       signature
     );
 
@@ -272,6 +288,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
       _noErc721Params(),
       _genericCallArray(_genericCall(address(routerB), 0, hex'e5')),
       owner,
+      false,
       signature
     );
 
@@ -284,12 +301,15 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
       _noErc721Params(),
       _genericCallArray(_genericCall(address(routerA), 1 wei, hex'e5')),
       owner,
+      false,
       signature
     );
 
     // The exact signed call executes
     vm.prank(relayer);
-    hub.permit2TransferAndExecute(permit, targets, _noErc721Params(), signedCalls, owner, signature);
+    hub.permit2TransferAndExecute(
+      permit, targets, _noErc721Params(), signedCalls, owner, false, signature
+    );
     assertEq(routerA.callCount(), 1, 'only the signed call ever ran');
     assertEq(routerB.callCount(), 0, 'the altered router was never reached');
   }
@@ -309,7 +329,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
     vm.prank(owner);
     hub.permit2TransferAndExecute(
-      permit, targets, _noErc721Params(), _noGenericCalls(), owner, signature
+      permit, targets, _noErc721Params(), _noGenericCalls(), owner, false, signature
     );
   }
 
@@ -335,6 +355,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
       _noErc721Params(),
       _noGenericCalls(),
       owner,
+      false,
       signature
     );
   }
@@ -352,14 +373,14 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
 
     vm.prank(owner);
     hub.permit2TransferAndExecute(
-      permit, targets, _noErc721Params(), _noGenericCalls(), owner, signature
+      permit, targets, _noErc721Params(), _noGenericCalls(), owner, false, signature
     );
     assertEq(tokenA.balanceOf(address(routerA)), 3 ether, 'first use succeeds');
 
     vm.expectRevert(Permit2Mock.InvalidNonce.selector);
     vm.prank(owner);
     hub.permit2TransferAndExecute(
-      permit, targets, _noErc721Params(), _noGenericCalls(), owner, signature
+      permit, targets, _noErc721Params(), _noGenericCalls(), owner, false, signature
     );
 
     assertEq(tokenA.balanceOf(address(routerA)), 3 ether, 'replay moved nothing');
@@ -383,6 +404,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
       _noErc721Params(),
       _noGenericCalls(),
       owner,
+      false,
       signature
     );
   }
@@ -408,6 +430,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
       _noErc721Params(),
       _noGenericCalls(),
       owner,
+      false,
       signature
     );
 
@@ -447,6 +470,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
       _erc721ParamsArray(_erc721Params(address(nft), 42, recipient, '')),
       _noGenericCalls(),
       owner,
+      false,
       signature
     );
 
@@ -475,7 +499,9 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     assertEq(hub.msgSender(), address(0), 'no owner published before the call');
 
     vm.prank(relayer);
-    hub.permit2TransferAndExecute(permit, targets, _noErc721Params(), calls, owner, signature);
+    hub.permit2TransferAndExecute(
+      permit, targets, _noErc721Params(), calls, owner, false, signature
+    );
 
     assertEq(routerA.callAt(0).observedMsgSender, owner, 'routerA observed the owner');
     assertEq(routerB.callAt(0).observedMsgSender, owner, 'routerB observed the owner');
@@ -505,6 +531,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
       _noErc721Params(),
       _noGenericCalls(),
       owner,
+      false,
       signature
     );
   }
@@ -528,7 +555,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     vm.expectRevert(IKSAllowanceHubV2.NativeTokenOverspent.selector);
     vm.prank(owner);
     hub.permit2TransferAndExecute{value: 1 ether}(
-      overspendPermit, targets, _noErc721Params(), calls, owner, overspendSignature
+      overspendPermit, targets, _noErc721Params(), calls, owner, false, overspendSignature
     );
 
     ISignatureTransfer.PermitBatchTransferFrom memory boundaryPermit =
@@ -537,7 +564,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
 
     vm.prank(owner);
     hub.permit2TransferAndExecute{value: 2 ether}(
-      boundaryPermit, targets, _noErc721Params(), calls, owner, boundarySignature
+      boundaryPermit, targets, _noErc721Params(), calls, owner, false, boundarySignature
     );
 
     assertEq(address(routerA).balance, 2 ether, 'the boundary call forwarded its whole msg.value');
@@ -569,6 +596,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
       _noErc721Params(),
       _genericCallArray(_genericCall(address(unlistedRouter), 0, hex'01')),
       owner,
+      false,
       signature
     );
 
@@ -589,7 +617,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     reentrantRouter.setReentrantCalldata(
       abi.encodeCall(
         hub.permit2TransferAndExecute,
-        (innerPermit, new address[](0), _noErc721Params(), _noGenericCalls(), owner, hex'')
+        (innerPermit, new address[](0), _noErc721Params(), _noGenericCalls(), owner, false, hex'')
       ),
       false
     );
@@ -606,6 +634,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
       _noErc721Params(),
       _genericCallArray(_genericCall(address(reentrantRouter), 0, hex'01')),
       owner,
+      false,
       signature
     );
   }
@@ -632,6 +661,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
       _noErc721Params(),
       _noGenericCalls(),
       owner,
+      false,
       signature
     );
     Vm.Log[] memory logs = vm.getRecordedLogs();
@@ -693,7 +723,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     vm.deal(caller, msgValue);
     vm.prank(caller);
     hub.permit2TransferAndExecute{value: msgValue}(
-      permit, targets, _noErc721Params(), _noGenericCalls(), owner, signature
+      permit, targets, _noErc721Params(), _noGenericCalls(), owner, false, signature
     );
 
     assertEq(ownerBalanceABefore - tokenA.balanceOf(owner), amountA, 'tokenA debit == permitted');
@@ -704,6 +734,304 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     assertEq(
       address(hub).balance, hubNativeBefore + msgValue, 'unconsumed msg.value stays in the hub'
     );
+  }
+
+  /* --------------------------------------------------- permissionless flag */
+
+  /// @dev An owner that signed for `ANY_CALLER` can be relayed by an address it never named
+  function test_permissionlessRelay_unnamedSubmitterExecutesSignedBatch() public {
+    _fundOwner(tokenA, 10 ether);
+
+    ISignatureTransfer.PermitBatchTransferFrom memory permit =
+      _permitBatch([address(tokenA)].toMemoryArray(), [uint256(3 ether)].toMemoryArray(), 0);
+
+    address[] memory targets = [address(routerA)].toMemoryArray();
+    GenericCall[] memory calls = _genericCallArray(_genericCall(address(routerA), 0, hex'f1'));
+
+    bytes memory signature =
+      _signRelayerWitness(permit, hub.ANY_CALLER(), targets, _noErc721Transfers(), calls);
+
+    ERC20Transfer[] memory expectedErc20 = new ERC20Transfer[](1);
+    expectedErc20[0] =
+      ERC20Transfer({token: address(tokenA), target: address(routerA), amount: 3 ether});
+
+    // `outsider` is neither the owner nor named anywhere in what the owner signed
+    vm.expectEmit(true, true, true, true, address(hub));
+    emit TransferTokens(
+      outsider, owner, 0, expectedErc20, _noErc721Transfers(), new NativeTransfer[](0)
+    );
+
+    vm.prank(outsider);
+    hub.permit2TransferAndExecute(permit, targets, _noErc721Params(), calls, owner, true, signature);
+
+    assertEq(tokenA.balanceOf(address(routerA)), 3 ether, 'the signed target was funded');
+    assertEq(tokenA.balanceOf(owner), 7 ether, 'the owner paid, not the submitter');
+    assertEq(tokenA.balanceOf(outsider), 0, 'the submitter never holds the tokens');
+    assertEq(routerA.callAt(0).observedMsgSender, owner, 'the router observed the owner');
+    assertEq(routerA.callAt(0).caller, address(hub), 'the hub is still the EVM caller');
+  }
+
+  /// @dev Two unrelated submitters each ride their own `ANY_CALLER` signature, so it binds no one
+  function test_permissionlessSignatureIsNotBoundToASingleSubmitter() public {
+    _fundOwner(tokenA, 10 ether);
+
+    address submitterOne = makeAddr('submitterOne');
+    address submitterTwo = makeAddr('submitterTwo');
+
+    address[] memory targets = [address(routerA)].toMemoryArray();
+    GenericCall[] memory calls = _noGenericCalls();
+
+    ISignatureTransfer.PermitBatchTransferFrom memory permitOne =
+      _permitBatch([address(tokenA)].toMemoryArray(), [uint256(2 ether)].toMemoryArray(), 11);
+    bytes memory signatureOne =
+      _signRelayerWitness(permitOne, hub.ANY_CALLER(), targets, _noErc721Transfers(), calls);
+
+    ISignatureTransfer.PermitBatchTransferFrom memory permitTwo =
+      _permitBatch([address(tokenA)].toMemoryArray(), [uint256(5 ether)].toMemoryArray(), 12);
+    bytes memory signatureTwo =
+      _signRelayerWitness(permitTwo, hub.ANY_CALLER(), targets, _noErc721Transfers(), calls);
+
+    vm.prank(submitterOne);
+    hub.permit2TransferAndExecute(
+      permitOne, targets, _noErc721Params(), calls, owner, true, signatureOne
+    );
+    assertEq(tokenA.balanceOf(address(routerA)), 2 ether, 'the first submitter moved its batch');
+
+    vm.prank(submitterTwo);
+    hub.permit2TransferAndExecute(
+      permitTwo, targets, _noErc721Params(), calls, owner, true, signatureTwo
+    );
+
+    assertEq(tokenA.balanceOf(address(routerA)), 7 ether, 'the second submitter moved its batch');
+    assertEq(tokenA.balanceOf(owner), 3 ether, 'the owner funded both batches');
+    assertEq(tokenA.balanceOf(submitterOne), 0, 'the first submitter never holds the tokens');
+    assertEq(tokenA.balanceOf(submitterTwo), 0, 'the second submitter never holds the tokens');
+    assertEq(
+      permit2.nonceBitmap(owner, 0), (1 << 11) | (1 << 12), 'one nonce bit consumed per batch'
+    );
+  }
+
+  /// @dev A caller-bound signature cannot be upgraded into a permissionless one by the submitter
+  function test_permissionlessFlagCannotBeForgedUpward() public {
+    _fundOwner(tokenA, 10 ether);
+
+    ISignatureTransfer.PermitBatchTransferFrom memory permit =
+      _permitBatch([address(tokenA)].toMemoryArray(), [uint256(2 ether)].toMemoryArray(), 0);
+    address[] memory targets = [address(routerA)].toMemoryArray();
+    GenericCall[] memory calls = _genericCallArray(_genericCall(address(routerA), 0, hex'f3'));
+
+    // Bound to `relayer`, so the permissionless digest is one the owner never signed
+    bytes memory signature =
+      _signRelayerWitness(permit, relayer, targets, _noErc721Transfers(), calls);
+
+    vm.expectRevert(Permit2Mock.InvalidSigner.selector);
+    vm.prank(outsider);
+    hub.permit2TransferAndExecute(permit, targets, _noErc721Params(), calls, owner, true, signature);
+
+    assertEq(tokenA.balanceOf(address(routerA)), 0, 'the forged submission moved nothing');
+    assertEq(permit2.nonceBitmap(owner, 0), 0, 'the forged submission consumed no nonce');
+
+    // Positive control: the named relayer on the caller-bound flag still goes through
+    vm.prank(relayer);
+    hub.permit2TransferAndExecute(
+      permit, targets, _noErc721Params(), calls, owner, false, signature
+    );
+
+    assertEq(tokenA.balanceOf(address(routerA)), 2 ether, 'the named relayer still succeeds');
+    assertEq(tokenA.balanceOf(owner), 8 ether, 'the owner was debited exactly once');
+    assertEq(routerA.callCount(), 1, 'the call ran only on the accepted submission');
+    assertEq(permit2.nonceBitmap(owner, 0), 1, 'exactly one nonce bit consumed');
+  }
+
+  /// @dev A permissionless signature is equally unusable with the flag dropped
+  function test_permissionlessFlagCannotBeDropped() public {
+    _fundOwner(tokenA, 10 ether);
+
+    ISignatureTransfer.PermitBatchTransferFrom memory permit =
+      _permitBatch([address(tokenA)].toMemoryArray(), [uint256(4 ether)].toMemoryArray(), 0);
+    address[] memory targets = [address(routerA)].toMemoryArray();
+    GenericCall[] memory calls = _genericCallArray(_genericCall(address(routerA), 0, hex'f4'));
+
+    bytes memory signature =
+      _signRelayerWitness(permit, hub.ANY_CALLER(), targets, _noErc721Transfers(), calls);
+
+    vm.expectRevert(Permit2Mock.InvalidSigner.selector);
+    vm.prank(outsider);
+    hub.permit2TransferAndExecute(
+      permit, targets, _noErc721Params(), calls, owner, false, signature
+    );
+
+    assertEq(tokenA.balanceOf(address(routerA)), 0, 'dropping the flag moved nothing');
+    assertEq(permit2.nonceBitmap(owner, 0), 0, 'dropping the flag consumed no nonce');
+
+    // Positive control: the identical signature and submitter, with the flag kept
+    vm.prank(outsider);
+    hub.permit2TransferAndExecute(permit, targets, _noErc721Params(), calls, owner, true, signature);
+
+    assertEq(tokenA.balanceOf(address(routerA)), 4 ether, 'the same signature succeeds with it');
+    assertEq(tokenA.balanceOf(owner), 6 ether, 'the owner was debited exactly once');
+    assertEq(routerA.callCount(), 1, 'the call ran only on the accepted submission');
+    assertEq(permit2.nonceBitmap(owner, 0), 1, 'exactly one nonce bit consumed');
+  }
+
+  /// @dev Permissionless relay stays safe because the witness still pins the whole payload
+  function test_permissionlessStillBindsTargetsErc721AndGenericCalls() public {
+    _fundOwner(tokenA, 10 ether);
+    nft.mint(owner, 1);
+    nft.mint(owner, 2);
+    vm.prank(owner);
+    nft.setApprovalForAll(address(hub), true);
+
+    ISignatureTransfer.PermitBatchTransferFrom memory permit =
+      _permitBatch([address(tokenA)].toMemoryArray(), [uint256(1 ether)].toMemoryArray(), 0);
+
+    address[] memory signedTargets = [address(routerA)].toMemoryArray();
+    ERC721Transfer[] memory signedErc721 =
+      _erc721TransferArray(ERC721Transfer({token: address(nft), tokenId: 1, target: recipient}));
+    GenericCall[] memory signedCalls = _genericCallArray(_genericCall(address(routerA), 0, hex'f5'));
+
+    bytes memory signature =
+      _signRelayerWitness(permit, hub.ANY_CALLER(), signedTargets, signedErc721, signedCalls);
+
+    // Altered ERC20 target — routerB is whitelisted too, so only the witness can reject this
+    vm.expectRevert(Permit2Mock.InvalidSigner.selector);
+    vm.prank(outsider);
+    hub.permit2TransferAndExecute(
+      permit,
+      [address(routerB)].toMemoryArray(),
+      _erc721ParamsArray(_erc721Params(address(nft), 1, recipient, '')),
+      signedCalls,
+      owner,
+      true,
+      signature
+    );
+
+    // Altered ERC721 movement — token 2 is covered by the same blanket approval as token 1
+    vm.expectRevert(Permit2Mock.InvalidSigner.selector);
+    vm.prank(outsider);
+    hub.permit2TransferAndExecute(
+      permit,
+      signedTargets,
+      _erc721ParamsArray(_erc721Params(address(nft), 2, recipient, '')),
+      signedCalls,
+      owner,
+      true,
+      signature
+    );
+
+    // Altered generic call
+    vm.expectRevert(Permit2Mock.InvalidSigner.selector);
+    vm.prank(outsider);
+    hub.permit2TransferAndExecute(
+      permit,
+      signedTargets,
+      _erc721ParamsArray(_erc721Params(address(nft), 1, recipient, '')),
+      _genericCallArray(_genericCall(address(routerB), 0, hex'f5')),
+      owner,
+      true,
+      signature
+    );
+
+    // Positive control: exactly what was signed, from the same anonymous submitter
+    vm.prank(outsider);
+    hub.permit2TransferAndExecute(
+      permit,
+      signedTargets,
+      _erc721ParamsArray(_erc721Params(address(nft), 1, recipient, '')),
+      signedCalls,
+      owner,
+      true,
+      signature
+    );
+
+    assertEq(tokenA.balanceOf(address(routerA)), 1 ether, 'the signed ERC20 target was funded');
+    assertEq(tokenA.balanceOf(address(routerB)), 0, 'no tokens reached the altered target');
+    assertEq(nft.ownerOf(1), recipient, 'the signed ERC721 movement executed');
+    assertEq(nft.ownerOf(2), owner, 'the unsigned token stayed with the owner');
+    assertEq(routerA.callCount(), 1, 'only the signed call ever ran');
+    assertEq(routerB.callCount(), 0, 'the altered router was never reached');
+  }
+
+  /// @dev The flag, not `owner == msg.sender`, decides the branch — the owner can take either
+  function test_ownerCanSubmitItsOwnPermissionlessSignature() public {
+    _fundOwner(tokenA, 10 ether);
+
+    address[] memory targets = [address(routerA)].toMemoryArray();
+    GenericCall[] memory calls = _genericCallArray(_genericCall(address(routerA), 0, hex'f6'));
+
+    ISignatureTransfer.PermitBatchTransferFrom memory witnessPermit =
+      _permitBatch([address(tokenA)].toMemoryArray(), [uint256(3 ether)].toMemoryArray(), 0);
+    bytes memory witnessSignature =
+      _signRelayerWitness(witnessPermit, hub.ANY_CALLER(), targets, _noErc721Transfers(), calls);
+
+    // `owner == msg.sender`, but the flag forces the hub to rebuild the `ANY_CALLER` witness digest
+    vm.prank(owner);
+    hub.permit2TransferAndExecute(
+      witnessPermit, targets, _noErc721Params(), calls, owner, true, witnessSignature
+    );
+
+    assertEq(tokenA.balanceOf(address(routerA)), 3 ether, 'the witness path funded the target');
+    assertEq(tokenA.balanceOf(owner), 7 ether, 'the owner was debited');
+    assertEq(routerA.callAt(0).observedMsgSender, owner, 'the router observed the owner');
+
+    // The converse: a plain, witness-free signature is rejected once the flag is set
+    ISignatureTransfer.PermitBatchTransferFrom memory plainPermit =
+      _permitBatch([address(tokenA)].toMemoryArray(), [uint256(1 ether)].toMemoryArray(), 1);
+    bytes memory plainSignature = _signPermit2(ownerWallet, plainPermit, address(hub));
+
+    vm.expectRevert(Permit2Mock.InvalidSigner.selector);
+    vm.prank(owner);
+    hub.permit2TransferAndExecute(
+      plainPermit, targets, _noErc721Params(), calls, owner, true, plainSignature
+    );
+
+    // ...and the same plain signature goes through with the flag cleared, so the branch did switch
+    vm.prank(owner);
+    hub.permit2TransferAndExecute(
+      plainPermit, targets, _noErc721Params(), calls, owner, false, plainSignature
+    );
+
+    assertEq(tokenA.balanceOf(address(routerA)), 4 ether, 'the plain path funded the target too');
+    assertEq(tokenA.balanceOf(owner), 6 ether, 'the owner was debited by both accepted batches');
+    assertEq(routerA.callCount(), 2, 'one call per accepted batch');
+    assertEq(permit2.nonceBitmap(owner, 0), 3, 'one nonce bit consumed per accepted batch');
+  }
+
+  /// @dev Being submittable by anyone does not make it submittable twice
+  function test_permissionlessSubmissionIsNotReplayable() public {
+    _fundOwner(tokenA, 10 ether);
+
+    uint256 nonce = 300; // spans a non-zero word position of the nonce bitmap
+    uint256 wordPos = nonce >> 8;
+    uint256 bit = 1 << uint8(nonce);
+
+    ISignatureTransfer.PermitBatchTransferFrom memory permit =
+      _permitBatch([address(tokenA)].toMemoryArray(), [uint256(2 ether)].toMemoryArray(), nonce);
+    address[] memory targets = [address(routerA)].toMemoryArray();
+    GenericCall[] memory calls = _noGenericCalls();
+
+    bytes memory signature =
+      _signRelayerWitness(permit, hub.ANY_CALLER(), targets, _noErc721Transfers(), calls);
+
+    assertEq(permit2.nonceBitmap(owner, wordPos), 0, 'nonce word untouched before');
+
+    address firstSubmitter = makeAddr('firstSubmitter');
+    address secondSubmitter = makeAddr('secondSubmitter');
+
+    vm.prank(firstSubmitter);
+    hub.permit2TransferAndExecute(permit, targets, _noErc721Params(), calls, owner, true, signature);
+
+    assertEq(tokenA.balanceOf(address(routerA)), 2 ether, 'the first submission went through');
+    assertEq(permit2.nonceBitmap(owner, wordPos), bit, 'exactly one nonce bit consumed');
+
+    // A second, unrelated caller cannot ride the same permissionless signature
+    vm.expectRevert(Permit2Mock.InvalidNonce.selector);
+    vm.prank(secondSubmitter);
+    hub.permit2TransferAndExecute(permit, targets, _noErc721Params(), calls, owner, true, signature);
+
+    assertEq(tokenA.balanceOf(address(routerA)), 2 ether, 'the replay moved nothing');
+    assertEq(tokenA.balanceOf(owner), 8 ether, 'the owner was debited exactly once');
+    assertEq(permit2.nonceBitmap(owner, wordPos), bit, 'the nonce bit was consumed exactly once');
   }
 
   /* ------------------------------------------------------- local helpers */
