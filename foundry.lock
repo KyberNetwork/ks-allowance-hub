@@ -1,8 +1,17 @@
 {
+  "lib/ks-action-validator-sc": {
+    "rev": "1cb53355dccfe58c3be9090fa7e18b5fe571d744"
+  },
   "lib/ks-common-sc": {
     "tag": {
       "name": "v2.5.1",
       "rev": "4c43ae4e8357f29625c4fc24c07a6d66ed8fc66f"
+    }
+  },
+  "lib/solady": {
+    "tag": {
+      "name": "v0.1.26",
+      "rev": "acd959aa4bd04720d640bf4e6a5c71037510cc4b"
     }
   }
 }

@@ -27,9 +27,10 @@ import {CalldataDecoder} from 'ks-common-sc/src/libraries/calldata/CalldataDecod
 import {
   IERC20Permit
 } from 'openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol';
-import {Multicall} from 'openzeppelin-contracts/contracts/utils/Multicall.sol';
 import {TransientSlot} from 'openzeppelin-contracts/contracts/utils/TransientSlot.sol';
 import {ECDSA} from 'openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol';
+
+import {Multicallable} from 'solady/utils/Multicallable.sol';
 
 /**
  * @title KSAllowanceHubV2
@@ -39,7 +40,12 @@ import {ECDSA} from 'openzeppelin-contracts/contracts/utils/cryptography/ECDSA.s
  * them, then calls those routers. It is not meant to be an allowance target for anything but the
  * flows below; native left over from an over-sent `msg.value` is stranded until rescued.
  */
-contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRescuable, Multicall {
+contract KSAllowanceHubV2 is
+  IKSAllowanceHubV2,
+  ManagementPausable,
+  ManagementRescuable,
+  Multicallable
+{
   using CalldataDecoder for bytes;
   using ERC20TransferLibrary for *;
   using ERC721TransferLibrary for *;
@@ -118,6 +124,25 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRe
   /// @inheritdoc IKSAllowanceHubV2
   function msgSender() external view returns (address) {
     return TOKENS_OWNER_SLOT.asAddress().tload();
+  }
+
+  /**
+   * @notice Runs several of the calls below in one transaction
+   * @dev Every sub-call is a `delegatecall` and sees the same `msg.value`, though it arrived once,
+   * so `notOverspentNative` bounds the batch as a whole, nesting included.
+   * @dev Returns through `_multicallResultsToBytesArray`: Solady's `_multicallDirectReturn` would
+   * end the context before the modifier's check ran.
+   * @param data The encoded calls to run
+   * @return The return data of each call, in the same order
+   */
+  function multicall(bytes[] calldata data)
+    public
+    payable
+    override
+    notOverspentNative
+    returns (bytes[] memory)
+  {
+    return _multicallResultsToBytesArray(_multicall(data));
   }
 
   /// @inheritdoc IKSAllowanceHubV2

@@ -267,26 +267,79 @@ contract KSAllowanceHubV2PermitToPermit2Test is KSAllowanceHubV2Base {
     );
   }
 
-  /**
-   * @dev `multicall` is non-payable, so no native can reach a sub-call through it. This is what
-   * keeps `notOverspentNative` sound under batching: with `msg.value` zero in every sub-call the
-   * check reduces to "spend none of the hub's balance", rather than letting one `msg.value` be
-   * counted once per sub-call.
-   */
-  function test_multicallCannotForwardNativeValue() public {
-    bytes[] memory batch = new bytes[](1);
-    batch[0] = abi.encodeCall(
-      hub.permitTransferAndExecute, (_noErc20Params(), _noErc721Params(), _noGenericCalls())
+  /// @dev A native payout to an arbitrary target, the cheapest way to spend hub balance
+  function _nativePayout(uint256 amount) private view returns (bytes memory) {
+    return abi.encodeCall(
+      hub.permitTransferAndExecute,
+      (
+        _erc20ParamsArray(
+          _erc20Params(NATIVE, [recipient].toMemoryArray(), [amount].toMemoryArray(), '')
+        ),
+        _noErc721Params(),
+        _noGenericCalls()
+      )
     );
+  }
 
-    vm.deal(relayer, 1 ether);
-    vm.prank(relayer);
-    (bool ok,) = address(hub).call{value: 1 ether}(abi.encodeCall(hub.multicall, (batch)));
-    assertFalse(ok, 'multicall rejects value outright');
+  /**
+   * @dev Every sub-call is a `delegatecall` and so sees the same `msg.value`, though the native
+   * token arrived once. The batch is therefore bounded as a whole: one sub-call may spend the
+   * value, two may not spend it twice.
+   */
+  function test_multicallBoundsNativeSpendAcrossTheWholeBatch() public {
+    vm.deal(address(hub), 5 ether); // balance stranded by earlier over-sends
+    vm.deal(relayer, 2 ether);
 
-    // Sent with no value it is accepted, so the rejection above is about the value, not the batch.
+    bytes[] memory one = new bytes[](1);
+    one[0] = _nativePayout(1 ether);
+
     vm.prank(relayer);
-    hub.multicall(batch);
-    assertEq(address(hub).balance, 0, 'hub holds nothing');
+    hub.multicall{value: 1 ether}(one);
+
+    assertEq(recipient.balance, 1 ether, 'the batch spent its own value');
+    assertEq(address(hub).balance, 5 ether, 'the stranded balance was untouched');
+
+    // The same payout twice would spend one `msg.value` two times over.
+    bytes[] memory two = new bytes[](2);
+    two[0] = one[0];
+    two[1] = one[0];
+
+    vm.expectRevert(IKSAllowanceHubV2.NativeTokenOverspent.selector);
+    vm.prank(relayer);
+    hub.multicall{value: 1 ether}(two);
+
+    assertEq(address(hub).balance, 5 ether, 'nothing was drained');
+    assertEq(recipient.balance, 1 ether, 'the recipient gained nothing further');
+  }
+
+  /**
+   * @dev The outer batch is the backstop: each nested batch passes its own check, yet together they
+   * exceed the value that actually arrived, and the outermost measurement catches it.
+   */
+  function test_nestedMulticallCannotExceedTheOuterBound() public {
+    vm.deal(address(hub), 5 ether);
+    vm.deal(relayer, 2 ether);
+
+    bytes[] memory inner = new bytes[](1);
+    inner[0] = _nativePayout(1 ether);
+
+    // A single nested batch is within bounds.
+    bytes[] memory outerOk = new bytes[](1);
+    outerOk[0] = abi.encodeCall(hub.multicall, (inner));
+
+    vm.prank(relayer);
+    hub.multicall{value: 1 ether}(outerOk);
+    assertEq(recipient.balance, 1 ether, 'one nested batch settled');
+
+    // Two of them each pass their own check, but together spend the value twice.
+    bytes[] memory outerBad = new bytes[](2);
+    outerBad[0] = outerOk[0];
+    outerBad[1] = outerOk[0];
+
+    vm.expectRevert(IKSAllowanceHubV2.NativeTokenOverspent.selector);
+    vm.prank(relayer);
+    hub.multicall{value: 1 ether}(outerBad);
+
+    assertEq(address(hub).balance, 5 ether, 'the stranded balance survived the nesting');
   }
 }

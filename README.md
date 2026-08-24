@@ -23,7 +23,7 @@ Two contracts are deployable side by side:
 | `permit2TransferAndFulfill` | `owner`, via Permit2 | the funding and the acceptance criteria, not the calls |
 | `permitTokensToPermit2` | — | ERC20 permits, relayed so Permit2 gains the allowance |
 
-`multicall` (OpenZeppelin) batches these into one transaction.
+`multicall` (Solady) batches these into one transaction, bounded as a whole for native spend.
 
 Routers read `msgSender()` to learn whose behalf they act on, since the hub — not the user — is
 their `msg.sender`. It is transient, and doubles as the reentrancy guard.
@@ -70,8 +70,9 @@ Two things to know when integrating:
 
 - A relayer-submitted flow needs a **`RelayerWitness` signature**, not a self-permit one. Under
   `multicall` the delegatecall preserves `msg.sender` as the relayer, so `owner != msg.sender`.
-- `multicall` is **non-payable**, so no native value can reach a sub-call through it. Send
-  value-bearing calls directly.
+- `multicall` is **payable**, and bounded as a whole: every sub-call is a `delegatecall` and sees
+  the same `msg.value` though it arrived once, so the batch may spend that value in total, not once
+  per call. Nested batches are covered by the same outer bound.
 
 ## Layout
 
@@ -90,9 +91,9 @@ script/                    deploy + router whitelisting, per hub
 ## Testing
 
 ```shell
-forge test                                 # 180 tests
+forge test                                 # 181 tests
 forge test --match-path 'test/v1/*'        # legacy hub, 57
-forge test --match-path 'test/v2/*'        # V2, 111
+forge test --match-path 'test/v2/*'        # V2, 112
 forge test --match-path 'test/types/*'     # shared libraries, 12
 FOUNDRY_PROFILE=deep forge test            # 10,000 fuzz runs per property
 ```
