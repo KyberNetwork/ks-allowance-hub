@@ -952,49 +952,59 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     assertEq(routerB.callCount(), 0, 'the altered router was never reached');
   }
 
-  /// @dev The flag, not `owner == msg.sender`, decides the branch — the owner can take either
-  function test_ownerCanSubmitItsOwnPermissionlessSignature() public {
+  /**
+   * @dev `owner == msg.sender` decides the branch on its own: the owner's transaction already pins
+   * everything, so no witness is used and `permissionless` is ignored either way.
+   */
+  function test_ownerAsCallerTakesThePlainPathAndIgnoresPermissionless() public {
     _fundOwner(tokenA, 10 ether);
 
     address[] memory targets = [address(routerA)].toMemoryArray();
     GenericCall[] memory calls = _genericCallArray(_genericCall(address(routerA), 0, hex'f6'));
 
-    ISignatureTransfer.PermitBatchTransferFrom memory witnessPermit =
+    // A plain, witness-free signature is accepted with the flag set...
+    ISignatureTransfer.PermitBatchTransferFrom memory first =
       _permitBatch([address(tokenA)].toMemoryArray(), [uint256(3 ether)].toMemoryArray(), 0);
-    bytes memory witnessSignature =
-      _signRelayerWitness(witnessPermit, ANY_ADDRESS, targets, _noErc721Transfers(), calls);
-
-    // `owner == msg.sender`, but the flag forces the hub to rebuild the `ANY_ADDRESS` witness digest
+    // Signed before the prank: `_signPermit2` makes an external call that would consume it.
+    bytes memory firstSignature = _signPermit2(ownerWallet, first, address(hub));
     vm.prank(owner);
     hub.permit2TransferAndExecute(
-      witnessPermit, targets, _noErc721Params(), calls, owner, true, witnessSignature
+      first, targets, _noErc721Params(), calls, owner, true, firstSignature
     );
 
-    assertEq(tokenA.balanceOf(address(routerA)), 3 ether, 'the witness path funded the target');
-    assertEq(tokenA.balanceOf(owner), 7 ether, 'the owner was debited');
-    assertEq(routerA.callAt(0).observedMsgSender, owner, 'the router observed the owner');
-
-    // The converse: a plain, witness-free signature is rejected once the flag is set
-    ISignatureTransfer.PermitBatchTransferFrom memory plainPermit =
+    // ...and equally with it cleared, because the flag never reaches the branch.
+    ISignatureTransfer.PermitBatchTransferFrom memory second =
       _permitBatch([address(tokenA)].toMemoryArray(), [uint256(1 ether)].toMemoryArray(), 1);
-    bytes memory plainSignature = _signPermit2(ownerWallet, plainPermit, address(hub));
+    bytes memory secondSignature = _signPermit2(ownerWallet, second, address(hub));
+    vm.prank(owner);
+    hub.permit2TransferAndExecute(
+      second, targets, _noErc721Params(), calls, owner, false, secondSignature
+    );
+
+    assertEq(tokenA.balanceOf(address(routerA)), 4 ether, 'both batches funded the target');
+    assertEq(tokenA.balanceOf(owner), 6 ether, 'the owner was debited by both');
+    assertEq(routerA.callCount(), 2, 'one call per batch');
+    assertEq(permit2.nonceBitmap(owner, 0), 3, 'one nonce bit per batch');
+
+    // An `ANY_ADDRESS` witness signature is useless to the owner: the plain path never rebuilds it.
+    ISignatureTransfer.PermitBatchTransferFrom memory third =
+      _permitBatch([address(tokenA)].toMemoryArray(), [uint256(1 ether)].toMemoryArray(), 2);
+    bytes memory witnessSignature =
+      _signRelayerWitness(third, ANY_ADDRESS, targets, _noErc721Transfers(), calls);
 
     vm.expectRevert(Permit2Mock.InvalidSigner.selector);
     vm.prank(owner);
     hub.permit2TransferAndExecute(
-      plainPermit, targets, _noErc721Params(), calls, owner, true, plainSignature
+      third, targets, _noErc721Params(), calls, owner, true, witnessSignature
     );
 
-    // ...and the same plain signature goes through with the flag cleared, so the branch did switch
-    vm.prank(owner);
+    // That same permissionless signature is still good when somebody else relays it.
+    vm.prank(outsider);
     hub.permit2TransferAndExecute(
-      plainPermit, targets, _noErc721Params(), calls, owner, false, plainSignature
+      third, targets, _noErc721Params(), calls, owner, true, witnessSignature
     );
 
-    assertEq(tokenA.balanceOf(address(routerA)), 4 ether, 'the plain path funded the target too');
-    assertEq(tokenA.balanceOf(owner), 6 ether, 'the owner was debited by both accepted batches');
-    assertEq(routerA.callCount(), 2, 'one call per accepted batch');
-    assertEq(permit2.nonceBitmap(owner, 0), 3, 'one nonce bit consumed per accepted batch');
+    assertEq(tokenA.balanceOf(address(routerA)), 5 ether, 'the relayed batch settled');
   }
 
   /// @dev Being submittable by ANY_ADDRESS does not make it submittable twice

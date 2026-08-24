@@ -8,10 +8,9 @@ import {ValidationParams} from './ValidationParams.sol';
  * @notice The extra data an owner signs when a solver fulfills their intent, pinning the solver,
  * the funding it receives and the criteria it is judged by
  * @dev Deliberately carries no generic calls: the owner signs the outcome it wants, and the solver
- * chooses how to reach it. `validationParams` is therefore the only constraint on the solver.
- * @param solver The only address allowed to submit the signature
- * @param callsSigner The address whose signature authorises the generic calls, or `ANY_ADDRESS` to
- * leave them unconstrained
+ * chooses how to reach it, bounded only by `callsSigner` and `validationParams`.
+ * @param solver The address allowed to submit the signature, or `ANY_ADDRESS` for anyone
+ * @param callsSigner The address authorising the generic calls, or `ANY_ADDRESS` to leave them open
  * @param targets The addresses the permitted ERC20 tokens must be transferred to
  * @param erc721Transfers The ERC721 movements funding the fulfillment
  * @param validationParams The acceptance criteria the fulfillment must satisfy
@@ -41,8 +40,8 @@ library SolverWitnessLibrary {
    * @notice Hashes the witness fields following EIP-712 struct encoding
    * @dev Takes the fields loose rather than as a struct so callers can hash what they already hold
    * without copying it into one.
-   * @param solver The only address allowed to submit the signature
-   * @param callsSigner The address authorising the generic calls, or `ANY_ADDRESS` for none
+   * @param solver The address allowed to submit the signature, or `ANY_ADDRESS` for anyone
+   * @param callsSigner The address authorising the generic calls, or `ANY_ADDRESS` to leave open
    * @param targets The addresses the permitted ERC20 tokens must be transferred to
    * @param erc721Transfers The ERC721 movements funding the fulfillment
    * @param validationParams The acceptance criteria the fulfillment must satisfy

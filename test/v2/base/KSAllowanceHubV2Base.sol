@@ -223,6 +223,31 @@ abstract contract KSAllowanceHubV2Base is Test {
 
   /* ------------------------------------------------- token permit signing */
 
+  /// @dev Encodes an EIP-2612 permit naming an arbitrary spender, for the permit-relay entrypoint
+  function _erc20PermitDataFor(
+    Vm.Wallet memory wallet,
+    ERC20PermitMock token,
+    address spender,
+    uint256 value,
+    uint256 deadline
+  ) internal view returns (bytes memory) {
+    bytes32 structHash = keccak256(
+      abi.encode(
+        keccak256(
+          'Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)'
+        ),
+        wallet.addr,
+        spender,
+        value,
+        token.nonces(wallet.addr),
+        deadline
+      )
+    );
+    bytes32 digest = keccak256(abi.encodePacked('\x19\x01', token.DOMAIN_SEPARATOR(), structHash));
+    (uint8 v, bytes32 r, bytes32 s) = vm.sign(wallet.privateKey, digest);
+    return abi.encode(value, deadline, uint256(v), r, s);
+  }
+
   /// @dev Encodes an EIP-2612 permit the way `PermitHelper.callERC20Permit` decodes it (5 words)
   function _erc20PermitData(
     Vm.Wallet memory wallet,

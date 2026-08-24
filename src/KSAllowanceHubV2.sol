@@ -19,9 +19,15 @@ import {NativeTransferLibrary} from './types/NativeTransfer.sol';
 import {ManagementBase} from 'ks-common-sc/src/base/ManagementBase.sol';
 import {ManagementPausable} from 'ks-common-sc/src/base/ManagementPausable.sol';
 import {ManagementRescuable} from 'ks-common-sc/src/base/ManagementRescuable.sol';
+import {IDaiLikePermit} from 'ks-common-sc/src/interfaces/IDaiLikePermit.sol';
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 import {KSRoles} from 'ks-common-sc/src/libraries/KSRoles.sol';
+import {CalldataDecoder} from 'ks-common-sc/src/libraries/calldata/CalldataDecoder.sol';
 
+import {
+  IERC20Permit
+} from 'openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol';
+import {Multicall} from 'openzeppelin-contracts/contracts/utils/Multicall.sol';
 import {TransientSlot} from 'openzeppelin-contracts/contracts/utils/TransientSlot.sol';
 import {ECDSA} from 'openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol';
 
@@ -30,10 +36,11 @@ import {ECDSA} from 'openzeppelin-contracts/contracts/utils/cryptography/ECDSA.s
  * @notice Separates token approval from execution
  * @dev Users grant their allowance to this hub (or to Permit2) once, instead of to every router
  * they interact with. Each entrypoint pulls the tokens directly to the routers that will consume
- * them, then calls those routers. The hub holds no balance between calls and is not meant to be an
- * allowance target for anything but the flows below.
+ * them, then calls those routers. It is not meant to be an allowance target for anything but the
+ * flows below; native left over from an over-sent `msg.value` is stranded until rescued.
  */
-contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRescuable {
+contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRescuable, Multicall {
+  using CalldataDecoder for bytes;
   using ERC20TransferLibrary for *;
   using ERC721TransferLibrary for *;
   using NativeTransferLibrary for *;
@@ -114,6 +121,17 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRe
   }
 
   /// @inheritdoc IKSAllowanceHubV2
+  function permitTokensToPermit2(
+    address[] calldata tokens,
+    address owner,
+    bytes[] calldata permitData
+  ) external whenNotPaused checkLengths(tokens.length, permitData.length) {
+    for (uint256 i = 0; i < tokens.length; i++) {
+      _permitToPermit2(tokens[i], owner, permitData[i]);
+    }
+  }
+
+  /// @inheritdoc IKSAllowanceHubV2
   function permitTransferAndExecute(
     ERC20Params[] calldata erc20Params,
     ERC721Params[] calldata erc721Params,
@@ -188,9 +206,9 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRe
     ERC20Transfer[] memory erc20Transfers = permit.permitted.toTransfers(targets);
     ERC721Transfer[] memory erc721Transfers = erc721Params.toTransfers();
 
-    if (!permissionless && owner == msg.sender) {
-      // The owner is the caller, so the permit alone already pins everything that follows to the
-      // owner's own transaction and no witness is needed.
+    if (owner == msg.sender) {
+      // The owner is the caller, so its own transaction already pins everything that follows and
+      // no witness is needed, whatever `permissionless` says.
       PERMIT2.permitTransferFrom(permit, transferDetails, owner, signature);
     } else {
       // Someone other than the owner is spending its tokens, so the signature must also commit to
@@ -310,11 +328,38 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRe
   }
 
   /**
-   * @dev The calls signer a witness commits to. An empty signature means the owner left the call
-   * list to the solver; otherwise it is whoever signed these exact calls, so a tampered list
-   * recovers a different address and the witness stops matching.
-   * @dev The chain id and the permit deadline are hashed alongside the calls, so an authorisation
-   * cannot be replayed on another chain or against a permit with a different validity window.
+   * @dev Mirrors `PermitHelper.callERC20Permit`, but names Permit2 as the spender rather than the
+   * hub. Unrecognised lengths and reverting permits are both ignored.
+   * @param token The token to permit
+   * @param owner The address whose permit this is
+   * @param permitData The permit payload
+   */
+  function _permitToPermit2(address token, address owner, bytes calldata permitData) internal {
+    if (permitData.length == 32 * 5) {
+      uint256 value = permitData.decodeUint256(0);
+      uint256 deadline = permitData.decodeUint256(1);
+      uint8 v = uint8(permitData.decodeUint256(2));
+      bytes32 r = permitData.decodeBytes32(3);
+      bytes32 s = permitData.decodeBytes32(4);
+
+      try IERC20Permit(token).permit(owner, address(PERMIT2), value, deadline, v, r, s) {} catch {}
+    } else if (permitData.length == 32 * 6) {
+      uint256 nonce = permitData.decodeUint256(0);
+      uint256 expiry = permitData.decodeUint256(1);
+      bool allowed = permitData.decodeBool(2);
+      uint8 v = uint8(permitData.decodeUint256(3));
+      bytes32 r = permitData.decodeBytes32(4);
+      bytes32 s = permitData.decodeBytes32(5);
+
+      try IDaiLikePermit(token).permit(owner, address(PERMIT2), nonce, expiry, allowed, v, r, s) {}
+        catch {}
+    }
+  }
+
+  /**
+   * @dev The calls signer a witness commits to. Recovered from the signature, so a tampered call
+   * list yields a different address and the witness stops matching. The chain id and deadline are
+   * hashed in too, which stops an authorisation being replayed elsewhere.
    * @param genericCalls The calls being authorised
    * @param deadline The permit deadline the authorisation is tied to
    * @param callsSignature The signature over the encoded calls, or empty

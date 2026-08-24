@@ -7,7 +7,7 @@ import {GenericCall} from './GenericCall.sol';
 /**
  * @notice The extra data an owner signs when a relayer spends their tokens, pinning both the
  * relayer's identity and the exact execution it is allowed to perform
- * @param relayer The only address allowed to submit the signature
+ * @param relayer The address allowed to submit the signature, or `ANY_ADDRESS` for anyone
  * @param targets The addresses the permitted ERC20 tokens must be transferred to
  * @param erc721Transfers The ERC721 movements the relayer is allowed to perform
  * @param genericCalls The exact calls the relayer is allowed to execute
@@ -36,7 +36,7 @@ library RelayerWitnessLibrary {
    * @notice Hashes the witness fields following EIP-712 struct encoding
    * @dev Takes the fields loose rather than as a struct so callers can hash what they already hold
    * without copying it into one.
-   * @param relayer The only address allowed to submit the signature
+   * @param relayer The address allowed to submit the signature, or `ANY_ADDRESS` for anyone
    * @param targets The addresses the permitted ERC20 tokens must be transferred to
    * @param erc721Transfers The ERC721 movements the relayer is allowed to perform
    * @param genericCalls The exact calls the relayer is allowed to execute
