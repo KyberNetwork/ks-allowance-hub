@@ -10,12 +10,15 @@ import {ValidationParams} from './ValidationParams.sol';
  * @dev Deliberately carries no generic calls: the owner signs the outcome it wants, and the solver
  * chooses how to reach it. `validationParams` is therefore the only constraint on the solver.
  * @param solver The only address allowed to submit the signature
+ * @param callsSigner The address whose signature authorises the generic calls, or `ANY_ADDRESS` to
+ * leave them unconstrained
  * @param targets The addresses the permitted ERC20 tokens must be transferred to
  * @param erc721Transfers The ERC721 movements funding the fulfillment
  * @param validationParams The acceptance criteria the fulfillment must satisfy
  */
 struct SolverWitness {
   address solver;
+  address callsSigner;
   address[] targets;
   ERC721Transfer[] erc721Transfers;
   ValidationParams[] validationParams;
@@ -27,11 +30,11 @@ using SolverWitnessLibrary for SolverWitness global;
 library SolverWitnessLibrary {
   /// @dev The Permit2 witness type string, with the referenced structs sorted alphabetically
   string internal constant SOLVER_WITNESS_PERMIT2_TYPE_STRING =
-    'SolverWitness witness)ERC721Transfer(address token,uint256 tokenId,address target)SolverWitness(address solver,address[] targets,ERC721Transfer[] erc721Transfers,ValidationParams[] validationParams)TokenPermissions(address token,uint256 amount)ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)';
+    'SolverWitness witness)ERC721Transfer(address token,uint256 tokenId,address target)SolverWitness(address solver,address callsSigner,address[] targets,ERC721Transfer[] erc721Transfers,ValidationParams[] validationParams)TokenPermissions(address token,uint256 amount)ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)';
 
   /// @dev The EIP-712 type hash of `SolverWitness`, including its referenced struct definitions
   bytes32 internal constant SOLVER_WITNESS_TYPEHASH = keccak256(
-    'SolverWitness(address solver,address[] targets,ERC721Transfer[] erc721Transfers,ValidationParams[] validationParams)ERC721Transfer(address token,uint256 tokenId,address target)ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)'
+    'SolverWitness(address solver,address callsSigner,address[] targets,ERC721Transfer[] erc721Transfers,ValidationParams[] validationParams)ERC721Transfer(address token,uint256 tokenId,address target)ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)'
   );
 
   /**
@@ -39,6 +42,7 @@ library SolverWitnessLibrary {
    * @dev Takes the fields loose rather than as a struct so callers can hash what they already hold
    * without copying it into one.
    * @param solver The only address allowed to submit the signature
+   * @param callsSigner The address authorising the generic calls, or `ANY_ADDRESS` for none
    * @param targets The addresses the permitted ERC20 tokens must be transferred to
    * @param erc721Transfers The ERC721 movements funding the fulfillment
    * @param validationParams The acceptance criteria the fulfillment must satisfy
@@ -46,6 +50,7 @@ library SolverWitnessLibrary {
    */
   function hash(
     address solver,
+    address callsSigner,
     address[] memory targets,
     ERC721Transfer[] memory erc721Transfers,
     ValidationParams[] memory validationParams
@@ -65,6 +70,7 @@ library SolverWitnessLibrary {
       abi.encode(
         SOLVER_WITNESS_TYPEHASH,
         solver,
+        callsSigner,
         keccak256(abi.encodePacked(targets)),
         keccak256(abi.encodePacked(erc721TransfersHashes)),
         keccak256(abi.encodePacked(validationParamsHashes))
@@ -78,6 +84,7 @@ library SolverWitnessLibrary {
    * @return The EIP-712 hash of the witness
    */
   function hash(SolverWitness memory self) internal pure returns (bytes32) {
-    return hash(self.solver, self.targets, self.erc721Transfers, self.validationParams);
+    return
+      hash(self.solver, self.callsSigner, self.targets, self.erc721Transfers, self.validationParams);
   }
 }

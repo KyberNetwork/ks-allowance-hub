@@ -30,7 +30,7 @@ import {Vm} from 'forge-std/Test.sol';
  * @dev The plain (witness-free) path is only taken when `!permissionless && owner == msg.sender`
  * (`KSAllowanceHubV2.sol:190`), so the self-submitted cases sign a plain Permit2 batch and every
  * other case signs one carrying a `RelayerWitness`. That witness pins
- * `_witnessCaller(permissionless)`: `msg.sender` when the flag is false, `ANY_CALLER` when it is
+ * `_witnessCaller(permissionless)`: `msg.sender` when the flag is false, `ANY_ADDRESS` when it is
  * true — and since `msg.sender` is never the zero address the two digests can never collide, so
  * the flag authenticates itself.
  * `RelayerWitnessLibrary` is imported for signing only: its constants are pinned independently
@@ -738,7 +738,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
 
   /* --------------------------------------------------- permissionless flag */
 
-  /// @dev An owner that signed for `ANY_CALLER` can be relayed by an address it never named
+  /// @dev An owner that signed for `ANY_ADDRESS` can be relayed by an address it never named
   function test_permissionlessRelay_unnamedSubmitterExecutesSignedBatch() public {
     _fundOwner(tokenA, 10 ether);
 
@@ -749,7 +749,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     GenericCall[] memory calls = _genericCallArray(_genericCall(address(routerA), 0, hex'f1'));
 
     bytes memory signature =
-      _signRelayerWitness(permit, hub.ANY_CALLER(), targets, _noErc721Transfers(), calls);
+      _signRelayerWitness(permit, ANY_ADDRESS, targets, _noErc721Transfers(), calls);
 
     ERC20Transfer[] memory expectedErc20 = new ERC20Transfer[](1);
     expectedErc20[0] =
@@ -771,7 +771,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     assertEq(routerA.callAt(0).caller, address(hub), 'the hub is still the EVM caller');
   }
 
-  /// @dev Two unrelated submitters each ride their own `ANY_CALLER` signature, so it binds no one
+  /// @dev Two unrelated submitters each ride their own `ANY_ADDRESS` signature, so it binds no one
   function test_permissionlessSignatureIsNotBoundToASingleSubmitter() public {
     _fundOwner(tokenA, 10 ether);
 
@@ -784,12 +784,12 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     ISignatureTransfer.PermitBatchTransferFrom memory permitOne =
       _permitBatch([address(tokenA)].toMemoryArray(), [uint256(2 ether)].toMemoryArray(), 11);
     bytes memory signatureOne =
-      _signRelayerWitness(permitOne, hub.ANY_CALLER(), targets, _noErc721Transfers(), calls);
+      _signRelayerWitness(permitOne, ANY_ADDRESS, targets, _noErc721Transfers(), calls);
 
     ISignatureTransfer.PermitBatchTransferFrom memory permitTwo =
       _permitBatch([address(tokenA)].toMemoryArray(), [uint256(5 ether)].toMemoryArray(), 12);
     bytes memory signatureTwo =
-      _signRelayerWitness(permitTwo, hub.ANY_CALLER(), targets, _noErc721Transfers(), calls);
+      _signRelayerWitness(permitTwo, ANY_ADDRESS, targets, _noErc721Transfers(), calls);
 
     vm.prank(submitterOne);
     hub.permit2TransferAndExecute(
@@ -853,7 +853,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     GenericCall[] memory calls = _genericCallArray(_genericCall(address(routerA), 0, hex'f4'));
 
     bytes memory signature =
-      _signRelayerWitness(permit, hub.ANY_CALLER(), targets, _noErc721Transfers(), calls);
+      _signRelayerWitness(permit, ANY_ADDRESS, targets, _noErc721Transfers(), calls);
 
     vm.expectRevert(Permit2Mock.InvalidSigner.selector);
     vm.prank(outsider);
@@ -891,7 +891,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     GenericCall[] memory signedCalls = _genericCallArray(_genericCall(address(routerA), 0, hex'f5'));
 
     bytes memory signature =
-      _signRelayerWitness(permit, hub.ANY_CALLER(), signedTargets, signedErc721, signedCalls);
+      _signRelayerWitness(permit, ANY_ADDRESS, signedTargets, signedErc721, signedCalls);
 
     // Altered ERC20 target — routerB is whitelisted too, so only the witness can reject this
     vm.expectRevert(Permit2Mock.InvalidSigner.selector);
@@ -962,9 +962,9 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     ISignatureTransfer.PermitBatchTransferFrom memory witnessPermit =
       _permitBatch([address(tokenA)].toMemoryArray(), [uint256(3 ether)].toMemoryArray(), 0);
     bytes memory witnessSignature =
-      _signRelayerWitness(witnessPermit, hub.ANY_CALLER(), targets, _noErc721Transfers(), calls);
+      _signRelayerWitness(witnessPermit, ANY_ADDRESS, targets, _noErc721Transfers(), calls);
 
-    // `owner == msg.sender`, but the flag forces the hub to rebuild the `ANY_CALLER` witness digest
+    // `owner == msg.sender`, but the flag forces the hub to rebuild the `ANY_ADDRESS` witness digest
     vm.prank(owner);
     hub.permit2TransferAndExecute(
       witnessPermit, targets, _noErc721Params(), calls, owner, true, witnessSignature
@@ -997,7 +997,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     assertEq(permit2.nonceBitmap(owner, 0), 3, 'one nonce bit consumed per accepted batch');
   }
 
-  /// @dev Being submittable by anyone does not make it submittable twice
+  /// @dev Being submittable by ANY_ADDRESS does not make it submittable twice
   function test_permissionlessSubmissionIsNotReplayable() public {
     _fundOwner(tokenA, 10 ether);
 
@@ -1011,7 +1011,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     GenericCall[] memory calls = _noGenericCalls();
 
     bytes memory signature =
-      _signRelayerWitness(permit, hub.ANY_CALLER(), targets, _noErc721Transfers(), calls);
+      _signRelayerWitness(permit, ANY_ADDRESS, targets, _noErc721Transfers(), calls);
 
     assertEq(permit2.nonceBitmap(owner, wordPos), 0, 'nonce word untouched before');
 

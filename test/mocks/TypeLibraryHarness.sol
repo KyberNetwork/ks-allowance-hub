@@ -82,11 +82,12 @@ contract TypeLibraryHarness {
 
   function hashSolverWitnessFields(
     address solver,
+    address callsSigner,
     address[] memory targets,
     ERC721Transfer[] memory transfers,
     ValidationParams[] memory params
   ) external pure returns (bytes32) {
-    return SolverWitnessLibrary.hash(solver, targets, transfers, params);
+    return SolverWitnessLibrary.hash(solver, callsSigner, targets, transfers, params);
   }
 
   function relayerWitnessTypeString() external pure returns (string memory) {

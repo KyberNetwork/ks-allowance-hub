@@ -50,6 +50,7 @@ contract TypeLibrariesTest is Test {
   address internal other = makeAddr('other');
   address internal relayer = makeAddr('relayer');
   address internal solver = makeAddr('solver');
+  address internal callsSigner = makeAddr('callsSigner');
 
   function setUp() public {
     types = new TypeLibraryHarness();
@@ -71,7 +72,9 @@ contract TypeLibrariesTest is Test {
     'RelayerWitness(address relayer,address[] targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls)';
 
   string private constant SOLVER_WITNESS_TYPE =
-    'SolverWitness(address solver,address[] targets,ERC721Transfer[] erc721Transfers,ValidationParams[] validationParams)';
+    'SolverWitness(address solver,address callsSigner,address[] targets,ERC721Transfer[] erc721Transfers,ValidationParams[] validationParams)';
+
+  /// @dev The payload a `callsSigner` authorises; `GenericCall` is its only referenced struct
 
   /// @dev Part of the Permit2 outer type, never of a witness typehash
   string private constant TOKEN_PERMISSIONS_TYPE = 'TokenPermissions(address token,uint256 amount)';
@@ -91,6 +94,7 @@ contract TypeLibrariesTest is Test {
 
   struct SolverWitnessFuzz {
     address solver;
+    address callsSigner;
     address target;
     address nftToken;
     uint256 nftTokenId;
@@ -401,24 +405,41 @@ contract TypeLibrariesTest is Test {
       afterExecutionInput: hex'ee'
     });
 
-    bytes32 expected = _handSolverWitnessHash(solver, targets, transfers, params);
+    bytes32 expected = _handSolverWitnessHash(solver, callsSigner, targets, transfers, params);
     assertEq(
-      types.hashSolverWitnessFields(solver, targets, transfers, params),
+      types.hashSolverWitnessFields(solver, callsSigner, targets, transfers, params),
       expected,
       'loose-args overload matches the hand-computed hash'
     );
 
     SolverWitness memory witness = SolverWitness({
-      solver: solver, targets: targets, erc721Transfers: transfers, validationParams: params
+      solver: solver,
+      callsSigner: callsSigner,
+      targets: targets,
+      erc721Transfers: transfers,
+      validationParams: params
     });
     assertEq(types.hashSolverWitness(witness), expected, 'struct overload matches');
+
+    // `solver` and `callsSigner` are two consecutive address members: swapping them must move the
+    // hash, so neither is dropped nor conflated with the other
+    assertEq(
+      types.hashSolverWitnessFields(callsSigner, solver, targets, transfers, params),
+      _handSolverWitnessHash(callsSigner, solver, targets, transfers, params),
+      'swapped signers, hand-computed'
+    );
+    assertTrue(
+      types.hashSolverWitnessFields(callsSigner, solver, targets, transfers, params) != expected,
+      'solver and callsSigner are not interchangeable'
+    );
 
     address[] memory noTargets = new address[](0);
     ERC721Transfer[] memory noTransfers = new ERC721Transfer[](0);
     ValidationParams[] memory noParams = new ValidationParams[](0);
-    bytes32 emptyExpected = _handSolverWitnessHash(solver, noTargets, noTransfers, noParams);
+    bytes32 emptyExpected =
+      _handSolverWitnessHash(solver, callsSigner, noTargets, noTransfers, noParams);
     assertEq(
-      types.hashSolverWitnessFields(solver, noTargets, noTransfers, noParams),
+      types.hashSolverWitnessFields(solver, callsSigner, noTargets, noTransfers, noParams),
       emptyExpected,
       'empty arrays, loose args'
     );
@@ -426,6 +447,7 @@ contract TypeLibrariesTest is Test {
       types.hashSolverWitness(
         SolverWitness({
           solver: solver,
+          callsSigner: callsSigner,
           targets: noTargets,
           erc721Transfers: noTransfers,
           validationParams: noParams
@@ -533,11 +555,38 @@ contract TypeLibrariesTest is Test {
 
   /// @notice TYP-10 every `SolverWitness` member is bound: changing one alone moves the hash
   function testFuzz_solverWitnessInjectivity(SolverWitnessFuzz memory f) public view {
+    // Split the two signer addresses into disjoint halves of the address space so the swap below
+    // always exchanges two DIFFERENT values; both stay fully fuzzed within their half
+    f.solver =
+      address(uint160(bound(uint256(uint160(f.solver)), 0, uint256(type(uint160).max) / 2)));
+    f.callsSigner = address(
+      uint160(
+        bound(
+          uint256(uint160(f.callsSigner)),
+          uint256(type(uint160).max) / 2 + 1,
+          uint256(type(uint160).max)
+        )
+      )
+    );
+
     bytes32 base = _solverHash(f);
 
     f.solver = address(uint160(f.solver) ^ 1);
     assertTrue(_solverHash(f) != base, 'solver is bound');
     f.solver = address(uint160(f.solver) ^ 1);
+
+    f.callsSigner = address(uint160(f.callsSigner) ^ 1);
+    assertTrue(_solverHash(f) != base, 'callsSigner is bound');
+    f.callsSigner = address(uint160(f.callsSigner) ^ 1);
+
+    // A `callsSigner` silently dropped from the encoding would leave these two indistinguishable
+    address originalSolver = f.solver;
+    address originalCallsSigner = f.callsSigner;
+    f.solver = originalCallsSigner;
+    f.callsSigner = originalSolver;
+    assertTrue(_solverHash(f) != base, 'solver and callsSigner occupy distinct encoding slots');
+    f.solver = originalSolver;
+    f.callsSigner = originalCallsSigner;
 
     f.target = address(uint160(f.target) ^ 1);
     assertTrue(_solverHash(f) != base, 'targets are bound');
@@ -575,6 +624,14 @@ contract TypeLibrariesTest is Test {
 
     assertEq(_solverHash(f), base, 'witness restored to its original value');
   }
+
+  /* --------------------------------------------------------------- TYP-11 */
+
+  /// @notice TYP-11 `GenericCallLibrary.hashCalls` matches the hand-computed array-of-structs hash
+
+  /* --------------------------------------------------------------- TYP-12 */
+
+  /// @notice TYP-12 every `GenericCall` member of a fulfillment list is bound, and so is its order
 
   /* -------------------------------------------- hand-computed EIP-712 hashes */
 
@@ -642,6 +699,7 @@ contract TypeLibrariesTest is Test {
 
   function _handSolverWitnessHash(
     address solver_,
+    address callsSigner_,
     address[] memory targets,
     ERC721Transfer[] memory erc721Transfers,
     ValidationParams[] memory validationParams
@@ -664,6 +722,7 @@ contract TypeLibrariesTest is Test {
       abi.encode(
         typehash,
         solver_,
+        callsSigner_,
         keccak256(abi.encodePacked(targets)),
         keccak256(abi.encodePacked(transferHashes)),
         keccak256(abi.encodePacked(paramsHashes))
@@ -701,7 +760,7 @@ contract TypeLibrariesTest is Test {
       afterExecutionInput: f.afterInput
     });
 
-    return types.hashSolverWitnessFields(f.solver, targets, transfers, params);
+    return types.hashSolverWitnessFields(f.solver, f.callsSigner, targets, transfers, params);
   }
 
   /* ------------------------------------------------- type-string decomposition */

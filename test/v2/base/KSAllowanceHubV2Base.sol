@@ -63,6 +63,7 @@ abstract contract KSAllowanceHubV2Base is Test {
 
   Vm.Wallet internal ownerWallet;
   Vm.Wallet internal otherWallet;
+  Vm.Wallet internal callsSignerWallet;
 
   address internal owner;
   address internal other;
@@ -103,6 +104,12 @@ abstract contract KSAllowanceHubV2Base is Test {
 
   address internal constant NATIVE = TokenHelper.NATIVE_ADDRESS;
 
+  /**
+   * @dev The hub's open-slot sentinel, derived here the same way production derives it rather than
+   * read back from the contract, so a change to either side shows up as a failure.
+   */
+  address internal constant ANY_ADDRESS = address(uint160(uint256(keccak256('ANY_ADDRESS'))));
+
   bytes32 internal constant WHITELIST_ROUTER_ROLE = keccak256('WHITELIST_ROUTER_ROLE');
 
   uint256 internal constant DEFAULT_DEADLINE = 4_102_444_800; // 2100-01-01
@@ -110,6 +117,7 @@ abstract contract KSAllowanceHubV2Base is Test {
   function setUp() public virtual {
     ownerWallet = vm.createWallet('owner');
     otherWallet = vm.createWallet('other');
+    callsSignerWallet = vm.createWallet('callsSigner');
     owner = ownerWallet.addr;
     other = otherWallet.addr;
 
@@ -267,6 +275,20 @@ abstract contract KSAllowanceHubV2Base is Test {
     bytes32 digest = keccak256(abi.encodePacked('\x19\x01', token.DOMAIN_SEPARATOR(), structHash));
     (uint8 v, bytes32 r, bytes32 s) = vm.sign(wallet.privateKey, digest);
     return abi.encode(deadline, nonce, abi.encodePacked(r, s, v));
+  }
+
+  /**
+   * @dev Signs a call list the way a `callsSigner` would: a plain hash over the chain id, the
+   * encoded calls and the permit deadline.
+   */
+  function _signCalls(Vm.Wallet memory wallet, GenericCall[] memory calls, uint256 deadline)
+    internal
+    view
+    returns (bytes memory)
+  {
+    bytes32 callsHash = keccak256(abi.encode(block.chainid, calls, deadline));
+    (uint8 v, bytes32 r, bytes32 s) = vm.sign(wallet.privateKey, callsHash);
+    return abi.encodePacked(r, s, v);
   }
 
   /* ------------------------------------------------------ struct builders */

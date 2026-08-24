@@ -20,10 +20,10 @@ import {ManagementBase} from 'ks-common-sc/src/base/ManagementBase.sol';
 import {ManagementPausable} from 'ks-common-sc/src/base/ManagementPausable.sol';
 import {ManagementRescuable} from 'ks-common-sc/src/base/ManagementRescuable.sol';
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
-
 import {KSRoles} from 'ks-common-sc/src/libraries/KSRoles.sol';
 
 import {TransientSlot} from 'openzeppelin-contracts/contracts/utils/TransientSlot.sol';
+import {ECDSA} from 'openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol';
 
 /**
  * @title KSAllowanceHubV2
@@ -48,8 +48,9 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRe
   /// @dev The role held by the routers the hub is allowed to call
   bytes32 internal constant WHITELIST_ROUTER_ROLE = keccak256('WHITELIST_ROUTER_ROLE');
 
-  /// @inheritdoc IKSAllowanceHubV2
-  address public constant ANY_CALLER = address(uint160(uint256(keccak256('ANY_CALLER'))));
+  /// @dev Written into a witness slot the owner wants to leave open: any submitter, or any
+  /// calls signer
+  address internal constant ANY_ADDRESS = address(uint160(uint256(keccak256('ANY_ADDRESS'))));
 
   /**
    * @param initialAdmin The default admin, able to manage every role
@@ -230,10 +231,11 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRe
     address[] calldata targets,
     ERC721Params[] calldata erc721Params,
     ValidationParams[] calldata validationParams,
-    GenericCall[] calldata genericCalls,
     address owner,
     bool permissionless,
-    bytes calldata signature
+    bytes calldata ownerSignature,
+    GenericCall[] calldata genericCalls,
+    bytes calldata callsSignature
   )
     external
     payable
@@ -258,11 +260,15 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRe
     ERC20Transfer[] memory erc20Transfers = permit.permitted.toTransfers(targets);
     ERC721Transfer[] memory erc721Transfers = erc721Params.toTransfers();
 
-    // Binds the signature to the solver, to where the funding goes and to the validators that
-    // will judge it. `genericCalls` is deliberately left out: the owner signs the outcome it
-    // wants, not the path the solver takes to produce it.
+    // Binds the signature to the solver, to who may authorise the calls, to where the funding
+    // goes and to the validators that will judge it. `genericCalls` is left out: the owner signs
+    // the outcome it wants, not the path the solver takes to produce it.
     bytes32 witness = SolverWitnessLibrary.hash(
-      _witnessCaller(permissionless), targets, erc721Transfers, validationParams
+      _witnessCaller(permissionless),
+      _callsSigner(genericCalls, permit.deadline, callsSignature),
+      targets,
+      erc721Transfers,
+      validationParams
     );
     PERMIT2.permitWitnessTransferFrom(
       permit,
@@ -270,7 +276,7 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRe
       owner,
       witness,
       SolverWitnessLibrary.SOLVER_WITNESS_PERMIT2_TYPE_STRING,
-      signature
+      ownerSignature
     );
 
     // Permits and transfers the ERC721 tokens, pulled from the owner rather than the caller
@@ -304,13 +310,34 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, ManagementPausable, ManagementRe
   }
 
   /**
+   * @dev The calls signer a witness commits to. An empty signature means the owner left the call
+   * list to the solver; otherwise it is whoever signed these exact calls, so a tampered list
+   * recovers a different address and the witness stops matching.
+   * @dev The chain id and the permit deadline are hashed alongside the calls, so an authorisation
+   * cannot be replayed on another chain or against a permit with a different validity window.
+   * @param genericCalls The calls being authorised
+   * @param deadline The permit deadline the authorisation is tied to
+   * @param callsSignature The signature over the encoded calls, or empty
+   * @return `ANY_ADDRESS` if unsigned, otherwise the recovered signer
+   */
+  function _callsSigner(
+    GenericCall[] calldata genericCalls,
+    uint256 deadline,
+    bytes calldata callsSignature
+  ) internal view returns (address) {
+    return callsSignature.length == 0
+      ? ANY_ADDRESS
+      : ECDSA.recover(keccak256(abi.encode(block.chainid, genericCalls, deadline)), callsSignature);
+  }
+
+  /**
    * @dev The submitter a witness commits to. The flag needs no signature of its own: it only picks
    * which digest to rebuild, and the wrong pick fails verification.
    * @param permissionless Whether the owner signed for submission by anyone
-   * @return `ANY_CALLER` if permissionless, otherwise `msg.sender`
+   * @return `ANY_ADDRESS` if permissionless, otherwise `msg.sender`
    */
   function _witnessCaller(bool permissionless) internal view returns (address) {
-    return permissionless ? ANY_CALLER : msg.sender;
+    return permissionless ? ANY_ADDRESS : msg.sender;
   }
 
   /**
