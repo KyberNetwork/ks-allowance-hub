@@ -12,7 +12,7 @@ Two contracts are deployable side by side:
 | Contract | Entrypoints |
 |---|---|
 | `KSAllowanceHub` | the legacy hub, still live |
-| `KSAllowanceHubV2` | adds solver-fulfilled intents, permissionless submission and permit relaying |
+| `KSAllowanceHubV2` | adds solver-fulfilled intents, open submission and permit relaying |
 
 ## Entrypoints (V2)
 
@@ -43,9 +43,9 @@ the path, bounded by `validationParams` and by `callsSigner`.
 
 Two slots may be left open by signing `ANY_ADDRESS` into them:
 
-- **the submitter** — set `permissionless` when submitting, and anyone may relay or fulfil. The flag
-  is not signed and does not need to be: it only selects which digest the hub rebuilds, and the
-  wrong choice rebuilds one the owner never signed.
+- **the submitter** — set `anyRelayer` (execute) or `anySolver` (fulfill) when submitting, and
+  anyone may do so. The flag is not signed and does not need to be: it only selects which digest the
+  hub rebuilds, and the wrong choice rebuilds one the owner never signed.
 - **the calls signer** — the hub recovers it from `callsSignature` over
   `keccak256(abi.encode(block.chainid, genericCalls, permit.deadline))` and puts the result in the
   witness. Pass an empty signature to leave the call list to the solver.

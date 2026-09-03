@@ -205,7 +205,7 @@ contract KSAllowanceHubV2 is
     ERC721Params[] calldata erc721Params,
     GenericCall[] calldata genericCalls,
     address owner,
-    bool permissionless,
+    bool anyRelayer,
     bytes calldata signature
   )
     external
@@ -233,13 +233,13 @@ contract KSAllowanceHubV2 is
 
     if (owner == msg.sender) {
       // The owner is the caller, so its own transaction already pins everything that follows and
-      // no witness is needed, whatever `permissionless` says.
+      // no witness is needed, whatever `anyRelayer` says.
       PERMIT2.permitTransferFrom(permit, transferDetails, owner, signature);
     } else {
       // Someone other than the owner is spending its tokens, so the signature must also commit to
       // who may submit it and to the exact execution it is allowed to perform.
       bytes32 witness = RelayerWitnessLibrary.hash(
-        _witnessCaller(permissionless), targets, erc721Transfers, genericCalls
+        _witnessCaller(anyRelayer), targets, erc721Transfers, genericCalls
       );
       PERMIT2.permitWitnessTransferFrom(
         permit,
@@ -275,7 +275,7 @@ contract KSAllowanceHubV2 is
     ERC721Params[] calldata erc721Params,
     ValidationParams[] calldata validationParams,
     address owner,
-    bool permissionless,
+    bool anySolver,
     bytes calldata ownerSignature,
     GenericCall[] calldata genericCalls,
     bytes calldata callsSignature
@@ -307,7 +307,7 @@ contract KSAllowanceHubV2 is
     // goes and to the validators that will judge it. `genericCalls` is left out: the owner signs
     // the outcome it wants, not the path the solver takes to produce it.
     bytes32 witness = SolverWitnessLibrary.hash(
-      _witnessCaller(permissionless),
+      _witnessCaller(anySolver),
       _callsSigner(genericCalls, permit.deadline, callsSignature),
       targets,
       erc721Transfers,
@@ -403,11 +403,11 @@ contract KSAllowanceHubV2 is
   /**
    * @dev The submitter a witness commits to. The flag needs no signature of its own: it only picks
    * which digest to rebuild, and the wrong pick fails verification.
-   * @param permissionless Whether the owner signed for submission by anyone
-   * @return `ANY_ADDRESS` if permissionless, otherwise `msg.sender`
+   * @param anySubmitter Whether the owner signed for submission by anyone
+   * @return `ANY_ADDRESS` if anySubmitter, otherwise `msg.sender`
    */
-  function _witnessCaller(bool permissionless) internal view returns (address) {
-    return permissionless ? ANY_ADDRESS : msg.sender;
+  function _witnessCaller(bool anySubmitter) internal view returns (address) {
+    return anySubmitter ? ANY_ADDRESS : msg.sender;
   }
 
   /**

@@ -751,17 +751,17 @@ contract KSAllowanceHubV2Permit2TransferAndFulfillTest is KSAllowanceHubV2Base {
     }
   }
 
-  /* ------------------------------------------- permissionless fulfillment */
+  /* ------------------------------------------- anySolver fulfillment */
 
   /**
    * @dev The owner signs `ANY_ADDRESS` in place of a solver, so an address that appears nowhere in
    * the signature can fulfill the intent. The funding, the validators and the published token owner
    * are unchanged; only the submitter is free.
    */
-  function test_permissionlessFill_callerNamedNowhereInTheSignatureSucceeds() public {
+  function test_anySolverFill_callerNamedNowhereInTheSignatureSucceeds() public {
     ISignatureTransfer.PermitBatchTransferFrom memory permit = _fundAndPermit(2 ether, 0);
     ValidationParams[] memory vps = _oneValidator();
-    bytes memory sig = _permissionlessSig(permit, _targetsA(), _noErc721Transfers(), vps);
+    bytes memory sig = _anySolverSig(permit, _targetsA(), _noErc721Transfers(), vps);
 
     assertTrue(outsider != owner, 'the submitter is not the owner');
     assertTrue(outsider != solver, 'the submitter is not the solver the other tests sign for');
@@ -797,7 +797,7 @@ contract KSAllowanceHubV2Permit2TransferAndFulfillTest is KSAllowanceHubV2Base {
    * @dev Two unrelated addresses each fulfill their own `ANY_ADDRESS` signature on separate nonces,
    * proving the signature is bound to no particular solver.
    */
-  function test_permissionlessFill_competingSubmittersEachFulfillTheirOwnSignature() public {
+  function test_anySolverFill_competingSubmittersEachFulfillTheirOwnSignature() public {
     _fundERC20(tokenA, owner, 5 ether);
     _approvePermit2(tokenA, owner, type(uint256).max);
 
@@ -809,8 +809,8 @@ contract KSAllowanceHubV2Permit2TransferAndFulfillTest is KSAllowanceHubV2Base {
     ISignatureTransfer.PermitBatchTransferFrom memory secondPermit =
       _permitBatch([address(tokenA)].toMemoryArray(), [uint256(3 ether)].toMemoryArray(), 1);
 
-    bytes memory firstSig = _permissionlessSig(firstPermit, _targetsA(), _noErc721Transfers(), vps);
-    bytes memory secondSig = _permissionlessSig(secondPermit, targetsB, _noErc721Transfers(), vps);
+    bytes memory firstSig = _anySolverSig(firstPermit, _targetsA(), _noErc721Transfers(), vps);
+    bytes memory secondSig = _anySolverSig(secondPermit, targetsB, _noErc721Transfers(), vps);
 
     vm.prank(outsider);
     hub.permit2TransferAndFulfill(
@@ -850,10 +850,10 @@ contract KSAllowanceHubV2Permit2TransferAndFulfillTest is KSAllowanceHubV2Base {
 
   /**
    * @dev The flag is not signed, but it cannot be forged upward: a solver-bound witness names
-   * `msg.sender`, so submitting it with `permissionless = true` rebuilds the `ANY_ADDRESS` digest the
+   * `msg.sender`, so submitting it with `anySolver = true` rebuilds the `ANY_ADDRESS` digest the
    * owner never signed. The named solver on the caller-bound path is the positive control.
    */
-  function test_permissionlessFlagCannotBeForgedOnASolverBoundSignature() public {
+  function test_anySolverFlagCannotBeForgedOnASolverBoundSignature() public {
     ISignatureTransfer.PermitBatchTransferFrom memory permit = _fundAndPermit(2 ether, 0);
     ValidationParams[] memory vps = _oneValidator();
     bytes memory sig = _solverSig(permit, solver, _targetsA(), _noErc721Transfers(), vps);
@@ -879,14 +879,14 @@ contract KSAllowanceHubV2Permit2TransferAndFulfillTest is KSAllowanceHubV2Base {
   }
 
   /**
-   * @dev The mirror image: an `ANY_ADDRESS` witness submitted with `permissionless = false` rebuilds
+   * @dev The mirror image: an `ANY_ADDRESS` witness submitted with `anySolver = false` rebuilds
    * a digest naming the submitter, which the owner never signed. The identical signature with the
    * flag set is the positive control.
    */
-  function test_permissionlessFlagCannotBeDroppedOnAnAnyCallerSignature() public {
+  function test_anySolverFlagCannotBeDroppedOnAnAnyCallerSignature() public {
     ISignatureTransfer.PermitBatchTransferFrom memory permit = _fundAndPermit(2 ether, 0);
     ValidationParams[] memory vps = _oneValidator();
-    bytes memory sig = _permissionlessSig(permit, _targetsA(), _noErc721Transfers(), vps);
+    bytes memory sig = _anySolverSig(permit, _targetsA(), _noErc721Transfers(), vps);
 
     vm.prank(outsider);
     vm.expectRevert(Permit2Mock.InvalidSigner.selector);
@@ -912,7 +912,7 @@ contract KSAllowanceHubV2Permit2TransferAndFulfillTest is KSAllowanceHubV2Base {
    * @dev Opening the fill to any caller does not loosen the rest of the witness: the ERC20 targets,
    * the ERC721 movements and every `validationParams` field stay pinned.
    */
-  function test_permissionlessStillBindsTargetsErc721TransfersAndValidationParams() public {
+  function test_anySolverStillBindsTargetsErc721TransfersAndValidationParams() public {
     ISignatureTransfer.PermitBatchTransferFrom memory permit = _fundAndPermit(2 ether, 0);
     nft.mint(owner, 7);
     nft.mint(owner, 8);
@@ -922,8 +922,7 @@ contract KSAllowanceHubV2Permit2TransferAndFulfillTest is KSAllowanceHubV2Base {
     ValidationParams[] memory vps = _oneValidator();
     ERC721Params[] memory erc721Params =
       _erc721ParamsArray(_erc721Params(address(nft), 7, address(nftReceiver), ''));
-    bytes memory sig =
-      _permissionlessSig(permit, _targetsA(), _toErc721Transfers(erc721Params), vps);
+    bytes memory sig = _anySolverSig(permit, _targetsA(), _toErc721Transfers(erc721Params), vps);
 
     // Redirected ERC20 funding
     vm.prank(outsider);
@@ -989,14 +988,14 @@ contract KSAllowanceHubV2Permit2TransferAndFulfillTest is KSAllowanceHubV2Base {
   }
 
   /**
-   * @dev The documented worst case: `permissionless` plus an empty `validationParams`. An arbitrary
+   * @dev The documented worst case: `anySolver` plus an empty `validationParams`. An arbitrary
    * caller takes the owner funding, routes it through whitelisted calls of its own choosing, and
    * nothing checks the outcome. Pinned so a reviewer can see exactly what the combination allows.
    */
-  function test_permissionlessWithEmptyValidationParams_isCompletelyUnconstrained() public {
+  function test_anySolverWithEmptyValidationParams_isCompletelyUnconstrained() public {
     ISignatureTransfer.PermitBatchTransferFrom memory permit = _fundAndPermit(2 ether, 0);
     ValidationParams[] memory vps = _noValidationParams();
-    bytes memory sig = _permissionlessSig(permit, _targetsA(), _noErc721Transfers(), vps);
+    bytes memory sig = _anySolverSig(permit, _targetsA(), _noErc721Transfers(), vps);
 
     GenericCall[] memory callerChosen = _genericCallArray(
       _genericCall(address(routerB), 0, hex'01'), _genericCall(address(routerA), 0, hex'02')
@@ -1024,18 +1023,18 @@ contract KSAllowanceHubV2Permit2TransferAndFulfillTest is KSAllowanceHubV2Base {
   }
 
   /**
-   * @dev Permissionless widens who may submit, not how often. The Permit2 nonce is still single
+   * @dev AnySolver widens who may submit, not how often. The Permit2 nonce is still single
    * use, so a second caller replaying the same permit and signature is rejected. Nonce 260 lives in
    * word 1, bit 4, so the consumed bitmap word is `1 << 4`.
    */
-  function test_permissionlessFillIsNotReplayableByASecondCaller() public {
+  function test_anySolverFillIsNotReplayableByASecondCaller() public {
     uint256 nonce = 260;
     ISignatureTransfer.PermitBatchTransferFrom memory permit = _fundAndPermit(2 ether, nonce);
     // Funds a second fill over, so only the nonce can stop the replay
     _fundERC20(tokenA, owner, 2 ether);
 
     ValidationParams[] memory vps = _oneValidator();
-    bytes memory sig = _permissionlessSig(permit, _targetsA(), _noErc721Transfers(), vps);
+    bytes memory sig = _anySolverSig(permit, _targetsA(), _noErc721Transfers(), vps);
 
     vm.prank(outsider);
     hub.permit2TransferAndFulfill(
@@ -1312,10 +1311,10 @@ contract KSAllowanceHubV2Permit2TransferAndFulfillTest is KSAllowanceHubV2Base {
   }
 
   /**
-   * @dev The combination that makes permissionless fulfilment safe: ANY_ADDRESS may submit, but only
+   * @dev The combination that makes anySolver fulfilment safe: ANY_ADDRESS may submit, but only
    * with a call list the committed signer authorised.
    */
-  function test_permissionlessFulfilmentStillObeysTheCommittedCallsSigner() public {
+  function test_anySolverFulfilmentStillObeysTheCommittedCallsSigner() public {
     ISignatureTransfer.PermitBatchTransferFrom memory permit = _fundAndPermit(2 ether, 0);
     ValidationParams[] memory vps = _oneValidator();
     GenericCall[] memory calls = _oneCallToRouterA();
@@ -1391,10 +1390,10 @@ contract KSAllowanceHubV2Permit2TransferAndFulfillTest is KSAllowanceHubV2Base {
 
   /**
    * @dev Signs the same witness with `ANY_ADDRESS` in the solver slot, which is what the hub rebuilds
-   * when it is called with `permissionless = true`. Read from the hub so the sentinel is never
+   * when it is called with `anySolver = true`. Read from the hub so the sentinel is never
    * hardcoded here.
    */
-  function _permissionlessSig(
+  function _anySolverSig(
     ISignatureTransfer.PermitBatchTransferFrom memory permit,
     address[] memory targets,
     ERC721Transfer[] memory erc721Transfers,

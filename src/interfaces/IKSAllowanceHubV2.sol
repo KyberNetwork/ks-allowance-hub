@@ -75,16 +75,16 @@ interface IKSAllowanceHubV2 {
    * @notice Transfers ERC20 tokens from `owner` via Permit2, permits and transfers ERC721 tokens,
    * then executes the generic calls on behalf of `owner`
    * @dev When the owner is the caller its own transaction pins everything, so no witness is used
-   * and `permissionless` is ignored. Otherwise the signature must also cover a `RelayerWitness`
+   * and `anyRelayer` is ignored. Otherwise the signature must also cover a `RelayerWitness`
    * pinning the submitter, the ERC20 targets, the ERC721 transfers and the generic calls; setting
-   * `permissionless` names `ANY_ADDRESS` there so anyone may relay a batch that stays fully pinned.
+   * `anyRelayer` names `ANY_ADDRESS` there so anyone may relay a batch that stays fully pinned.
    * @param permit The Permit2 batch permit covering the ERC20 tokens to transfer
    * @param targets The addresses to transfer each permitted ERC20 token to, index-aligned with
    * `permit.permitted`
    * @param erc721Params The ERC721 tokens to permit and transfer
    * @param genericCalls The generic calls to execute
    * @param owner The owner of the tokens
-   * @param permissionless Whether the witness names `ANY_ADDRESS` rather than a specific relayer,
+   * @param anyRelayer Whether the witness names `ANY_ADDRESS` rather than a specific relayer,
    * ignored when the owner is the caller
    * @param signature The owner's Permit2 signature
    * @return results The return data of each generic call, in the same order
@@ -96,7 +96,7 @@ interface IKSAllowanceHubV2 {
     ERC721Params[] calldata erc721Params,
     GenericCall[] calldata genericCalls,
     address owner,
-    bool permissionless,
+    bool anyRelayer,
     bytes calldata signature
   ) external payable returns (bytes[] memory results, uint256 gasUsed);
 
@@ -114,7 +114,7 @@ interface IKSAllowanceHubV2 {
    * @param erc721Params The ERC721 tokens to permit and transfer
    * @param validationParams The validators enforcing the intent's outcome
    * @param owner The owner of the tokens
-   * @param permissionless Whether the witness names `ANY_ADDRESS` rather than a specific solver
+   * @param anySolver Whether the witness names `ANY_ADDRESS` rather than a specific solver
    * @param ownerSignature The owner's Permit2 signature over the `SolverWitness`
    * @param genericCalls The generic calls the solver uses to fulfill the intent
    * @param callsSignature A signature over
@@ -129,7 +129,7 @@ interface IKSAllowanceHubV2 {
     ERC721Params[] calldata erc721Params,
     ValidationParams[] calldata validationParams,
     address owner,
-    bool permissionless,
+    bool anySolver,
     bytes calldata ownerSignature,
     GenericCall[] calldata genericCalls,
     bytes calldata callsSignature

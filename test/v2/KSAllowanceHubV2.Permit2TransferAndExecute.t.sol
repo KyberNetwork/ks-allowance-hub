@@ -25,12 +25,12 @@ import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
 import {Vm} from 'forge-std/Test.sol';
 
 /**
- * @notice Batch B — `permit2TransferAndExecute`, cases P2E-01..P2E-20 plus the `permissionless`
+ * @notice Batch B — `permit2TransferAndExecute`, cases P2E-01..P2E-20 plus the `anyRelayer`
  * flag
- * @dev The plain (witness-free) path is only taken when `!permissionless && owner == msg.sender`
+ * @dev The plain (witness-free) path is only taken when `!anyRelayer && owner == msg.sender`
  * (`KSAllowanceHubV2.sol:190`), so the self-submitted cases sign a plain Permit2 batch and every
  * other case signs one carrying a `RelayerWitness`. That witness pins
- * `_witnessCaller(permissionless)`: `msg.sender` when the flag is false, `ANY_ADDRESS` when it is
+ * `_witnessCaller(anyRelayer)`: `msg.sender` when the flag is false, `ANY_ADDRESS` when it is
  * true — and since `msg.sender` is never the zero address the two digests can never collide, so
  * the flag authenticates itself.
  * `RelayerWitnessLibrary` is imported for signing only: its constants are pinned independently
@@ -736,10 +736,10 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     );
   }
 
-  /* --------------------------------------------------- permissionless flag */
+  /* --------------------------------------------------- anyRelayer flag */
 
   /// @dev An owner that signed for `ANY_ADDRESS` can be relayed by an address it never named
-  function test_permissionlessRelay_unnamedSubmitterExecutesSignedBatch() public {
+  function test_anyRelayerRelay_unnamedSubmitterExecutesSignedBatch() public {
     _fundOwner(tokenA, 10 ether);
 
     ISignatureTransfer.PermitBatchTransferFrom memory permit =
@@ -772,7 +772,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
   }
 
   /// @dev Two unrelated submitters each ride their own `ANY_ADDRESS` signature, so it binds no one
-  function test_permissionlessSignatureIsNotBoundToASingleSubmitter() public {
+  function test_anyRelayerSignatureIsNotBoundToASingleSubmitter() public {
     _fundOwner(tokenA, 10 ether);
 
     address submitterOne = makeAddr('submitterOne');
@@ -811,8 +811,8 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     );
   }
 
-  /// @dev A caller-bound signature cannot be upgraded into a permissionless one by the submitter
-  function test_permissionlessFlagCannotBeForgedUpward() public {
+  /// @dev A caller-bound signature cannot be upgraded into a anyRelayer one by the submitter
+  function test_anyRelayerFlagCannotBeForgedUpward() public {
     _fundOwner(tokenA, 10 ether);
 
     ISignatureTransfer.PermitBatchTransferFrom memory permit =
@@ -820,7 +820,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     address[] memory targets = [address(routerA)].toMemoryArray();
     GenericCall[] memory calls = _genericCallArray(_genericCall(address(routerA), 0, hex'f3'));
 
-    // Bound to `relayer`, so the permissionless digest is one the owner never signed
+    // Bound to `relayer`, so the anyRelayer digest is one the owner never signed
     bytes memory signature =
       _signRelayerWitness(permit, relayer, targets, _noErc721Transfers(), calls);
 
@@ -843,8 +843,8 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     assertEq(permit2.nonceBitmap(owner, 0), 1, 'exactly one nonce bit consumed');
   }
 
-  /// @dev A permissionless signature is equally unusable with the flag dropped
-  function test_permissionlessFlagCannotBeDropped() public {
+  /// @dev A anyRelayer signature is equally unusable with the flag dropped
+  function test_anyRelayerFlagCannotBeDropped() public {
     _fundOwner(tokenA, 10 ether);
 
     ISignatureTransfer.PermitBatchTransferFrom memory permit =
@@ -874,8 +874,8 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     assertEq(permit2.nonceBitmap(owner, 0), 1, 'exactly one nonce bit consumed');
   }
 
-  /// @dev Permissionless relay stays safe because the witness still pins the whole payload
-  function test_permissionlessStillBindsTargetsErc721AndGenericCalls() public {
+  /// @dev AnyRelayer relay stays safe because the witness still pins the whole payload
+  function test_anyRelayerStillBindsTargetsErc721AndGenericCalls() public {
     _fundOwner(tokenA, 10 ether);
     nft.mint(owner, 1);
     nft.mint(owner, 2);
@@ -954,9 +954,9 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
 
   /**
    * @dev `owner == msg.sender` decides the branch on its own: the owner's transaction already pins
-   * everything, so no witness is used and `permissionless` is ignored either way.
+   * everything, so no witness is used and `anyRelayer` is ignored either way.
    */
-  function test_ownerAsCallerTakesThePlainPathAndIgnoresPermissionless() public {
+  function test_ownerAsCallerTakesThePlainPathAndIgnoresAnyRelayer() public {
     _fundOwner(tokenA, 10 ether);
 
     address[] memory targets = [address(routerA)].toMemoryArray();
@@ -998,7 +998,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
       third, targets, _noErc721Params(), calls, owner, true, witnessSignature
     );
 
-    // That same permissionless signature is still good when somebody else relays it.
+    // That same anyRelayer signature is still good when somebody else relays it.
     vm.prank(outsider);
     hub.permit2TransferAndExecute(
       third, targets, _noErc721Params(), calls, owner, true, witnessSignature
@@ -1008,7 +1008,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
   }
 
   /// @dev Being submittable by ANY_ADDRESS does not make it submittable twice
-  function test_permissionlessSubmissionIsNotReplayable() public {
+  function test_anyRelayerSubmissionIsNotReplayable() public {
     _fundOwner(tokenA, 10 ether);
 
     uint256 nonce = 300; // spans a non-zero word position of the nonce bitmap
@@ -1034,7 +1034,7 @@ contract KSAllowanceHubV2Permit2TransferAndExecuteTest is KSAllowanceHubV2Base {
     assertEq(tokenA.balanceOf(address(routerA)), 2 ether, 'the first submission went through');
     assertEq(permit2.nonceBitmap(owner, wordPos), bit, 'exactly one nonce bit consumed');
 
-    // A second, unrelated caller cannot ride the same permissionless signature
+    // A second, unrelated caller cannot ride the same anyRelayer signature
     vm.expectRevert(Permit2Mock.InvalidNonce.selector);
     vm.prank(secondSubmitter);
     hub.permit2TransferAndExecute(permit, targets, _noErc721Params(), calls, owner, true, signature);
