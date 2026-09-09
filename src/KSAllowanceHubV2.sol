@@ -395,9 +395,12 @@ contract KSAllowanceHubV2 is
     uint256 deadline,
     bytes calldata callsSignature
   ) internal view returns (address) {
-    return callsSignature.length == 0
-      ? ANY_ADDRESS
-      : ECDSA.recover(keccak256(abi.encode(block.chainid, genericCalls, deadline)), callsSignature);
+    if (callsSignature.length == 0) {
+      return ANY_ADDRESS;
+    }
+
+    bytes32 digest = keccak256(abi.encode(block.chainid, genericCalls, deadline));
+    return ECDSA.recover(digest, callsSignature);
   }
 
   /**
