@@ -6,14 +6,16 @@ import {ERC20Transfer} from '../types/ERC20Transfer.sol';
 import {ERC721Params} from '../types/ERC721Params.sol';
 import {ERC721Transfer} from '../types/ERC721Transfer.sol';
 import {GenericCall} from '../types/GenericCall.sol';
+import {NativeTransfer} from '../types/NativeTransfer.sol';
+import {ValidationParams} from '../types/ValidationParams.sol';
 
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 
 /**
- * @title IKSAllowanceHub
- * @notice Interface for the KS Allowance Hub
+ * @title IKSAllowanceHubV2
+ * @notice Interface for the KS Allowance Hub V2
  */
-interface IKSAllowanceHub {
+interface IKSAllowanceHubV2 {
   /// @notice Thrown when a call spends more native token than the `msg.value` it was sent with
   error NativeTokenOverspent();
 
@@ -27,14 +29,30 @@ interface IKSAllowanceHub {
    * @param msgValue The native token amount sent along with the call
    * @param erc20Transfers The ERC20 transfers performed on behalf of `owner`
    * @param erc721Transfers The ERC721 transfers performed on behalf of `owner`
+   * @param nativeTransfers The native token amounts forwarded to each generic call
    */
   event TransferTokens(
     address indexed caller,
     address indexed owner,
     uint256 msgValue,
     ERC20Transfer[] erc20Transfers,
-    ERC721Transfer[] erc721Transfers
+    ERC721Transfer[] erc721Transfers,
+    NativeTransfer[] nativeTransfers
   );
+
+  /**
+   * @notice Relays ERC20 permits that approve Permit2 on the signers' behalf
+   * @dev Batch with the flow itself through `multicall` to spare the owner a transaction. A
+   * reverting permit is skipped, since another submitter may already have applied it.
+   * @param tokens The tokens to permit, index-aligned with `permitData`
+   * @param owner The address whose permits these are
+   * @param permitData EIP-2612 (5 words) or DAI-style (6 words) permit payloads
+   */
+  function permitTokensToPermit2(
+    address[] calldata tokens,
+    address owner,
+    bytes[] calldata permitData
+  ) external;
 
   /**
    * @notice Permits and transfers ERC20 and ERC721 tokens from `msg.sender`, then executes the
@@ -56,15 +74,18 @@ interface IKSAllowanceHub {
   /**
    * @notice Transfers ERC20 tokens from `owner` via Permit2, permits and transfers ERC721 tokens,
    * then executes the generic calls on behalf of `owner`
-   * @dev When `msg.sender` is not `owner`, the signature must additionally cover a `RelayerWitness`
-   * that pins the relayer, the ERC20 targets, the ERC721 transfers and the generic calls, so a
-   * relayer cannot deviate from what the owner signed.
+   * @dev When the owner is the caller its own transaction pins everything, so no witness is used
+   * and `anyRelayer` is ignored. Otherwise the signature must also cover a `RelayerWitness`
+   * pinning the submitter, the ERC20 targets, the ERC721 transfers and the generic calls; setting
+   * `anyRelayer` names `ANY_ADDRESS` there so anyone may relay a batch that stays fully pinned.
    * @param permit The Permit2 batch permit covering the ERC20 tokens to transfer
    * @param targets The addresses to transfer each permitted ERC20 token to, index-aligned with
    * `permit.permitted`
    * @param erc721Params The ERC721 tokens to permit and transfer
    * @param genericCalls The generic calls to execute
    * @param owner The owner of the tokens
+   * @param anyRelayer Whether the witness names `ANY_ADDRESS` rather than a specific relayer,
+   * ignored when the owner is the caller
    * @param signature The owner's Permit2 signature
    * @return results The return data of each generic call, in the same order
    * @return gasUsed The gas consumed by the body of the call
@@ -75,7 +96,43 @@ interface IKSAllowanceHub {
     ERC721Params[] calldata erc721Params,
     GenericCall[] calldata genericCalls,
     address owner,
+    bool anyRelayer,
     bytes calldata signature
+  ) external payable returns (bytes[] memory results, uint256 gasUsed);
+
+  /**
+   * @notice Transfers the owner's tokens to a solver via Permit2, then lets the solver fulfill
+   * the intent with generic calls whose outcome is enforced by the signed validators
+   * @dev Unlike `permit2TransferAndExecute`, the `SolverWitness` does NOT cover `genericCalls`: the
+   * owner signs the funding and the acceptance criteria, and the solver chooses the path.
+   * @dev The witness pins the solver and the calls signer, both of which the owner may set to
+   * `ANY_ADDRESS` to leave open. Leaving both open, with no `validationParams`, lets any caller
+   * take the funding and do as it likes.
+   * @param permit The Permit2 batch permit covering the ERC20 tokens to transfer
+   * @param targets The addresses to transfer each permitted ERC20 token to, index-aligned with
+   * `permit.permitted`
+   * @param erc721Params The ERC721 tokens to permit and transfer
+   * @param validationParams The validators enforcing the intent's outcome
+   * @param owner The owner of the tokens
+   * @param anySolver Whether the witness names `ANY_ADDRESS` rather than a specific solver
+   * @param ownerSignature The owner's Permit2 signature over the `SolverWitness`
+   * @param genericCalls The generic calls the solver uses to fulfill the intent
+   * @param callsSignature A signature over
+   * `keccak256(abi.encode(block.chainid, genericCalls, permit.deadline))`, or empty to leave the
+   * call list open. The recovered signer must match the witness
+   * @return results The return data of each generic call, in the same order
+   * @return gasUsed The gas consumed by the body of the call
+   */
+  function permit2TransferAndFulfill(
+    ISignatureTransfer.PermitBatchTransferFrom calldata permit,
+    address[] calldata targets,
+    ERC721Params[] calldata erc721Params,
+    ValidationParams[] calldata validationParams,
+    address owner,
+    bool anySolver,
+    bytes calldata ownerSignature,
+    GenericCall[] calldata genericCalls,
+    bytes calldata callsSignature
   ) external payable returns (bytes[] memory results, uint256 gasUsed);
 
   /// @notice Returns the address of the Permit2 contract

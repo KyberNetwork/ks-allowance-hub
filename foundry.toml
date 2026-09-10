@@ -10,6 +10,11 @@ ffi = true
 [fuzz]
 runs = 32
 
+# Local deep-fuzz profile. Inherits everything from `default` and only raises the fuzz budget, so
+# it exercises the same build as CI. Run with `FOUNDRY_PROFILE=deep forge test`.
+[profile.deep.fuzz]
+runs = 10_000
+
 [fmt]
 line_length = 100
 tab_width = 2

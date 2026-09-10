@@ -33,6 +33,10 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
+          # lib/ks-action-validator-sc is a private repo, so the default GITHUB_TOKEN cannot
+          # clone it. The PAT is used for the submodule fetch and dropped afterwards, since
+          # persist-credentials stays false.
+          token: ${{ secrets.GH_PAT }}
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1

@@ -22,8 +22,14 @@ import {KSRoles} from 'ks-common-sc/src/libraries/KSRoles.sol';
 
 import {TransientSlot} from 'openzeppelin-contracts/contracts/utils/TransientSlot.sol';
 
-/// @title KSAllowanceHub
-/// @notice Separates tokens approval from execution
+/**
+ * @title KSAllowanceHub
+ * @notice Separates token approval from execution
+ * @dev Users grant their allowance to this hub (or to Permit2) once, instead of to every router
+ * they interact with. Each entrypoint pulls the tokens directly to the routers that will consume
+ * them, then calls those routers. The hub holds no balance between calls and is not meant to be an
+ * allowance target for anything but the flows below.
+ */
 contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescuable {
   using ERC20TransferLibrary for *;
   using ERC721TransferLibrary for *;
@@ -32,12 +38,19 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
   /// @inheritdoc IKSAllowanceHub
   ISignatureTransfer public immutable PERMIT2;
 
-  /// @notice The slot holding the address of the tokens owner, transiently.
+  /// @dev The transient slot holding the owner of the tokens spent by the in-flight call
   bytes32 internal constant TOKENS_OWNER_SLOT = bytes32(uint256(keccak256('TokensOwner')) - 1);
 
-  /// @notice The role for whitelisted routers
+  /// @dev The role held by the routers the hub is allowed to call
   bytes32 internal constant WHITELIST_ROUTER_ROLE = keccak256('WHITELIST_ROUTER_ROLE');
 
+  /**
+   * @param initialAdmin The default admin, able to manage every role
+   * @param initialGuardians The accounts able to pause the hub
+   * @param initialRescuers The accounts able to rescue tokens stuck in the hub
+   * @param initialWhitelistedRouters The routers the hub is allowed to call
+   * @param permit2 The address of the Permit2 contract
+   */
   constructor(
     address initialAdmin,
     address[] memory initialGuardians,
@@ -51,10 +64,17 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
   {
     PERMIT2 = ISignatureTransfer(permit2);
     _batchGrantRole(WHITELIST_ROUTER_ROLE, initialWhitelistedRouters);
+    // Lets guardians drop a router from the whitelist without going through the admin
     _setRoleRevoker(WHITELIST_ROUTER_ROLE, KSRoles.GUARDIAN_ROLE);
   }
 
-  /// @dev Ensures the native tokens are not overspent
+  /**
+   * @dev Ensures the call does not spend more native token than it was sent with.
+   * `nativeBalanceBefore` is read after `msg.value` has already been credited to the hub, so
+   * adding `msg.value` back on the right-hand side reduces the check to
+   * `balanceAfter >= balanceBeforeTheCall`: the call may spend its own `msg.value` in full, but
+   * never any native token the hub was already holding.
+   */
   modifier notOverspentNative() {
     uint256 nativeBalanceBefore = address(this).balance;
     _;
@@ -63,7 +83,12 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
     }
   }
 
-  /// @dev Locks the function for further calls, and sets the tokens owner
+  /**
+   * @dev Publishes the token owner for the duration of the call so routers can read it back via
+   * `msgSender()`, and doubles as the reentrancy guard: a non-zero slot means an entrypoint is
+   * already in flight.
+   * @param owner The owner of the tokens spent by the call
+   */
   modifier lock(address owner) {
     TransientSlot.AddressSlot tokensOwner = TOKENS_OWNER_SLOT.asAddress();
     if (tokensOwner.tload() != address(0)) {
@@ -94,23 +119,23 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
   {
     uint256 gasStart = gasleft();
 
-    /// @dev Permits and transfers the ERC20 tokens
+    // Permits and transfers the ERC20 tokens, which are always pulled from `msg.sender`
     for (uint256 i = 0; i < erc20Params.length; i++) {
       erc20Params[i].permitTransfer();
     }
 
-    /// @dev Permits and transfers the ERC721 tokens
+    // Permits and transfers the ERC721 tokens
     for (uint256 i = 0; i < erc721Params.length; i++) {
       erc721Params[i].permitTransfer(msg.sender);
     }
 
-    /// @dev Emits the event
+    // Reports the movements before executing, so the event reflects the funded state
     emit TransferTokens(
       msg.sender, msg.sender, msg.value, erc20Params.toTransfers(), erc721Params.toTransfers()
     );
 
-    /// @dev Executes the generic calls
     results = _executeGenericCalls(genericCalls);
+    // `gasleft()` only decreases within a call, so the subtraction cannot underflow
     unchecked {
       gasUsed = gasStart - gasleft();
     }
@@ -135,7 +160,7 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
   {
     uint256 gasStart = gasleft();
 
-    /// @dev Prepares the transfer details
+    // Pairs each permitted token with its target, requesting the full permitted amount
     ISignatureTransfer.SignatureTransferDetails[] memory transferDetails =
       new ISignatureTransfer.SignatureTransferDetails[](targets.length);
 
@@ -144,15 +169,17 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
       transferDetails[i].requestedAmount = permit.permitted[i].amount;
     }
 
-    /// @dev Prepares the transfers data for signature verification and event emission
+    // Built once, then reused for both the witness and the event
     ERC20Transfer[] memory erc20Transfers = permit.permitted.toTransfers(targets);
     ERC721Transfer[] memory erc721Transfers = erc721Params.toTransfers();
 
-    /// @dev Transfers the ERC20 tokens using Permit2
     if (owner == msg.sender) {
+      // The owner is the caller, so the permit alone already pins everything that follows to the
+      // owner's own transaction and no witness is needed.
       PERMIT2.permitTransferFrom(permit, transferDetails, owner, signature);
     } else {
-      /// @dev Prepares the witness
+      // A relayer is spending the owner's tokens, so the signature must additionally commit to
+      // the relayer's identity and to the exact execution it is allowed to perform.
       bytes32 witness =
         RelayerWitnessLibrary.hash(msg.sender, targets, erc721Transfers, genericCalls);
       PERMIT2.permitWitnessTransferFrom(
@@ -165,27 +192,33 @@ contract KSAllowanceHub is IKSAllowanceHub, ManagementPausable, ManagementRescua
       );
     }
 
-    /// @dev Permits and transfers the ERC721 tokens
+    // Permits and transfers the ERC721 tokens, pulled from the owner rather than the caller
     for (uint256 i = 0; i < erc721Params.length; i++) {
       erc721Params[i].permitTransfer(owner);
     }
 
-    /// @dev Emits the event
+    // Reports the movements before executing, so the event reflects the funded state
     emit TransferTokens(msg.sender, owner, msg.value, erc20Transfers, erc721Transfers);
 
-    /// @dev Executes the generic calls
     results = _executeGenericCalls(genericCalls);
+    // `gasleft()` only decreases within a call, so the subtraction cannot underflow
     unchecked {
       gasUsed = gasStart - gasleft();
     }
   }
 
+  /**
+   * @dev Executes the generic calls in order, forwarding each one its own native value
+   * @param genericCalls The generic calls to execute
+   * @return results The return data of each generic call, in the same order
+   */
   function _executeGenericCalls(GenericCall[] calldata genericCalls)
     internal
     returns (bytes[] memory results)
   {
     results = new bytes[](genericCalls.length);
     for (uint256 i = 0; i < genericCalls.length; i++) {
+      // The whitelist is what keeps the hub's allowances out of reach of arbitrary callees
       _checkRole(WHITELIST_ROUTER_ROLE, genericCalls[i].router);
       results[i] = genericCalls[i].execute();
     }
