@@ -404,13 +404,13 @@ contract KSAllowanceHubV2 is
   }
 
   /**
-   * @dev The submitter a witness commits to. The flag needs no signature of its own: it only picks
+   * @dev The caller a witness commits to. The flag needs no signature of its own: it only picks
    * which digest to rebuild, and the wrong pick fails verification.
-   * @param anySubmitter Whether the owner signed for submission by anyone
-   * @return `ANY_ADDRESS` if anySubmitter, otherwise `msg.sender`
+   * @param anyCaller Whether the owner signed for anyone rather than a named caller
+   * @return `ANY_ADDRESS` if open to anyone, otherwise `msg.sender`
    */
-  function _witnessCaller(bool anySubmitter) internal view returns (address) {
-    return anySubmitter ? ANY_ADDRESS : msg.sender;
+  function _witnessCaller(bool anyCaller) internal view returns (address) {
+    return anyCaller ? ANY_ADDRESS : msg.sender;
   }
 
   /**
