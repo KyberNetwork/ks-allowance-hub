@@ -14,14 +14,14 @@ import {
 
 /**
  * @title PermitTokenMocks
- * @notice Tokens for the {PermitForwarder} branches. Each `permit` here recovers a real EIP-712
- * signature over its arguments in a fixed order, so a forwarder that decoded the payload words in
- * the wrong order would recover a different signer and fail rather than quietly pass.
+ * @notice Tokens for the permits {CallsForwarder} relays. Each `permit` here recovers a real
+ * EIP-712 signature over its arguments in a fixed order, so a call assembled with its arguments
+ * in the wrong order would recover a different signer and fail rather than quietly pass.
  * @dev The type strings below are transcribed from EIP-2612 and the ERC-721 permit drafts; the
  * tests sign against their own copies, never against these.
  */
 
-/// @notice EIP-2612 token, six payload words
+/// @notice EIP-2612 token, the plainest of the permits the forwarder relays
 contract ERC20PermitMock is ERC20, ERC20Permit {
   constructor(string memory name) ERC20(name, 'PT') ERC20Permit(name) {}
 
@@ -103,6 +103,40 @@ contract ERC721PermitV4Mock is ERC721, EIP712 {
     );
 
     _approve(spender, tokenId, address(0));
+  }
+}
+
+/**
+ * @notice A "token" whose EIP-2612 `permit` calls back into the hub before it returns
+ * @dev {CallsForwarder-forward} takes no reentrancy lock, so a relayed permit is free to start an
+ * order while the batch that relayed it is still running. That is deliberate — the forwarder moves
+ * no assets of its own and every payload it relays authorises itself — and this mock is what makes
+ * it observable. The permit arguments are ignored on purpose: the subject is the callback, not a
+ * signature check, and a real token doing this would be the hostile case anyway.
+ */
+contract ReentrantPermitMock {
+  address public immutable HUB;
+
+  bytes public reentryCalldata;
+  uint256 public permitCount;
+
+  constructor(address hub) {
+    HUB = hub;
+  }
+
+  function setReentry(bytes calldata data) external {
+    reentryCalldata = data;
+  }
+
+  function permit(address, address, uint256, uint256, uint8, bytes32, bytes32) external {
+    permitCount++;
+
+    (bool ok, bytes memory ret) = HUB.call(reentryCalldata);
+    if (!ok) {
+      assembly ('memory-safe') {
+        revert(add(ret, 0x20), mload(ret))
+      }
+    }
   }
 }
 

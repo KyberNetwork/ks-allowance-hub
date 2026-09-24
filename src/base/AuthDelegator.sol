@@ -53,30 +53,10 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
     }
 
     // Forwarded only when delegating, so a verifier that reverts cannot trap the owner in a
-    // delegation. Empty signature: the owner is either the caller or was checked just above
-    if (delegated) {
-      IAuthVerifier(verifier).updateAuth(owner, data, 0, deadline, '');
+    // delegation. It takes no signature, so the owner must have been authenticated by here
+    if (delegated && data.length > 0) {
+      IAuthVerifier(verifier).initAuth(owner, data);
     }
     authDelegated[owner][verifier] = delegated;
-  }
-
-  /// @inheritdoc IAuthDelegator
-  function updateAuth(
-    address owner,
-    address verifier,
-    bytes calldata data,
-    uint256 nonce,
-    uint256 deadline,
-    bytes calldata signature
-  ) external payable checkDeadline(deadline) {
-    if (!authDelegated[owner][verifier]) {
-      revert NotDelegatedVerifier();
-    }
-
-    // Keeps "empty signature means already authenticated" true on this path as well
-    if (msg.sender != owner && signature.length == 0) {
-      revert InvalidDelegationSignature();
-    }
-    IAuthVerifier(verifier).updateAuth(owner, data, nonce, deadline, signature);
   }
 }

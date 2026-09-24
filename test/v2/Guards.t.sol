@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.36;
 
-import {HubBase} from 'test/v2/base/HubBase.sol';
+import {VerifierBase} from 'test/verifiers/base/VerifierBase.sol';
 
 import {RouterMock} from 'test/v2/mocks/RouterMock.sol';
 
 import {NativeSpendGuard} from 'src/base/NativeSpendGuard.sol';
 import {IAuthVerifier} from 'src/base/interfaces/IAuthVerifier.sol';
-import {IPermitForwarder} from 'src/base/interfaces/IPermitForwarder.sol';
+import {ICallsForwarder} from 'src/base/interfaces/ICallsForwarder.sol';
 import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
+import {PackedBits} from 'src/base/types/PackedBits.sol';
 
 import {DeadlineChecker} from 'src/base/DeadlineChecker.sol';
 
@@ -18,21 +19,35 @@ import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
 import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
-import {SessionAuthVerifier} from 'src/verifiers/SessionAuthVerifier.sol';
 import {ISessionAuthVerifier} from 'src/verifiers/interfaces/ISessionAuthVerifier.sol';
-import {KeyType} from 'src/verifiers/types/KeyType.sol';
 import {SessionKey} from 'src/verifiers/types/SessionKey.sol';
 
 import {IManagementBase} from 'ks-common-sc/src/interfaces/IManagementBase.sol';
 
 import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
+import {
+  IERC20Permit
+} from 'openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol';
 import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
 
-/// @notice Verifier that only records, so `updateDelegation` / `updateAuth` can be exercised alone.
+/**
+ * @notice Verifier that only records, so `updateDelegation` can be exercised alone.
+ * @dev One counter per entry point. A single counter shared between `initAuth` and `updateAuth`
+ * could not say which of the two a delegation reached, so an assertion on it would hold either
+ * way and prove nothing.
+ */
 contract AuthVerifierMock is IAuthVerifier {
+  bytes public lastInitData;
+  uint256 public initCount;
+
   bytes public lastUpdateData;
   uint256 public updateCount;
+
+  function initAuth(address, bytes calldata data) external {
+    lastInitData = data;
+    initCount++;
+  }
 
   function updateAuth(address, bytes calldata data, uint256, uint256, bytes calldata) external {
     lastUpdateData = data;
@@ -44,7 +59,7 @@ contract AuthVerifierMock is IAuthVerifier {
 }
 
 /**
- * @notice GUARD-01..08 and MC-01..05 / MC-FUZZ — pause, deadline, native spend and batching.
+ * @notice GUARD-01..06 and MC-01..05 / MC-FUZZ — pause, deadline, native spend and batching.
  * @dev Role identifiers are written out rather than imported, so a changed production constant
  * cannot quietly agree with the expectation.
  *
@@ -54,8 +69,11 @@ contract AuthVerifierMock is IAuthVerifier {
  * over-spend leg therefore needs the hub to hold native of its own beforehand, or there is
  * nothing left to over-spend.
  */
-contract GuardsTest is HubBase {
+contract GuardsTest is VerifierBase {
   uint160 internal constant AMOUNT = 1 ether;
+
+  /// @dev Transcribed from {IAuthVerifier}: the allowlist entry MC-06 relays
+  string internal constant S_UPDATE_AUTH = 'updateAuth(address,bytes,uint256,uint256,bytes)';
 
   bytes32 internal constant GUARDIAN = keccak256('GUARDIAN_ROLE');
   bytes32 internal constant DEFAULT_ADMIN = bytes32(0);
@@ -133,7 +151,9 @@ contract GuardsTest is HubBase {
     hub.updateDelegation(owner, address(mockVerifier), true, hex'1234', 0, block.timestamp, '');
 
     assertTrue(hub.authDelegated(owner, address(mockVerifier)), 'delegation still works');
-    assertEq(mockVerifier.updateCount(), 1, 'and reached the verifier');
+    assertEq(mockVerifier.initCount(), 1, 'and reached the verifier');
+    assertEq(mockVerifier.lastInitData(), hex'1234', 'carrying the payload the owner gave');
+    assertEq(mockVerifier.updateCount(), 0, 'over the init path, not the update one');
     assertTrue(hub.paused(), 'the hub is still paused');
   }
 
@@ -229,48 +249,6 @@ contract GuardsTest is HubBase {
   }
 
   // -----------------------------------------------------------------------------------------
-  // GUARD — deadline on the delegation surfaces
-  // -----------------------------------------------------------------------------------------
-
-  /// GUARD-08 — `updateAuth` and a verifier's `verifyAuth` enforce the same deadline rule
-  function test_GUARD_08_deadlineOnUpdateAuthAndVerifyAuth() public {
-    AuthVerifierMock mockVerifier = new AuthVerifierMock();
-
-    // The modifier runs before the delegation check, so an expired call never reaches the body
-    vm.prank(owner);
-    vm.expectRevert(DeadlineChecker.DeadlinePassed.selector);
-    hub.updateAuth(owner, address(mockVerifier), hex'01', 0, block.timestamp - 1, '');
-    assertFalse(hub.authDelegated(owner, address(mockVerifier)), 'nothing was delegated');
-
-    vm.prank(owner);
-    hub.updateDelegation(owner, address(mockVerifier), true, hex'01', 0, block.timestamp, '');
-
-    vm.prank(owner);
-    hub.updateAuth(owner, address(mockVerifier), hex'02', 0, block.timestamp, '');
-    assertEq(mockVerifier.lastUpdateData(), hex'02', 'the deadline block itself is accepted');
-    assertEq(mockVerifier.updateCount(), 2, 'delegation plus the update');
-
-    // The verifier's own gate: stand in as its allowance hub so `onlyAllowanceHub` is satisfied
-    SessionAuthVerifier standalone = new SessionAuthVerifier(address(this));
-    SessionKey memory key = SessionKey({
-      publicKey: abi.encode(relayer),
-      keyType: KeyType.Secp256k1,
-      expiration: block.timestamp + 1 days
-    });
-    bytes memory encodedKey = abi.encode(key);
-    bytes memory payload = abi.encodePacked(abi.encode(address(0)), false);
-
-    vm.expectRevert(DeadlineChecker.DeadlinePassed.selector);
-    standalone.verifyAuth(owner, payload, 1, block.timestamp - 1, encodedKey, '');
-
-    // One second later the deadline is satisfied and the next gate is what refuses
-    vm.expectRevert(ISessionAuthVerifier.SessionKeyNotDelegated.selector);
-    standalone.verifyAuth(owner, payload, 1, block.timestamp, encodedKey, '');
-
-    assertEq(standalone.nonces(owner, 0), 0, 'neither attempt burned a nonce');
-  }
-
-  // -----------------------------------------------------------------------------------------
   // MC — the batching surface
   // -----------------------------------------------------------------------------------------
 
@@ -282,13 +260,14 @@ contract GuardsTest is HubBase {
     address[] memory tokens = new address[](1);
     tokens[0] = USDC;
     bytes[] memory permits = new bytes[](1);
-    permits[0] = _usdcPermitData(address(hub), permitValue, deadline);
+    permits[0] = _usdcPermitCall(address(hub), permitValue, deadline);
 
     ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
     GenericCall[] memory calls = _calls(_routerCall(0.5 ether, hex'01'));
 
     bytes[] memory batch = new bytes[](2);
-    batch[0] = abi.encodeCall(IPermitForwarder.erc20Permit, (owner, tokens, permits));
+    batch[0] =
+      abi.encodeCall(ICallsForwarder.forward, (tokens, permits, PackedBits.wrap(bytes32(0))));
     batch[1] = abi.encodeCall(
       IKSAllowanceHubV2.transferAndExecute,
       (owner, erc20s, new ERC721Transfer[](0), calls, deadline, _flags(false, false, false), '')
@@ -412,6 +391,95 @@ contract GuardsTest is HubBase {
     assertFalse(ok, 'there is nothing to receive it');
     assertEq(address(hub).balance, 0, 'the hub holds nothing');
     assertEq(owner.balance, 1, 'and the wei stayed with the sender');
+  }
+
+  /**
+   * MC-06 — one batch approves a session key at a verifier and then spends on it
+   * @dev The capability the refactor exists for, end to end. The relayer submits both halves and
+   * signs neither: `forward` relays the owner's `updateAuth` — the verifier sees the hub as
+   * `msg.sender`, so the owner's own approval signature is what authorises it — and the order in
+   * the next slot settles on the key that call has just approved, over the verifier rail, with
+   * the session key signing rather than the wallet. Nothing outside the batch approves the key,
+   * which the pre-state assertion fixes; the delegation put in place beforehand carries no key of
+   * its own, so the hub's gate is open while the verifier still knows nothing.
+   */
+  function test_MC_06_approveASessionKeyAndSpendOnItInOneBatch() public {
+    SessionKey memory key = _secpKey(sessionSigner, block.timestamp + 30 days);
+    bytes32 keyHash = _keyHash(key);
+
+    uint256 deadline = block.timestamp + 1 hours;
+    uint256 approvalNonce = 70;
+    uint256 orderNonce = 71;
+
+    vm.prank(owner);
+    hub.updateDelegation(owner, address(verifier), true, '', 0, deadline, '');
+    assertFalse(verifier.approvedKeys(owner, keyHash), 'the verifier holds no key yet');
+
+    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
+
+    bytes memory approvalSig = _signSessionApproval(key, true, approvalNonce, deadline);
+    bytes memory orderSig = _sign(
+      sessionKeyPk,
+      lTypedDataHash(
+        _verifierDomain(),
+        lExecutionApproval(ANY, erc20s, new ERC721Transfer[](0), calls, orderNonce, deadline)
+      )
+    );
+
+    address[] memory targets = new address[](1);
+    targets[0] = address(verifier);
+
+    bytes[] memory relayed = new bytes[](1);
+    relayed[0] = abi.encodeWithSignature(
+      S_UPDATE_AUTH, owner, _approveKey(key), approvalNonce, deadline, approvalSig
+    );
+
+    bytes[] memory batch = new bytes[](2);
+    batch[0] =
+      abi.encodeCall(ICallsForwarder.forward, (targets, relayed, PackedBits.wrap(bytes32(0))));
+    batch[1] = abi.encodeCall(
+      IKSAllowanceHubV2.transferAndExecute,
+      (
+        owner,
+        erc20s,
+        new ERC721Transfer[](0),
+        calls,
+        deadline,
+        _flags(false, false, false),
+        _verifierAuthData(address(verifier), orderNonce, _encodeKey(key), orderSig)
+      )
+    );
+
+    // the second half on its own is refused, so the batch below is evidence that the first half
+    // did the approving rather than that the order never needed one
+    bytes[] memory orderOnly = new bytes[](1);
+    orderOnly[0] = batch[1];
+
+    vm.prank(relayer);
+    vm.expectRevert(ISessionAuthVerifier.SessionKeyNotDelegated.selector);
+    hub.multicall(orderOnly);
+
+    uint256 routerWethBefore = IERC20(WETH).balanceOf(address(router));
+
+    vm.prank(relayer);
+    bytes[] memory results = hub.multicall(batch);
+
+    assertEq(results.length, 2, 'one result per sub-call');
+    assertTrue(verifier.approvedKeys(owner, keyHash), 'the batch approved the key');
+    assertEq(
+      IERC20(WETH).balanceOf(address(router)) - routerWethBefore,
+      AMOUNT,
+      'and the order spent on it in the same transaction'
+    );
+    assertEq(router.callCount(), 1, 'the router leg ran once');
+    assertEq(router.seenMsgSender(), owner, 'for the owner, not for the relayer who submitted');
+    assertEq(
+      verifier.nonces(owner, 0),
+      (1 << approvalNonce) | (1 << orderNonce),
+      'one verifier nonce for the approval and one for the order'
+    );
+    assertEq(hub.nonces(owner, 0), 0, 'and the hub burned none of its own');
   }
 
   struct BatchFuzz {
@@ -572,8 +640,8 @@ contract GuardsTest is HubBase {
     }
   }
 
-  /// @dev EIP-2612 blob for {PermitForwarder-erc20Permit}: six words, built from the literal above
-  function _usdcPermitData(address spender, uint256 value, uint256 deadline)
+  /// @dev A whole EIP-2612 `permit` call for {ICallsForwarder-forward} to relay to USDC
+  function _usdcPermitCall(address spender, uint256 value, uint256 deadline)
     internal
     returns (bytes memory)
   {
@@ -583,7 +651,7 @@ contract GuardsTest is HubBase {
     (uint8 v, bytes32 r, bytes32 s) =
       vm.sign(ownerKey, lTypedDataHash(_usdcDomainSeparator(), structHash));
 
-    return abi.encode(spender, value, deadline, uint256(v), r, s);
+    return abi.encodeCall(IERC20Permit.permit, (owner, spender, value, deadline, v, r, s));
   }
 
   /// @dev Read off the deployed token, which is an external dependency rather than code under test

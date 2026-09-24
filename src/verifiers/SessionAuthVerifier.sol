@@ -55,6 +55,19 @@ contract SessionAuthVerifier is
 
   /**
    * @inheritdoc IAuthVerifier
+   * @dev `data` is `abi.encode(SessionKey key)`; approving is the only direction on this path
+   */
+  function initAuth(address owner, bytes calldata data) external onlyAllowanceHub {
+    SessionKey calldata key;
+    assembly ('memory-safe') {
+      key := add(data.offset, calldataload(data.offset))
+    }
+
+    approvedKeys[owner][key.hash()] = true;
+  }
+
+  /**
+   * @inheritdoc IAuthVerifier
    * @dev `data` is `abi.encode(SessionKey key, bool approved)`: word 0 points at the key, word 1
    * says whether to approve or revoke it
    */
@@ -77,9 +90,9 @@ contract SessionAuthVerifier is
     // written a canonical bool, nor on the compiler cleaning one that assembly produced
     bool approved = data.decodeUint256(1) != 0;
 
-    // An empty signature is trusted only from someone already authenticated: the owner
-    // themselves, or the hub, which never forwards one until it has authenticated them
-    if ((msg.sender != owner && msg.sender != ALLOWANCE_HUB) || signature.length != 0) {
+    // Only the owner authenticates themselves by calling; anyone else, the hub included, has to
+    // present a signature, because `forward` relays this from any caller
+    if (msg.sender != owner) {
       _useUnorderedNonce(owner, nonce);
 
       bytes32 digest =
@@ -100,7 +113,7 @@ contract SessionAuthVerifier is
     uint256 deadline,
     bytes calldata key,
     bytes calldata signature
-  ) external onlyAllowanceHub checkDeadline(deadline) {
+  ) external onlyAllowanceHub {
     _useUnorderedNonce(owner, nonce);
 
     // Untrusted pointer, as in updateAuth: every field read below is covered by the key hash

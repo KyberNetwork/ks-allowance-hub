@@ -45,7 +45,7 @@ abstract contract VerifierBase is HubBase {
     return lSessionKeyHash(key.publicKey, uint8(key.keyType), key.expiration);
   }
 
-  /// @dev The `key` argument of `verifyAuth`, which names a credential and carries no direction
+  /// @dev The key alone: the `key` argument of `verifyAuth`, and the payload `initAuth` reads
   function _encodeKey(SessionKey memory key) internal pure returns (bytes memory) {
     return abi.encode(key);
   }
@@ -69,11 +69,11 @@ abstract contract VerifierBase is HubBase {
     return lDomainSeparator('KyberSwap Session Auth Verifier', '1.0.0', address(verifier));
   }
 
-  /// @dev Approves a key through the hub, which is the route that carries no signature
+  /// @dev Approves a key through the hub, which reaches the verifier as `initAuth`
   function _delegateKeyThroughHub(SessionKey memory key) internal {
     vm.prank(owner);
     hub.updateDelegation(
-      owner, address(verifier), true, _approveKey(key), 0, block.timestamp + 1 days, ''
+      owner, address(verifier), true, _encodeKey(key), 0, block.timestamp + 1 days, ''
     );
   }
 

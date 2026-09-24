@@ -7,16 +7,28 @@ interface IAuthVerifier {
   error NotAllowanceHub();
 
   /**
+   * @notice Records the owner's first authorisation material, as the hub delegates this verifier
+   * @dev Carries no signature, nonce or deadline, so an implementation must accept it only from a
+   * hub it trusts: {AuthDelegator-updateDelegation} authenticates the owner before calling, and
+   * this selector is deliberately absent from {ICallsForwarder-forward}'s allowlist, so it cannot
+   * be relayed on anyone's behalf.
+   * @param owner Account the material belongs to
+   * @param data Verifier-specific payload
+   */
+  function initAuth(address owner, bytes calldata data) external;
+
+  /**
    * @notice Records, replaces or withdraws the owner's authorisation material
-   * @dev An empty `signature` is only meaningful from a caller that is already authenticated —
-   * the owner themselves, or an allowance hub that forwards one only after authenticating them —
-   * and lets the verifier accept `data` as-is. A non-empty one must be verified by the
-   * implementation, which also owns replay protection for it.
+   * @dev Anyone may reach this, including through {ICallsForwarder-forward}, which relays it from
+   * any caller and leaves the hub as `msg.sender`. An implementation must therefore treat only
+   * `msg.sender == owner` as authentication and verify `signature` in every other case; reading
+   * "called by the hub" as proof the owner was authenticated would let anyone install material
+   * for anyone. Replay protection belongs to the implementation.
    * @param owner Account the material belongs to
    * @param data Verifier-specific payload
    * @param nonce For the implementation to consume, when it checks the signature
    * @param deadline Last timestamp at which the update is valid
-   * @param signature Owner's authorisation, or empty when the hub already authenticated them
+   * @param signature Owner's authorisation, needed unless the owner is the caller
    */
   function updateAuth(
     address owner,

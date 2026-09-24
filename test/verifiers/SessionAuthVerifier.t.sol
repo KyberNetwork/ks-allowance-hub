@@ -69,8 +69,8 @@ contract SessionAuthVerifierTest is VerifierBase {
 
   /**
    * SV-02 — the owner may approve a key at the verifier directly, with no signature to check
-   * @dev Being `msg.sender` is the authentication here, exactly as it is on the hub's own
-   * `updateAuth`. No nonce is spent, because no signature was presented to replay.
+   * @dev Being `msg.sender` is the authentication here, exactly as it is on the hub's
+   * `updateDelegation`. No nonce is spent, because no signature was presented to replay.
    */
   function test_SV_02_ownerApprovesDirectlyWithoutSignature() public {
     SessionKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
@@ -225,6 +225,65 @@ contract SessionAuthVerifierTest is VerifierBase {
     verifier.updateAuth(owner, data, 36, deadline, sig);
 
     assertTrue(verifier.approvedKeys(owner, _keyHash(fresh)), 'narrowed to true');
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // SV-UPD-01 — what the owner branch of `updateAuth` does with the arguments it does not read
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * SV-UPD-01 — on the owner's own call the signature and the nonce are both ignored
+   * @dev Deliberate, and pinned as-is rather than reported: being `msg.sender` IS the
+   * authentication on this branch, exactly as it is on the hub's `updateDelegation`, so
+   * `updateAuth` never looks at `signature` and never burns `nonce`. Two consequences follow, and
+   * both are asserted below so that a future reader meets them here instead of discovering them
+   * in production. A signature on this path proves nothing — an obviously bogus one is accepted
+   * as readily as a real one, because neither is examined. And the call carries no replay
+   * protection of its own: identical calldata settles again, with effect, as many times as it is
+   * submitted. Neither is exploitable, because no one but the owner can be `msg.sender` here and
+   * an owner replaying their own instruction is just the owner repeating themselves. What would
+   * be a finding is the reverse reading — treating a signature accepted on this path as having
+   * been checked, or expecting the named nonce to have been spent.
+   */
+  function test_SV_UPD_01_ownerBranchIgnoresTheSignatureAndTheNonce() public {
+    SessionKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
+    bytes32 freshHash = _keyHash(fresh);
+    uint256 nonce = 40;
+    uint256 deadline = block.timestamp + 1 days;
+
+    // 65 bytes shaped like an ECDSA signature, over nothing, recovering to nobody in particular
+    bytes memory garbage = abi.encodePacked(bytes32(uint256(1)), bytes32(uint256(2)), uint8(27));
+    bytes memory approve = _approveKey(fresh);
+
+    vm.prank(owner);
+    verifier.updateAuth(owner, approve, nonce, deadline, garbage);
+
+    assertTrue(verifier.approvedKeys(owner, freshHash), 'approved on a signature over nothing');
+    assertEq(verifier.nonces(owner, nonce >> 8), 0, 'and the nonce it named was never burned');
+
+    // the same calldata a second time, byte for byte: it settles again, which is the replay the
+    // untouched bitmap implies
+    vm.prank(owner);
+    verifier.updateAuth(owner, approve, nonce, deadline, garbage);
+    assertTrue(verifier.approvedKeys(owner, freshHash), 'still approved');
+    assertEq(verifier.nonces(owner, nonce >> 8), 0, 'still nothing burned');
+
+    // and with an effect the third time, so "it settles again" is more than an idempotent write:
+    // the state is moved away in between and the identical call moves it back
+    vm.prank(owner);
+    verifier.updateAuth(owner, _revokeKey(fresh), nonce, deadline, garbage);
+    assertFalse(verifier.approvedKeys(owner, freshHash), 'revoked, on the same dead signature');
+
+    vm.prank(owner);
+    verifier.updateAuth(owner, approve, nonce, deadline, garbage);
+    assertTrue(verifier.approvedKeys(owner, freshHash), 'and the very same call approves it again');
+    assertEq(verifier.nonces(owner, nonce >> 8), 0, 'across all four calls, no nonce was spent');
+
+    // the contrast that makes the above about the branch and not about the signature: the same
+    // bogus bytes from anyone else are examined, and rejected
+    vm.prank(relayer);
+    vm.expectRevert(ISessionAuthVerifier.InvalidApprovalSignature.selector);
+    verifier.updateAuth(owner, approve, nonce, deadline, garbage);
   }
 
   // -------------------------------------------------------------------------------------------

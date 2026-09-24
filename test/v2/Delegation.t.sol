@@ -19,15 +19,23 @@ import {SessionKey} from 'src/verifiers/types/SessionKey.sol';
 
 import {ECDSA} from 'openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol';
 
-/// @notice DEL-*, UPD-*, NONCE-*, CALLS-* and VAL-* — delegation, nonces, calls approval, validators.
+/// @notice DEL-*, NONCE-*, CALLS-* and VAL-* — delegation, nonces, calls approval, validators.
 /// @notice Verifier that can be switched to reverting, to show a withdrawal never calls it
 contract RevertingVerifier is IAuthVerifier {
   error Nope();
 
   bool public reverting;
 
+  /// @dev Counts the calls that got through, so a leg can be shown never to have made one
+  uint256 public initCount;
+
   function setReverting(bool value) external {
     reverting = value;
+  }
+
+  function initAuth(address, bytes calldata) external {
+    if (reverting) revert Nope();
+    initCount++;
   }
 
   function updateAuth(address, bytes calldata, uint256, uint256, bytes calldata) external view {
@@ -47,8 +55,10 @@ contract DelegationTest is VerifierBase {
   struct DelegationFuzz {
     uint256 nonce;
     uint256 deadlineOffset;
-    bool selfSubmit;
   }
+
+  /// @dev Transcribed from {IAuthVerifier}, so production cannot vouch for its own signature
+  string internal constant S_INIT_AUTH = 'initAuth(address,bytes)';
 
   SessionKey internal key;
 
@@ -67,7 +77,7 @@ contract DelegationTest is VerifierBase {
 
     vm.prank(owner);
     hub.updateDelegation(
-      owner, address(verifier), true, _approveKey(key), 0, block.timestamp + 1 days, ''
+      owner, address(verifier), true, _encodeKey(key), 0, block.timestamp + 1 days, ''
     );
 
     assertTrue(hub.authDelegated(owner, address(verifier)), 'delegated');
@@ -80,10 +90,10 @@ contract DelegationTest is VerifierBase {
     uint256 nonce = 5;
     uint256 deadline = block.timestamp + 1 days;
     bytes memory sig =
-      _signAuthDelegation(ownerKey, address(verifier), true, _approveKey(key), nonce, deadline);
+      _signAuthDelegation(ownerKey, address(verifier), true, _encodeKey(key), nonce, deadline);
 
     vm.prank(relayer);
-    hub.updateDelegation(owner, address(verifier), true, _approveKey(key), nonce, deadline, sig);
+    hub.updateDelegation(owner, address(verifier), true, _encodeKey(key), nonce, deadline, sig);
 
     assertTrue(hub.authDelegated(owner, address(verifier)));
     assertEq(hub.nonces(owner, nonce >> 8), 1 << (nonce & 0xff), 'exact bit set');
@@ -91,20 +101,20 @@ contract DelegationTest is VerifierBase {
     // NONCE-02 — the same nonce cannot be spent twice
     vm.prank(relayer);
     vm.expectRevert(IUnorderedNonce.NonceAlreadyUsed.selector);
-    hub.updateDelegation(owner, address(verifier), true, _approveKey(key), nonce, deadline, sig);
+    hub.updateDelegation(owner, address(verifier), true, _encodeKey(key), nonce, deadline, sig);
   }
 
   /// DEL-03 — changing any signed field invalidates the delegation
   function test_DEL_03_tamperedDelegationRejected() public {
     uint256 deadline = block.timestamp + 1 days;
     bytes memory sig =
-      _signAuthDelegation(ownerKey, address(verifier), true, _approveKey(key), 1, deadline);
+      _signAuthDelegation(ownerKey, address(verifier), true, _encodeKey(key), 1, deadline);
 
     SessionKey memory otherKey = _secpKey(relayer, block.timestamp + 30 days);
 
     vm.prank(relayer);
     vm.expectRevert(IAuthDelegator.InvalidDelegationSignature.selector);
-    hub.updateDelegation(owner, address(verifier), true, _approveKey(otherKey), 1, deadline, sig);
+    hub.updateDelegation(owner, address(verifier), true, _encodeKey(otherKey), 1, deadline, sig);
   }
 
   /// DEL-04 — a contract owner authorises through ERC-1271
@@ -115,23 +125,23 @@ contract DelegationTest is VerifierBase {
 
     uint256 deadline = block.timestamp + 1 days;
     bytes memory sig =
-      _signAuthDelegation(walletSignerKey, address(verifier), true, _approveKey(key), 2, deadline);
+      _signAuthDelegation(walletSignerKey, address(verifier), true, _encodeKey(key), 2, deadline);
 
     vm.prank(relayer);
     hub.updateDelegation(
-      address(wallet), address(verifier), true, _approveKey(key), 2, deadline, sig
+      address(wallet), address(verifier), true, _encodeKey(key), 2, deadline, sig
     );
     assertTrue(hub.authDelegated(address(wallet), address(verifier)));
 
     // and a wallet that returns the wrong magic value is rejected
     wallet.setReturnWrongMagic(true);
     bytes memory sig2 =
-      _signAuthDelegation(walletSignerKey, address(verifier), true, _approveKey(key), 3, deadline);
+      _signAuthDelegation(walletSignerKey, address(verifier), true, _encodeKey(key), 3, deadline);
 
     vm.prank(relayer);
     vm.expectRevert(IAuthDelegator.InvalidDelegationSignature.selector);
     hub.updateDelegation(
-      address(wallet), address(verifier), true, _approveKey(key), 3, deadline, sig2
+      address(wallet), address(verifier), true, _encodeKey(key), 3, deadline, sig2
     );
   }
 
@@ -139,11 +149,11 @@ contract DelegationTest is VerifierBase {
   function test_DEL_05_expiredDelegation() public {
     uint256 deadline = block.timestamp - 1;
     bytes memory sig =
-      _signAuthDelegation(ownerKey, address(verifier), true, _approveKey(key), 4, deadline);
+      _signAuthDelegation(ownerKey, address(verifier), true, _encodeKey(key), 4, deadline);
 
     vm.prank(relayer);
     vm.expectRevert(DeadlineChecker.DeadlinePassed.selector);
-    hub.updateDelegation(owner, address(verifier), true, _approveKey(key), 4, deadline, sig);
+    hub.updateDelegation(owner, address(verifier), true, _encodeKey(key), 4, deadline, sig);
   }
 
   /**
@@ -160,32 +170,38 @@ contract DelegationTest is VerifierBase {
     assertFalse(hub.authDelegated(owner, address(verifier)));
 
     // the verifier still holds the approval, which is why re-delegating re-arms it; dropping the
-    // key itself is a separate instruction to the verifier, covered by UPD-06 and SV-REV-01
+    // key itself is a separate instruction to the verifier, covered by SV-REV-01
     assertTrue(verifier.approvedKeys(owner, _keyHash(key)));
-
-    // and the hub refuses the verifier's authorisations while it is withdrawn
-    vm.prank(owner);
-    vm.expectRevert(IAuthDelegator.NotDelegatedVerifier.selector);
-    hub.updateAuth(owner, address(verifier), _approveKey(key), 0, block.timestamp, '');
   }
 
   /**
    * DEL-08 — a withdrawal never reaches the verifier, so one that reverts cannot trap the owner
    * @dev The safety valve has to work unconditionally; a verifier the owner can no longer get out
-   * of would keep authorising orders forever.
+   * of would keep authorising orders forever. Every leg carries the same non-empty `data`, which
+   * is what makes the verifier reachable at all: with an empty payload `initAuth` is skipped on
+   * both directions and the contrast would be between two calls that never happened.
    */
   function test_DEL_08_withdrawalDoesNotCallTheVerifier() public {
     RevertingVerifier bad = new RevertingVerifier();
+    uint256 deadline = block.timestamp + 1 days;
 
     vm.prank(owner);
-    hub.updateDelegation(owner, address(bad), true, '', 0, block.timestamp + 1 days, '');
+    hub.updateDelegation(owner, address(bad), true, hex'1234', 0, deadline, '');
     assertTrue(hub.authDelegated(owner, address(bad)), 'delegated while it still answered');
+    assertEq(bad.initCount(), 1, 'and that payload did reach it');
 
     bad.setReverting(true);
 
+    // the control: the same payload on the delegate direction now fails at the verifier, so the
+    // withdrawal below is evidence about the direction rather than about the payload
     vm.prank(owner);
-    hub.updateDelegation(owner, address(bad), false, '', 0, block.timestamp + 1 days, '');
+    vm.expectRevert(RevertingVerifier.Nope.selector);
+    hub.updateDelegation(owner, address(bad), true, hex'1234', 0, deadline, '');
+
+    vm.prank(owner);
+    hub.updateDelegation(owner, address(bad), false, hex'1234', 0, deadline, '');
     assertFalse(hub.authDelegated(owner, address(bad)), 'withdrawn despite the revert');
+    assertEq(bad.initCount(), 1, 'and the withdrawal never called it');
   }
 
   /// DEL-09 — a relayed withdrawal needs the owner's signature over the same direction
@@ -214,15 +230,168 @@ contract DelegationTest is VerifierBase {
     assertEq(hub.nonces(owner, 0), (1 << 5) | (1 << 6), 'one hub nonce per accepted decision');
   }
 
-  /// DEL-07 — delegating with the direction unset arms the verifier without approving the key
-  function test_DEL_07_delegateWithoutApprovingAKey() public {
-    vm.prank(owner);
-    hub.updateDelegation(
-      owner, address(verifier), true, _revokeKey(key), 0, block.timestamp + 1 days, ''
-    );
+  // -------------------------------------------------------------------------------------------
+  // DEL-10..12 — `initAuth` is not `updateAuth`, and only the hub may reach it
+  // -------------------------------------------------------------------------------------------
 
-    assertTrue(hub.authDelegated(owner, address(verifier)), 'verifier delegated');
-    assertFalse(verifier.approvedKeys(owner, _keyHash(key)), 'but no key approved');
+  /**
+   * DEL-10 — `initAuth` ignores the direction word, so a "revoke" payload still approves
+   * @dev The two verifier entry points read the same bytes differently: `updateAuth` takes word 1
+   * as the direction, while `initAuth` follows word 0 to the key and stops. Delegating therefore
+   * has one direction only — the payload cannot ask it to revoke — and the second half here is
+   * what makes that a statement about `initAuth` rather than about the payload, since the very
+   * same bytes through `updateAuth` do the opposite.
+   */
+  function test_DEL_10_initAuthIgnoresTheDirectionWord() public {
+    uint256 deadline = block.timestamp + 1 days;
+    bytes32 keyHash = _keyHash(key);
+    bytes memory revokeShaped = _revokeKey(key);
+
+    vm.prank(owner);
+    hub.updateDelegation(owner, address(verifier), true, revokeShaped, 0, deadline, '');
+
+    assertTrue(verifier.approvedKeys(owner, keyHash), 'approved despite the false direction');
+
+    vm.prank(owner);
+    verifier.updateAuth(owner, revokeShaped, 0, deadline, '');
+    assertFalse(verifier.approvedKeys(owner, keyHash), 'and updateAuth reads it as a revocation');
+  }
+
+  /**
+   * DEL-11 — both payload shapes name the same key
+   * @dev `initAuth` follows a relative offset out of word 0 rather than assuming the struct starts
+   * at a fixed place, so `abi.encode(key)` and `abi.encode(key, anything)` land on the same bytes
+   * and hash to the same key. The revocation between the two legs is what stops the second one
+   * being a no-op against a key that was already approved.
+   */
+  function test_DEL_11_bothPayloadShapesNameTheSameKey() public {
+    uint256 deadline = block.timestamp + 1 days;
+    bytes32 keyHash = _keyHash(key);
+    bytes memory keyOnly = _encodeKey(key);
+    bytes memory keyPlusNoise = abi.encode(key, keccak256('noise'));
+
+    vm.prank(owner);
+    hub.updateDelegation(owner, address(verifier), true, keyOnly, 0, deadline, '');
+    assertTrue(verifier.approvedKeys(owner, keyHash), 'the bare key shape approves it');
+
+    vm.prank(owner);
+    verifier.updateAuth(owner, _revokeKey(key), 0, deadline, '');
+    assertFalse(verifier.approvedKeys(owner, keyHash), 'cleared again');
+
+    vm.prank(owner);
+    hub.updateDelegation(owner, address(verifier), true, keyPlusNoise, 0, deadline, '');
+    assertTrue(verifier.approvedKeys(owner, keyHash), 'and so does the same key with a word after');
+  }
+
+  /**
+   * DEL-12 — `initAuth` answers the hub alone, and being the owner is not a way in
+   * @dev It takes no signature, no nonce and no deadline: it trusts its caller completely, so the
+   * caller check is the whole of its security. The owner leg matters as much as the stranger's,
+   * because "the owner may do it anyway" is exactly the reasoning that would justify relaxing the
+   * modifier — and the owner already has a route, through {AuthDelegator-updateDelegation}.
+   */
+  function test_DEL_12_initAuthIsHubOnly() public {
+    bytes memory payload = _encodeKey(key);
+    bytes32 keyHash = _keyHash(key);
+
+    vm.prank(relayer);
+    vm.expectRevert(IAuthVerifier.NotAllowanceHub.selector);
+    verifier.initAuth(owner, payload);
+
+    vm.prank(owner);
+    vm.expectRevert(IAuthVerifier.NotAllowanceHub.selector);
+    verifier.initAuth(owner, payload);
+
+    assertFalse(verifier.approvedKeys(owner, keyHash), 'nothing was approved either time');
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // DEL-13..15 — the guard on the forwarded `initAuth` is a conjunction
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * DEL-13 — an empty payload skips the verifier, even on the delegate direction
+   * @dev The verifier is set to revert, so merely not reverting is already suggestive — but only
+   * suggestive: a verifier that had been called and answered would satisfy that just as well. The
+   * expectation of zero calls with the exact calldata is the oracle, and the calldata is built
+   * from a signature string written out in this file rather than from the production interface.
+   */
+  function test_DEL_13_emptyPayloadNeverCallsInitAuth() public {
+    RevertingVerifier bad = new RevertingVerifier();
+    bad.setReverting(true);
+
+    bytes memory empty = '';
+    bytes memory expectedCall = abi.encodeWithSignature(S_INIT_AUTH, owner, empty);
+
+    vm.expectCall(address(bad), expectedCall, 0);
+
+    vm.prank(owner);
+    hub.updateDelegation(owner, address(bad), true, empty, 0, block.timestamp + 1 days, '');
+
+    assertTrue(hub.authDelegated(owner, address(bad)), 'delegated without touching the verifier');
+    assertEq(bad.initCount(), 0, 'and it counted no call');
+  }
+
+  /**
+   * DEL-14 — the guard reads the payload's length, not the direction alone
+   * @dev One byte apart from DEL-13, same direction, same verifier. A single zero byte is enough
+   * to cross the guard, which isolates `data.length > 0` from any notion of the payload being
+   * meaningful. The first leg also fixes the exact calldata the hub forwards, which is what the
+   * zero-call expectations in DEL-13 and DEL-15 are asserting the absence of: a signature string
+   * that named nothing would make those two pass vacuously, and would fail here.
+   */
+  function test_DEL_14_nonEmptyPayloadDoesCallInitAuth() public {
+    RevertingVerifier bad = new RevertingVerifier();
+    uint256 deadline = block.timestamp + 1 days;
+
+    bytes memory payload = hex'00';
+    bytes memory expectedCall = abi.encodeWithSignature(S_INIT_AUTH, owner, payload);
+
+    // twice: once below while the verifier still answers, and once on the refused attempt at the
+    // end, which reaches it just as far before being turned away
+    vm.expectCall(address(bad), expectedCall, 2);
+
+    vm.prank(owner);
+    hub.updateDelegation(owner, address(bad), true, payload, 0, deadline, '');
+    assertEq(bad.initCount(), 1, 'one byte of payload is enough to reach the verifier');
+
+    // and once it refuses, the refusal is the owner's problem: the delegation does not stand
+    bad.setReverting(true);
+
+    vm.prank(owner);
+    hub.updateDelegation(owner, address(bad), false, '', 0, deadline, '');
+    assertFalse(hub.authDelegated(owner, address(bad)), 'cleared, so the next leg is a transition');
+
+    vm.prank(owner);
+    vm.expectRevert(RevertingVerifier.Nope.selector);
+    hub.updateDelegation(owner, address(bad), true, payload, 0, deadline, '');
+
+    assertFalse(hub.authDelegated(owner, address(bad)), 'the delegation rolled back with it');
+    assertEq(bad.initCount(), 1, 'and the refused call left its counter alone');
+  }
+
+  /**
+   * DEL-15 — a withdrawal skips the verifier whatever the payload says
+   * @dev DEL-13 held the direction and emptied the payload; this holds a payload DEL-14 has just
+   * shown does reach a verifier and flips the direction instead. Between the three the guard is
+   * pinned as the conjunction it is written as. Nothing is delegated here beforehand, so the
+   * withdrawal is not even undoing anything — and still must not call out, because the escape
+   * hatch has to work against a verifier that has started refusing every call.
+   */
+  function test_DEL_15_withdrawalSkipsTheVerifierWhateverThePayload() public {
+    RevertingVerifier bad = new RevertingVerifier();
+    bad.setReverting(true);
+
+    bytes memory payload = hex'00';
+    bytes memory expectedCall = abi.encodeWithSignature(S_INIT_AUTH, owner, payload);
+
+    vm.expectCall(address(bad), expectedCall, 0);
+
+    vm.prank(owner);
+    hub.updateDelegation(owner, address(bad), false, payload, 0, block.timestamp + 1 days, '');
+
+    assertFalse(hub.authDelegated(owner, address(bad)), 'withdrawn');
+    assertEq(bad.initCount(), 0, 'and the verifier was never called');
   }
 
   /// DEL-FUZZ — the delegation nonce bitmap behaves across its whole domain
@@ -231,101 +400,13 @@ contract DelegationTest is VerifierBase {
     uint256 deadline = block.timestamp + bound(f.deadlineOffset, 0, 30 days);
 
     bytes memory sig =
-      _signAuthDelegation(ownerKey, address(verifier), true, _approveKey(key), nonce, deadline);
+      _signAuthDelegation(ownerKey, address(verifier), true, _encodeKey(key), nonce, deadline);
 
     vm.prank(relayer);
-    hub.updateDelegation(owner, address(verifier), true, _approveKey(key), nonce, deadline, sig);
+    hub.updateDelegation(owner, address(verifier), true, _encodeKey(key), nonce, deadline, sig);
 
     assertTrue(hub.authDelegated(owner, address(verifier)));
     assertEq(hub.nonces(owner, nonce >> 8), 1 << (nonce & 0xff), 'exact bit for this nonce');
-  }
-
-  // -------------------------------------------------------------------------------------------
-  // UPD — replacing material at an already delegated verifier
-  // -------------------------------------------------------------------------------------------
-
-  /// UPD-02 — nothing can be updated before a delegation exists
-  function test_UPD_02_requiresDelegation() public {
-    vm.prank(owner);
-    vm.expectRevert(IAuthDelegator.NotDelegatedVerifier.selector);
-    hub.updateAuth(owner, address(verifier), _approveKey(key), 0, block.timestamp, '');
-  }
-
-  /// UPD-03 — a third party cannot update with an empty signature
-  function test_UPD_03_relayedEmptySignatureRejected() public {
-    _delegateKeyThroughHub(key);
-
-    vm.prank(relayer);
-    vm.expectRevert(IAuthDelegator.InvalidDelegationSignature.selector);
-    hub.updateAuth(owner, address(verifier), _approveKey(key), 1, block.timestamp, '');
-  }
-
-  /// UPD-01 — the owner updates with no signature, because the hub has authenticated them
-  function test_UPD_01_ownerUpdateIsTrusted() public {
-    _delegateKeyThroughHub(key);
-
-    SessionKey memory newKey = _secpKey(relayer, block.timestamp + 10 days);
-
-    vm.prank(owner);
-    hub.updateAuth(owner, address(verifier), _approveKey(newKey), 0, block.timestamp, '');
-
-    assertTrue(verifier.approvedKeys(owner, _keyHash(newKey)), 'new key approved');
-  }
-
-  /// UPD-04 / UPD-05 — a signature routes to the verifier's own check, whoever submits
-  function test_UPD_04_signedUpdateFromRelayerAndOwner() public {
-    _delegateKeyThroughHub(key);
-
-    SessionKey memory newKey = _secpKey(recipient, block.timestamp + 10 days);
-    uint256 deadline = block.timestamp + 1 days;
-
-    bytes memory sig = _signSessionApproval(newKey, true, 11, deadline);
-
-    vm.prank(relayer);
-    hub.updateAuth(owner, address(verifier), _approveKey(newKey), 11, deadline, sig);
-    assertTrue(verifier.approvedKeys(owner, _keyHash(newKey)), 'relayed signed update');
-
-    // UPD-05 — the owner supplying a signature takes the same verifier branch
-    SessionKey memory thirdKey = _secpKey(guardian, block.timestamp + 10 days);
-    bytes memory sig2 = _signSessionApproval(thirdKey, true, 12, deadline);
-
-    vm.prank(owner);
-    hub.updateAuth(owner, address(verifier), _approveKey(thirdKey), 12, deadline, sig2);
-    assertTrue(verifier.approvedKeys(owner, _keyHash(thirdKey)), 'owner signed update');
-    assertEq(verifier.nonces(owner, 0), (1 << 11) | (1 << 12), 'both verifier nonces spent');
-  }
-
-  /**
-   * UPD-06 — the hub's update route carries a revocation exactly as it carries an approval
-   * @dev The owner needs no signature here for the same reason as UPD-01: the hub authenticated
-   * them, and forwards an empty one to say so.
-   */
-  function test_UPD_06_revokeKeyThroughHub() public {
-    _delegateKeyThroughHub(key);
-    assertTrue(verifier.approvedKeys(owner, _keyHash(key)), 'approved by the delegation');
-
-    vm.prank(owner);
-    hub.updateAuth(owner, address(verifier), _revokeKey(key), 0, block.timestamp, '');
-
-    assertFalse(verifier.approvedKeys(owner, _keyHash(key)), 'revoked through the hub');
-    assertTrue(hub.authDelegated(owner, address(verifier)), 'the delegation is left alone');
-  }
-
-  /// UPD-FUZZ — a signed update is accepted from any submitter across the nonce/deadline domain
-  function testFuzz_UPD_FUZZ_signedUpdate(DelegationFuzz memory f) public {
-    _delegateKeyThroughHub(key);
-    uint256 nonce = f.nonce;
-    uint256 deadline = block.timestamp + bound(f.deadlineOffset, 0, 30 days);
-
-    SessionKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
-    bytes memory sig = _signSessionApproval(fresh, true, nonce, deadline);
-
-    vm.prank(f.selfSubmit ? owner : relayer);
-    hub.updateAuth(owner, address(verifier), _approveKey(fresh), nonce, deadline, sig);
-
-    assertTrue(verifier.approvedKeys(owner, _keyHash(fresh)), 'key approved');
-    assertEq(verifier.nonces(owner, nonce >> 8), 1 << (nonce & 0xff), 'verifier nonce spent');
-    assertEq(hub.nonces(owner, nonce >> 8), 0, 'hub nonce untouched by updateAuth');
   }
 
   // -------------------------------------------------------------------------------------------

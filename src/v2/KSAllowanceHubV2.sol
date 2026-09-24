@@ -5,11 +5,11 @@ import {IAuthVerifier} from '../base/interfaces/IAuthVerifier.sol';
 import {IKSAllowanceHubV2} from './interfaces/IKSAllowanceHubV2.sol';
 
 import {AuthDelegator} from '../base/AuthDelegator.sol';
-import {GuardedMulticall} from '../base/GuardedMulticall.sol';
+import {CallsForwarder} from '../base/CallsForwarder.sol';
 import {MsgSender} from '../base/MsgSender.sol';
-import {PermitForwarder} from '../base/PermitForwarder.sol';
 
-import {AuthFlags, AuthFlagsLibrary} from './types/AuthFlags.sol';
+import {PackedBits} from '../base/types/PackedBits.sol';
+
 import {CallsApprovalLibrary} from './types/CallsApproval.sol';
 import {ERC20Transfer, ERC20TransferLibrary} from './types/ERC20Transfer.sol';
 import {ERC721Transfer, ERC721TransferLibrary} from './types/ERC721Transfer.sol';
@@ -39,15 +39,19 @@ import {ECDSA} from 'openzeppelin-contracts/contracts/utils/cryptography/ECDSA.s
  * An owner acting on their own behalf needs neither. `authData` is packed per rail:
  * `abi.encode(nonce, signature)` for Permit2, `abi.encode(verifier, nonce, key, signature)` for a
  * verifier.
+ *
+ * `authFlags` carries three switches, and higher bits are ignored:
+ * - bit 0: pull the ERC20s with an owner-signed Permit2 transfer, not a standing approval;
+ * - bit 1: pull them through the owner's Permit2 allowance, not an approval to this hub;
+ * - bit 2: the owner named `msg.sender` in what they signed, rather than leaving it open.
  */
 contract KSAllowanceHubV2 is
   IKSAllowanceHubV2,
   ManagementPausable,
   ManagementRescuable,
   AuthDelegator,
-  GuardedMulticall,
-  MsgSender,
-  PermitForwarder
+  CallsForwarder,
+  MsgSender
 {
   using ERC20TransferLibrary for ERC20Transfer[];
   using ERC721TransferLibrary for ERC721Transfer[];
@@ -57,6 +61,11 @@ contract KSAllowanceHubV2 is
 
   /// @notice Only routers holding this role may be called by {transferAndExecute} / {transferAndFulfill}
   bytes32 internal constant WHITELISTED_ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
+
+  /// @notice Stands in for "the owner did not name a caller", so anyone may submit the order
+  address internal constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+
+  address internal immutable PERMIT2;
 
   /**
    * @param initialAdmin Holder of the default admin role
@@ -76,11 +85,12 @@ contract KSAllowanceHubV2 is
     ManagementPausable(initialGuardians)
     ManagementRescuable(initialRescuers)
     AuthDelegator('KyberSwap Allowance Hub', '2.0.0')
-    PermitForwarder(permit2)
   {
     _batchGrantRole(WHITELISTED_ROUTER_ROLE, initialWhitelistedRouters);
     // Guardians can drop a compromised router without waiting on the admin
     _setRoleRevoker(WHITELISTED_ROUTER_ROLE, KSRoles.GUARDIAN_ROLE);
+
+    PERMIT2 = permit2;
   }
 
   /// @inheritdoc IKSAllowanceHubV2
@@ -90,7 +100,7 @@ contract KSAllowanceHubV2 is
     ERC721Transfer[] calldata erc721Transfers,
     GenericCall[] calldata genericCalls,
     uint256 deadline,
-    AuthFlags authFlags,
+    PackedBits authFlags,
     bytes calldata authData
   )
     external
@@ -103,14 +113,15 @@ contract KSAllowanceHubV2 is
   {
     uint256 gasStart = gasleft();
 
-    if (authFlags.usePermit2SignatureTransfer()) {
+    // Bit 0: the Permit2 signature-transfer rail
+    if (authFlags.pos(0)) {
       if (msg.sender == owner) {
         _permitTransferFrom(owner, erc20Transfers, deadline, authData);
       } else {
         // The permit covers only tokens and amounts, so the witness binds the rest of what the
         // owner agreed to: who may submit, where the tokens land, the NFTs and the calls
         bytes32 witness = ExecutionWitnessLibrary.hash(
-          authFlags.signedCaller(), erc20Transfers.toTargets(), erc721Transfers, genericCalls
+          _signedCaller(authFlags), erc20Transfers.toTargets(), erc721Transfers, genericCalls
         );
 
         _permitWitnessTransferFrom(
@@ -125,7 +136,7 @@ contract KSAllowanceHubV2 is
     } else {
       if (msg.sender != owner) {
         bytes memory data =
-          abi.encode(authFlags.signedCaller(), erc20Transfers, erc721Transfers, genericCalls);
+          abi.encode(_signedCaller(authFlags), erc20Transfers, erc721Transfers, genericCalls);
         // Trailing `false` tells the verifier which payload shape to decode
         _verifyAuth(owner, abi.encodePacked(data, false), deadline, authData);
       }
@@ -147,7 +158,7 @@ contract KSAllowanceHubV2 is
     ERC721Transfer[] calldata erc721Transfers,
     ValidationParams[] calldata validationParams,
     uint256 deadline,
-    AuthFlags authFlags,
+    PackedBits authFlags,
     bytes calldata authData,
     GenericCall[] calldata genericCalls,
     uint256 callsNonce,
@@ -167,14 +178,15 @@ contract KSAllowanceHubV2 is
     bytes[] memory beforeExecutionOutputs = validationParams.beforeExecution();
     address callsSigner = _callsSigner(owner, genericCalls, callsNonce, deadline, callsSignature);
 
-    if (authFlags.usePermit2SignatureTransfer()) {
+    // Bit 0: the Permit2 signature-transfer rail
+    if (authFlags.pos(0)) {
       if (msg.sender == owner) {
         _permitTransferFrom(owner, erc20Transfers, deadline, authData);
       } else {
         // Here the owner signs *who* may choose the calls, not the calls themselves; the
         // validators are what bound the outcome
         bytes32 witness = FulfillmentWitnessLibrary.hash(
-          authFlags.signedCaller(),
+          _signedCaller(authFlags),
           erc20Transfers.toTargets(),
           erc721Transfers,
           validationParams,
@@ -193,7 +205,7 @@ contract KSAllowanceHubV2 is
     } else {
       if (msg.sender != owner) {
         bytes memory data = abi.encode(
-          authFlags.signedCaller(), erc20Transfers, erc721Transfers, validationParams, callsSigner
+          _signedCaller(authFlags), erc20Transfers, erc721Transfers, validationParams, callsSigner
         );
         // Trailing `true` tells the verifier which payload shape to decode
         _verifyAuth(owner, abi.encodePacked(data, true), deadline, authData);
@@ -264,13 +276,27 @@ contract KSAllowanceHubV2 is
     IAuthVerifier(verifier).verifyAuth(owner, data, nonce, deadline, key, signature);
   }
 
+  /**
+   * @dev The caller identity that goes into the signed payload, per `authFlags` bit 2. The flag
+   * only decides which value is rebuilt; the owner's signature is what makes it binding, so a
+   * mismatched flag simply fails verification.
+   */
+  function _signedCaller(PackedBits authFlags) internal view returns (address signer) {
+    assembly ('memory-safe') {
+      switch and(shr(2, authFlags), 0x1)
+      case 0 { signer := DEAD_ADDRESS }
+      default { signer := caller() }
+    }
+  }
+
   /// @dev Pulls the ERC20s over Permit2's allowance rail, or over a plain approval to this hub
   function _transferERC20s(
     address owner,
     ERC20Transfer[] calldata erc20Transfers,
-    AuthFlags authFlags
+    PackedBits authFlags
   ) internal {
-    if (authFlags.usePermit2AllowanceTransfer()) {
+    // Bit 1: the Permit2 allowance rail
+    if (authFlags.pos(1)) {
       IAllowanceTransfer.AllowanceTransferDetails[] memory details =
         erc20Transfers.toAllowanceTransferDetails(owner);
       IAllowanceTransfer(PERMIT2).transferFrom(details);
@@ -318,7 +344,7 @@ contract KSAllowanceHubV2 is
   }
 
   /**
-   * @dev Recovers who approved `genericCalls`, or {AuthFlagsLibrary-DEAD_ADDRESS} when no
+   * @dev Recovers who approved `genericCalls`, or {DEAD_ADDRESS} when no
    * signature is given, which an owner's signature naming that address reads as "any calls".
    * The nonce is burned against the owner, so one approval cannot be settled twice.
    */
@@ -330,7 +356,7 @@ contract KSAllowanceHubV2 is
     bytes calldata callsSignature
   ) internal returns (address) {
     if (callsSignature.length == 0) {
-      return AuthFlagsLibrary.DEAD_ADDRESS;
+      return DEAD_ADDRESS;
     }
 
     _useUnorderedNonce(owner, callsNonce);

@@ -5,11 +5,12 @@ import {VerifierBase} from 'test/verifiers/base/VerifierBase.sol';
 
 import {IAuthDelegator} from 'src/base/interfaces/IAuthDelegator.sol';
 import {IAuthVerifier} from 'src/base/interfaces/IAuthVerifier.sol';
-import {AuthFlags} from 'src/v2/types/AuthFlags.sol';
+import {PackedBits} from 'src/base/types/PackedBits.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
 import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
+import {ISessionAuthVerifier} from 'src/verifiers/interfaces/ISessionAuthVerifier.sol';
 import {SessionKey} from 'src/verifiers/types/SessionKey.sol';
 
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
@@ -408,9 +409,56 @@ contract AuthTest is VerifierBase {
     // every bit above the third set, plus the same low bits as a plain verifier-rail order
     bytes32 raw = bytes32(type(uint256).max << 3);
 
-    _executeOnVerifierRailWithFlags(43, deadline, AuthFlags.wrap(raw));
+    _executeOnVerifierRailWithFlags(43, deadline, PackedBits.wrap(raw));
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'behaves as flags 0');
+  }
+
+  /**
+   * AUTH-12b — bit 2 is read by raw assembly, so it is its own mechanism and gets its own leg
+   * @dev Bits 0 and 1 go through {PackedBits-pos}; {KSAllowanceHubV2-_signedCaller} instead does
+   * its own `shr`/`and` on the same word. They are two implementations now, and AUTH-12 cannot
+   * speak for this one: it signs for the open caller, so the assembly is never made to choose —
+   * a `_signedCaller` stuck on either answer would pass it as long as the bits above 2 were
+   * ignored. Here the owner names the submitter and bit 2 is the only flag set, so the first leg
+   * fails unless the assembly reads exactly that bit, and the second fails unless clearing it
+   * really does switch the rebuilt identity back to the open-caller sentinel.
+   */
+  function test_AUTH_12b_bitTwoAloneSelectsTheSignedCaller() public {
+    _delegateKeyThroughHub(key);
+
+    uint256 deadline = block.timestamp + 1 hours;
+    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    PackedBits onlyBitTwo = PackedBits.wrap(bytes32(uint256(1 << 2)));
+
+    // the owner signed for `relayer` specifically; with bit 2 set the hub rebuilds `msg.sender`
+    bytes memory pinnedAuth = _verifierAuthDataFor(relayer, 44, deadline);
+    uint256 before = IERC20(WETH).balanceOf(address(router));
+
+    vm.prank(relayer);
+    hub.transferAndExecute(
+      owner, erc20s, new ERC721Transfer[](0), new GenericCall[](0), deadline, onlyBitTwo, pinnedAuth
+    );
+
+    assertEq(
+      IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'bit 2 alone pinned the caller'
+    );
+
+    // the same kind of order with bit 2 clear: the hub rebuilds the sentinel instead, so what the
+    // verifier is asked about is no longer the order the owner signed
+    bytes memory sameAuth = _verifierAuthDataFor(relayer, 45, deadline);
+
+    vm.prank(relayer);
+    vm.expectRevert(ISessionAuthVerifier.InvalidApprovalSignature.selector);
+    hub.transferAndExecute(
+      owner,
+      erc20s,
+      new ERC721Transfer[](0),
+      new GenericCall[](0),
+      deadline,
+      _flags(false, false, false),
+      sameAuth
+    );
   }
 
   /// AUTH-13 — authData too short to hold a signature is rejected by the decoder
@@ -591,11 +639,33 @@ contract AuthTest is VerifierBase {
     assertTrue(ok, 'permit2 approve');
   }
 
+  /// @dev A verifier-rail `authData` whose session-key signature names `signedCaller` in the order
+  function _verifierAuthDataFor(address signedCaller, uint256 nonce, uint256 deadline)
+    private
+    returns (bytes memory)
+  {
+    bytes memory sig = _sign(
+      sessionKeyPk,
+      lTypedDataHash(
+        _verifierDomain(),
+        lExecutionApproval(
+          signedCaller,
+          _erc20s(_wethTransfer(AMOUNT)),
+          new ERC721Transfer[](0),
+          new GenericCall[](0),
+          nonce,
+          deadline
+        )
+      )
+    );
+    return _verifierAuthData(address(verifier), nonce, _encodeKey(key), sig);
+  }
+
   function _executeOnVerifierRail(uint256 nonce, uint256 deadline, bool permit2Allowance) private {
     _executeOnVerifierRailWithFlags(nonce, deadline, _flags(false, permit2Allowance, false));
   }
 
-  function _executeOnVerifierRailWithFlags(uint256 nonce, uint256 deadline, AuthFlags flags)
+  function _executeOnVerifierRailWithFlags(uint256 nonce, uint256 deadline, PackedBits flags)
     private
   {
     ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));

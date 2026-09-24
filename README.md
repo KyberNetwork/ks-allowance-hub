@@ -31,7 +31,7 @@ their `msg.sender`. It holds the **owner**, is transient, and doubles as the ree
 
 ### Authorisation
 
-`authFlags` is a `bytes32` read as three low bits, and it selects the rail rather than granting
+`authFlags` is a `PackedBits` read as three low bits, and it selects the rail rather than granting
 anything:
 
 | Bit | Set | Effect |
@@ -83,8 +83,11 @@ Instead of a Permit2 signature, an owner can delegate an `IAuthVerifier` once th
 understands. The hub checks only that the verifier is delegated; the verifier must revert when a
 signature does not authorise the order, and owns its own replay protection.
 
-An empty signature reaching a verifier means the hub already authenticated the owner — either the
-owner called `updateDelegation` themselves, or it carried their EIP-712 `AuthDelegation` signature.
+The hub is not an authenticator on the update path. `updateAuth` is relayable through `forward`
+from any caller, and the verifier sees the hub as `msg.sender` either way, so a verifier must
+treat only `msg.sender == owner` as authentication and check a signature in every other case.
+`initAuth` is the exception — it carries no signature, so `updateDelegation` authenticates the
+owner before calling it, and its selector is deliberately kept off `forward`'s allowlist.
 
 `SessionAuthVerifier` is the reference implementation: the owner approves a `SessionKey`
 (`Secp256k1`, `P256`, `WebAuthn` or `RSA`, with an expiry) and that key then signs orders. Its
@@ -102,22 +105,30 @@ both arms a verifier and withdraws it, and the direction is part of the `AuthDel
 AuthDelegation(address verifier,bool delegated,bytes data,uint256 nonce,uint256 deadline)
 ```
 
-`data` reaches the verifier only when delegating — a verifier that reverts must not be able to
-trap the owner in a delegation. Withdrawing therefore leaves the verifier's own state untouched,
-so a key that should go too is dropped first through `updateAuth`.
+`data` reaches the verifier only when delegating, and only when it is non-empty — a verifier that
+reverts must not be able to trap the owner in a delegation. It arrives as `initAuth`, which reads
+the key and nothing else: a direction packed into that payload is ignored. Withdrawing leaves the
+verifier's own state untouched, so a key that should go too is revoked separately, through
+`forward` carrying `updateAuth`.
 
 ### Gasless flows
 
-`erc20Permit`, `erc721Permit` and `permit2Permit` relay the owner's permits, and every helper on
-the hub is `payable`, so a permit and a swap compose inside one `multicall` even when it carries
-value. The owner signs messages and sends no transaction:
+`forward` relays calls that carry their own authorisation — EIP-2612 and DAI permits, both ERC721
+permit flavours, both Permit2 overloads, and a verifier's `updateAuth` — so an approval and the
+spend that follows fit in one `multicall` even when it carries value. The owner signs messages and
+sends no transaction:
 
 ```solidity
 hub.multicall([
-  abi.encodeCall(hub.erc20Permit, (owner, tokens, permitData)),
+  abi.encodeCall(hub.forward, (tokens, permitCalls, allowFailure)),
   abi.encodeCall(hub.transferAndExecute, (owner, erc20Transfers, …, authFlags, authData))
 ]);
 ```
+
+Anything outside that selector allowlist is refused: this contract is the `msg.sender` every
+target sees, so only calls whose effect does not depend on who made them are safe to relay. A
+failing call bubbles its revert unless its `allowFailure` bit is set, so a front-run permit that
+should not sink the batch needs that bit — the old forwarder swallowed every failure instead.
 
 Two things to know when integrating:
 

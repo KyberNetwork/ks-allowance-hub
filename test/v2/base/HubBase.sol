@@ -7,8 +7,8 @@ import {RouterMock} from 'test/v2/mocks/RouterMock.sol';
 import {ERC721Mock} from 'test/v2/mocks/TokenMocks.sol';
 import {ValidatorMock} from 'test/v2/mocks/ValidatorMock.sol';
 
+import {PackedBits} from 'src/base/types/PackedBits.sol';
 import {KSAllowanceHubV2} from 'src/v2/KSAllowanceHubV2.sol';
-import {AuthFlags} from 'src/v2/types/AuthFlags.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
@@ -90,13 +90,13 @@ abstract contract HubBase is V2TestBase {
   function _flags(bool permit2Signature, bool permit2Allowance, bool pinCaller)
     internal
     pure
-    returns (AuthFlags)
+    returns (PackedBits)
   {
     uint256 raw;
     if (permit2Signature) raw |= 1;
     if (permit2Allowance) raw |= 1 << 1;
     if (pinCaller) raw |= 1 << 2;
-    return AuthFlags.wrap(bytes32(raw));
+    return PackedBits.wrap(bytes32(raw));
   }
 
   function _permit2AuthData(uint256 nonce, bytes memory signature)

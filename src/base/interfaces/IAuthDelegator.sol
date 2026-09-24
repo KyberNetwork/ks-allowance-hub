@@ -18,8 +18,8 @@ interface IAuthDelegator {
   /**
    * @notice Delegates authorisation to `verifier`, or withdraws it
    * @dev `data` reaches the verifier only when delegating, so withdrawing cannot be blocked by a
-   * verifier that reverts. Withdrawing leaves the verifier's own state alone; drop it first with
-   * {updateAuth} when both should go.
+   * verifier that reverts. Withdrawing leaves the verifier's own state alone; drop that through
+   * {ICallsForwarder-forward} first when both should go.
    * @param owner Account whose orders the verifier may approve
    * @param verifier Contract that will check future authorisations
    * @param delegated True to delegate the verifier, false to withdraw it
@@ -32,26 +32,6 @@ interface IAuthDelegator {
     address owner,
     address verifier,
     bool delegated,
-    bytes calldata data,
-    uint256 nonce,
-    uint256 deadline,
-    bytes calldata signature
-  ) external payable;
-
-  /**
-   * @notice Replaces the owner's material at an already delegated verifier
-   * @dev A non-owner caller must supply a signature, so an empty one always means this contract
-   * authenticated the owner itself. The verifier checks the signature and its own replay rules.
-   * @param owner Account whose material is being replaced
-   * @param verifier The already-delegated verifier to forward to
-   * @param data Verifier-specific payload, opaque here
-   * @param nonce Passed through for the verifier to consume
-   * @param deadline Last timestamp at which the update may be submitted
-   * @param signature Owner's authorisation, or empty when the owner is the caller
-   */
-  function updateAuth(
-    address owner,
-    address verifier,
     bytes calldata data,
     uint256 nonce,
     uint256 deadline,

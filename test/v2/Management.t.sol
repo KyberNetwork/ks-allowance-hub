@@ -48,8 +48,8 @@ contract ManagementTest is HubBase {
 
   /// MGMT-01 — everything the constructor is responsible for, including its one event
   function test_MGMT_01_constructorWiring() public {
-    assertEq(hub.PERMIT2(), PERMIT2, 'permit2');
-
+    // `PERMIT2` is an internal immutable with no getter, so the constructor argument is only
+    // observable through the rails that use it, which the AUTH-* cases exercise
     assertTrue(hub.hasRole(ROUTER_ROLE, address(router)), 'router whitelisted');
     assertTrue(hub.hasRole(ROUTER_ROLE, address(router2)), 'second router whitelisted');
     assertTrue(hub.hasRole(GUARDIAN_ROLE, guardian), 'guardian');
