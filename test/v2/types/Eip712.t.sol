@@ -12,8 +12,8 @@ import {FulfillmentWitnessLibrary} from 'src/v2/types/FulfillmentWitness.sol';
 import {GenericCall, GenericCallLibrary} from 'src/v2/types/GenericCall.sol';
 import {ValidationParams, ValidationParamsLibrary} from 'src/v2/types/ValidationParams.sol';
 
-/// @notice T712-01..08 plus the calldata/memory differential and the array-encoding anchor.
 /**
+ * @notice T712-01..08 plus the calldata/memory differential and the array-encoding anchor.
  * @dev The production constants are the values under test here; every expected value is built from
  * the literals in {V2TestBase}, which were transcribed from the struct definitions. This is the
  * only batch allowed to read a production type string or typehash.

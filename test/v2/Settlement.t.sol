@@ -30,8 +30,8 @@ contract EchoRouterMock is IKSGenericRouter {
   }
 }
 
-/// @notice SET-01..04, ROUTER-01..03, LOCK-01..04 — the settlement tail of both entry points.
 /**
+ * @notice SET-01..04, ROUTER-01..03, LOCK-01..04 — the settlement tail of both entry points.
  * @dev The role constant and the `TransferTokens` signature are written out here rather than
  * imported: an expected value taken from the contract under test would agree with a wrong one.
  */
@@ -290,8 +290,8 @@ contract SettlementTest is HubBase {
   // LOCK — the transient locker, which is both the identity channel and the reentrancy guard
   // -----------------------------------------------------------------------------------------
 
-  /// LOCK-01 — a router sees the asset owner, not the submitter, and only while the order runs
   /**
+   * LOCK-01 — a router sees the asset owner, not the submitter, and only while the order runs
    * @dev The inside-the-call reading is taken from {RouterMock-seenMsgSender} rather than from a
    * second transaction, because CI runs `--isolate` and transient storage does not survive one.
    */
@@ -369,8 +369,8 @@ contract SettlementTest is HubBase {
     assertEq(nft.ownerOf(NFT_ID), owner, 'the NFT never moved');
   }
 
-  /// LOCK-04 — `revokeNonce` is outside the lock, so a router can reach it mid-order
   /**
+   * LOCK-04 — `revokeNonce` is outside the lock, so a router can reach it mid-order
    * @dev Recorded deliberately: the nonce is burned against the router, not the owner, so the
    * surface is reachable but does not let a router spend the owner's nonces.
    */

@@ -8,8 +8,8 @@ import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
 import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
-/// @title V2TestBase
 /**
+ * @title V2TestBase
  * @notice Global base for the V2 suite.
  * @dev Every EIP-712 string, typehash and struct hash below is hand-written from the Solidity
  * struct definitions. Nothing here may import a production constant or hashing library: Permit2

@@ -3,8 +3,8 @@ pragma solidity 0.8.36;
 
 import {Vm} from 'forge-std/Vm.sol';
 
-/// @title KeyFixtures
 /**
+ * @title KeyFixtures
  * @notice Session-key material for the P256, WebAuthn and RSA branches of `SessionKeyLibrary`.
  * @dev Every vector here is produced without reading the contract under test. P256 points and
  * signatures come from Foundry's own secp256r1 cheatcodes; the WebAuthn assertion is assembled

@@ -7,8 +7,8 @@ import {SessionAuthVerifier} from 'src/verifiers/SessionAuthVerifier.sol';
 import {KeyType} from 'src/verifiers/types/KeyType.sol';
 import {SessionKey} from 'src/verifiers/types/SessionKey.sol';
 
-/// @title VerifierBase
 /**
+ * @title VerifierBase
  * @notice Contract base for the {SessionAuthVerifier} batches: deploys the verifier against the
  * hub and builds session keys and their approvals.
  * @dev As in {HubBase}, every digest is assembled from the literals in {V2TestBase}.

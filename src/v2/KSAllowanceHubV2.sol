@@ -28,8 +28,8 @@ import {CalldataDecoder} from 'ks-common-sc/src/libraries/calldata/CalldataDecod
 
 import {ECDSA} from 'openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol';
 
-/// @title KSAllowanceHubV2
 /**
+ * @title KSAllowanceHubV2
  * @notice Single approval target for KyberSwap: pulls a user's ERC20s and ERC721s and hands them
  * to whitelisted routers in one transaction, so users approve this hub instead of every router.
  * @dev Assets are authorised over one of two rails, selected by `authFlags`:

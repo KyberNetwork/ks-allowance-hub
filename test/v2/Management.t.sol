@@ -21,8 +21,8 @@ import {IERC721} from 'openzeppelin-contracts/contracts/token/ERC721/IERC721.sol
 
 import {Vm} from 'forge-std/Vm.sol';
 
-/// @title ManagementTest
 /**
+ * @title ManagementTest
  * @notice B6 — `MGMT-01..11`: constructor wiring, the EIP-712 domain, ERC-165, the role admin
  * surface and all three rescue paths.
  * @dev Every role hash, interface id and domain field on the expected side of an assertion is

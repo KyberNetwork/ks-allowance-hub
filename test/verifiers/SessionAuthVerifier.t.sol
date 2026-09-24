@@ -66,8 +66,8 @@ contract SessionAuthVerifierTest is VerifierBase {
   // SV-02..04 — approving a key by calling the verifier directly
   // -------------------------------------------------------------------------------------------
 
-  /// SV-02 — the owner may approve a key at the verifier directly, with no signature to check
   /**
+   * SV-02 — the owner may approve a key at the verifier directly, with no signature to check
    * @dev Being `msg.sender` is the authentication here, exactly as it is on the hub's own
    * `updateAuth`. No nonce is spent, because no signature was presented to replay.
    */
@@ -342,8 +342,8 @@ contract SessionAuthVerifierTest is VerifierBase {
     _submitExecutionRaw(wa, hex'deadbeef', 21, deadline);
   }
 
-  /// SV-KEY-RSA-01 / -02 — a 2048-bit modulus verifies, a short one is refused
   /**
+   * SV-KEY-RSA-01 / -02 — a 2048-bit modulus verifies, a short one is refused
    * @dev Exercised at the library level against a checked-in vector. The signature must be made
    * with the private exponent, which is far too expensive to compute on-chain; verification uses
    * the public exponent and is what the contract actually performs.
@@ -397,13 +397,13 @@ contract SessionAuthVerifierTest is VerifierBase {
     assertEq(verifyingContract, address(verifier));
   }
 
-  /// SV-FUZZ-UPD — approving a key directly, across every scheme, expiry and nonce
-  /// @dev Subsumes SV-02 (relayed approval carrying the owner's signature): same rail, same call,
-  /// and both of that case's assertions appear below over a wider domain.
   /**
-   * @dev The approval path never verifies signature material against the key, only its hash, so
-   * the key type can be fuzzed across all four arms here even though only Secp256k1 can be signed
-   * for in {testFuzz_SV_FUZZ_VER_nonceAndDeadline}.
+   * SV-FUZZ-UPD — approving a key directly, across every scheme, expiry and nonce
+   * @dev Subsumes SV-02 (relayed approval carrying the owner's signature): same rail, same call,
+   * and both of that case's assertions appear below over a wider domain. The approval path never
+   * verifies signature material against the key, only its hash, so the key type can be fuzzed
+   * across all four arms here even though only Secp256k1 can be signed for in
+   * {testFuzz_SV_FUZZ_VER_nonceAndDeadline}.
    */
   function testFuzz_SV_FUZZ_UPD_directApproval(SessionFuzz memory f) public {
     KeyType keyType = KeyType(bound(f.keyType, 0, 3));

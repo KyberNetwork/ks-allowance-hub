@@ -26,8 +26,8 @@ import {
   SignatureChecker
 } from 'openzeppelin-contracts/contracts/utils/cryptography/SignatureChecker.sol';
 
-/// @title SessionAuthVerifier
 /**
+ * @title SessionAuthVerifier
  * @notice Lets an owner approve a session key once and then authorise allowance-hub orders with
  * that key instead of their main wallet. Keys carry their own expiry and may be Secp256k1, P256,
  * WebAuthn or RSA, so a passkey or a hot key can sign orders the wallet never touches.

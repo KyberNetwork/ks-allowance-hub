@@ -14,8 +14,8 @@ import {
   SignatureChecker
 } from 'openzeppelin-contracts/contracts/utils/cryptography/SignatureChecker.sol';
 
-/// @title AuthDelegator
 /**
+ * @title AuthDelegator
  * @notice Lets an owner nominate an {IAuthVerifier} once and afterwards authorise orders with
  * whatever credential that verifier understands, instead of signing each order here.
  * @dev The verifier is trusted by the owner, not by this contract: all that is checked is that

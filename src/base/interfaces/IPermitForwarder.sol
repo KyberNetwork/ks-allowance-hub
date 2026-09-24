@@ -6,6 +6,7 @@ import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer
 /// @title IPermitForwarder
 /// @notice Interface of {PermitForwarder}
 interface IPermitForwarder {
+  /// @notice The canonical Permit2 deployment every permit on this contract is relayed to
   function PERMIT2() external view returns (address);
 
   /**

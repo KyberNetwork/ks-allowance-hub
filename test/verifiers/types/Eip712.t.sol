@@ -14,8 +14,8 @@ import {KeyType} from 'src/verifiers/types/KeyType.sol';
 import {SessionApprovalLibrary} from 'src/verifiers/types/SessionApproval.sol';
 import {SessionKey, SessionKeyLibrary} from 'src/verifiers/types/SessionKey.sol';
 
-/// @notice T712-09..12 — the four verifier-side EIP-712 types.
 /**
+ * @notice T712-09..12 — the four verifier-side EIP-712 types.
  * @dev The production constants are the values under test; every expected value is built from the
  * literals in {V2TestBase}, which were transcribed from the struct definitions. Together with
  * `test/v2/types/Eip712.t.sol` this is the only place a production type string or typehash may be

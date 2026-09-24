@@ -12,8 +12,8 @@ import {
   SignatureChecker
 } from 'openzeppelin-contracts/contracts/utils/cryptography/SignatureChecker.sol';
 
-/// @title PermitTokenMocks
 /**
+ * @title PermitTokenMocks
  * @notice Tokens for the {PermitForwarder} branches. Each `permit` here recovers a real EIP-712
  * signature over its arguments in a fixed order, so a forwarder that decoded the payload words in
  * the wrong order would recover a different signer and fail rather than quietly pass.
@@ -106,8 +106,8 @@ contract ERC721PermitV4Mock is ERC721, EIP712 {
   }
 }
 
-/// @notice ERC-1155 that can be seeded onto a contract holding no receiver hook
 /**
+ * @notice ERC-1155 that can be seeded onto a contract holding no receiver hook
  * @dev {ERC1155-_mint} runs the acceptance check and would revert against the hub, so the only way
  * balance can end up stranded there — and the only way a rescue path can be reached — is an update
  * that skips the check, which is exactly what a non-standard token or a direct storage write does.

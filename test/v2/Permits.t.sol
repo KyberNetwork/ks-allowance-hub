@@ -13,8 +13,8 @@ import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer
 import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
 import {CalldataDecoder} from 'ks-common-sc/src/libraries/calldata/CalldataDecoder.sol';
 
-/// @title PermitsTest
 /**
+ * @title PermitsTest
  * @notice B5 — `PF-01..09` and `PF-FUZZ`: every payload-length branch of {PermitForwarder}.
  * @dev The forwarder dispatches purely on `permitData[i].length` and swallows whatever the token
  * does, so the observable oracle is never the call's return: it is the allowance and nonce the

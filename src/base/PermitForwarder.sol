@@ -14,8 +14,8 @@ import {
   IERC20Permit
 } from 'openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol';
 
-/// @title PermitForwarder
 /**
+ * @title PermitForwarder
  * @notice Relays token permits on a user's behalf so an approval and the spend that follows fit in
  * one transaction. Anyone may relay anyone's permit: the signature inside is the authorisation.
  * @dev Every permit is attempted inside try/catch, so one already-used or front-run permit cannot
@@ -24,6 +24,7 @@ import {
 abstract contract PermitForwarder is IPermitForwarder, Common {
   using CalldataDecoder for bytes;
 
+  /// @inheritdoc IPermitForwarder
   address public immutable PERMIT2;
 
   /// @param permit2 The canonical Permit2 deployment this contract relays approvals to

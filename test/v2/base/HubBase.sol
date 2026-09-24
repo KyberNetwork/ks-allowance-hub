@@ -16,8 +16,8 @@ import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
-/// @title HubBase
 /**
+ * @title HubBase
  * @notice Contract base for the {KSAllowanceHubV2} batches: deploys the hub against the real
  * Permit2 on a mainnet fork, wires the mocks, and builds orders.
  * @dev Every signature here is produced from the literals in {V2TestBase}. Nothing in this file may

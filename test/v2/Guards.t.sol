@@ -43,8 +43,8 @@ contract AuthVerifierMock is IAuthVerifier {
     external {}
 }
 
-/// @notice GUARD-01..08 and MC-01..05 / MC-FUZZ — pause, deadline, native spend and batching.
 /**
+ * @notice GUARD-01..08 and MC-01..05 / MC-FUZZ — pause, deadline, native spend and batching.
  * @dev Role identifiers are written out rather than imported, so a changed production constant
  * cannot quietly agree with the expectation.
  *
@@ -420,8 +420,8 @@ contract GuardsTest is HubBase {
     uint8 payableMask;
   }
 
-  /// MC-FUZZ — value survives a batch exactly when every selector in it is payable
   /**
+   * MC-FUZZ — value survives a batch exactly when every selector in it is payable
    * @dev Every sub-call is a `delegatecall`, so each one sees the outer `msg.value`; a
    * non-payable selector therefore rejects the whole batch on its own dispatcher check.
    */

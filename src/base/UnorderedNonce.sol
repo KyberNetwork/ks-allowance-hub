@@ -3,8 +3,8 @@ pragma solidity ^0.8.0;
 
 import {IUnorderedNonce} from './interfaces/IUnorderedNonce.sol';
 
-/// @title UnorderedNonce
 /**
+ * @title UnorderedNonce
  * @notice Permit2-style nonce bitmap: signatures can be consumed in any order, and each contract
  * inheriting this keeps its own namespace, so the same number is independent across contracts.
  */

@@ -5,8 +5,8 @@ import {IMsgSender} from './interfaces/IMsgSender.sol';
 
 import {TransientSlot} from 'openzeppelin-contracts/contracts/utils/TransientSlot.sol';
 
-/// @title MsgSender
 /**
+ * @title MsgSender
  * @notice Publishes whose behalf the contract is acting on, so a callee that sees this contract as
  * its `msg.sender` can still identify the user, and doubles as the reentrancy guard.
  */

@@ -5,8 +5,8 @@ import {NativeSpendGuard} from './NativeSpendGuard.sol';
 
 import {Multicallable} from 'solady/utils/Multicallable.sol';
 
-/// @title GuardedMulticall
 /**
+ * @title GuardedMulticall
  * @notice Batches calls the way Solady does, but accepts value: every sub-call is a delegatecall
  * and therefore sees the same `msg.value` although it arrived once, so the batch is bounded as a
  * whole instead of refusing value outright.

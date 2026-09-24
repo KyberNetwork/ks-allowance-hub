@@ -348,8 +348,8 @@ contract DelegationTest is VerifierBase {
   // VAL — the validator hooks
   // -------------------------------------------------------------------------------------------
 
-  /// VAL-01 / VAL-02 — the hooks bracket the whole order, and each snapshot returns to its owner
   /**
+   * VAL-01 / VAL-02 — the hooks bracket the whole order, and each snapshot returns to its owner
    * @dev The spy reads the router's balance inside each hook, which is what actually orders the
    * hooks against the transfer and the router call: `beforeExecution` must see the pre-pull
    * balance and `afterExecution` the balance after both the pull and the router leg.
