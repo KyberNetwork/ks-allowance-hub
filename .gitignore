@@ -18,3 +18,5 @@ log
 
 #vscode
 .vscode/
+
+test/TESTING_CHECKLIST.md

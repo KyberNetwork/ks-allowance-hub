@@ -7,8 +7,22 @@ via_ir = true
 dynamic_test_linking = true
 ffi = true
 
+additional_compiler_profiles = [
+  { name = "runs-10000", via_ir = true, optimizer_runs = 10000 }
+]
+
+compilation_restrictions = [
+  { paths = "src/v2/KSAllowanceHubV2.sol", optimizer_runs = 10000 },
+]
+
+
 [fuzz]
 runs = 32
+
+# Local deep-fuzz profile. Inherits everything from `default` and only raises the fuzz budget, so
+# it exercises the same build as CI. Run with `FOUNDRY_PROFILE=deep forge test`.
+[profile.deep.fuzz]
+runs = 10_000
 
 [fmt]
 line_length = 100

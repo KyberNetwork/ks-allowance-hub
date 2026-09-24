@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 import 'ks-common-sc/script/Base.s.sol';
-import 'src/KSAllowanceHub.sol';
+import 'src/v1/KSAllowanceHub.sol';
 
 contract DeployKSAllowanceHubScript is BaseScript {
   string salt = '260623';

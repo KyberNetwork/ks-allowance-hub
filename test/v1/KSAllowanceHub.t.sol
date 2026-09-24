@@ -3,15 +3,15 @@ pragma solidity ^0.8.0;
 
 import 'forge-std/Test.sol';
 
-import 'src/KSAllowanceHub.sol';
-import 'src/types/ERC20Params.sol';
-import 'src/types/ERC721Params.sol';
-import 'src/types/GenericCall.sol';
-import 'src/types/RelayerWitness.sol';
+import 'src/v1/KSAllowanceHub.sol';
+import 'src/v1/types/ERC20Params.sol';
+import 'src/v1/types/ERC721Params.sol';
+import 'src/v1/types/GenericCall.sol';
+import 'src/v1/types/RelayerWitness.sol';
 
+import './mocks/GenericRouterMock.sol';
 import 'test/libraries/ArrayHelper.sol';
 import 'test/libraries/PermitHash.sol';
-import 'test/mocks/GenericRouterMock.sol';
 
 import 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
 import 'openzeppelin-contracts/contracts/interfaces/IERC721.sol';
