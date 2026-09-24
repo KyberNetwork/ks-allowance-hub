@@ -183,12 +183,20 @@ to be observed from inside a router callback rather than across two calls.
 Scripts use CREATE3 and read `script/config/*.json` per chain.
 
 ```shell
-forge script script/DeployKSAllowanceHub.s.sol --sig 'run(string[])' '[1,56]' --broadcast
-forge script script/AddWhitelistedRoutersV2.s.sol --sig 'run(string[])' '[1,56]' --broadcast
+forge script script/v1/DeployKSAllowanceHub.s.sol   --sig 'run(string[])' '[1,56]' --broadcast
+forge script script/v1/AddWhitelistedRouters.s.sol  --sig 'run(string[])' '[1,56]' --broadcast
+
+forge script script/v2/DeployKSAllowanceHubV2.s.sol --sig 'run(string[])' '[1,56]' --broadcast
+forge script script/v2/AddWhitelistedRoutersV2.s.sol --sig 'run(string[])' '[1,56]' --broadcast
 ```
 
-Deployed addresses land in `allowance-hub.json` and `allowance-hub-v2.json`. There is no V2 deploy
-script yet — `AddWhitelistedRoutersV2` reads `allowance-hub-v2`, which stays empty until one exists.
+Deployed addresses land in `allowance-hub.json` and `allowance-hub-v2.json`; the V2 scripts read and
+write the latter, so `AddWhitelistedRoutersV2` only works once `DeployKSAllowanceHubV2` has
+broadcast. The two hubs carry **different router roles** — v1 grants `WHITELIST_ROUTER_ROLE`, v2
+grants `WHITELISTED_ROUTER_ROLE` — so the scripts are not interchangeable.
+
+The V2 salt lives in `DeployKSAllowanceHubV2.salt` and is part of the CREATE3 preimage, so changing
+it changes the address on every chain. Fix it before the first broadcast.
 
 CI needs a `GH_PAT` repository secret with read access to the private `ks-action-validator-sc`
 submodule, which `actions/checkout` cannot clone with the default token.
