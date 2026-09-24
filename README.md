@@ -79,17 +79,32 @@ whatever a whitelisted router permits.
 ### Delegated verifiers
 
 Instead of a Permit2 signature, an owner can delegate an `IAuthVerifier` once through
-`delegateAuth`, and afterwards authorise orders with whatever credential that verifier
+`updateDelegation`, and afterwards authorise orders with whatever credential that verifier
 understands. The hub checks only that the verifier is delegated; the verifier must revert when a
 signature does not authorise the order, and owns its own replay protection.
 
 An empty signature reaching a verifier means the hub already authenticated the owner — either the
-owner called `delegateAuth` themselves, or it carried their EIP-712 `AuthDelegation` signature.
+owner called `updateDelegation` themselves, or it carried their EIP-712 `AuthDelegation` signature.
 
 `SessionAuthVerifier` is the reference implementation: the owner approves a `SessionKey`
-(`Secp256k1`, `P256`, `WebAuthn` or `RSA`, with an expiry) and that key then signs orders. Note
-that key approvals are additive — `revokeDelegation` disarms the verifier as a whole, but
-re-delegating re-arms every key previously approved.
+(`Secp256k1`, `P256`, `WebAuthn` or `RSA`, with an expiry) and that key then signs orders. Its
+`data` is `abi.encode(SessionKey key, bool approved)`, so the same call approves a key or revokes
+one, and the direction is part of the `SessionApproval` struct the owner signs:
+
+```
+SessionApproval(SessionKey sessionKey,bool approved,uint256 nonce,uint256 deadline)
+```
+
+Delegation itself works the same way: `updateDelegation` takes a `bool delegated`, so the one call
+both arms a verifier and withdraws it, and the direction is part of the `AuthDelegation` struct:
+
+```
+AuthDelegation(address verifier,bool delegated,bytes data,uint256 nonce,uint256 deadline)
+```
+
+`data` reaches the verifier only when delegating — a verifier that reverts must not be able to
+trap the owner in a delegation. Withdrawing therefore leaves the verifier's own state untouched,
+so a key that should go too is dropped first through `updateAuth`.
 
 ### Gasless flows
 

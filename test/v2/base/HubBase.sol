@@ -218,12 +218,14 @@ abstract contract HubBase is V2TestBase {
   function _signAuthDelegation(
     uint256 signerKey,
     address verifier,
+    bool delegated,
     bytes memory data,
     uint256 nonce,
     uint256 deadline
   ) internal returns (bytes memory) {
     bytes32 domain = lDomainSeparator('KyberSwap Allowance Hub', '2.0.0', address(hub));
-    bytes32 digest = lTypedDataHash(domain, lAuthDelegation(verifier, data, nonce, deadline));
+    bytes32 digest =
+      lTypedDataHash(domain, lAuthDelegation(verifier, delegated, data, nonce, deadline));
     return _sign(signerKey, digest);
   }
 }

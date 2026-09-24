@@ -70,6 +70,28 @@ contract Eip712Test is V2TestBase {
     assertEq(AuthDelegationLibrary.AUTH_DELEGATION_TYPEHASH, keccak256(bytes(L_AUTH_DELEGATION)));
   }
 
+  /// @dev Both directions, because `delegated` is what separates a delegation from a withdrawal
+  function test_T712_08b_authDelegationStructHash() public pure {
+    address verifier = address(0xBEEF);
+    bytes memory data = hex'c0ffee';
+
+    assertEq(
+      AuthDelegationLibrary.hash(verifier, true, data, 7, 99),
+      lAuthDelegation(verifier, true, data, 7, 99),
+      'delegation struct hash'
+    );
+    assertEq(
+      AuthDelegationLibrary.hash(verifier, false, data, 7, 99),
+      lAuthDelegation(verifier, false, data, 7, 99),
+      'withdrawal struct hash'
+    );
+    assertTrue(
+      AuthDelegationLibrary.hash(verifier, true, data, 7, 99)
+        != AuthDelegationLibrary.hash(verifier, false, data, 7, 99),
+      'the direction changes the digest'
+    );
+  }
+
   // -------------------------------------------------------------------------------------------
   // Struct hashing agrees with the independent encoding, not just the typehash
   // -------------------------------------------------------------------------------------------

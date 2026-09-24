@@ -53,7 +53,11 @@ contract SessionAuthVerifier is
     EIP712('KyberSwap Session Auth Verifier', '1.0.0')
   {}
 
-  /// @inheritdoc IAuthVerifier
+  /**
+   * @inheritdoc IAuthVerifier
+   * @dev `data` is `abi.encode(SessionKey key, bool approved)`: word 0 points at the key, word 1
+   * says whether to approve or revoke it
+   */
   function updateAuth(
     address owner,
     bytes calldata data,
@@ -69,19 +73,23 @@ contract SessionAuthVerifier is
     }
 
     bytes32 keyHash = key.hash();
+    // Read as a word and narrowed here, so the direction does not depend on the caller having
+    // written a canonical bool, nor on the compiler cleaning one that assembly produced
+    bool approved = data.decodeUint256(1) != 0;
 
     // An empty signature is trusted only from someone already authenticated: the owner
     // themselves, or the hub, which never forwards one until it has authenticated them
     if ((msg.sender != owner && msg.sender != ALLOWANCE_HUB) || signature.length != 0) {
       _useUnorderedNonce(owner, nonce);
 
-      bytes32 digest = _hashTypedDataV4(SessionApprovalLibrary.hash(keyHash, nonce, deadline));
+      bytes32 digest =
+        _hashTypedDataV4(SessionApprovalLibrary.hash(keyHash, approved, nonce, deadline));
       if (!SignatureChecker.isValidSignatureNow(owner, digest, signature)) {
         revert InvalidApprovalSignature();
       }
     }
 
-    approvedKeys[owner][keyHash] = true;
+    approvedKeys[owner][keyHash] = approved;
   }
 
   /// @inheritdoc IAuthVerifier

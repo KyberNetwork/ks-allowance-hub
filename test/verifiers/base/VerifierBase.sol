@@ -45,8 +45,24 @@ abstract contract VerifierBase is HubBase {
     return lSessionKeyHash(key.publicKey, uint8(key.keyType), key.expiration);
   }
 
+  /// @dev The `key` argument of `verifyAuth`, which names a credential and carries no direction
   function _encodeKey(SessionKey memory key) internal pure returns (bytes memory) {
     return abi.encode(key);
+  }
+
+  /// @dev The `data` argument of `updateAuth`: the key, plus the direction to apply to it
+  function _updateData(SessionKey memory key, bool approved) internal pure returns (bytes memory) {
+    return abi.encode(key, approved);
+  }
+
+  /// @dev `updateAuth` payload that approves `key`
+  function _approveKey(SessionKey memory key) internal pure returns (bytes memory) {
+    return _updateData(key, true);
+  }
+
+  /// @dev `updateAuth` payload that revokes `key`
+  function _revokeKey(SessionKey memory key) internal pure returns (bytes memory) {
+    return _updateData(key, false);
   }
 
   function _verifierDomain() internal view returns (bytes32) {
@@ -56,15 +72,20 @@ abstract contract VerifierBase is HubBase {
   /// @dev Approves a key through the hub, which is the route that carries no signature
   function _delegateKeyThroughHub(SessionKey memory key) internal {
     vm.prank(owner);
-    hub.delegateAuth(owner, address(verifier), _encodeKey(key), 0, block.timestamp + 1 days, '');
+    hub.updateDelegation(
+      owner, address(verifier), true, _approveKey(key), 0, block.timestamp + 1 days, ''
+    );
   }
 
-  function _signSessionApproval(SessionKey memory key, uint256 nonce, uint256 deadline)
-    internal
-    returns (bytes memory)
-  {
-    bytes32 digest =
-      lTypedDataHash(_verifierDomain(), lSessionApproval(_keyHash(key), nonce, deadline));
+  function _signSessionApproval(
+    SessionKey memory key,
+    bool approved,
+    uint256 nonce,
+    uint256 deadline
+  ) internal returns (bytes memory) {
+    bytes32 digest = lTypedDataHash(
+      _verifierDomain(), lSessionApproval(_keyHash(key), approved, nonce, deadline)
+    );
     return _sign(ownerKey, digest);
   }
 }

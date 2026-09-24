@@ -54,7 +54,19 @@ contract VerifierEip712Test is V2TestBase {
     bytes32 keyHash = keccak256('an arbitrary key hash');
 
     assertEq(
-      SessionApprovalLibrary.hash(keyHash, 7, 99), lSessionApproval(keyHash, 7, 99), 'struct hash'
+      SessionApprovalLibrary.hash(keyHash, true, 7, 99),
+      lSessionApproval(keyHash, true, 7, 99),
+      'approval struct hash'
+    );
+    assertEq(
+      SessionApprovalLibrary.hash(keyHash, false, 7, 99),
+      lSessionApproval(keyHash, false, 7, 99),
+      'revocation struct hash'
+    );
+    assertTrue(
+      SessionApprovalLibrary.hash(keyHash, true, 7, 99)
+        != SessionApprovalLibrary.hash(keyHash, false, 7, 99),
+      'the direction changes the digest'
     );
   }
 

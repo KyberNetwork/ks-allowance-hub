@@ -26,6 +26,7 @@ contract SessionAuthVerifierTest is VerifierBase {
     uint256 expirationOffset;
     uint256 nonce;
     uint256 deadlineOffset;
+    bool approved;
   }
 
   /// @dev Verification must produce a signature the key accepts, so this shape omits `keyType`
@@ -75,7 +76,7 @@ contract SessionAuthVerifierTest is VerifierBase {
     SessionKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
 
     vm.prank(owner);
-    verifier.updateAuth(owner, _encodeKey(fresh), 0, block.timestamp + 1 days, '');
+    verifier.updateAuth(owner, _approveKey(fresh), 0, block.timestamp + 1 days, '');
 
     assertTrue(verifier.approvedKeys(owner, _keyHash(fresh)), 'approved');
     assertEq(verifier.nonces(owner, 0), 0, 'no nonce spent without a signature');
@@ -87,7 +88,7 @@ contract SessionAuthVerifierTest is VerifierBase {
 
     vm.prank(relayer);
     vm.expectRevert(ISessionAuthVerifier.InvalidApprovalSignature.selector);
-    verifier.updateAuth(owner, _encodeKey(fresh), 0, block.timestamp + 1 days, '');
+    verifier.updateAuth(owner, _approveKey(fresh), 0, block.timestamp + 1 days, '');
   }
 
   /// SV-03 — a signature from anyone but the owner is rejected
@@ -96,23 +97,134 @@ contract SessionAuthVerifierTest is VerifierBase {
     uint256 deadline = block.timestamp + 1 days;
 
     bytes32 digest =
-      lTypedDataHash(_verifierDomain(), lSessionApproval(_keyHash(fresh), 4, deadline));
+      lTypedDataHash(_verifierDomain(), lSessionApproval(_keyHash(fresh), true, 4, deadline));
     bytes memory sig = _sign(sessionKeyPk, digest); // the session key, not the owner
 
     vm.prank(relayer);
     vm.expectRevert(ISessionAuthVerifier.InvalidApprovalSignature.selector);
-    verifier.updateAuth(owner, _encodeKey(fresh), 4, deadline, sig);
+    verifier.updateAuth(owner, _approveKey(fresh), 4, deadline, sig);
   }
 
   /// SV-04 — the approval deadline is enforced by the verifier itself
   function test_SV_04_directApprovalExpired() public {
     SessionKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
     uint256 deadline = block.timestamp - 1;
-    bytes memory sig = _signSessionApproval(fresh, 5, deadline);
+    bytes memory sig = _signSessionApproval(fresh, true, 5, deadline);
 
     vm.prank(relayer);
     vm.expectRevert(DeadlineChecker.DeadlinePassed.selector);
-    verifier.updateAuth(owner, _encodeKey(fresh), 5, deadline, sig);
+    verifier.updateAuth(owner, _approveKey(fresh), 5, deadline, sig);
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // SV-REV-01..05 — revoking a key, which is the same call with the direction flipped
+  // -------------------------------------------------------------------------------------------
+
+  /// SV-REV-01 — the owner revokes directly, and a key that had been authorising orders stops
+  function test_SV_REV_01_ownerRevokesDirectly() public {
+    _delegateKeyThroughHub(key);
+    _executeViaVerifier(key, sessionKeyPk, 30, block.timestamp + 1 hours, true);
+
+    vm.prank(owner);
+    verifier.updateAuth(owner, _revokeKey(key), 0, block.timestamp + 1 days, '');
+
+    assertFalse(verifier.approvedKeys(owner, _keyHash(key)), 'revoked');
+    assertTrue(hub.authDelegated(owner, address(verifier)), 'the delegation itself survives');
+
+    vm.expectRevert(ISessionAuthVerifier.SessionKeyNotDelegated.selector);
+    _executeViaVerifier(key, sessionKeyPk, 31, block.timestamp + 1 hours, false);
+  }
+
+  /// SV-REV-02 — a relayed revocation carrying the owner's signature spends a verifier nonce
+  function test_SV_REV_02_relayedRevocation() public {
+    _delegateKeyThroughHub(key);
+
+    uint256 deadline = block.timestamp + 1 days;
+    bytes memory sig = _signSessionApproval(key, false, 32, deadline);
+
+    vm.prank(relayer);
+    verifier.updateAuth(owner, _revokeKey(key), 32, deadline, sig);
+
+    assertFalse(verifier.approvedKeys(owner, _keyHash(key)), 'revoked');
+    assertEq(verifier.nonces(owner, 0), 1 << 32, 'nonce spent');
+  }
+
+  /**
+   * SV-REV-03 — neither instruction can be submitted as the other
+   * @dev Each half submits one signature twice: once under the flipped direction, which must be
+   * refused, and then under its own, which must succeed on the same nonce. The second submission
+   * is what makes the first one evidence about the direction — a signature that had simply been
+   * invalid would fail both times.
+   */
+  function test_SV_REV_03_directionCannotBeFlipped() public {
+    _delegateKeyThroughHub(key);
+
+    uint256 deadline = block.timestamp + 1 days;
+    SessionKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
+
+    // an approval, submitted as a revocation
+    bytes memory approval = _signSessionApproval(fresh, true, 33, deadline);
+    vm.prank(relayer);
+    vm.expectRevert(ISessionAuthVerifier.InvalidApprovalSignature.selector);
+    verifier.updateAuth(owner, _revokeKey(fresh), 33, deadline, approval);
+    assertEq(verifier.nonces(owner, 0), 0, 'a refused update burns nothing');
+
+    // the same signature, submitted as what the owner actually signed
+    vm.prank(relayer);
+    verifier.updateAuth(owner, _approveKey(fresh), 33, deadline, approval);
+    assertTrue(verifier.approvedKeys(owner, _keyHash(fresh)), 'approved on its own direction');
+
+    // and the mirror: a revocation, submitted as an approval
+    bytes memory revocation = _signSessionApproval(key, false, 34, deadline);
+    vm.prank(relayer);
+    vm.expectRevert(ISessionAuthVerifier.InvalidApprovalSignature.selector);
+    verifier.updateAuth(owner, _approveKey(key), 34, deadline, revocation);
+    assertTrue(verifier.approvedKeys(owner, _keyHash(key)), 'still approved after the refusal');
+
+    vm.prank(relayer);
+    verifier.updateAuth(owner, _revokeKey(key), 34, deadline, revocation);
+    assertFalse(verifier.approvedKeys(owner, _keyHash(key)), 'revoked on its own direction');
+
+    assertEq(verifier.nonces(owner, 0), (1 << 33) | (1 << 34), 'one nonce per accepted update');
+  }
+
+  /// SV-REV-04 — revocation is not permanent: the same key may be approved again afterwards
+  function test_SV_REV_04_reapprovalAfterRevocation() public {
+    _delegateKeyThroughHub(key);
+
+    vm.prank(owner);
+    verifier.updateAuth(owner, _revokeKey(key), 0, block.timestamp + 1 days, '');
+    assertFalse(verifier.approvedKeys(owner, _keyHash(key)), 'revoked');
+
+    vm.prank(owner);
+    verifier.updateAuth(owner, _approveKey(key), 0, block.timestamp + 1 days, '');
+    assertTrue(verifier.approvedKeys(owner, _keyHash(key)), 'approved again');
+
+    _executeViaVerifier(key, sessionKeyPk, 35, block.timestamp + 1 hours, true);
+  }
+
+  /**
+   * SV-REV-05 — a direction word that is neither 0 nor 1 is narrowed to true
+   * @dev Hand-packed, because `abi.encode` cannot produce a non-canonical bool. The signature is
+   * over `true`, so this also shows the narrowed value is the one hashed: carrying the raw word
+   * into the digest instead would not match.
+   */
+  function test_SV_REV_05_nonCanonicalDirectionIsNarrowed() public {
+    SessionKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
+    uint256 deadline = block.timestamp + 1 days;
+
+    bytes memory data = _approveKey(fresh);
+    // word 1 of the payload is the direction; 2 is a value no ABI encoder would write there
+    assembly ('memory-safe') {
+      mstore(add(data, 0x40), 2)
+    }
+
+    bytes memory sig = _signSessionApproval(fresh, true, 36, deadline);
+
+    vm.prank(relayer);
+    verifier.updateAuth(owner, data, 36, deadline, sig);
+
+    assertTrue(verifier.approvedKeys(owner, _keyHash(fresh)), 'narrowed to true');
   }
 
   // -------------------------------------------------------------------------------------------
@@ -398,14 +510,15 @@ contract SessionAuthVerifierTest is VerifierBase {
   }
 
   /**
-   * SV-FUZZ-UPD — approving a key directly, across every scheme, expiry and nonce
+   * SV-FUZZ-UPD — updating a key directly, across every scheme, expiry, nonce and direction
    * @dev Subsumes SV-02 (relayed approval carrying the owner's signature): same rail, same call,
-   * and both of that case's assertions appear below over a wider domain. The approval path never
+   * and both of that case's assertions appear below over a wider domain. The update path never
    * verifies signature material against the key, only its hash, so the key type can be fuzzed
    * across all four arms here even though only Secp256k1 can be signed for in
-   * {testFuzz_SV_FUZZ_VER_nonceAndDeadline}.
+   * {testFuzz_SV_FUZZ_VER_nonceAndDeadline}. The pre-state is set to the opposite of the fuzzed
+   * direction, so every run is a transition rather than a no-op.
    */
-  function testFuzz_SV_FUZZ_UPD_directApproval(SessionFuzz memory f) public {
+  function testFuzz_SV_FUZZ_UPD_directUpdate(SessionFuzz memory f) public {
     KeyType keyType = KeyType(bound(f.keyType, 0, 3));
     uint256 expiration = block.timestamp + bound(f.expirationOffset, 0, 365 days);
     uint256 deadline = block.timestamp + bound(f.deadlineOffset, 0, 30 days);
@@ -413,12 +526,18 @@ contract SessionAuthVerifierTest is VerifierBase {
     SessionKey memory fresh =
       SessionKey({publicKey: abi.encode(recipient), keyType: keyType, expiration: expiration});
 
-    bytes memory sig = _signSessionApproval(fresh, f.nonce, deadline);
+    // SV-02's route, used here to establish the opposite pre-state without spending a nonce
+    vm.prank(owner);
+    verifier.updateAuth(owner, _updateData(fresh, !f.approved), 0, deadline, '');
+    assertEq(verifier.approvedKeys(owner, _keyHash(fresh)), !f.approved, 'pre-state');
+    assertEq(verifier.nonces(owner, 0), 0, 'no nonce spent without a signature');
+
+    bytes memory sig = _signSessionApproval(fresh, f.approved, f.nonce, deadline);
 
     vm.prank(relayer);
-    verifier.updateAuth(owner, _encodeKey(fresh), f.nonce, deadline, sig);
+    verifier.updateAuth(owner, _updateData(fresh, f.approved), f.nonce, deadline, sig);
 
-    assertTrue(verifier.approvedKeys(owner, _keyHash(fresh)), 'approved');
+    assertEq(verifier.approvedKeys(owner, _keyHash(fresh)), f.approved, 'direction applied');
     assertEq(verifier.nonces(owner, f.nonce >> 8), 1 << (f.nonce & 0xff), 'nonce spent');
 
     // the approval binds the whole key, so a different scheme over the same bytes is a different key

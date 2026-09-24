@@ -33,9 +33,10 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
   constructor(string memory name, string memory version) EIP712(name, version) {}
 
   /// @inheritdoc IAuthDelegator
-  function delegateAuth(
+  function updateDelegation(
     address owner,
     address verifier,
+    bool delegated,
     bytes calldata data,
     uint256 nonce,
     uint256 deadline,
@@ -44,20 +45,19 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
     if (owner != msg.sender) {
       _useUnorderedNonce(owner, nonce);
 
-      bytes32 hash = _hashTypedDataV4(AuthDelegationLibrary.hash(verifier, data, nonce, deadline));
+      bytes32 hash =
+        _hashTypedDataV4(AuthDelegationLibrary.hash(verifier, delegated, data, nonce, deadline));
       if (!SignatureChecker.isValidSignatureNow(owner, hash, signature)) {
         revert InvalidDelegationSignature();
       }
     }
 
-    // Empty signature: the owner is either the caller or was checked just above
-    IAuthVerifier(verifier).updateAuth(owner, data, 0, deadline, '');
-    authDelegated[owner][verifier] = true;
-  }
-
-  /// @inheritdoc IAuthDelegator
-  function revokeDelegation(address verifier) external payable {
-    authDelegated[msg.sender][verifier] = false;
+    // Forwarded only when delegating, so a verifier that reverts cannot trap the owner in a
+    // delegation. Empty signature: the owner is either the caller or was checked just above
+    if (delegated) {
+      IAuthVerifier(verifier).updateAuth(owner, data, 0, deadline, '');
+    }
+    authDelegated[owner][verifier] = delegated;
   }
 
   /// @inheritdoc IAuthDelegator

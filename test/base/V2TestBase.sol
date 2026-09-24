@@ -48,12 +48,12 @@ abstract contract V2TestBase is Test {
   string internal constant L_CALLS_APPROVAL =
     'CallsApproval(address owner,GenericCall[] genericCalls,uint256 nonce,uint256 deadline)';
   string internal constant L_AUTH_DELEGATION =
-    'AuthDelegation(address verifier,bytes data,uint256 nonce,uint256 deadline)';
+    'AuthDelegation(address verifier,bool delegated,bytes data,uint256 nonce,uint256 deadline)';
 
   string internal constant L_SESSION_KEY =
     'SessionKey(bytes publicKey,uint8 keyType,uint256 expiration)';
   string internal constant L_SESSION_APPROVAL =
-    'SessionApproval(SessionKey sessionKey,uint256 nonce,uint256 deadline)';
+    'SessionApproval(SessionKey sessionKey,bool approved,uint256 nonce,uint256 deadline)';
   string internal constant L_EXECUTION_APPROVAL =
     'ExecutionApproval(address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 deadline)';
   string internal constant L_FULFILLMENT_APPROVAL =
@@ -231,13 +231,17 @@ abstract contract V2TestBase is Test {
     );
   }
 
-  function lAuthDelegation(address verifier, bytes memory data, uint256 nonce, uint256 deadline)
-    internal
-    pure
-    returns (bytes32)
-  {
+  function lAuthDelegation(
+    address verifier,
+    bool delegated,
+    bytes memory data,
+    uint256 nonce,
+    uint256 deadline
+  ) internal pure returns (bytes32) {
     return keccak256(
-      abi.encode(keccak256(bytes(L_AUTH_DELEGATION)), verifier, keccak256(data), nonce, deadline)
+      abi.encode(
+        keccak256(bytes(L_AUTH_DELEGATION)), verifier, delegated, keccak256(data), nonce, deadline
+      )
     );
   }
 
@@ -283,12 +287,12 @@ abstract contract V2TestBase is Test {
     return keccak256(abi.encode(lSessionKeyTypehash(), keccak256(publicKey), keyType, expiration));
   }
 
-  function lSessionApproval(bytes32 keyHash, uint256 nonce, uint256 deadline)
+  function lSessionApproval(bytes32 keyHash, bool approved, uint256 nonce, uint256 deadline)
     internal
     pure
     returns (bytes32)
   {
-    return keccak256(abi.encode(lSessionApprovalTypehash(), keyHash, nonce, deadline));
+    return keccak256(abi.encode(lSessionApprovalTypehash(), keyHash, approved, nonce, deadline));
   }
 
   function lExecutionApproval(

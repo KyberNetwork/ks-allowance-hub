@@ -29,7 +29,7 @@ import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessCon
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
 
-/// @notice Verifier that only records, so `delegateAuth` / `updateAuth` can be exercised alone.
+/// @notice Verifier that only records, so `updateDelegation` / `updateAuth` can be exercised alone.
 contract AuthVerifierMock is IAuthVerifier {
   bytes public lastUpdateData;
   uint256 public updateCount;
@@ -130,7 +130,7 @@ contract GuardsTest is HubBase {
 
     // Delegation carries no assets, so the pause does not reach it
     vm.prank(owner);
-    hub.delegateAuth(owner, address(mockVerifier), hex'1234', 0, block.timestamp, '');
+    hub.updateDelegation(owner, address(mockVerifier), true, hex'1234', 0, block.timestamp, '');
 
     assertTrue(hub.authDelegated(owner, address(mockVerifier)), 'delegation still works');
     assertEq(mockVerifier.updateCount(), 1, 'and reached the verifier');
@@ -243,7 +243,7 @@ contract GuardsTest is HubBase {
     assertFalse(hub.authDelegated(owner, address(mockVerifier)), 'nothing was delegated');
 
     vm.prank(owner);
-    hub.delegateAuth(owner, address(mockVerifier), hex'01', 0, block.timestamp, '');
+    hub.updateDelegation(owner, address(mockVerifier), true, hex'01', 0, block.timestamp, '');
 
     vm.prank(owner);
     hub.updateAuth(owner, address(mockVerifier), hex'02', 0, block.timestamp, '');

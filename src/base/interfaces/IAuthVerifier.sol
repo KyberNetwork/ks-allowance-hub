@@ -7,7 +7,7 @@ interface IAuthVerifier {
   error NotAllowanceHub();
 
   /**
-   * @notice Records or replaces the owner's authorisation material
+   * @notice Records, replaces or withdraws the owner's authorisation material
    * @dev An empty `signature` is only meaningful from a caller that is already authenticated —
    * the owner themselves, or an allowance hub that forwards one only after authenticating them —
    * and lets the verifier accept `data` as-is. A non-empty one must be verified by the
