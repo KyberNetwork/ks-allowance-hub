@@ -19,8 +19,7 @@ import {
  * @notice Lets an owner nominate an {IAuthVerifier} once and afterwards authorise orders with
  * whatever credential that verifier understands, instead of signing each order here.
  * @dev The verifier is trusted by the owner, not by this contract: all that is checked is that
- * the owner delegated it. An empty signature forwarded to a verifier is the signal that this
- * contract already authenticated the owner.
+ * the owner delegated it.
  */
 abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNonce, EIP712 {
   /// @inheritdoc IAuthDelegator

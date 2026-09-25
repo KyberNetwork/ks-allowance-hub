@@ -40,9 +40,9 @@ interface IAuthVerifier {
 
   /**
    * @notice Checks that `signature` authorises `data` on behalf of `owner`
-   * @dev Must revert when it does not; returning normally is read as success. Implementations
-   * must bind `nonce` and `deadline` into the digest they verify and consume the nonce, since the
-   * hub enforces neither on this path.
+   * @dev Must revert when it does not; returning normally is read as success. The hub enforces
+   * `deadline` before calling but never touches `nonce`, so an implementation owns replay
+   * protection: consume the nonce, and bind both into the digest it verifies.
    * @param owner Account the order draws on
    * @param data The order, as the hub encoded it; its last byte marks which entry point built it
    * @param nonce Must be bound into the digest and consumed

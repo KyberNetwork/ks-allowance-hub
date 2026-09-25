@@ -44,11 +44,7 @@ library SessionKeyLibrary {
     );
   }
 
-  /**
-   * @notice Checks `signature` over `digest` under this key's scheme
-   * @dev The final branch is RSA and also catches any keyType outside the enum, which the raw
-   * calldata pointer in the verifier makes reachable.
-   */
+  /// @notice Checks `signature` over `digest` under this key's scheme
   function verify(SessionKey calldata key, bytes32 digest, bytes calldata signature)
     internal
     view

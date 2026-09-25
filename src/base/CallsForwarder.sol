@@ -73,6 +73,9 @@ contract CallsForwarder is ICallsForwarder, NativeSpendGuard, Common, Multicalla
 
   /**
    * @notice Runs several of this contract's own calls in one transaction
+   * @dev Solady refuses any `msg.value` outright, since every `delegatecall` sub-call sees the
+   * whole of it. This override accepts value and bounds the batch instead, returning normally
+   * because the direct return would end the context before the guard could check.
    * @param data One ABI-encoded call to this contract per entry
    * @return results Each call's return data, in order
    */
@@ -83,7 +86,6 @@ contract CallsForwarder is ICallsForwarder, NativeSpendGuard, Common, Multicalla
     guardNativeSpend
     returns (bytes[] memory results)
   {
-    // Returns normally rather than Solady's direct return, so the guard still runs afterwards
     return _multicallResultsToBytesArray(_multicall(data));
   }
 }
