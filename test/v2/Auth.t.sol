@@ -78,6 +78,7 @@ contract AuthTest is VerifierBase {
       owner,
       erc20s,
       new ERC721Transfer[](0),
+      new GenericCall[](0),
       vs,
       deadline,
       _flags(true, false, false),
@@ -276,7 +277,8 @@ contract AuthTest is VerifierBase {
     uint256 deadline = block.timestamp + 1 hours;
 
     // no calls signature, so the owner is signing "any calls the solver picks"
-    bytes memory signature = _signFulfillmentOrder(erc20s, nfts, vs, ANY, ANY, 30, deadline);
+    bytes memory signature =
+      _signFulfillmentOrder(erc20s, nfts, new GenericCall[](0), vs, ANY, ANY, 30, deadline);
 
     uint256 before = IERC20(WETH).balanceOf(address(router));
 
@@ -285,6 +287,7 @@ contract AuthTest is VerifierBase {
       owner,
       erc20s,
       nfts,
+      new GenericCall[](0),
       vs,
       deadline,
       _flags(true, false, false),
@@ -307,7 +310,14 @@ contract AuthTest is VerifierBase {
 
     // owner signs for an open call list
     bytes memory signature = _signFulfillmentOrder(
-      erc20s, new ERC721Transfer[](0), new ValidationParams[](0), ANY, ANY, 31, deadline
+      erc20s,
+      new ERC721Transfer[](0),
+      new GenericCall[](0),
+      new ValidationParams[](0),
+      ANY,
+      ANY,
+      31,
+      deadline
     );
 
     // the solver instead presents a signed call list, which changes callsSigner in the witness
@@ -319,6 +329,7 @@ contract AuthTest is VerifierBase {
       owner,
       erc20s,
       new ERC721Transfer[](0),
+      new GenericCall[](0),
       new ValidationParams[](0),
       deadline,
       _flags(true, false, false),
@@ -495,6 +506,7 @@ contract AuthTest is VerifierBase {
   struct FulfillFuzz {
     uint160 amount;
     uint8 callCount;
+    uint8 ownerCallCount;
     uint256 deadlineOffset;
     bool moveNft;
   }
@@ -588,14 +600,23 @@ contract AuthTest is VerifierBase {
     assertEq(results.length, f.callCount, 'one result per call');
   }
 
+  /// @dev The owner's tail is part of this domain: both lists range over empty and non-empty
   function testFuzz_FU_FUZZ_ownerRail(FulfillFuzz memory f) public {
     f.amount = uint160(bound(f.amount, 0, 100 ether));
     f.callCount = uint8(bound(f.callCount, 0, 3));
+    f.ownerCallCount = uint8(bound(f.ownerCallCount, 0, 3));
     f.deadlineOffset = bound(f.deadlineOffset, 0, 30 days);
 
     GenericCall[] memory calls = new GenericCall[](f.callCount);
     for (uint256 i = 0; i < f.callCount; i++) {
       calls[i] = _routerCall(0, abi.encodePacked(uint8(i)));
+    }
+
+    // the owner's tail goes to the second router, so each list has a counter of its own
+    GenericCall[] memory ownerCalls = new GenericCall[](f.ownerCallCount);
+    for (uint256 i = 0; i < f.ownerCallCount; i++) {
+      ownerCalls[i] =
+        GenericCall({router: address(router2), value: 0, data: abi.encodePacked(uint8(i))});
     }
 
     ERC721Transfer[] memory nfts =
@@ -608,6 +629,7 @@ contract AuthTest is VerifierBase {
       owner,
       _erc20s(_wethTransfer(f.amount)),
       nfts,
+      ownerCalls,
       _validations(_validation(validator)),
       block.timestamp + f.deadlineOffset,
       _flags(false, false, false),
@@ -618,7 +640,9 @@ contract AuthTest is VerifierBase {
     );
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, f.amount, 'exact amount moved');
-    assertEq(results.length, f.callCount, 'one result per call');
+    assertEq(results.length, uint256(f.callCount) + f.ownerCallCount, 'one result per call');
+    assertEq(router.callCount(), f.callCount, 'the solver list ran here');
+    assertEq(router2.callCount(), f.ownerCallCount, "and the owner's tail there");
     assertEq(validator.sequenceLength(), 2, 'validator bracketed the order');
     if (f.moveNft) assertEq(nft.ownerOf(NFT_ID), address(router2), 'nft leg');
   }

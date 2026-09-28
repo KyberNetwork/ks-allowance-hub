@@ -52,28 +52,32 @@ interface IKSAllowanceHubV2 {
   /**
    * @notice Pulls the owner's assets and lets a solver choose the calls, with validators bounding
    * the outcome instead of the owner signing the calls themselves
+   * @dev `ownerCalls` is the exception: a tail the owner signs exactly, running after the solver
+   * has finished, for effects no validator can check on this chain
    * @param owner Account the assets come from
    * @param erc20Transfers ERC20 legs, moved from the owner to their targets
    * @param erc721Transfers ERC721 legs, moved from the owner to their targets
+   * @param ownerCalls Router calls the owner signed exactly, run after `solverCalls`
    * @param validationParams Validators run before and after execution; they are what the owner relies on
    * @param deadline Last timestamp at which the order may settle
    * @param authFlags Selects the authorisation rail; bit layout in {KSAllowanceHubV2}
    * @param authData Packed as for {transferAndExecute}
-   * @param genericCalls Router calls chosen by the solver, covered by `callsSignature` when one is given
+   * @param solverCalls Router calls chosen by the solver, covered by `callsSignature` when one is given
    * @param callsNonce Burned against `owner`, so one approval settles at most once
-   * @param callsSignature Approval of `genericCalls`; empty means the owner allowed any calls
-   * @return results Return data of each router call, in order
+   * @param callsSignature Approval of `solverCalls`; empty means the owner allowed any calls
+   * @return results Return data of every router call, `solverCalls` first then `ownerCalls`
    * @return gasUsed Gas spent inside this call, excluding intrinsic and calldata cost
    */
   function transferAndFulfill(
     address owner,
     ERC20Transfer[] calldata erc20Transfers,
     ERC721Transfer[] calldata erc721Transfers,
+    GenericCall[] calldata ownerCalls,
     ValidationParams[] calldata validationParams,
     uint256 deadline,
     PackedBits authFlags,
     bytes calldata authData,
-    GenericCall[] calldata genericCalls,
+    GenericCall[] calldata solverCalls,
     uint256 callsNonce,
     bytes calldata callsSignature
   ) external payable returns (bytes[] memory results, uint256 gasUsed);

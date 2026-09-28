@@ -74,3 +74,53 @@ contract NativeRejectorRouterMock is IKSGenericRouter {
     revert('no native');
   }
 }
+
+/// @notice Router that hands back who it is and what it was given, so results pin call order.
+/// @dev {RouterMock} returns a per-router counter, which cannot distinguish two routers
+/// interleaved in one order; this one can.
+contract EchoRouterMock is IKSGenericRouter {
+  function ksExecute(bytes calldata data) external payable returns (bytes memory) {
+    return abi.encode(address(this), data);
+  }
+}
+
+/**
+ * @notice Router whose calls can see each other's work, so a test can pin the order they ran in.
+ * @dev A call built by {produce} stores its payload; one built by {observe} appends the payload as
+ * it stood at that moment to {observations} and returns it. An observer that ran before a producer
+ * therefore records empty bytes, which is what separates "both lists ran" from "they ran in this
+ * order".
+ */
+contract ObservingRouterMock is IKSGenericRouter, ERC721Holder {
+  bytes1 private constant PRODUCE = 0x01;
+  bytes1 private constant OBSERVE = 0x02;
+
+  bytes public product;
+  bytes[] public observations;
+
+  receive() external payable {}
+
+  /// @dev Call data that stores `value` as the product
+  function produce(bytes memory value) external pure returns (bytes memory) {
+    return abi.encodePacked(PRODUCE, value);
+  }
+
+  /// @dev Call data that records the product as it stands when the call runs
+  function observe() external pure returns (bytes memory) {
+    return abi.encodePacked(OBSERVE);
+  }
+
+  function observationCount() external view returns (uint256) {
+    return observations.length;
+  }
+
+  function ksExecute(bytes calldata data) external payable returns (bytes memory) {
+    if (data.length != 0 && data[0] == PRODUCE) {
+      product = data[1:];
+      return product;
+    }
+
+    observations.push(product);
+    return product;
+  }
+}

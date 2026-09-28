@@ -371,6 +371,7 @@ contract SessionAuthVerifierTest is VerifierBase {
       owner,
       erc20s,
       new ERC721Transfer[](0),
+      new GenericCall[](0),
       new ValidationParams[](0),
       deadline,
       _flags(false, false, false),
@@ -395,7 +396,14 @@ contract SessionAuthVerifierTest is VerifierBase {
     bytes32 digest = lTypedDataHash(
       _verifierDomain(),
       lFulfillmentApproval(
-        ANY, erc20s, new ERC721Transfer[](0), new ValidationParams[](0), ANY, nonce, deadline
+        ANY,
+        erc20s,
+        new ERC721Transfer[](0),
+        new GenericCall[](0),
+        new ValidationParams[](0),
+        ANY,
+        nonce,
+        deadline
       )
     );
     bytes memory sig = _sign(sessionKeyPk, digest);
@@ -405,6 +413,7 @@ contract SessionAuthVerifierTest is VerifierBase {
       owner,
       erc20s,
       new ERC721Transfer[](0),
+      new GenericCall[](0),
       new ValidationParams[](0),
       deadline,
       _flags(false, false, false),

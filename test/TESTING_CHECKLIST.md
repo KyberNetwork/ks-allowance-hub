@@ -75,3 +75,24 @@ out of scope and unchanged. 168 tests, up from 146.
   `IAuthVerifier` NatSpec would have been compromised. The interface doc has been corrected; the
   allowlist has not been narrowed.
 - This file is no longer listed in `.gitignore`, so it now appears in diffs and PR review.
+
+## Run `20260925T110339Z`
+
+Scope: the `ownerCalls` addition to `KSAllowanceHubV2.transferAndFulfill` and the
+`genericCalls` → `solverCalls` rename. `ownerCalls` is a tail the owner signs exactly and which
+runs after the solver's route, for effects no validator can check on this chain. Three EIP-712
+typehashes change with it: `FulfillmentWitness`, `FulfillmentApproval`, `CallsApproval`.
+`transferAndExecute`, `src/v1/**` and `test/v1/**` are out of scope and unchanged.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20260925T110339Z/OWN-EXEC` | Execution order and results: the owner's tail runs after every solver call and observes what they produced; `results` is the solver's returns then the owner's | `OWN-01` `test_OWN_01_ownerCallsRunAfterSolverCalls`, `OWN-06` `test_OWN_06_resultsAreSolverThenOwner` — `test/v2/Delegation.t.sol`; ordering instrument `ObservingRouterMock`, results instrument `EchoRouterMock` — `test/v2/mocks/RouterMock.sol` | `forge test`, `forge test --isolate` — 176 passed. Non-vacuity: handing the two lists to the entry point the other way round fails both (`0x != 0xb2`; router at position 2 wrong) |
+| - [x] | - [ ] | `20260925T110339Z/OWN-BIND` | Authorisation: `ownerCalls` is bound by the Permit2 witness and by the verifier's `FulfillmentApproval`, each with a control leg proving the refusal is about binding. `OWN-03` also carries validators, so it pins both words the verifier payload moved | `OWN-02` `test_OWN_02_witnessBindsOwnerCalls`, `OWN-03` `test_OWN_03_approvalBindsOwnerCalls`, `OWN-08` `test_OWN_08_callsApprovalDoesNotCoverOwnerCalls` — `test/v2/Delegation.t.sol` | `forge test`, `forge test --isolate` — 176 passed. Each case settles its control leg before the expected `InvalidSigner()` / `InvalidApprovalSignature()` |
+| - [x] | - [ ] | `20260925T110339Z/OWN-GATE` | The router role gate and the settlement event both span the two lists; an empty owner tail reproduces the prior behaviour | `OWN-04` `test_OWN_04_ownerCallRouterMustBeWhitelisted`, `OWN-05` `test_OWN_05_emptyOwnerCallsIsThePriorBehaviour` — `test/v2/Delegation.t.sol`; `OWN-07` `test_OWN_07_eventCoversBothLists` — `test/v2/Settlement.t.sol` | `forge test`, `forge test --isolate` — 176 passed. Non-vacuity: swapping the two lists in `OWN-07` fails on the exact event payload |
+| - [x] | - [ ] | `20260925T110339Z/OWN-712` | The three changed typehashes and struct hashes against hand-written literals, including `GenericCall` joining two `encodeType`s. Both struct-hash rows now pass a non-empty tail, so the new member is actually encoded | `T712-02`, `T712-02b`, `T712-03`, `test_T712_fulfillmentWitnessStructHash`, `test_T712_callsApprovalStructHash` — `test/v2/types/Eip712.t.sol`; `T712-12` — `test/verifiers/types/Eip712.t.sol` | `forge test`, `forge test --isolate` — 176 passed |
+| - [x] | - [ ] | `20260925T110339Z/OWN-BASE` | Signature migration across the suite with every prior assertion preserved; the relayed-fulfillment fuzz domain extended to the new list, which is why `results.length` there is now the sum of the two | 16 `transferAndFulfill` / `_signFulfillmentOrder` / `lFulfillmentApproval` call sites — `test/v2/Auth.t.sol`, `test/v2/Delegation.t.sol`, `test/v2/Guards.t.sol`, `test/verifiers/SessionAuthVerifier.t.sol`, both `Eip712.t.sol`; `FU-FUZZ` `testFuzz_FU_FUZZ_ownerRail` — `test/v2/Auth.t.sol` | `forge build` clean (was 19 errors), `forge fmt test/`, `forge test`, `forge test --isolate` — 176 passed, 168 baseline preserved plus the 8 `OWN-*` |
+
+Unresolved gate, pre-existing and not introduced by this run: `forge coverage` fails
+stack-too-deep and `--ir-minimum` fails in the solar analyser on the `erc7201` builtin at
+`src/base/MsgSender.sol:16`, at `HEAD` as well as with this diff. Closure for the rows above is
+argued from the non-vacuity checks recorded in each, not from a coverage report.

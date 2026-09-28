@@ -106,18 +106,24 @@ contract VerifierEip712Test is V2TestBase {
     );
 
     (ERC20Transfer[] memory erc20s, ERC721Transfer[] memory nfts) = _sampleTransfers();
+    GenericCall[] memory ownerCalls = _sampleCalls();
     ValidationParams[] memory validations = _sampleValidations();
     address callsSigner = address(0xBEEF);
 
-    bytes32 expected = lFulfillmentApproval(ANY, erc20s, nfts, validations, callsSigner, 12, 5678);
+    bytes32 expected =
+      lFulfillmentApproval(ANY, erc20s, nfts, ownerCalls, validations, callsSigner, 12, 5678);
 
     assertEq(
-      FulfillmentApprovalLibrary.hashMemory(ANY, erc20s, nfts, validations, callsSigner, 12, 5678),
+      FulfillmentApprovalLibrary.hashMemory(
+        ANY, erc20s, nfts, ownerCalls, validations, callsSigner, 12, 5678
+      ),
       expected,
       'memory hasher'
     );
     assertEq(
-      this.extHashFulfillmentApproval(ANY, erc20s, nfts, validations, callsSigner, 12, 5678),
+      this.extHashFulfillmentApproval(
+        ANY, erc20s, nfts, ownerCalls, validations, callsSigner, 12, 5678
+      ),
       expected,
       'calldata hasher'
     );
@@ -148,13 +154,21 @@ contract VerifierEip712Test is V2TestBase {
     address solverAddress,
     ERC20Transfer[] calldata erc20Transfers,
     ERC721Transfer[] calldata erc721Transfers,
+    GenericCall[] calldata ownerCalls,
     ValidationParams[] calldata validationParams,
     address callsSigner,
     uint256 nonce,
     uint256 deadline
   ) external pure returns (bytes32) {
     return FulfillmentApprovalLibrary.hash(
-      solverAddress, erc20Transfers, erc721Transfers, validationParams, callsSigner, nonce, deadline
+      solverAddress,
+      erc20Transfers,
+      erc721Transfers,
+      ownerCalls,
+      validationParams,
+      callsSigner,
+      nonce,
+      deadline
     );
   }
 

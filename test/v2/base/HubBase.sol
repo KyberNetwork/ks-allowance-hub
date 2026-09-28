@@ -173,6 +173,7 @@ abstract contract HubBase is V2TestBase {
   function _signFulfillmentOrder(
     ERC20Transfer[] memory erc20Transfers,
     ERC721Transfer[] memory erc721Transfers,
+    GenericCall[] memory ownerCalls,
     ValidationParams[] memory validationParams,
     address callsSigner,
     address signedCaller,
@@ -180,7 +181,12 @@ abstract contract HubBase is V2TestBase {
     uint256 deadline
   ) internal returns (bytes memory) {
     bytes32 witness = lFulfillmentWitness(
-      signedCaller, _targets(erc20Transfers), erc721Transfers, validationParams, callsSigner
+      signedCaller,
+      _targets(erc20Transfers),
+      erc721Transfers,
+      ownerCalls,
+      validationParams,
+      callsSigner
     );
 
     (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(erc20Transfers);
@@ -205,13 +211,13 @@ abstract contract HubBase is V2TestBase {
   function _signCallsApproval(
     uint256 signerKey,
     address callsOwner,
-    GenericCall[] memory genericCalls,
+    GenericCall[] memory solverCalls,
     uint256 nonce,
     uint256 deadline
   ) internal returns (bytes memory) {
     bytes32 domain = lDomainSeparator('KyberSwap Allowance Hub', '2.0.0', address(hub));
     bytes32 digest =
-      lTypedDataHash(domain, lCallsApproval(callsOwner, genericCalls, nonce, deadline));
+      lTypedDataHash(domain, lCallsApproval(callsOwner, solverCalls, nonce, deadline));
     return _sign(signerKey, digest);
   }
 

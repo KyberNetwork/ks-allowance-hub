@@ -3,6 +3,7 @@ pragma solidity 0.8.36;
 
 import {VerifierBase} from 'test/verifiers/base/VerifierBase.sol';
 
+import {EchoRouterMock, ObservingRouterMock, RouterMock} from 'test/v2/mocks/RouterMock.sol';
 import {ERC1271WalletMock} from 'test/v2/mocks/TokenMocks.sol';
 
 import {DeadlineChecker} from 'src/base/DeadlineChecker.sol';
@@ -14,12 +15,14 @@ import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
 import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
-import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
+import {ISessionAuthVerifier} from 'src/verifiers/interfaces/ISessionAuthVerifier.sol';
 import {SessionKey} from 'src/verifiers/types/SessionKey.sol';
+
+import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
+import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 import {ECDSA} from 'openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol';
 
-/// @notice DEL-*, NONCE-*, CALLS-* and VAL-* — delegation, nonces, calls approval, validators.
 /// @notice Verifier that can be switched to reverting, to show a withdrawal never calls it
 contract RevertingVerifier is IAuthVerifier {
   error Nope();
@@ -50,6 +53,8 @@ contract RevertingVerifier is IAuthVerifier {
   }
 }
 
+/// @notice DEL-*, NONCE-*, CALLS-*, OWN-* and VAL-* — delegation, nonces, calls approval, the
+/// owner's call tail, validators.
 contract DelegationTest is VerifierBase {
   /// @dev One struct per entry-point domain, per the frozen plan's fuzz contract
   struct DelegationFuzz {
@@ -59,6 +64,14 @@ contract DelegationTest is VerifierBase {
 
   /// @dev Transcribed from {IAuthVerifier}, so production cannot vouch for its own signature
   string internal constant S_INIT_AUTH = 'initAuth(address,bytes)';
+
+  uint160 internal constant AMOUNT = 5 ether;
+
+  /// @dev Written out rather than imported: a role read from the hub would agree with a wrong one
+  bytes32 internal constant ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
+
+  /// @dev Permit2 does not expose this in the vendored interface, so it is written out here
+  bytes4 internal constant PERMIT2_INVALID_SIGNER = bytes4(keccak256('InvalidSigner()'));
 
   SessionKey internal key;
 
@@ -503,6 +516,7 @@ contract DelegationTest is VerifierBase {
       owner,
       new ERC20Transfer[](0),
       new ERC721Transfer[](0),
+      new GenericCall[](0),
       new ValidationParams[](0),
       deadline,
       _flags(false, false, false),
@@ -525,6 +539,7 @@ contract DelegationTest is VerifierBase {
       owner,
       new ERC20Transfer[](0),
       new ERC721Transfer[](0),
+      new GenericCall[](0),
       new ValidationParams[](0),
       block.timestamp,
       _flags(false, false, false),
@@ -532,6 +547,363 @@ contract DelegationTest is VerifierBase {
       calls,
       1,
       hex'1234'
+    );
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // OWN — the owner's call tail
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * OWN-01 — the tail runs after the solver's route, not merely alongside it
+   * @dev Both observers are the same router, so this is about when they ran and not about who was
+   * called. The one at the head of the solver list finds nothing, which is what "ran before the
+   * producers" looks like here and is what stops the second assertion being satisfiable by an
+   * implementation that ran the tail first. The owner's observer finds the LAST of the two
+   * products, so it ran after every solver call rather than merely after the first.
+   */
+  function test_OWN_01_ownerCallsRunAfterSolverCalls() public {
+    ObservingRouterMock ledger = new ObservingRouterMock();
+    vm.prank(admin);
+    hub.grantRole(ROUTER_ROLE, address(ledger));
+
+    bytes memory nothing = '';
+    bytes memory firstProduct = hex'a1';
+    bytes memory lastProduct = hex'b2';
+
+    GenericCall[] memory solverCalls = new GenericCall[](3);
+    solverCalls[0] = GenericCall({router: address(ledger), value: 0, data: ledger.observe()});
+    solverCalls[1] =
+      GenericCall({router: address(ledger), value: 0, data: ledger.produce(firstProduct)});
+    solverCalls[2] =
+      GenericCall({router: address(ledger), value: 0, data: ledger.produce(lastProduct)});
+
+    GenericCall[] memory ownerCalls = new GenericCall[](1);
+    ownerCalls[0] = GenericCall({router: address(ledger), value: 0, data: ledger.observe()});
+
+    vm.prank(owner);
+    bytes[] memory results = _fulfillWithTail(ownerCalls, solverCalls);
+
+    assertEq(ledger.observationCount(), 2, 'both observers ran');
+    assertEq(ledger.observations(0), nothing, 'the solver observer ran before either producer');
+    assertEq(ledger.observations(1), lastProduct, "the owner's tail ran after every solver call");
+    assertEq(results[3], lastProduct, 'and its return carries what it found');
+  }
+
+  /**
+   * OWN-02 — the Permit2 witness pins the tail the owner signed
+   * @dev The first leg is the control: the same order with the tail left alone settles, so the
+   * refusal in the second is evidence about the witness covering `ownerCalls` rather than about a
+   * signature that was never going to be accepted. Only one byte of call data separates them.
+   */
+  function test_OWN_02_witnessBindsOwnerCalls() public {
+    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
+    GenericCall[] memory signedTail = _calls(_routerCall(0, hex'aa'));
+    GenericCall[] memory swappedTail = _calls(_routerCall(0, hex'bb'));
+    uint256 deadline = block.timestamp + 1 hours;
+
+    uint256 before = IERC20(WETH).balanceOf(address(router));
+
+    bytes memory control = _signFulfillmentOrder(
+      erc20s, new ERC721Transfer[](0), signedTail, new ValidationParams[](0), ANY, ANY, 70, deadline
+    );
+
+    vm.prank(solver);
+    hub.transferAndFulfill(
+      owner,
+      erc20s,
+      new ERC721Transfer[](0),
+      signedTail,
+      new ValidationParams[](0),
+      deadline,
+      _flags(true, false, false),
+      _permit2AuthData(70, control),
+      solverCalls,
+      0,
+      ''
+    );
+
+    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the signed tail settled');
+    assertEq(router.callCount(), 2, 'one solver call and one owner call');
+
+    bytes memory sig = _signFulfillmentOrder(
+      erc20s, new ERC721Transfer[](0), signedTail, new ValidationParams[](0), ANY, ANY, 71, deadline
+    );
+
+    vm.prank(solver);
+    vm.expectRevert(PERMIT2_INVALID_SIGNER);
+    hub.transferAndFulfill(
+      owner,
+      erc20s,
+      new ERC721Transfer[](0),
+      swappedTail,
+      new ValidationParams[](0),
+      deadline,
+      _flags(true, false, false),
+      _permit2AuthData(71, sig),
+      solverCalls,
+      0,
+      ''
+    );
+  }
+
+  /**
+   * OWN-03 — the same binding on the verifier rail, through {FulfillmentApproval}
+   * @dev Carries validators as well as a tail, so the payload the hub hands the verifier has both
+   * of the words the diff moved: the tail where the call list used to be read, and the validators
+   * one word further on. As in OWN-02 the first leg is the control.
+   */
+  function test_OWN_03_approvalBindsOwnerCalls() public {
+    _delegateKeyThroughHub(key);
+
+    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ValidationParams[] memory vs = _validations(_validation(validator));
+    GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
+    GenericCall[] memory signedTail = _calls(_routerCall(0, hex'aa'));
+    GenericCall[] memory swappedTail = _calls(_routerCall(0, hex'bb'));
+    uint256 deadline = block.timestamp + 1 hours;
+
+    uint256 before = IERC20(WETH).balanceOf(address(router));
+
+    vm.prank(relayer);
+    hub.transferAndFulfill(
+      owner,
+      erc20s,
+      new ERC721Transfer[](0),
+      signedTail,
+      vs,
+      deadline,
+      _flags(false, false, false),
+      _verifierAuthData(
+        address(verifier),
+        72,
+        _encodeKey(key),
+        _signFulfillmentApproval(erc20s, signedTail, vs, 72, deadline)
+      ),
+      solverCalls,
+      0,
+      ''
+    );
+
+    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the approved tail settled');
+    assertEq(router.callCount(), 2, 'one solver call and one owner call');
+    assertEq(validator.sequenceLength(), 2, 'the validators still bracketed the order');
+
+    vm.prank(relayer);
+    vm.expectRevert(ISessionAuthVerifier.InvalidApprovalSignature.selector);
+    hub.transferAndFulfill(
+      owner,
+      erc20s,
+      new ERC721Transfer[](0),
+      swappedTail,
+      vs,
+      deadline,
+      _flags(false, false, false),
+      _verifierAuthData(
+        address(verifier),
+        73,
+        _encodeKey(key),
+        _signFulfillmentApproval(erc20s, signedTail, vs, 73, deadline)
+      ),
+      solverCalls,
+      0,
+      ''
+    );
+  }
+
+  /**
+   * OWN-04 — the whitelist gate covers the tail exactly as it covers the route
+   * @dev The first leg also shows the refusal unwinds the solver calls that had already run. The
+   * last leg is the control: granting the role and changing nothing else lets the very same tail
+   * through, so the two refusals are about the role rather than about the router.
+   */
+  function test_OWN_04_ownerCallRouterMustBeWhitelisted() public {
+    RouterMock stranger = new RouterMock();
+
+    GenericCall[] memory strangerCalls =
+      _calls(GenericCall({router: address(stranger), value: 0, data: hex'01'}));
+    GenericCall[] memory routeCalls = _calls(_routerCall(0, hex'02'));
+
+    bytes memory expectedError = abi.encodeWithSelector(
+      IAccessControl.AccessControlUnauthorizedAccount.selector, address(stranger), ROUTER_ROLE
+    );
+
+    vm.prank(owner);
+    vm.expectRevert(expectedError);
+    _fulfillWithTail(strangerCalls, routeCalls);
+
+    vm.prank(owner);
+    vm.expectRevert(expectedError);
+    _fulfillWithTail(new GenericCall[](0), strangerCalls);
+
+    assertEq(stranger.callCount(), 0, 'never called from either list');
+    assertEq(router.callCount(), 0, 'and the solver leg of the first order rolled back with it');
+
+    vm.prank(admin);
+    hub.grantRole(ROUTER_ROLE, address(stranger));
+
+    vm.prank(owner);
+    _fulfillWithTail(strangerCalls, routeCalls);
+
+    assertEq(stranger.callCount(), 1, "the owner's tail reached it once whitelisted");
+    assertEq(router.callCount(), 1, 'and the solver leg ran too');
+  }
+
+  /**
+   * OWN-05 — an empty tail adds nothing
+   * @dev The signed half of the calls-approval path is CALLS-02's, and it now runs with an empty
+   * tail of its own; what is left to say here is that an empty tail costs no call, no result and
+   * no nonce, and that the route settles as it does through the entry point that has no tail.
+   */
+  function test_OWN_05_emptyOwnerCallsIsThePriorBehaviour() public {
+    GenericCall[] memory solverCalls = new GenericCall[](2);
+    solverCalls[0] = _routerCall(0, hex'01');
+    solverCalls[1] = _routerCall(0, hex'02');
+
+    vm.prank(owner);
+    bytes[] memory results = _fulfillWithTail(new GenericCall[](0), solverCalls);
+
+    assertEq(results.length, 2, 'one result per solver call and no more');
+    assertEq(router.callCount(), 2, 'nothing beyond the solver route ran');
+    assertEq(router2.callCount(), 0, 'and no other router was touched');
+    assertEq(hub.nonces(owner, 0), 0, 'the calls-signer path is untouched by an empty tail');
+
+    vm.prank(owner);
+    (bytes[] memory executeResults,) = hub.transferAndExecute(
+      owner,
+      new ERC20Transfer[](0),
+      new ERC721Transfer[](0),
+      solverCalls,
+      block.timestamp,
+      _flags(false, false, false),
+      ''
+    );
+
+    assertEq(executeResults.length, results.length, 'the same route, the same shape either way');
+    assertEq(router.callCount(), 4, 'and the second order ran its two calls as well');
+  }
+
+  /**
+   * OWN-06 — `results` is the route then the tail, one entry per call
+   * @dev The two routers are interleaved across the lists, and each echoes back its own identity
+   * and payload, so neither swapping the lists nor reversing one of them would reproduce the
+   * expected sequence. OWN-01 is the separate statement about when the calls ran; this is about
+   * where their return data lands.
+   */
+  function test_OWN_06_resultsAreSolverThenOwner() public {
+    EchoRouterMock echoA = new EchoRouterMock();
+    EchoRouterMock echoB = new EchoRouterMock();
+
+    vm.startPrank(admin);
+    hub.grantRole(ROUTER_ROLE, address(echoA));
+    hub.grantRole(ROUTER_ROLE, address(echoB));
+    vm.stopPrank();
+
+    GenericCall[] memory solverCalls = new GenericCall[](2);
+    solverCalls[0] = GenericCall({router: address(echoA), value: 0, data: hex'aa'});
+    solverCalls[1] = GenericCall({router: address(echoB), value: 0, data: hex'bb'});
+
+    GenericCall[] memory ownerCalls = new GenericCall[](2);
+    ownerCalls[0] = GenericCall({router: address(echoB), value: 0, data: hex'cc'});
+    ownerCalls[1] = GenericCall({router: address(echoA), value: 0, data: hex'dd'});
+
+    vm.prank(owner);
+    bytes[] memory results = _fulfillWithTail(ownerCalls, solverCalls);
+
+    // the expectation is the two lists written out in the order they are claimed to run
+    GenericCall[] memory expected = new GenericCall[](4);
+    expected[0] = solverCalls[0];
+    expected[1] = solverCalls[1];
+    expected[2] = ownerCalls[0];
+    expected[3] = ownerCalls[1];
+
+    assertEq(results.length, expected.length, 'one result per call across both lists');
+
+    for (uint256 i = 0; i < expected.length; i++) {
+      (address seenRouter, bytes memory seenData) = abi.decode(results[i], (address, bytes));
+      assertEq(seenRouter, expected[i].router, 'result came from the router at that position');
+      assertEq(seenData, expected[i].data, 'and carries the data sent to it');
+    }
+  }
+
+  /**
+   * OWN-08 — the calls approval's domain stops at the solver's route
+   * @dev {CallsApproval} has no tail in it, so an approval built from the literal encoding must be
+   * accepted while the order carries one. The witness names the address the hub recovers from that
+   * approval, which is how the recovery becomes observable at all: a digest that had folded the
+   * tail in would recover somebody else and the permit would stop matching — which is exactly what
+   * the second leg, signing the same approval with the wrong key, makes visible. What does bind
+   * the tail is the owner's own witness, and OWN-02 is the case for that.
+   */
+  function test_OWN_08_callsApprovalDoesNotCoverOwnerCalls() public {
+    (address callsSigner, uint256 callsSignerKey) = makeAddrAndKey('calls signer');
+    _asEoa(callsSigner);
+
+    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
+    GenericCall[] memory ownerCalls = _calls(_routerCall(0, hex'aa'));
+    uint256 deadline = block.timestamp + 1 hours;
+
+    uint256 before = IERC20(WETH).balanceOf(address(router));
+
+    bytes memory permitSig = _signFulfillmentOrder(
+      erc20s,
+      new ERC721Transfer[](0),
+      ownerCalls,
+      new ValidationParams[](0),
+      callsSigner,
+      ANY,
+      74,
+      deadline
+    );
+    bytes memory callsSig = _signCallsApproval(callsSignerKey, owner, solverCalls, 24, deadline);
+
+    vm.prank(solver);
+    (bytes[] memory results,) = hub.transferAndFulfill(
+      owner,
+      erc20s,
+      new ERC721Transfer[](0),
+      ownerCalls,
+      new ValidationParams[](0),
+      deadline,
+      _flags(true, false, false),
+      _permit2AuthData(74, permitSig),
+      solverCalls,
+      24,
+      callsSig
+    );
+
+    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the order settled');
+    assertEq(results.length, 2, 'route and tail both ran');
+    assertEq(hub.nonces(owner, 0), 1 << 24, 'and the approval nonce burned against the owner');
+
+    bytes memory permitSig2 = _signFulfillmentOrder(
+      erc20s,
+      new ERC721Transfer[](0),
+      ownerCalls,
+      new ValidationParams[](0),
+      callsSigner,
+      ANY,
+      75,
+      deadline
+    );
+    bytes memory impostorSig = _signCallsApproval(ownerKey, owner, solverCalls, 25, deadline);
+
+    vm.prank(solver);
+    vm.expectRevert(PERMIT2_INVALID_SIGNER);
+    hub.transferAndFulfill(
+      owner,
+      erc20s,
+      new ERC721Transfer[](0),
+      ownerCalls,
+      new ValidationParams[](0),
+      deadline,
+      _flags(true, false, false),
+      _permit2AuthData(75, permitSig2),
+      solverCalls,
+      25,
+      impostorSig
     );
   }
 
@@ -570,6 +942,7 @@ contract DelegationTest is VerifierBase {
       owner,
       _erc20s(_wethTransfer(amount)),
       new ERC721Transfer[](0),
+      new GenericCall[](0),
       vs,
       block.timestamp,
       _flags(false, false, false),
@@ -611,6 +984,7 @@ contract DelegationTest is VerifierBase {
       owner,
       new ERC20Transfer[](0),
       new ERC721Transfer[](0),
+      new GenericCall[](0),
       vs,
       block.timestamp,
       _flags(false, false, false),
@@ -632,6 +1006,7 @@ contract DelegationTest is VerifierBase {
       owner,
       new ERC20Transfer[](0),
       new ERC721Transfer[](0),
+      new GenericCall[](0),
       new ValidationParams[](0),
       block.timestamp,
       _flags(false, false, false),
@@ -646,6 +1021,52 @@ contract DelegationTest is VerifierBase {
 
   // -------------------------------------------------------------------------------------------
 
+  /// @dev An owner-submitted fulfillment carrying both call lists and nothing else
+  function _fulfillWithTail(GenericCall[] memory ownerCalls, GenericCall[] memory solverCalls)
+    private
+    returns (bytes[] memory results)
+  {
+    (results,) = hub.transferAndFulfill(
+      owner,
+      new ERC20Transfer[](0),
+      new ERC721Transfer[](0),
+      ownerCalls,
+      new ValidationParams[](0),
+      block.timestamp,
+      _flags(false, false, false),
+      '',
+      solverCalls,
+      0,
+      ''
+    );
+  }
+
+  /// @dev A session key's approval of a fulfillment, assembled from the literal encoding alone
+  function _signFulfillmentApproval(
+    ERC20Transfer[] memory erc20Transfers,
+    GenericCall[] memory ownerCalls,
+    ValidationParams[] memory validationParams,
+    uint256 nonce,
+    uint256 deadline
+  ) private returns (bytes memory) {
+    return _sign(
+      sessionKeyPk,
+      lTypedDataHash(
+        _verifierDomain(),
+        lFulfillmentApproval(
+          ANY,
+          erc20Transfers,
+          new ERC721Transfer[](0),
+          ownerCalls,
+          validationParams,
+          ANY,
+          nonce,
+          deadline
+        )
+      )
+    );
+  }
+
   function _fulfillAsOwner(
     GenericCall[] memory calls,
     uint256 callsNonce,
@@ -657,6 +1078,7 @@ contract DelegationTest is VerifierBase {
       owner,
       new ERC20Transfer[](0),
       new ERC721Transfer[](0),
+      new GenericCall[](0),
       new ValidationParams[](0),
       deadline,
       _flags(false, false, false),

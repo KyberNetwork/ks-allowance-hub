@@ -60,21 +60,28 @@ library GenericCallLibrary {
   }
 
   /**
-   * @dev The calls that carry value, for the event.
+   * @dev The calls that carry value, solver's route first then the owner's tail, for the event.
    * Calls with no value are dropped and the array is truncated in place, so an order with none
    * emits an empty array rather than a run of zero entries.
    */
-  function toNativeTransfers(GenericCall[] calldata calls)
+  function toNativeTransfers(GenericCall[] calldata solverCalls, GenericCall[] calldata ownerCalls)
     internal
     pure
     returns (NativeTransfer[] memory transfers)
   {
     uint256 index = 0;
-    transfers = new NativeTransfer[](calls.length);
+    transfers = new NativeTransfer[](solverCalls.length + ownerCalls.length);
 
-    for (uint256 i = 0; i < calls.length; i++) {
-      if (calls[i].value > 0) {
-        transfers[index++] = NativeTransfer({target: calls[i].router, amount: calls[i].value});
+    for (uint256 i = 0; i < solverCalls.length; i++) {
+      GenericCall calldata call = solverCalls[i];
+      if (call.value > 0) {
+        transfers[index++] = NativeTransfer({target: call.router, amount: call.value});
+      }
+    }
+    for (uint256 i = 0; i < ownerCalls.length; i++) {
+      GenericCall calldata call = ownerCalls[i];
+      if (call.value > 0) {
+        transfers[index++] = NativeTransfer({target: call.router, amount: call.value});
       }
     }
 

@@ -5,7 +5,7 @@ import {Vm} from 'forge-std/Vm.sol';
 
 import {HubBase} from 'test/v2/base/HubBase.sol';
 
-import {ReentrantRouterMock, RouterMock} from 'test/v2/mocks/RouterMock.sol';
+import {EchoRouterMock, ReentrantRouterMock, RouterMock} from 'test/v2/mocks/RouterMock.sol';
 import {ReentrantReceiverMock} from 'test/v2/mocks/TokenMocks.sol';
 
 import {IKSGenericRouter} from 'src/base/interfaces/IKSGenericRouter.sol';
@@ -17,21 +17,13 @@ import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
 import {NativeTransfer} from 'src/v2/types/NativeTransfer.sol';
+import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
 import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
-/// @notice Router that hands back who it is and what it was given, so results pin call order.
-/// @dev {RouterMock} returns a per-router counter, which cannot distinguish two routers
-/// interleaved in one order; this one can, which is what `SET-04` needs.
-contract EchoRouterMock is IKSGenericRouter {
-  function ksExecute(bytes calldata data) external payable returns (bytes memory) {
-    return abi.encode(address(this), data);
-  }
-}
-
 /**
- * @notice SET-01..04, ROUTER-01..03, LOCK-01..04 — the settlement tail of both entry points.
+ * @notice SET-01..04, OWN-07, ROUTER-01..03, LOCK-01..04 — the settlement tail of both entry points.
  * @dev The role constant and the `TransferTokens` signature are written out here rather than
  * imported: an expected value taken from the contract under test would agree with a wrong one.
  */
@@ -178,6 +170,63 @@ contract SettlementTest is HubBase {
       assertEq(seenRouter, calls[i].router, 'result came from the router at the same index');
       assertEq(seenData, calls[i].data, 'and carries the data sent to it');
     }
+  }
+
+  /**
+   * OWN-07 — the native leg of the event spans both call lists, solver's route first
+   * @dev Four calls, two of them valued, one from each list and neither at the end of its own.
+   * A merge that reversed the two lists, or that walked one of them only, or that kept the
+   * zero-value entries, produces a different array from the one written out here — and the two
+   * entries differ in both target and amount, so nothing about the expectation is symmetric.
+   */
+  function test_OWN_07_eventCoversBothLists() public {
+    GenericCall[] memory solverCalls = new GenericCall[](2);
+    solverCalls[0] = _routerCall(0, hex'01');
+    solverCalls[1] = _routerCall(1, hex'02');
+
+    GenericCall[] memory ownerCalls = new GenericCall[](2);
+    ownerCalls[0] = GenericCall({router: address(router2), value: 2, data: hex'03'});
+    ownerCalls[1] = GenericCall({router: address(router2), value: 0, data: hex'04'});
+
+    NativeTransfer[] memory expected = new NativeTransfer[](2);
+    expected[0] = NativeTransfer({target: address(router), amount: 1});
+    expected[1] = NativeTransfer({target: address(router2), amount: 2});
+
+    uint256 routerBefore = address(router).balance;
+    uint256 router2Before = address(router2).balance;
+    vm.deal(owner, 3);
+
+    vm.recordLogs();
+
+    vm.prank(owner);
+    hub.transferAndFulfill{value: 3}(
+      owner,
+      new ERC20Transfer[](0),
+      new ERC721Transfer[](0),
+      ownerCalls,
+      new ValidationParams[](0),
+      block.timestamp,
+      _flags(false, false, false),
+      '',
+      solverCalls,
+      0,
+      ''
+    );
+
+    Vm.Log memory entry = _settlementLog();
+
+    assertEq(
+      entry.data,
+      abi.encode(new ERC20Transfer[](0), new ERC721Transfer[](0), expected),
+      'solver leg then owner leg, zero-value calls dropped'
+    );
+
+    // the listed amounts are what actually moved, so the event is not a claim about nothing
+    assertEq(address(router).balance - routerBefore, 1, "the solver call's wei landed");
+    assertEq(address(router2).balance - router2Before, 2, "the owner call's wei landed");
+    assertEq(address(hub).balance, 0, 'nothing stranded in the hub');
+    assertEq(router.callCount(), 2, 'both solver calls ran');
+    assertEq(router2.callCount(), 2, 'both owner calls ran');
   }
 
   // -----------------------------------------------------------------------------------------

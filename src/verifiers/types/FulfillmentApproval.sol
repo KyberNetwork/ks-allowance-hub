@@ -3,17 +3,19 @@ pragma solidity ^0.8.0;
 
 import {ERC20Transfer, ERC20TransferLibrary} from '../../v2/types/ERC20Transfer.sol';
 import {ERC721Transfer, ERC721TransferLibrary} from '../../v2/types/ERC721Transfer.sol';
+import {GenericCall, GenericCallLibrary} from '../../v2/types/GenericCall.sol';
 import {ValidationParams, ValidationParamsLibrary} from '../../v2/types/ValidationParams.sol';
 
 /**
  * @notice What a session key signs to authorise a `transferAndFulfill` order
- * @dev Names the calls signer rather than the calls, leaving the route to the solver and the
- * bounds to the validators.
+ * @dev Names the calls signer rather than the solver's route, leaving that to the solver and the
+ * bounds to the validators. `ownerCalls` is the tail the owner fixes exactly.
  */
 struct FulfillmentApproval {
   address solver;
   ERC20Transfer[] erc20Transfers;
   ERC721Transfer[] erc721Transfers;
+  GenericCall[] ownerCalls;
   ValidationParams[] validationParams;
   address callsSigner;
   uint256 nonce;
@@ -25,12 +27,14 @@ using FulfillmentApprovalLibrary for FulfillmentApproval global;
 library FulfillmentApprovalLibrary {
   using ERC20TransferLibrary for ERC20Transfer[];
   using ERC721TransferLibrary for ERC721Transfer[];
+  using GenericCallLibrary for GenericCall[];
   using ValidationParamsLibrary for ValidationParams[];
 
   bytes32 internal constant FULFILLMENT_APPROVAL_TYPEHASH = keccak256(
-    'FulfillmentApproval(address solver,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,ValidationParams[] validationParams,address callsSigner,uint256 nonce,uint256 deadline)'
+    'FulfillmentApproval(address solver,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner,uint256 nonce,uint256 deadline)'
     'ERC20Transfer(address token,address target,uint160 amount)'
     'ERC721Transfer(address token,uint256 tokenId,address target)'
+    'GenericCall(address router,uint256 value,bytes data)'
     'ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)'
   );
 
@@ -39,6 +43,7 @@ library FulfillmentApprovalLibrary {
     address solver,
     ERC20Transfer[] calldata erc20Transfers,
     ERC721Transfer[] calldata erc721Transfers,
+    GenericCall[] calldata ownerCalls,
     ValidationParams[] calldata validationParams,
     address callsSigner,
     uint256 nonce,
@@ -50,6 +55,7 @@ library FulfillmentApprovalLibrary {
         solver,
         erc20Transfers.hash(),
         erc721Transfers.hash(),
+        ownerCalls.hash(),
         validationParams.hash(),
         callsSigner,
         nonce,
@@ -63,6 +69,7 @@ library FulfillmentApprovalLibrary {
     address solver,
     ERC20Transfer[] memory erc20Transfers,
     ERC721Transfer[] memory erc721Transfers,
+    GenericCall[] memory ownerCalls,
     ValidationParams[] memory validationParams,
     address callsSigner,
     uint256 nonce,
@@ -74,6 +81,7 @@ library FulfillmentApprovalLibrary {
         solver,
         erc20Transfers.hashMemory(),
         erc721Transfers.hashMemory(),
+        ownerCalls.hashMemory(),
         validationParams.hashMemory(),
         callsSigner,
         nonce,

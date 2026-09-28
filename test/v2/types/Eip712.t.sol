@@ -105,13 +105,15 @@ contract Eip712Test is V2TestBase {
     );
   }
 
+  /// @dev The owner's tail is non-empty here, so the new member is actually encoded
   function test_T712_fulfillmentWitnessStructHash() public pure {
-    (address[] memory targets, ERC721Transfer[] memory nfts,) = _sample();
+    (address[] memory targets, ERC721Transfer[] memory nfts, GenericCall[] memory ownerCalls) =
+      _sample();
     ValidationParams[] memory vs = _sampleValidations();
 
     assertEq(
-      FulfillmentWitnessLibrary.hashMemory(ANY, targets, nfts, vs, address(0xBEEF)),
-      lFulfillmentWitness(ANY, targets, nfts, vs, address(0xBEEF))
+      FulfillmentWitnessLibrary.hashMemory(ANY, targets, nfts, ownerCalls, vs, address(0xBEEF)),
+      lFulfillmentWitness(ANY, targets, nfts, ownerCalls, vs, address(0xBEEF))
     );
   }
 

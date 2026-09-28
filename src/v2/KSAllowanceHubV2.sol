@@ -144,7 +144,7 @@ contract KSAllowanceHubV2 is
       _transferERC20s(owner, erc20Transfers, authFlags);
     }
 
-    results = _settleAndExecute(owner, erc20Transfers, erc721Transfers, genericCalls);
+    results = _settleAndExecute(owner, erc20Transfers, erc721Transfers, _noCalls(), (genericCalls));
 
     unchecked {
       gasUsed = gasStart - gasleft();
@@ -156,11 +156,12 @@ contract KSAllowanceHubV2 is
     address owner,
     ERC20Transfer[] calldata erc20Transfers,
     ERC721Transfer[] calldata erc721Transfers,
+    GenericCall[] calldata ownerCalls,
     ValidationParams[] calldata validationParams,
     uint256 deadline,
     PackedBits authFlags,
     bytes calldata authData,
-    GenericCall[] calldata genericCalls,
+    GenericCall[] calldata solverCalls,
     uint256 callsNonce,
     bytes calldata callsSignature
   )
@@ -176,19 +177,20 @@ contract KSAllowanceHubV2 is
 
     // Snapshot first, so the validators measure the whole transaction and not just its tail
     bytes[] memory beforeExecutionOutputs = validationParams.beforeExecution();
-    address callsSigner = _callsSigner(owner, genericCalls, callsNonce, deadline, callsSignature);
+    address callsSigner = _callsSigner(owner, solverCalls, callsNonce, deadline, callsSignature);
 
     // Bit 0: the Permit2 signature-transfer rail
     if (authFlags.pos(0)) {
       if (msg.sender == owner) {
         _permitTransferFrom(owner, erc20Transfers, deadline, authData);
       } else {
-        // Here the owner signs *who* may choose the calls, not the calls themselves; the
-        // validators are what bound the outcome
+        // The owner signs *who* may choose the solver's route rather than the route itself, so
+        // the validators and their own tail are what bound the outcome
         bytes32 witness = FulfillmentWitnessLibrary.hash(
           _signedCaller(authFlags),
           erc20Transfers.toTargets(),
           erc721Transfers,
+          ownerCalls,
           validationParams,
           callsSigner
         );
@@ -205,7 +207,12 @@ contract KSAllowanceHubV2 is
     } else {
       if (msg.sender != owner) {
         bytes memory data = abi.encode(
-          _signedCaller(authFlags), erc20Transfers, erc721Transfers, validationParams, callsSigner
+          _signedCaller(authFlags),
+          erc20Transfers,
+          erc721Transfers,
+          ownerCalls,
+          validationParams,
+          callsSigner
         );
         // Trailing `true` tells the verifier which payload shape to decode
         _verifyAuth(owner, abi.encodePacked(data, true), deadline, authData);
@@ -214,7 +221,7 @@ contract KSAllowanceHubV2 is
       _transferERC20s(owner, erc20Transfers, authFlags);
     }
 
-    results = _settleAndExecute(owner, erc20Transfers, erc721Transfers, genericCalls);
+    results = _settleAndExecute(owner, erc20Transfers, erc721Transfers, solverCalls, ownerCalls);
     validationParams.afterExecution(beforeExecutionOutputs);
 
     unchecked {
@@ -305,23 +312,39 @@ contract KSAllowanceHubV2 is
     }
   }
 
-  /// @dev Shared tail of both entry points: the NFT leg, the event, then the router calls
+  /**
+   * @dev Shared tail of both entry points: the NFT leg, the event, then the router calls. The
+   * owner's tail runs last, after the solver has finished, so it acts on the end state.
+   */
   function _settleAndExecute(
     address owner,
     ERC20Transfer[] calldata erc20Transfers,
     ERC721Transfer[] calldata erc721Transfers,
-    GenericCall[] calldata genericCalls
+    GenericCall[] calldata solverCalls,
+    GenericCall[] calldata ownerCalls
   ) internal returns (bytes[] memory results) {
     erc721Transfers.execute(owner);
 
     emit TransferTokens(
-      msg.sender, owner, erc20Transfers, erc721Transfers, genericCalls.toNativeTransfers()
+      msg.sender, owner, erc20Transfers, erc721Transfers, solverCalls.toNativeTransfers(ownerCalls)
     );
 
-    results = new bytes[](genericCalls.length);
-    for (uint256 i = 0; i < genericCalls.length; i++) {
-      _checkRole(WHITELISTED_ROUTER_ROLE, genericCalls[i].router);
-      results[i] = genericCalls[i].execute();
+    results = new bytes[](solverCalls.length + ownerCalls.length);
+    for (uint256 i = 0; i < solverCalls.length; i++) {
+      _checkRole(WHITELISTED_ROUTER_ROLE, solverCalls[i].router);
+      results[i] = solverCalls[i].execute();
+    }
+    for (uint256 i = 0; i < ownerCalls.length; i++) {
+      _checkRole(WHITELISTED_ROUTER_ROLE, ownerCalls[i].router);
+      results[solverCalls.length + i] = ownerCalls[i].execute();
+    }
+  }
+
+  /// @dev An empty call list: on this entry point the owner signs the calls, so no solver leg
+  function _noCalls() internal pure returns (GenericCall[] calldata empty) {
+    assembly ('memory-safe') {
+      empty.offset := 0
+      empty.length := 0
     }
   }
 
@@ -344,13 +367,13 @@ contract KSAllowanceHubV2 is
   }
 
   /**
-   * @dev Recovers who approved `genericCalls`, or {DEAD_ADDRESS} when no
+   * @dev Recovers who approved `solverCalls`, or {DEAD_ADDRESS} when no
    * signature is given, which an owner's signature naming that address reads as "any calls".
    * The nonce is burned against the owner, so one approval cannot be settled twice.
    */
   function _callsSigner(
     address owner,
-    GenericCall[] calldata genericCalls,
+    GenericCall[] calldata solverCalls,
     uint256 callsNonce,
     uint256 deadline,
     bytes calldata callsSignature
@@ -362,7 +385,7 @@ contract KSAllowanceHubV2 is
     _useUnorderedNonce(owner, callsNonce);
 
     bytes32 digest =
-      _hashTypedDataV4(CallsApprovalLibrary.hash(owner, genericCalls, callsNonce, deadline));
+      _hashTypedDataV4(CallsApprovalLibrary.hash(owner, solverCalls, callsNonce, deadline));
     return ECDSA.recover(digest, callsSignature);
   }
 }

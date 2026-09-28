@@ -132,17 +132,19 @@ contract SessionAuthVerifier is
     address signedCaller = data.decodeAddress(0);
     ERC20Transfer[] calldata erc20Transfers = _decodeERC20Transfers(data);
     ERC721Transfer[] calldata erc721Transfers = _decodeERC721Transfers(data);
+    GenericCall[] calldata genericCalls = _decodeGenericCalls(data);
 
     bytes32 digest;
     if (_isFulfillment(data)) {
       ValidationParams[] calldata validationParams = _decodeValidationParams(data);
-      address callsSigner = data.decodeAddress(4);
+      address callsSigner = data.decodeAddress(5);
 
       digest = _hashTypedDataV4(
         FulfillmentApprovalLibrary.hash(
           signedCaller,
           erc20Transfers,
           erc721Transfers,
+          genericCalls,
           validationParams,
           callsSigner,
           nonce,
@@ -150,8 +152,6 @@ contract SessionAuthVerifier is
         )
       );
     } else {
-      GenericCall[] calldata genericCalls = _decodeGenericCalls(data);
-
       digest = _hashTypedDataV4(
         ExecutionApprovalLibrary.hash(
           signedCaller, erc20Transfers, erc721Transfers, genericCalls, nonce, deadline
@@ -195,7 +195,10 @@ contract SessionAuthVerifier is
     }
   }
 
-  /// @dev Reads the call list out of the hub's payload, at word 3
+  /**
+   * @dev Word 3, which holds the call list on either payload: the calls the owner signed on an
+   * execution, and the owner's tail on a fulfillment.
+   */
   function _decodeGenericCalls(bytes calldata data)
     internal
     pure
@@ -208,13 +211,13 @@ contract SessionAuthVerifier is
     }
   }
 
-  /// @dev Also word 3: in a fulfillment payload that slot holds the validators, not the calls
+  /// @dev Word 4, which only a fulfillment payload carries
   function _decodeValidationParams(bytes calldata data)
     internal
     pure
     returns (ValidationParams[] calldata validationParams)
   {
-    (uint256 length, uint256 offset) = data.decodeLengthOffset(3);
+    (uint256 length, uint256 offset) = data.decodeLengthOffset(4);
     assembly ('memory-safe') {
       validationParams.length := length
       validationParams.offset := offset

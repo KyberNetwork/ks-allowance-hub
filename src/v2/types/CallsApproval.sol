@@ -10,7 +10,7 @@ import {GenericCall, GenericCallLibrary} from './GenericCall.sol';
  */
 struct CallsApproval {
   address owner;
-  GenericCall[] genericCalls;
+  GenericCall[] solverCalls;
   uint256 nonce;
   uint256 deadline;
 }
@@ -21,34 +21,34 @@ library CallsApprovalLibrary {
   using GenericCallLibrary for GenericCall[];
 
   bytes32 internal constant CALLS_APPROVAL_TYPEHASH = keccak256(
-    'CallsApproval(address owner,GenericCall[] genericCalls,uint256 nonce,uint256 deadline)'
+    'CallsApproval(address owner,GenericCall[] solverCalls,uint256 nonce,uint256 deadline)'
     'GenericCall(address router,uint256 value,bytes data)'
   );
 
   /// @dev EIP-712 hash of the approval the calls signer produces
-  function hash(address owner, GenericCall[] calldata genericCalls, uint256 nonce, uint256 deadline)
+  function hash(address owner, GenericCall[] calldata solverCalls, uint256 nonce, uint256 deadline)
     internal
     pure
     returns (bytes32)
   {
     return
-      keccak256(abi.encode(CALLS_APPROVAL_TYPEHASH, owner, genericCalls.hash(), nonce, deadline));
+      keccak256(abi.encode(CALLS_APPROVAL_TYPEHASH, owner, solverCalls.hash(), nonce, deadline));
   }
 
   /// @dev As {hash}, for calls already in memory
   function hashMemory(
     address owner,
-    GenericCall[] memory genericCalls,
+    GenericCall[] memory solverCalls,
     uint256 nonce,
     uint256 deadline
   ) internal pure returns (bytes32) {
     return keccak256(
-      abi.encode(CALLS_APPROVAL_TYPEHASH, owner, genericCalls.hashMemory(), nonce, deadline)
+      abi.encode(CALLS_APPROVAL_TYPEHASH, owner, solverCalls.hashMemory(), nonce, deadline)
     );
   }
 
   /// @dev As {hash}, taking the struct rather than its fields
   function hash(CallsApproval calldata self) internal pure returns (bytes32) {
-    return hash(self.owner, self.genericCalls, self.nonce, self.deadline);
+    return hash(self.owner, self.solverCalls, self.nonce, self.deadline);
   }
 }
