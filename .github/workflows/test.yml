@@ -33,6 +33,7 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
+          token: ${{ secrets.GH_PAT }}
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1

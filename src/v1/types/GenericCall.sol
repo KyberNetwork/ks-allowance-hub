@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IKSGenericRouter} from '../interfaces/IKSGenericRouter.sol';
+import {IKSGenericRouter} from '../../base/interfaces/IKSGenericRouter.sol';
 
 /**
  * @notice Parameters for calling a generic router
