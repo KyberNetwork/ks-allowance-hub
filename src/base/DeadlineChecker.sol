@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 /// @title DeadlineChecker
 /// @notice Rejects calls made after a signed deadline; the deadline block itself still passes
 abstract contract DeadlineChecker {
+  /// @notice The call arrived after the deadline it carries
   error DeadlinePassed();
 
   modifier checkDeadline(uint256 deadline) {

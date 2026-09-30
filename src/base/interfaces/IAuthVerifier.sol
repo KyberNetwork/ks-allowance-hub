@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 /// @title IAuthVerifier
 /// @notice Interface every authorisation verifier used by {AuthDelegator} must implement
 interface IAuthVerifier {
+  /// @notice Only the allowance hub this verifier was bound to at deployment may call this
   error NotAllowanceHub();
 
   /**

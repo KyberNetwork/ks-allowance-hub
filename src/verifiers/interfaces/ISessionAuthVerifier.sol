@@ -4,10 +4,13 @@ pragma solidity ^0.8.0;
 /// @title ISessionAuthVerifier
 /// @notice Interface of {SessionAuthVerifier}
 interface ISessionAuthVerifier {
+  /// @notice The presented signature does not authorise what it was checked against
   error InvalidApprovalSignature();
 
+  /// @notice The owner has not approved the session key presented with the order
   error SessionKeyNotDelegated();
 
+  /// @notice The session key's expiry is in the past
   error SessionKeyExpired();
 
   /**

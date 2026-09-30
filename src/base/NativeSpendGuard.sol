@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 /// @title NativeSpendGuard
 /// @notice Caps how much native a call may spend at the value it was sent
 abstract contract NativeSpendGuard {
+  /// @notice The call spent more native than it was sent, dipping into the contract's own
   error NativeOverSpent();
 
   /**

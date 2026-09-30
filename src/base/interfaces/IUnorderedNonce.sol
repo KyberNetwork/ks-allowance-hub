@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 /// @title IUnorderedNonce
 /// @notice Interface of {UnorderedNonce}
 interface IUnorderedNonce {
+  /// @notice This nonce has already been spent, or was revoked by its owner
   error NonceAlreadyUsed();
 
   /**

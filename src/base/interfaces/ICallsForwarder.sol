@@ -6,6 +6,10 @@ import {PackedBits} from '../types/PackedBits.sol';
 /// @title ICallsForwarder
 /// @notice Interface of {CallsForwarder}
 interface ICallsForwarder {
+  /**
+   * @notice The payload's selector is not one this contract will relay
+   * @param selector The refused selector, read from the first four bytes of the payload
+   */
   error NotSupportedSelector(bytes4 selector);
 
   /**

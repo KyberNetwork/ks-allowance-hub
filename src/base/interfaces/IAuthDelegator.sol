@@ -4,8 +4,10 @@ pragma solidity ^0.8.0;
 /// @title IAuthDelegator
 /// @notice Interface of {AuthDelegator}
 interface IAuthDelegator {
+  /// @notice The signature does not authorise this decision on the owner's behalf
   error InvalidDelegationSignature();
 
+  /// @notice The owner has not delegated the verifier being asked to authorise the order
   error NotDelegatedVerifier();
 
   /**
