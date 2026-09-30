@@ -917,6 +917,51 @@ contract DelegationTest is VerifierBase {
    * hooks against the transfer and the router call: `beforeExecution` must see the pre-pull
    * balance and `afterExecution` the balance after both the pull and the router leg.
    */
+  /**
+   * OWN-09 — the validators run between the two call lists, not after both
+   * @dev The router pays out on every call it receives, so the observed balance moves once per
+   * leg. `afterExecution` must see exactly one payout: the solver's. Seeing two would mean it
+   * ran after the owner's tail, and seeing none that it ran before the solver's route.
+   */
+  function test_OWN_09_validatorsRunBetweenTheTwoLists() public {
+    validator.observe(WETH, address(router));
+
+    uint160 amount = 4 ether;
+    uint256 payout = 1 ether;
+    uint256 routerBefore = IERC20(WETH).balanceOf(address(router));
+    router.setPayout(WETH, recipient, payout);
+
+    ValidationParams[] memory vs = new ValidationParams[](1);
+    vs[0] = _validation(validator);
+
+    vm.prank(owner);
+    hub.transferAndFulfill(
+      owner,
+      _erc20s(_wethTransfer(amount)),
+      new ERC721Transfer[](0),
+      _calls(_routerCall(0, hex'02')),
+      vs,
+      block.timestamp,
+      _flags(false, false, false),
+      '',
+      _calls(_routerCall(0, hex'01')),
+      0,
+      ''
+    );
+
+    assertEq(router.callCount(), 2, 'both legs reached the router');
+    assertEq(
+      validator.balanceAtAfter(),
+      routerBefore + amount - payout,
+      'afterExecution saw the solver payout only, so it ran before the owner tail'
+    );
+    assertEq(
+      IERC20(WETH).balanceOf(address(router)),
+      routerBefore + amount - 2 * payout,
+      'and the owner tail ran afterwards, paying out a second time'
+    );
+  }
+
   function test_VAL_01_hookOrderingAndSnapshotPairing() public {
     validator.setSnapshot(hex'aaaa');
     validator2.setSnapshot(hex'bbbb');

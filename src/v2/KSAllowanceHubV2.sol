@@ -16,6 +16,7 @@ import {ERC721Transfer, ERC721TransferLibrary} from './types/ERC721Transfer.sol'
 import {ExecutionWitnessLibrary} from './types/ExecutionWitness.sol';
 import {FulfillmentWitnessLibrary} from './types/FulfillmentWitness.sol';
 import {GenericCall, GenericCallLibrary} from './types/GenericCall.sol';
+import {NativeTransfer} from './types/NativeTransfer.sol';
 import {ValidationParams, ValidationParamsLibrary} from './types/ValidationParams.sol';
 
 import {ManagementBase} from 'ks-common-sc/src/base/ManagementBase.sol';
@@ -144,7 +145,12 @@ contract KSAllowanceHubV2 is
       _transferERC20s(owner, erc20Transfers, authFlags);
     }
 
-    results = _settleAndExecute(owner, erc20Transfers, erc721Transfers, _noCalls(), (genericCalls));
+    _transferNftsAndAnnounce(
+      owner, erc20Transfers, erc721Transfers, _noCalls().toNativeTransfers(genericCalls)
+    );
+
+    results = new bytes[](genericCalls.length);
+    _executeCalls(genericCalls, results, 0);
 
     unchecked {
       gasUsed = gasStart - gasleft();
@@ -221,8 +227,15 @@ contract KSAllowanceHubV2 is
       _transferERC20s(owner, erc20Transfers, authFlags);
     }
 
-    results = _settleAndExecute(owner, erc20Transfers, erc721Transfers, solverCalls, ownerCalls);
+    _transferNftsAndAnnounce(
+      owner, erc20Transfers, erc721Transfers, solverCalls.toNativeTransfers(ownerCalls)
+    );
+
+    // The validators bound what the solver did, so they run before the owner's tail acts on it
+    results = new bytes[](solverCalls.length + ownerCalls.length);
+    _executeCalls(solverCalls, results, 0);
     validationParams.afterExecution(beforeExecutionOutputs);
+    _executeCalls(ownerCalls, results, solverCalls.length);
 
     unchecked {
       gasUsed = gasStart - gasleft();
@@ -312,31 +325,24 @@ contract KSAllowanceHubV2 is
     }
   }
 
-  /**
-   * @dev Shared tail of both entry points: the NFT leg, the event, then the router calls. The
-   * owner's tail runs last, after the solver has finished, so it acts on the end state.
-   */
-  function _settleAndExecute(
+  /// @dev Moves the NFT leg and announces the whole movement; the router calls follow separately
+  function _transferNftsAndAnnounce(
     address owner,
     ERC20Transfer[] calldata erc20Transfers,
     ERC721Transfer[] calldata erc721Transfers,
-    GenericCall[] calldata solverCalls,
-    GenericCall[] calldata ownerCalls
-  ) internal returns (bytes[] memory results) {
+    NativeTransfer[] memory nativeTransfers
+  ) internal {
     erc721Transfers.execute(owner);
+    emit TransferTokens(msg.sender, owner, erc20Transfers, erc721Transfers, nativeTransfers);
+  }
 
-    emit TransferTokens(
-      msg.sender, owner, erc20Transfers, erc721Transfers, solverCalls.toNativeTransfers(ownerCalls)
-    );
-
-    results = new bytes[](solverCalls.length + ownerCalls.length);
-    for (uint256 i = 0; i < solverCalls.length; i++) {
-      _checkRole(WHITELISTED_ROUTER_ROLE, solverCalls[i].router);
-      results[i] = solverCalls[i].execute();
-    }
-    for (uint256 i = 0; i < ownerCalls.length; i++) {
-      _checkRole(WHITELISTED_ROUTER_ROLE, ownerCalls[i].router);
-      results[solverCalls.length + i] = ownerCalls[i].execute();
+  /// @dev Runs one call list into `results` from `offset`, checking each router's role as it goes
+  function _executeCalls(GenericCall[] calldata calls, bytes[] memory results, uint256 offset)
+    internal
+  {
+    for (uint256 i = 0; i < calls.length; i++) {
+      _checkRole(WHITELISTED_ROUTER_ROLE, calls[i].router);
+      results[offset + i] = calls[i].execute();
     }
   }
 
