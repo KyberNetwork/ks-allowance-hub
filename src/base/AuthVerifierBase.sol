@@ -4,11 +4,11 @@ pragma solidity ^0.8.0;
 import {IAuthVerifier} from './interfaces/IAuthVerifier.sol';
 
 /**
- * @title BaseAuthVerifier
+ * @title AuthVerifierBase
  * @notice Ties a verifier to one allowance hub. Verification is only meaningful when the hub asks
  * for it, since the hub is what pairs an order with the owner whose assets it moves.
  */
-abstract contract BaseAuthVerifier is IAuthVerifier {
+abstract contract AuthVerifierBase is IAuthVerifier {
   address internal immutable ALLOWANCE_HUB;
 
   /// @param allowanceHub The only contract whose verification requests this verifier answers

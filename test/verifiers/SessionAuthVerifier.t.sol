@@ -49,6 +49,21 @@ contract SessionAuthVerifierTest is VerifierBase {
   // SV-01 — the happy path: a session key authorises a relayed order
   // -------------------------------------------------------------------------------------------
 
+  /**
+   * SV-12 — the verifier publishes its own EIP-712 domain separator, distinct from the hub's
+   * @dev Two legs make it bite rather than mirror: it must match the hand-written domain, and it
+   * must differ from the hub's, since the two contracts scope their signatures separately.
+   */
+  function test_SV_12_domainSeparator() public view {
+    bytes32 expected =
+      lDomainSeparator('KyberSwap Session Auth Verifier', '1.0.0', address(verifier));
+
+    assertEq(verifier.DOMAIN_SEPARATOR(), expected, 'separator matches the hand-written domain');
+    assertTrue(
+      verifier.DOMAIN_SEPARATOR() != hub.DOMAIN_SEPARATOR(), 'a domain of its own, not the hub one'
+    );
+  }
+
   function test_SV_01_sessionKeyAuthorisesRelayedOrder() public {
     _delegateKeyThroughHub(key);
 

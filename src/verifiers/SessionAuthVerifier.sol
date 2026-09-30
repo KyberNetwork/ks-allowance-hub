@@ -3,8 +3,9 @@ pragma solidity 0.8.36;
 
 import {IAuthVerifier} from '../base/interfaces/IAuthVerifier.sol';
 
-import {BaseAuthVerifier} from '../base/BaseAuthVerifier.sol';
+import {AuthVerifierBase} from '../base/AuthVerifierBase.sol';
 import {DeadlineChecker} from '../base/DeadlineChecker.sol';
+import {EIP712Base} from '../base/EIP712Base.sol';
 import {UnorderedNonce} from '../base/UnorderedNonce.sol';
 
 import {ISessionAuthVerifier} from './interfaces/ISessionAuthVerifier.sol';
@@ -21,7 +22,6 @@ import {ValidationParams} from '../v2/types/ValidationParams.sol';
 
 import {CalldataDecoder} from 'ks-common-sc/src/libraries/calldata/CalldataDecoder.sol';
 
-import {EIP712} from 'openzeppelin-contracts/contracts/utils/cryptography/EIP712.sol';
 import {
   SignatureChecker
 } from 'openzeppelin-contracts/contracts/utils/cryptography/SignatureChecker.sol';
@@ -37,10 +37,10 @@ import {
 contract SessionAuthVerifier is
   IAuthVerifier,
   ISessionAuthVerifier,
-  BaseAuthVerifier,
+  AuthVerifierBase,
   DeadlineChecker,
   UnorderedNonce,
-  EIP712
+  EIP712Base
 {
   using CalldataDecoder for bytes;
 
@@ -49,8 +49,8 @@ contract SessionAuthVerifier is
 
   /// @param allowanceHub The only hub whose verification requests this verifier answers
   constructor(address allowanceHub)
-    BaseAuthVerifier(allowanceHub)
-    EIP712('KyberSwap Session Auth Verifier', '1.0.0')
+    AuthVerifierBase(allowanceHub)
+    EIP712Base('KyberSwap Session Auth Verifier', '1.0.0')
   {}
 
   /**

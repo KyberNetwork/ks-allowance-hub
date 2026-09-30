@@ -47,6 +47,19 @@ contract ManagementTest is HubBase {
   // -----------------------------------------------------------------------------------------------
 
   /// MGMT-01 — everything the constructor is responsible for, including its one event
+  /**
+   * MGMT-12 — the EIP-712 domain separator matches the literal domain, and is chain-scoped
+   * @dev The second leg is what makes this bite rather than mirror: OpenZeppelin rebuilds the
+   * separator once the chain id has moved since deployment, so one cannot be replayed elsewhere.
+   */
+  function test_MGMT_12_domainSeparator() public {
+    bytes32 expected = lDomainSeparator('KyberSwap Allowance Hub', '2.0.0', address(hub));
+    assertEq(hub.DOMAIN_SEPARATOR(), expected, 'separator matches the hand-written domain');
+
+    vm.chainId(block.chainid + 1);
+    assertTrue(hub.DOMAIN_SEPARATOR() != expected, 'a different chain gives a different separator');
+  }
+
   function test_MGMT_01_constructorWiring() public {
     // `PERMIT2` is an internal immutable with no getter, so the constructor argument is only
     // observable through the rails that use it, which the AUTH-* cases exercise

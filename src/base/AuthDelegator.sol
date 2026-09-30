@@ -5,11 +5,11 @@ import {IAuthDelegator} from './interfaces/IAuthDelegator.sol';
 import {IAuthVerifier} from './interfaces/IAuthVerifier.sol';
 
 import {DeadlineChecker} from './DeadlineChecker.sol';
+import {EIP712Base} from './EIP712Base.sol';
 import {UnorderedNonce} from './UnorderedNonce.sol';
 
 import {AuthDelegationLibrary} from './types/AuthDelegation.sol';
 
-import {EIP712} from 'openzeppelin-contracts/contracts/utils/cryptography/EIP712.sol';
 import {
   SignatureChecker
 } from 'openzeppelin-contracts/contracts/utils/cryptography/SignatureChecker.sol';
@@ -21,7 +21,7 @@ import {
  * @dev The verifier is trusted by the owner, not by this contract: all that is checked is that
  * the owner delegated it.
  */
-abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNonce, EIP712 {
+abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNonce, EIP712Base {
   /// @inheritdoc IAuthDelegator
   mapping(address owner => mapping(address verifier => bool)) public authDelegated;
 
@@ -29,7 +29,7 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
    * @param name EIP-712 domain name, which scopes every signature this contract checks
    * @param version EIP-712 domain version
    */
-  constructor(string memory name, string memory version) EIP712(name, version) {}
+  constructor(string memory name, string memory version) EIP712Base(name, version) {}
 
   /// @inheritdoc IAuthDelegator
   function updateDelegation(
