@@ -5,12 +5,12 @@ import {Vm} from 'forge-std/Vm.sol';
 
 /**
  * @title KeyFixtures
- * @notice Session-key material for the P256, WebAuthn and RSA branches of `SessionKeyLibrary`.
+ * @notice Session-key material for the P256, WebAuthn and RSA branches of `SessionKeyLib`.
  * @dev Every vector here is produced without reading the contract under test. P256 points and
  * signatures come from Foundry's own secp256r1 cheatcodes; the WebAuthn assertion is assembled
  * byte by byte from the W3C layout, with a base64url encoder written out below rather than
  * borrowed; the RSA signature is raised from a checked-in 2048-bit private key with the modexp
- * precompile and a hand-written PKCS#1 v1.5 padding. A fixture that reused the verifier's own
+ * precompile and a hand-written PKCS#1 v1.5 padding. A fixture that reused the authenticator's own
  * decoding would agree with a broken decoder exactly as happily as with a correct one — which is
  * how the `decodeBytes32` word-index bug survived until now.
  */

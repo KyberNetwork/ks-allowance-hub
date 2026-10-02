@@ -96,3 +96,110 @@ Unresolved gate, pre-existing and not introduced by this run: `forge coverage` f
 stack-too-deep and `--ir-minimum` fails in the solar analyser on the `erc7201` builtin at
 `src/base/MsgSender.sol:16`, at `HEAD` as well as with this diff. Closure for the rows above is
 argued from the non-vacuity checks recorded in each, not from a coverage report.
+
+## Run `20261002T032856Z`
+
+Scope: reshaping the suite onto the v2 restructure. `src/base/**` moved under `src/v2/**`, the
+verifier surface became `IOrderAuthenticator` / `OrderAuthenticatorBase` /
+`SessionOrderAuthenticator` under `src/v2/authenticators/`, the witness and approval types gave way
+to `ExecutionOrder` / `FulfillmentOrder` / `FulfillmentSolution` / `SolutionApproval`, two entry
+points became four, and `authFlags` moved inside the signed order. The test files are reorganised to
+mirror that shape rather than re-pointed in place. `test/v1/**` is frozen.
+
+Standing item, out of scope by the user's instruction: the hub's size. At the `src/` state this run
+was implemented against it is **no longer over EIP-170** — `forge build --sizes` reports
+`KSAllowanceHubV2` at 22,505 runtime bytes with 2,071 to spare, under the `runs-500`
+`compilation_restrictions` entry that `foundry.toml` pins for it. It deploys, so no test is shaped
+around the limit, and none is shaped around the margin either.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261002T032856Z/MIG-01` | Reshape: every baseline assertion carried onto the new surface, files reorganised to mirror `src/`. `Auth.t.sol` split into `ExecuteOrder.t.sol` / `FulfillOrder.t.sol`; `test/verifiers/**` moved to `test/v2/authenticators/**`; `VerifierBase` became `AuthenticatorBase` and is now the base for every batch that reaches the delegated rail | every pre-existing case ID — `test/v2/**`, `test/base/**`. Retired with their premise and named in the report: `AUTH-05` (merged into `AUTH-04`), `AUTH-09` (inverted into `ORD-01`), `AUTH-12`, `AUTH-12b`, `CALLS-01..03`, `OWN-08`, `SV-12`, `T712-03`, `T712-11`, `T712-12` | `forge build` clean (was 31 errors), `forge fmt --check test/` clean, `forge test` and `forge test --isolate` — **188 passed, 0 failed**. Arithmetic, as verified against `git show HEAD:` by the final integrity review: 178 baseline, less **13** genuinely retired (39 test functions disappeared by name, but 26 of those are 1:1 renames onto the new surface), plus **23** genuinely new — 21 from the reshape and `ORD-03`, then `SV-06b` and `SV-07b`. `MGMT-12` belongs in the retired list above, subsumed by `DOM-01`; `CALLS-03` never had a function of its own and lived inside `CALLS-02`'s body |
+| - [x] | - [ ] | `20261002T032856Z/ORD-01` | The signed order carries its own switches: `usePermit2Allowances` is covered by the signature on the delegated rail — the Permit2 witnesses do not carry it, so on those rails it is bound only through the emitted order hash — and the `relayer` pin is enforced by the hub's own gate, with the dead-address sentinel opening submission to anyone | `ORD-01` `test_ORD_01_usePermit2AllowancesIsSigned`, `ORD-02` `test_ORD_02_relayerPinningAndTheOpenSentinel`, plus `AUTH-04` `test_AUTH_04_witnessPinsTheNamedRelayer` — `test/v2/ExecuteOrder.t.sol` | `forge test`, `forge test --isolate` — 185 passed. Non-vacuity: submitting the order the key actually signed makes `ORD-01`'s third leg's `expectRevert` fail; transposing `UnauthorizedRelayer`'s two arguments fails `ORD-02` |
+| - [x] | - [ ] | `20261002T032856Z/SOL-01` | Solution approval: one approval binds one order including its `ownerCalls`, the sentinel approver accepts any route with no signature, a malformed approval is refused rather than read as "nobody named", and replay is bounded by the order nonce | `SOL-01` `test_SOL_01_oneApprovalBindsOneOrder`, `SOL-02` `test_SOL_02_sentinelApproverAcceptsAnyRoute`, `SOL-03` `test_SOL_03_malformedApprovalSignature`, `SOL-04` `test_SOL_04_anAuthenticatedFulfillmentCannotSettleTwice` — `test/v2/FulfillOrder.t.sol` | `forge test`, `forge test --isolate` — 185 passed. Non-vacuity: giving `SOL-01`'s second order the same tail as the first makes its `expectRevert` fail |
+| - [x] | - [ ] | `20261002T032856Z/GATE-01` | `fulfillOrderWithPermit2Signature` carries all four modifiers, one leg each behind a settling control; and the validators bracket that rail — the pre-hook before Permit2 moves anything, the post-hook between the solver's route and the owner's tail | `GATE-01` `test_GATE_01_fulfillPermit2CarriesTheFourModifiers` — `test/v2/Guards.t.sol`; `VAL-02` `test_VAL_02_hooksBracketThePermit2Rail` — `test/v2/FulfillOrder.t.sol` (`VAL-01` is the same bracket on the delegated rail) | `forge test`, `forge test --isolate` — 185 passed. Non-vacuity: a route that does not reenter fails `GATE-01`'s lock leg; expecting the post-hook to have run after the owner's tail fails `VAL-02` |
+| - [x] | - [ ] | `20261002T032856Z/712-01` | Four new typehashes and both Permit2 witness type strings against hand-written literals, plus the referenced types shown to be in sorted order inside the production strings, and both order struct hashes against the literal encoding with `usePermit2Allowances` shown to move the hash | `T712-13`..`T712-17`, `test_T712_executionOrderStructHash`, `test_T712_fulfillmentOrderStructHash`, `test_T712_fulfillmentSolutionStructHash`, `test_T712_solutionApprovalStructHash`, `testFuzz_T712_DIFF_executionOrder`, `testFuzz_T712_DIFF_fulfillmentOrder` — `test/v2/types/Eip712.t.sol` | `forge test`, `forge test --isolate` — 185 passed. Non-vacuity: transposing two of the expected referenced-type names fails `T712-17` |
+| - [x] | - [ ] | `20261002T032856Z/DOM-01` | Both signing domains publish a separator: each matches the domain written out from its own name, version and address, the two differ from each other, and each is rebuilt once the chain id moves. Subsumes the former `MGMT-12` and `SV-12` | `DOM-01` `test_DOM_01_bothDomainSeparators` — `test/v2/Management.t.sol`; the ERC-5267 field-by-field reads stay separate as `MGMT-02` and `SV-DOMAIN` | `forge test`, `forge test --isolate` — 185 passed |
+| - [x] | - [ ] | `20261002T032856Z/FUZZ-01` | One successful fuzz property per entry point over a nontrivial domain, through one named struct per family. Every field is live: the pull rail and the submitter pin reach an assertion through the `orderHash` the settlement event now carries, and the nonce through the authenticator's or Permit2's bitmap | `ExecuteFuzz` — `testFuzz_EX_FUZZ_delegatedRail`, `testFuzz_EX_FUZZ_permit2Rail` (`test/v2/ExecuteOrder.t.sol`); `FulfillFuzz` — `testFuzz_FU_FUZZ_delegatedRail`, `testFuzz_FU_FUZZ_permit2Rail` (`test/v2/FulfillOrder.t.sol`) | `forge test`, `forge test --isolate` — 185 passed; all four also pass at 2,048 runs (`FOUNDRY_FUZZ_RUNS`), no counterexamples. Non-vacuity: building the expected order hash with `usePermit2Allowances` flipped fails `testFuzz_EX_FUZZ_permit2Rail` |
+
+| - [x] | - [ ] | `20261002T032856Z/ORD-03` | The fulfillment rail's submitter pin: the named solver settles, a stranger is refused by the hub's own error naming both addresses and burns no Permit2 nonce, and the dead-address sentinel then opens that same order to that same stranger. Added after the plan was frozen — main-thread mutation verification found `UnauthorizedSolver` reachable but untested, the mirror of a site `ORD-02` already covered | `ORD-03` `test_ORD_03_solverPinningAndTheOpenSentinel` — `test/v2/FulfillOrder.t.sol` | `forge test`, `forge test --isolate` — 186 passed. Kills the pass's only surviving mutant: replacing the gate with `true` fails this row and nothing else. Non-vacuity: transposing `UnauthorizedSolver`'s two arguments fails it |
+
+| - [x] | - [ ] | `20261002T032856Z/SV-06b` | Both session-key gates on the **fulfillment** authentication path: a key the owner never approved, and an expired key at the inclusive boundary. `authenticateFulfillment` duplicates `authenticateExecution` rather than sharing it, so `SV-06` and `SV-07` left this copy unconstrained — deleting either check here kept all 186 tests green. Found by the final integrity review, not by the five-leg mutation pass | `SV-06b` `test_SV_06b_unapprovedKeyRejectedOnTheFulfillmentPath`, `SV-07b` `test_SV_07b_expiryBoundaryOnTheFulfillmentPath` — `test/v2/authenticators/SessionOrderAuthenticator.sol` | `forge test`, `forge test --isolate` — 188 passed. Deleting both checks at once fails exactly these two tests and nothing else; each carries a settling control leg |
+
+| - [x] | - [ ] | `20261002T032856Z/SOL-05` | The owner's fix to `FulfillmentSolution`: the route's own `deadline` is checked on both fulfill rails by a modifier, inclusively at the boundary and independently of the approver, and `solution.nonce` is burned — but inside the approval path, so a sentinel-approver route is spent not at all and stays replayable. Three baseline expectations moved with the fix: `SOL-01` and the delegated fuzz property asserted the hub burned no nonce, which is now false, and `AUTH-01b` needed a route nonce of its own | `SOL-05` `test_SOL_05_theRouteDeadlineIsEnforced`, `SOL-06` `test_SOL_06_theRouteNonceIsSpentOnlyUnderANamedApprover` — `test/v2/FulfillOrder.t.sol`; helper `HubBase._route` now hands out a live deadline and a fresh nonce per route | `forge test`, `forge test --isolate` — 190 passed. Mutation: deleting `checkDeadline(solution.deadline)` from both rails fails `SOL-05` alone; deleting the nonce burn fails `SOL-06`, `SOL-01` and the delegated fuzz property |
+
+| - [x] | - [ ] | `20261002T032856Z/ORD-01b` | The asset source moved out of both signed orders and onto the two delegated entry points as a `bool` parameter; the Permit2-signature rails take none, because `permitWitnessTransferFrom` consults no allowance. One signed order now settles on either pull rail at the submitter's choice, bounded by the rest of the order, which is still signed. `ORD-01`'s old property — the flag is covered by the signature — is retired with its premise: the member no longer exists. The two `T712` legs that showed the bit moving the order hash go with it | `ORD-01` `test_ORD_01_theAssetSourceIsTheSubmittersArgument`, `ORD-01b` `test_ORD_01b_thePermit2SignatureRailConsultsNoAllowance` — `test/v2/ExecuteOrder.t.sol`; both order typehash literals in `test/base/V2TestBase.sol` and the two transcribed authenticator signatures in `ExecuteOrder.t.sol`/`Relay.t.sol` lost the `bool` | `forge test`, `forge test --isolate` — 191 passed. Mutation: forcing the source to Permit2 regardless of the argument fails 28 tests. Non-vacuity: `ORD-01b` revokes the plain allowance outright rather than asserting an infinite one went unchanged, which would have proved nothing |
+
+### Notes for this run
+
+The owner then moved `usePermit2Allowances` out of the signed orders and onto the delegated entry
+points, the Permit2-signature rails taking no such argument. Authority: the owner's instruction, and
+*"permit2 signature entrypoints do not need it"* for the asymmetry. This is the production-side
+resolution of finding E1 — the flag is no longer in the emitted order hash, so there is nothing left
+to flip. 51 delegated call sites, both order typehashes, both hand-written literal type strings and
+two transcribed authenticator signatures moved with it. The hub measured 22,505 before and
+**22,560** after: dropping a struct member did not shrink it.
+
+The owner then fixed `FulfillmentSolution.nonce`/`.deadline` mid-run (finding E2 above). Authority
+for the three realigned expectations: the owner's instruction *"fixed solution nonce and deadline"*
+plus the live source. All three were assertions that the fields were **not** enforced, so each moved
+to the new truth rather than being dropped; none was weakened. Suite: **190**.
+
+Coverage: `forge coverage --ir-minimum --no-match-coverage 'script|test'` **runs again** — 87.10%
+lines (412/473), 88.24% branches. Iteration 0 recorded it blocked in both modes, so the unresolved
+coverage gate carried by the three earlier runs is closed here. Plain coverage stays blocked by
+stack-too-deep inside `ks-common-sc`, a dependency limit. Every uncovered in-scope line is
+reconciled in the run's scratch ledger: all but two files are `--ir-minimum` attribution artifacts
+(declarations, `assembly` blocks, modifier bodies, constructor lines, inlined call sites), proved
+for the most suspicious one — `KSAllowanceHubV2.sol:392` — by replacing it with `revert()` and
+watching 43 tests fail.
+
+Main-thread mutation pass, five legs: four killed, one survived and is now closed by `ORD-03`.
+Counts recorded per row above were taken before `ORD-03` existed; the suite is **186** tests.
+
+Dead code found while reconciling coverage, left for the owner to decide: the four `*Memory`
+helpers in `src/v2/types/ERC20Transfer.sol` and `hash(AuthDelegation memory)` in
+`src/v2/types/AuthDelegation.sol` have no caller anywhere in `src/`.
+
+- **Reshape, not re-point.** The user licensed refactoring the files rather than mechanically
+  updating them, so `Auth.t.sol` — organised around two entry points and two rails — was split into
+  `ExecuteOrder.t.sol` and `FulfillOrder.t.sol`, which is where the four entry points' differences
+  actually live. `test/verifiers/**` moved to `test/v2/authenticators/**` to keep the mirror of
+  `src/`. The licence covered organisation only; every retired case is named below with the premise
+  that is gone.
+- **Oracle rule.** `test/base/V2TestBase.sol` gained hand-written literals for `ExecutionOrder`,
+  `FulfillmentOrder`, `FulfillmentSolution` and `SolutionApproval`, and `AuthDelegation`'s first
+  member was re-transcribed as `address authenticator`. The three deleted approval types' literals
+  and builders went with them. No production type string, typehash or hashing helper appears on the
+  expected side of any assertion outside the two `types/Eip712.t.sol` files, and the dispatch
+  selectors the suite depends on — `initAuthentication`, `updateAuthentication`,
+  `authenticateExecution`, `authenticateFulfillment`, `ksExecute`, and the `TransferTokens` topic —
+  are all hand-written signature strings.
+- **Cases retired, premise by premise.** `AUTH-05` (no `authFlags` for a submitter to mismatch;
+  the surviving witness/relayer binding is `AUTH-04`), `AUTH-09` (its claim that the submitter picks
+  the allowance rail is now false — `ORD-01` asserts the opposite and keeps both of its rails
+  working), `AUTH-12` and `AUTH-12b` (`authFlags` and `_signedCaller` are gone), `CALLS-01..03`
+  (the hub burns no nonce for a solution approval any more; the live halves are `SOL-02` and
+  `SOL-04`), `OWN-08` (`SolutionApproval` covers `orderHash`, so the approval now *does* reach the
+  tail — `SOL-01` asserts the new truth, `AUTH-07b` the approver binding), `SV-12` (subsumed by
+  `DOM-01`), `T712-03`, `T712-11`, `T712-12` (`CallsApproval`, `ExecutionApproval` and
+  `FulfillmentApproval` are deleted; `T712-16`, `T712-13` and `T712-14` replace them).
+- **Baselines re-pointed with their claim intact but their error payload changed.**
+  `DeadlineChecker.DeadlinePassed` gained `(uint256 currentTime, uint256 deadline)` in this diff, so
+  four expectations moved from a bare selector to the full payload, which is a strengthening.
+  `CALLS-04`'s expected error moved from `ECDSAInvalidSignatureLength` to
+  `InvalidSolutionSignature`, because the hub now reaches `SignatureChecker`, which returns false
+  rather than reverting. Both rest on `AUTH-DIFF-RESTRUCTURE` plus the staged `src/` diff.
+- `SET-01` now asserts four topics and compares the third against the order hash rebuilt from the
+  literals; `OWN-07` does the same for the fulfillment hash. The log picker and the hand-written
+  `TransferTokens` topic moved into `HubBase` so the fuzz properties can share them.
+- Eight non-vacuity checks were run by perturbing the **test** side only and confirming each case
+  fails; all eight did. They are listed in the rows above.
+- Coverage, corrected in the main thread after the implementation shard reported: plain
+  `forge coverage` does still fail stack-too-deep in
+  `lib/ks-common-sc/src/base/ManagementRescuable.sol`, but
+  `forge coverage --ir-minimum --no-match-coverage 'script|test'` **succeeds** and is the command
+  this run's numbers come from. The shard's report that `--ir-minimum` fails on
+  `src/interfaces/ICREATE3Factory.sol` via `lib/ks-common-sc/script/Base.s.sol` does not reproduce
+  once the script path is excluded. Closure for the rows above rests on the non-vacuity checks and
+  the mutation pass, with the coverage report as corroboration.

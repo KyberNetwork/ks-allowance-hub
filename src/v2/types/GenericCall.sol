@@ -16,9 +16,9 @@ struct GenericCall {
   bytes data;
 }
 
-using GenericCallLibrary for GenericCall global;
+using GenericCallLib for GenericCall global;
 
-library GenericCallLibrary {
+library GenericCallLib {
   bytes32 internal constant GENERIC_CALL_TYPEHASH =
     keccak256('GenericCall(address router,uint256 value,bytes data)');
 
@@ -57,6 +57,30 @@ library GenericCallLibrary {
   /// @dev Calls the router, forwarding the call's share of the native sent to the hub
   function execute(GenericCall calldata self) internal returns (bytes memory) {
     return IKSGenericRouter(self.router).ksExecute{value: self.value}(self.data);
+  }
+
+  /**
+   * @dev The calls that carry value, for the event. Calls with no value are dropped and the array
+   * is truncated in place, so an order with none emits an empty array rather than a run of zeros.
+   */
+  function toNativeTransfers(GenericCall[] calldata genericCalls)
+    internal
+    pure
+    returns (NativeTransfer[] memory transfers)
+  {
+    uint256 index = 0;
+    transfers = new NativeTransfer[](genericCalls.length);
+
+    for (uint256 i = 0; i < genericCalls.length; i++) {
+      GenericCall calldata call = genericCalls[i];
+      if (call.value > 0) {
+        transfers[index++] = NativeTransfer({target: call.router, amount: call.value});
+      }
+    }
+
+    assembly ('memory-safe') {
+      mstore(transfers, index)
+    }
   }
 
   /**

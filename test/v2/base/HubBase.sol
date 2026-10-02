@@ -1,16 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.36;
 
+import {Vm} from 'forge-std/Vm.sol';
+
 import {V2TestBase} from 'test/base/V2TestBase.sol';
 
 import {RouterMock} from 'test/v2/mocks/RouterMock.sol';
 import {ERC721Mock} from 'test/v2/mocks/TokenMocks.sol';
 import {ValidatorMock} from 'test/v2/mocks/ValidatorMock.sol';
 
-import {PackedBits} from 'src/base/types/PackedBits.sol';
+import {DeadlineChecker} from 'src/base/DeadlineChecker.sol';
 import {KSAllowanceHubV2} from 'src/v2/KSAllowanceHubV2.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
+import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
+import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
+import {FulfillmentSolution} from 'src/v2/types/FulfillmentSolution.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
 import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
@@ -19,7 +24,7 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 /**
  * @title HubBase
  * @notice Contract base for the {KSAllowanceHubV2} batches: deploys the hub against the real
- * Permit2 on a mainnet fork, wires the mocks, and builds orders.
+ * Permit2 on a mainnet fork, wires the mocks, and builds and signs orders.
  * @dev Every signature here is produced from the literals in {V2TestBase}. Nothing in this file may
  * reach for a production type string, typehash or hashing library, or the suite would only prove
  * that the hub agrees with itself.
@@ -34,6 +39,15 @@ abstract contract HubBase is V2TestBase {
   ValidatorMock internal validator2;
 
   uint256 internal constant NFT_ID = 1;
+
+  /**
+   * @dev Transcribed from {IKSAllowanceHubV2-TransferTokens}, never imported: an expected topic
+   * taken from the contract under test would agree with a wrong one. `orderHash` joined the
+   * indexed fields in the restructure, so the signature gained a `bytes32`.
+   */
+  bytes32 internal constant TRANSFER_TOKENS_TOPIC = keccak256(
+    'TransferTokens(address,address,bytes32,(address,address,uint160)[],(address,uint256,address)[],(address,uint256)[])'
+  );
 
   function setUp() public virtual {
     _forkMainnet();
@@ -82,42 +96,66 @@ abstract contract HubBase is V2TestBase {
     vm.stopPrank();
   }
 
-  // ---------------------------------------------------------------------------------------------
-  // Flags and authData
-  // ---------------------------------------------------------------------------------------------
-
-  /// @dev bit 0 Permit2 signature rail, bit 1 Permit2 allowance rail, bit 2 caller is pinned
-  function _flags(bool permit2Signature, bool permit2Allowance, bool pinCaller)
-    internal
-    pure
-    returns (PackedBits)
-  {
-    uint256 raw;
-    if (permit2Signature) raw |= 1;
-    if (permit2Allowance) raw |= 1 << 1;
-    if (pinCaller) raw |= 1 << 2;
-    return PackedBits.wrap(bytes32(raw));
+  /**
+   * @dev The owner's Permit2 allowance to the hub, which `usePermit2Allowances` draws on. The
+   * amount is finite on purpose: Permit2 leaves `type(uint160).max` alone rather than decrementing
+   * it, so an unlimited allowance could not tell the two pull rails apart.
+   */
+  function _grantPermit2Allowance(address token, uint160 amount) internal {
+    vm.prank(owner);
+    (bool ok,) = PERMIT2.call(
+      abi.encodeWithSignature(
+        'approve(address,address,uint160,uint48)',
+        token,
+        address(hub),
+        amount,
+        uint48(block.timestamp + 30 days)
+      )
+    );
+    assertTrue(ok, 'permit2 approve');
   }
 
-  function _permit2AuthData(uint256 nonce, bytes memory signature)
-    internal
-    pure
-    returns (bytes memory)
-  {
-    return abi.encode(nonce, signature);
+  /// @dev How much of `token` the hub may still pull over the owner's Permit2 allowance
+  function _permit2Allowance(address token) internal view returns (uint160 allowed) {
+    (bool ok, bytes memory data) = PERMIT2.staticcall(
+      abi.encodeWithSignature('allowance(address,address,address)', owner, token, address(hub))
+    );
+    require(ok, 'permit2 allowance');
+    (allowed,,) = abi.decode(data, (uint160, uint48, uint48));
   }
 
-  function _verifierAuthData(
-    address verifier,
-    uint256 nonce,
-    bytes memory key,
-    bytes memory signature
-  ) internal pure returns (bytes memory) {
-    return abi.encode(verifier, nonce, key, signature);
+  /**
+   * @dev The whole {DeadlineChecker-DeadlinePassed} payload, with the argument order written out
+   * here. The error carries both values, so a selector-only expectation would not match it.
+   */
+  function _deadlinePassed(uint256 deadline) internal view returns (bytes memory) {
+    return
+      abi.encodeWithSelector(DeadlineChecker.DeadlinePassed.selector, block.timestamp, deadline);
+  }
+
+  /// @dev Picks the single `TransferTokens` the hub emitted out of the whole fork's log stream
+  function _settlementLog() internal returns (Vm.Log memory entry) {
+    Vm.Log[] memory entries = vm.getRecordedLogs();
+
+    uint256 found;
+    for (uint256 i = 0; i < entries.length; i++) {
+      if (entries[i].emitter != address(hub)) continue;
+      if (entries[i].topics.length == 0) continue;
+      if (entries[i].topics[0] != TRANSFER_TOKENS_TOPIC) continue;
+
+      entry = entries[i];
+      found++;
+    }
+
+    assertEq(found, 1, 'exactly one TransferTokens per order');
+  }
+
+  function _topicAddress(bytes32 topic) internal pure returns (address) {
+    return address(uint160(uint256(topic)));
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Order building
+  // Order pieces
   // ---------------------------------------------------------------------------------------------
 
   function _wethTransfer(uint160 amount) internal view returns (ERC20Transfer memory) {
@@ -146,56 +184,182 @@ abstract contract HubBase is V2TestBase {
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Permit2 signatures, built from the literal type strings only
+  // Order building
   // ---------------------------------------------------------------------------------------------
 
-  function _signExecutionOrder(
+  function _executionOrder(
+    address orderRelayer,
     ERC20Transfer[] memory erc20Transfers,
     ERC721Transfer[] memory erc721Transfers,
     GenericCall[] memory genericCalls,
-    address signedCaller,
     uint256 nonce,
     uint256 deadline
-  ) internal returns (bytes memory) {
-    bytes32 witness = lExecutionWitness(
-      signedCaller, _targets(erc20Transfers), erc721Transfers, genericCalls
-    );
-
-    (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(erc20Transfers);
-
-    bytes32 digest = lPermit2BatchWitnessDigest(
-      tokens, amounts, address(hub), nonce, deadline, witness, lExecutionWitnessTypeString()
-    );
-
-    return _sign(ownerKey, digest);
+  ) internal pure returns (ExecutionOrder memory) {
+    return ExecutionOrder({
+      relayer: orderRelayer,
+      erc20Transfers: erc20Transfers,
+      erc721Transfers: erc721Transfers,
+      genericCalls: genericCalls,
+      nonce: nonce,
+      deadline: deadline
+    });
   }
 
-  function _signFulfillmentOrder(
+  /// @dev The commonest shape: open to any submitter, plain ERC20 allowance, no NFT leg
+  function _openExecutionOrder(
     ERC20Transfer[] memory erc20Transfers,
-    ERC721Transfer[] memory erc721Transfers,
-    GenericCall[] memory ownerCalls,
-    ValidationParams[] memory validationParams,
-    address callsSigner,
-    address signedCaller,
+    GenericCall[] memory genericCalls,
     uint256 nonce,
     uint256 deadline
+  ) internal pure returns (ExecutionOrder memory) {
+    return _executionOrder(
+      ANY, erc20Transfers, new ERC721Transfer[](0), genericCalls, nonce, deadline
+    );
+  }
+
+  function _fulfillmentOrder(
+    address orderSolver,
+    ERC20Transfer[] memory erc20Transfers,
+    ERC721Transfer[] memory erc721Transfers,
+    ValidationParams[] memory validationParams,
+    GenericCall[] memory ownerCalls,
+    address solutionApprover,
+    uint256 nonce,
+    uint256 deadline
+  ) internal pure returns (FulfillmentOrder memory) {
+    return FulfillmentOrder({
+      solver: orderSolver,
+      erc20Transfers: erc20Transfers,
+      erc721Transfers: erc721Transfers,
+      validationParams: validationParams,
+      ownerCalls: ownerCalls,
+      solutionApprover: solutionApprover,
+      nonce: nonce,
+      deadline: deadline
+    });
+  }
+
+  /// @dev Open to any submitter, any route, plain ERC20 allowance, no NFT leg
+  function _openFulfillmentOrder(
+    ERC20Transfer[] memory erc20Transfers,
+    ValidationParams[] memory validationParams,
+    GenericCall[] memory ownerCalls,
+    uint256 nonce,
+    uint256 deadline
+  ) internal pure returns (FulfillmentOrder memory) {
+    return _fulfillmentOrder(
+      ANY,
+      erc20Transfers,
+      new ERC721Transfer[](0),
+      validationParams,
+      ownerCalls,
+      ANY,
+      nonce,
+      deadline
+    );
+  }
+
+  /// @dev Where {_route}'s auto-assigned nonces begin, clear of the nonces cases choose by hand
+  uint256 internal constant ROUTE_NONCE_BASE = 10_000;
+
+  /// @dev How many routes {_route} has handed out, so each one gets its own nonce
+  uint256 private _routesBuilt;
+
+  function _solution(GenericCall[] memory solverCalls, uint256 nonce, uint256 deadline)
+    internal
+    pure
+    returns (FulfillmentSolution memory)
+  {
+    return FulfillmentSolution({solverCalls: solverCalls, nonce: nonce, deadline: deadline});
+  }
+
+  /**
+   * @dev The route a solver supplies when the owner pinned nothing about it. The hub burns
+   * `solution.nonce` and checks `solution.deadline`, so each call hands back a nonce no other route
+   * in the test has used and a deadline an hour out. Route nonces start high enough not to collide
+   * with the order nonces cases pick by hand, and they share the hub's bitmap with nothing else.
+   */
+  function _route(GenericCall[] memory solverCalls) internal returns (FulfillmentSolution memory) {
+    return _solution(solverCalls, ROUTE_NONCE_BASE + _routesBuilt++, block.timestamp + 1 hours);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Signatures, built from the literal type strings only
+  // ---------------------------------------------------------------------------------------------
+
+  function _hubDomain() internal view returns (bytes32) {
+    return lDomainSeparator('KyberSwap Allowance Hub', '2.0.0', address(hub));
+  }
+
+  /**
+   * @dev The owner's Permit2 signature for a relayed execution: the permit covers tokens and
+   * amounts, the witness everything else the order pins. `witnessRelayer` is passed separately so a
+   * test can sign a witness that disagrees with the order it submits.
+   */
+  function _signExecutionWitness(ExecutionOrder memory order, address witnessRelayer)
+    internal
+    returns (bytes memory)
+  {
+    bytes32 witness = lExecutionWitness(
+      witnessRelayer, _targets(order.erc20Transfers), order.erc721Transfers, order.genericCalls
+    );
+
+    (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(order.erc20Transfers);
+
+    return _sign(
+      ownerKey,
+      lPermit2BatchWitnessDigest(
+        tokens,
+        amounts,
+        address(hub),
+        order.nonce,
+        order.deadline,
+        witness,
+        lExecutionWitnessTypeString()
+      )
+    );
+  }
+
+  /// @dev As {_signExecutionWitness}, with the witness naming the relayer the order names
+  function _signExecutionWitness(ExecutionOrder memory order) internal returns (bytes memory) {
+    return _signExecutionWitness(order, order.relayer);
+  }
+
+  /// @dev The fulfillment witness pins who may choose the route rather than the route itself
+  function _signFulfillmentWitness(
+    FulfillmentOrder memory order,
+    address witnessSolver,
+    GenericCall[] memory witnessOwnerCalls,
+    address witnessApprover
   ) internal returns (bytes memory) {
     bytes32 witness = lFulfillmentWitness(
-      signedCaller,
-      _targets(erc20Transfers),
-      erc721Transfers,
-      ownerCalls,
-      validationParams,
-      callsSigner
+      witnessSolver,
+      _targets(order.erc20Transfers),
+      order.erc721Transfers,
+      witnessOwnerCalls,
+      order.validationParams,
+      witnessApprover
     );
 
-    (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(erc20Transfers);
+    (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(order.erc20Transfers);
 
-    bytes32 digest = lPermit2BatchWitnessDigest(
-      tokens, amounts, address(hub), nonce, deadline, witness, lFulfillmentWitnessTypeString()
+    return _sign(
+      ownerKey,
+      lPermit2BatchWitnessDigest(
+        tokens,
+        amounts,
+        address(hub),
+        order.nonce,
+        order.deadline,
+        witness,
+        lFulfillmentWitnessTypeString()
+      )
     );
+  }
 
-    return _sign(ownerKey, digest);
+  /// @dev As above, with the witness agreeing with the order in every member
+  function _signFulfillmentWitness(FulfillmentOrder memory order) internal returns (bytes memory) {
+    return _signFulfillmentWitness(order, order.solver, order.ownerCalls, order.solutionApprover);
   }
 
   /// @dev Permit2 self-transfer: the owner submits, so there is no witness to bind
@@ -207,31 +371,29 @@ abstract contract HubBase is V2TestBase {
     return _sign(ownerKey, lPermit2BatchDigest(tokens, amounts, address(hub), nonce, deadline));
   }
 
-  /// @dev The calls approval lives under the hub's own EIP-712 domain
-  function _signCallsApproval(
+  /// @dev The solution approval lives under the hub's own EIP-712 domain
+  function _signSolutionApproval(
     uint256 signerKey,
-    address callsOwner,
-    GenericCall[] memory solverCalls,
-    uint256 nonce,
-    uint256 deadline
+    address approvalOwner,
+    bytes32 orderHash,
+    FulfillmentSolution memory solution
   ) internal returns (bytes memory) {
-    bytes32 domain = lDomainSeparator('KyberSwap Allowance Hub', '2.0.0', address(hub));
-    bytes32 digest =
-      lTypedDataHash(domain, lCallsApproval(callsOwner, solverCalls, nonce, deadline));
-    return _sign(signerKey, digest);
+    return _sign(
+      signerKey, lTypedDataHash(_hubDomain(), lSolutionApproval(approvalOwner, orderHash, solution))
+    );
   }
 
   function _signAuthDelegation(
     uint256 signerKey,
-    address verifier,
+    address authenticator,
     bool delegated,
     bytes memory data,
     uint256 nonce,
     uint256 deadline
   ) internal returns (bytes memory) {
-    bytes32 domain = lDomainSeparator('KyberSwap Allowance Hub', '2.0.0', address(hub));
-    bytes32 digest =
-      lTypedDataHash(domain, lAuthDelegation(verifier, delegated, data, nonce, deadline));
-    return _sign(signerKey, digest);
+    return _sign(
+      signerKey,
+      lTypedDataHash(_hubDomain(), lAuthDelegation(authenticator, delegated, data, nonce, deadline))
+    );
   }
 }

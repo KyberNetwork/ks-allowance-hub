@@ -5,6 +5,9 @@ import {Test} from 'forge-std/Test.sol';
 
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
+import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
+import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
+import {FulfillmentSolution} from 'src/v2/types/FulfillmentSolution.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
 import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
@@ -17,6 +20,10 @@ import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
  * production constant agrees with a wrong type string just as happily as with a right one. These
  * literals are the independent oracle, and `test/v2/types/Eip712.t.sol` compares the production
  * constants against them.
+ *
+ * The struct types are imported for their ABI shape only. Each one carries a `using ... global`
+ * attachment, so the production hashers are reachable from any file that imports them — they are
+ * never to appear on the expected side of an assertion.
  */
 abstract contract V2TestBase is Test {
   address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
@@ -41,23 +48,26 @@ abstract contract V2TestBase is Test {
     'ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)';
   string internal constant L_TOKEN_PERMISSIONS = 'TokenPermissions(address token,uint256 amount)';
 
+  string internal constant L_EXECUTION_ORDER =
+    'ExecutionOrder(address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 deadline)';
+  string internal constant L_FULFILLMENT_ORDER =
+    'FulfillmentOrder(address solver,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,ValidationParams[] validationParams,GenericCall[] ownerCalls,address solutionApprover,uint256 nonce,uint256 deadline)';
+  string internal constant L_FULFILLMENT_SOLUTION =
+    'FulfillmentSolution(GenericCall[] solverCalls,uint256 nonce,uint256 deadline)';
+  string internal constant L_SOLUTION_APPROVAL =
+    'SolutionApproval(address owner,bytes32 orderHash,FulfillmentSolution solution)';
+
   string internal constant L_EXECUTION_WITNESS =
     'ExecutionWitness(address relayer,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls)';
   string internal constant L_FULFILLMENT_WITNESS =
     'FulfillmentWitness(address solver,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner)';
-  string internal constant L_CALLS_APPROVAL =
-    'CallsApproval(address owner,GenericCall[] solverCalls,uint256 nonce,uint256 deadline)';
   string internal constant L_AUTH_DELEGATION =
-    'AuthDelegation(address verifier,bool delegated,bytes data,uint256 nonce,uint256 deadline)';
+    'AuthDelegation(address authenticator,bool delegated,bytes data,uint256 nonce,uint256 deadline)';
 
   string internal constant L_SESSION_KEY =
     'SessionKey(bytes publicKey,uint8 keyType,uint256 expiration)';
   string internal constant L_SESSION_APPROVAL =
     'SessionApproval(SessionKey sessionKey,bool approved,uint256 nonce,uint256 deadline)';
-  string internal constant L_EXECUTION_APPROVAL =
-    'ExecutionApproval(address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 deadline)';
-  string internal constant L_FULFILLMENT_APPROVAL =
-    'FulfillmentApproval(address solver,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner,uint256 nonce,uint256 deadline)';
 
   /// @dev Permit2 prepends this and hashes the concatenation, so the witness string closes its paren
   string internal constant L_PERMIT2_BATCH_WITNESS_STUB =
@@ -92,10 +102,38 @@ abstract contract V2TestBase is Test {
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Hand-written EIP-712 encodings
+  // Hand-written EIP-712 typehashes
   // ---------------------------------------------------------------------------------------------
 
   /// @dev Referenced types follow the primary type in alphabetical order, per EIP-712
+  function lExecutionOrderTypehash() internal pure returns (bytes32) {
+    return keccak256(
+      abi.encodePacked(L_EXECUTION_ORDER, L_ERC20_TRANSFER, L_ERC721_TRANSFER, L_GENERIC_CALL)
+    );
+  }
+
+  /// @dev Sorted: ERC20Transfer, ERC721Transfer, GenericCall, ValidationParams
+  function lFulfillmentOrderTypehash() internal pure returns (bytes32) {
+    return keccak256(
+      abi.encodePacked(
+        L_FULFILLMENT_ORDER,
+        L_ERC20_TRANSFER,
+        L_ERC721_TRANSFER,
+        L_GENERIC_CALL,
+        L_VALIDATION_PARAMS
+      )
+    );
+  }
+
+  function lFulfillmentSolutionTypehash() internal pure returns (bytes32) {
+    return keccak256(abi.encodePacked(L_FULFILLMENT_SOLUTION, L_GENERIC_CALL));
+  }
+
+  /// @dev Sorted: FulfillmentSolution, GenericCall
+  function lSolutionApprovalTypehash() internal pure returns (bytes32) {
+    return keccak256(abi.encodePacked(L_SOLUTION_APPROVAL, L_FULFILLMENT_SOLUTION, L_GENERIC_CALL));
+  }
+
   function lExecutionWitnessTypehash() internal pure returns (bytes32) {
     return keccak256(abi.encodePacked(L_EXECUTION_WITNESS, L_ERC721_TRANSFER, L_GENERIC_CALL));
   }
@@ -106,10 +144,6 @@ abstract contract V2TestBase is Test {
         L_FULFILLMENT_WITNESS, L_ERC721_TRANSFER, L_GENERIC_CALL, L_VALIDATION_PARAMS
       )
     );
-  }
-
-  function lCallsApprovalTypehash() internal pure returns (bytes32) {
-    return keccak256(abi.encodePacked(L_CALLS_APPROVAL, L_GENERIC_CALL));
   }
 
   /// @dev `ExecutionWitness witness)` + referenced types, sorted: ERC721Transfer, ExecutionWitness,
@@ -141,6 +175,22 @@ abstract contract V2TestBase is Test {
     );
   }
 
+  function lSessionKeyTypehash() internal pure returns (bytes32) {
+    return keccak256(bytes(L_SESSION_KEY));
+  }
+
+  function lSessionApprovalTypehash() internal pure returns (bytes32) {
+    return keccak256(abi.encodePacked(L_SESSION_APPROVAL, L_SESSION_KEY));
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Hand-written member and array hashing
+  // ---------------------------------------------------------------------------------------------
+
+  function lHashErc20(ERC20Transfer memory t) internal pure returns (bytes32) {
+    return keccak256(abi.encode(keccak256(bytes(L_ERC20_TRANSFER)), t.token, t.target, t.amount));
+  }
+
   function lHashErc721(ERC721Transfer memory t) internal pure returns (bytes32) {
     return keccak256(abi.encode(keccak256(bytes(L_ERC721_TRANSFER)), t.token, t.tokenId, t.target));
   }
@@ -163,6 +213,14 @@ abstract contract V2TestBase is Test {
   }
 
   /// @dev EIP-712 hashes an array of structs as the hash of its concatenated member hashes
+  function lHashErc20Array(ERC20Transfer[] memory ts) internal pure returns (bytes32) {
+    bytes32[] memory h = new bytes32[](ts.length);
+    for (uint256 i = 0; i < ts.length; i++) {
+      h[i] = lHashErc20(ts[i]);
+    }
+    return keccak256(abi.encodePacked(h));
+  }
+
   function lHashErc721Array(ERC721Transfer[] memory ts) internal pure returns (bytes32) {
     bytes32[] memory h = new bytes32[](ts.length);
     for (uint256 i = 0; i < ts.length; i++) {
@@ -185,6 +243,67 @@ abstract contract V2TestBase is Test {
       h[i] = lHashValidation(vs[i]);
     }
     return keccak256(abi.encodePacked(h));
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Hand-written struct hashes
+  // ---------------------------------------------------------------------------------------------
+
+  function lExecutionOrderHash(ExecutionOrder memory order) internal pure returns (bytes32) {
+    return keccak256(
+      abi.encode(
+        lExecutionOrderTypehash(),
+        order.relayer,
+        lHashErc20Array(order.erc20Transfers),
+        lHashErc721Array(order.erc721Transfers),
+        lHashCallArray(order.genericCalls),
+        order.nonce,
+        order.deadline
+      )
+    );
+  }
+
+  function lFulfillmentOrderHash(FulfillmentOrder memory order) internal pure returns (bytes32) {
+    return keccak256(
+      abi.encode(
+        lFulfillmentOrderTypehash(),
+        order.solver,
+        lHashErc20Array(order.erc20Transfers),
+        lHashErc721Array(order.erc721Transfers),
+        lHashValidationArray(order.validationParams),
+        lHashCallArray(order.ownerCalls),
+        order.solutionApprover,
+        order.nonce,
+        order.deadline
+      )
+    );
+  }
+
+  function lFulfillmentSolutionHash(FulfillmentSolution memory solution)
+    internal
+    pure
+    returns (bytes32)
+  {
+    return keccak256(
+      abi.encode(
+        lFulfillmentSolutionTypehash(),
+        lHashCallArray(solution.solverCalls),
+        solution.nonce,
+        solution.deadline
+      )
+    );
+  }
+
+  function lSolutionApproval(
+    address approvalOwner,
+    bytes32 orderHash,
+    FulfillmentSolution memory solution
+  ) internal pure returns (bytes32) {
+    return keccak256(
+      abi.encode(
+        lSolutionApprovalTypehash(), approvalOwner, orderHash, lFulfillmentSolutionHash(solution)
+      )
+    );
   }
 
   function lExecutionWitness(
@@ -225,19 +344,8 @@ abstract contract V2TestBase is Test {
     );
   }
 
-  function lCallsApproval(
-    address callsOwner,
-    GenericCall[] memory solverCalls,
-    uint256 nonce,
-    uint256 deadline
-  ) internal pure returns (bytes32) {
-    return keccak256(
-      abi.encode(lCallsApprovalTypehash(), callsOwner, lHashCallArray(solverCalls), nonce, deadline)
-    );
-  }
-
   function lAuthDelegation(
-    address verifier,
+    address authenticator,
     bool delegated,
     bytes memory data,
     uint256 nonce,
@@ -245,47 +353,14 @@ abstract contract V2TestBase is Test {
   ) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(
-        keccak256(bytes(L_AUTH_DELEGATION)), verifier, delegated, keccak256(data), nonce, deadline
+        keccak256(bytes(L_AUTH_DELEGATION)),
+        authenticator,
+        delegated,
+        keccak256(data),
+        nonce,
+        deadline
       )
     );
-  }
-
-  function lSessionKeyTypehash() internal pure returns (bytes32) {
-    return keccak256(bytes(L_SESSION_KEY));
-  }
-
-  function lSessionApprovalTypehash() internal pure returns (bytes32) {
-    return keccak256(abi.encodePacked(L_SESSION_APPROVAL, L_SESSION_KEY));
-  }
-
-  function lExecutionApprovalTypehash() internal pure returns (bytes32) {
-    return keccak256(
-      abi.encodePacked(L_EXECUTION_APPROVAL, L_ERC20_TRANSFER, L_ERC721_TRANSFER, L_GENERIC_CALL)
-    );
-  }
-
-  function lFulfillmentApprovalTypehash() internal pure returns (bytes32) {
-    return keccak256(
-      abi.encodePacked(
-        L_FULFILLMENT_APPROVAL,
-        L_ERC20_TRANSFER,
-        L_ERC721_TRANSFER,
-        L_GENERIC_CALL,
-        L_VALIDATION_PARAMS
-      )
-    );
-  }
-
-  function lHashErc20(ERC20Transfer memory t) internal pure returns (bytes32) {
-    return keccak256(abi.encode(keccak256(bytes(L_ERC20_TRANSFER)), t.token, t.target, t.amount));
-  }
-
-  function lHashErc20Array(ERC20Transfer[] memory ts) internal pure returns (bytes32) {
-    bytes32[] memory h = new bytes32[](ts.length);
-    for (uint256 i = 0; i < ts.length; i++) {
-      h[i] = lHashErc20(ts[i]);
-    }
-    return keccak256(abi.encodePacked(h));
   }
 
   function lSessionKeyHash(bytes memory publicKey, uint8 keyType, uint256 expiration)
@@ -302,52 +377,6 @@ abstract contract V2TestBase is Test {
     returns (bytes32)
   {
     return keccak256(abi.encode(lSessionApprovalTypehash(), keyHash, approved, nonce, deadline));
-  }
-
-  function lExecutionApproval(
-    address signedCaller,
-    ERC20Transfer[] memory erc20Transfers,
-    ERC721Transfer[] memory erc721Transfers,
-    GenericCall[] memory genericCalls,
-    uint256 nonce,
-    uint256 deadline
-  ) internal pure returns (bytes32) {
-    return keccak256(
-      abi.encode(
-        lExecutionApprovalTypehash(),
-        signedCaller,
-        lHashErc20Array(erc20Transfers),
-        lHashErc721Array(erc721Transfers),
-        lHashCallArray(genericCalls),
-        nonce,
-        deadline
-      )
-    );
-  }
-
-  function lFulfillmentApproval(
-    address signedCaller,
-    ERC20Transfer[] memory erc20Transfers,
-    ERC721Transfer[] memory erc721Transfers,
-    GenericCall[] memory ownerCalls,
-    ValidationParams[] memory validationParams,
-    address callsSigner,
-    uint256 nonce,
-    uint256 deadline
-  ) internal pure returns (bytes32) {
-    return keccak256(
-      abi.encode(
-        lFulfillmentApprovalTypehash(),
-        signedCaller,
-        lHashErc20Array(erc20Transfers),
-        lHashErc721Array(erc721Transfers),
-        lHashCallArray(ownerCalls),
-        lHashValidationArray(validationParams),
-        callsSigner,
-        nonce,
-        deadline
-      )
-    );
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -417,6 +446,14 @@ abstract contract V2TestBase is Test {
     (bool ok, bytes memory data) = PERMIT2.staticcall(abi.encodeWithSignature('DOMAIN_SEPARATOR()'));
     require(ok, 'permit2 domain');
     separator = abi.decode(data, (bytes32));
+  }
+
+  /// @dev Permit2's signature-transfer nonce bitmap, read off the deployed contract
+  function _permit2NonceBitmap(address account, uint256 word) internal view returns (uint256) {
+    (bool ok, bytes memory data) =
+      PERMIT2.staticcall(abi.encodeWithSignature('nonceBitmap(address,uint256)', account, word));
+    require(ok, 'permit2 nonceBitmap');
+    return abi.decode(data, (uint256));
   }
 
   /// @dev Builds a domain separator from parts, so a test never reuses the contract's own value

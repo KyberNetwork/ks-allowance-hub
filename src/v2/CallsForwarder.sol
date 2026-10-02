@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IAuthVerifier} from './interfaces/IAuthVerifier.sol';
 import {ICallsForwarder} from './interfaces/ICallsForwarder.sol';
+import {IOrderAuthenticator} from './interfaces/IOrderAuthenticator.sol';
 
-import {NativeSpendGuard} from './NativeSpendGuard.sol';
-
-import {PackedBits} from './types/PackedBits.sol';
+import {NativeSpendGuard} from '../base/NativeSpendGuard.sol';
+import {PackedBits} from '../base/types/PackedBits.sol';
 
 import {Common} from 'ks-common-sc/src/base/Common.sol';
 import {IDaiLikePermit} from 'ks-common-sc/src/interfaces/IDaiLikePermit.sol';
@@ -22,13 +21,13 @@ import {Multicallable} from 'solady/utils/Multicallable.sol';
 
 /**
  * @title CallsForwarder
- * @notice Relays calls that authorise themselves — token permits and verifier updates — so an
+ * @notice Relays calls that authorise themselves — token permits and authenticator updates — so
  * approval and the spend that follows fit in one transaction.
  * @dev Anyone may relay anyone's call: the signature inside each payload is the authorisation.
  * The selector allowlist is what keeps that safe, since this contract is the `msg.sender` every
  * target sees.
  */
-contract CallsForwarder is ICallsForwarder, NativeSpendGuard, Common, Multicallable {
+abstract contract CallsForwarder is ICallsForwarder, NativeSpendGuard, Common, Multicallable {
   /// @dev Permit2's two `permit` overloads, written out because `.selector` cannot pick between them
   bytes4 internal constant PERMIT2_PERMIT_SINGLE_SELECTOR =
     bytes4(keccak256('permit(address,((address,uint160,uint48,uint48),address,uint256),bytes)'));
@@ -59,7 +58,7 @@ contract CallsForwarder is ICallsForwarder, NativeSpendGuard, Common, Multicalla
           && selector != IERC20Permit.permit.selector && selector != IDaiLikePermit.permit.selector
           && selector != IERC721Permit_v3.permit.selector
           && selector != IERC721Permit_v4.permit.selector
-          && selector != IAuthVerifier.updateAuth.selector
+          && selector != IOrderAuthenticator.updateAuthentication.selector
       ) {
         revert NotSupportedSelector(selector);
       }

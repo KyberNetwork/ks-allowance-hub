@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.36;
 
-import {VerifierBase} from 'test/verifiers/base/VerifierBase.sol';
+import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
 import {
   ERC20PermitMock,
@@ -10,17 +10,21 @@ import {
   ReentrantPermitMock
 } from 'test/v2/mocks/PermitTokenMocks.sol';
 
-import {IAuthVerifier} from 'src/base/interfaces/IAuthVerifier.sol';
-import {ICallsForwarder} from 'src/base/interfaces/ICallsForwarder.sol';
+import {
+  ISessionOrderAuthenticator
+} from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
+import {SessionKey} from 'src/v2/authenticators/types/SessionKey.sol';
+
 import {PackedBits} from 'src/base/types/PackedBits.sol';
 
+import {ICallsForwarder} from 'src/v2/interfaces/ICallsForwarder.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
+import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
-import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
+import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
+import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
-
-import {ISessionAuthVerifier} from 'src/verifiers/interfaces/ISessionAuthVerifier.sol';
-import {SessionKey} from 'src/verifiers/types/SessionKey.sol';
+import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
 import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
 import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
@@ -30,10 +34,10 @@ import {ERC20Permit} from 'openzeppelin-contracts/contracts/token/ERC20/extensio
 import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
 
 /**
- * @title PermitsTest
- * @notice B5 — `PF-01..09`, `PF-FUZZ` and `FWD-13..19`: the self-authorising calls
- * {ICallsForwarder-forward} relays, its selector allowlist, its per-entry failure bits and the
- * things it deliberately does not guard.
+ * @title RelayTest
+ * @notice `PF-01..09`, `PF-FUZZ` and `FWD-13..19` plus `FWD-PAUSE/VALUE/REENTRY`: the
+ * self-authorising calls {ICallsForwarder-forward} relays, its selector allowlist, its per-entry
+ * failure bits and the things it deliberately does not guard.
  * @dev `forward` makes a plain `call` per entry, so the observable oracle is never the return
  * value: it is the allowance, approval or nonce the target holds afterwards. Every digest here is
  * built from a type string written out in this file from EIP-2612, the DAI permit and the ERC-721
@@ -41,7 +45,7 @@ import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
  * production constant, and in particular no production selector, appears on the expected side of
  * any assertion.
  */
-contract PermitsTest is VerifierBase {
+contract RelayTest is AuthenticatorBase {
   // -----------------------------------------------------------------------------------------------
   // Literal type strings
   // -----------------------------------------------------------------------------------------------
@@ -76,12 +80,16 @@ contract PermitsTest is VerifierBase {
   string internal constant S_PERMIT2_SINGLE_PERMIT =
     'permit(address,((address,uint160,uint48,uint48),address,uint256),bytes)';
 
-  /// @dev The seventh entry on the allowlist, transcribed from {IAuthVerifier}
-  string internal constant S_UPDATE_AUTH = 'updateAuth(address,bytes,uint256,uint256,bytes)';
+  /// @dev The seventh entry on the allowlist, transcribed from {IOrderAuthenticator}
+  string internal constant S_UPDATE_AUTHENTICATION =
+    'updateAuthentication(address,bytes,uint256,uint256,bytes)';
 
-  /// @dev Its two neighbours on the same interface, which the allowlist must NOT carry
-  string internal constant S_INIT_AUTH = 'initAuth(address,bytes)';
-  string internal constant S_VERIFY_AUTH = 'verifyAuth(address,bytes,uint256,uint256,bytes,bytes)';
+  /// @dev Its three neighbours on the same interface, which the allowlist must NOT carry
+  string internal constant S_INIT_AUTHENTICATION = 'initAuthentication(address,bytes)';
+  string internal constant S_AUTHENTICATE_EXECUTION =
+    'authenticateExecution(address,(address,(address,address,uint160)[],(address,uint256,address)[],(address,uint256,bytes)[],uint256,uint256),bytes)';
+  string internal constant S_AUTHENTICATE_FULFILLMENT =
+    'authenticateFulfillment(address,(address,(address,address,uint160)[],(address,uint256,address)[],(address,bytes32,bytes,bytes)[],(address,uint256,bytes)[],address,uint256,uint256),bytes)';
 
   /// @dev Anything outside the allowlist; the forwarder must refuse it by name
   string internal constant S_ERC20_TRANSFER = 'transfer(address,uint256)';
@@ -426,17 +434,18 @@ contract PermitsTest is VerifierBase {
   }
 
   // -----------------------------------------------------------------------------------------------
-  // FWD-13..16 — the `updateAuth` arm of the allowlist, and the two neighbours it must not carry
+  // FWD-13..16 — the `updateAuthentication` arm of the allowlist, and the neighbours it must not
+  // carry
   // -----------------------------------------------------------------------------------------------
 
   /**
-   * FWD-13 — a relayed `updateAuth` approves a session key, on the verifier's own nonce
-   * @dev The seventh selector is not a token permit at all: it is the owner telling a verifier
+   * FWD-13 — a relayed `updateAuthentication` approves a session key, on the authenticator's nonce
+   * @dev The seventh selector is not a token permit at all: it is the owner telling an authenticator
    * which credential may sign for them, relayed so the approval and the order that uses it fit in
-   * one transaction. The verifier owns the replay protection for it, so its bitmap moves and the
+   * one transaction. The authenticator owns the replay protection for it, so its bitmap moves and the
    * hub's does not — the hub is only the postman here and burns nothing of its own.
    */
-  function test_FWD_13_updateAuthIsRelayedAndApprovesTheKey() public {
+  function test_FWD_13_updateAuthenticationIsRelayedAndApprovesTheKey() public {
     SessionKey memory fresh = _secpKey(sessionSigner, block.timestamp + 30 days);
     uint256 nonce = 300;
     uint256 deadline = block.timestamp + 1 hours;
@@ -446,28 +455,30 @@ contract PermitsTest is VerifierBase {
 
     bytes[] memory data = new bytes[](1);
     data[0] = abi.encodeWithSignature(
-      S_UPDATE_AUTH, owner, _approveKey(fresh), nonce, deadline, approvalSig
+      S_UPDATE_AUTHENTICATION, owner, _approveKey(fresh), nonce, deadline, approvalSig
     );
 
     vm.prank(relayer);
-    bytes[] memory results = hub.forward(_one(address(verifier)), data, _bits(0));
+    bytes[] memory results = hub.forward(_one(address(authenticator)), data, _bits(0));
 
-    assertTrue(verifier.approvedKeys(owner, freshHash), 'the key is approved');
+    assertTrue(authenticator.approvedKeys(owner, freshHash), 'the key is approved');
     assertEq(
-      verifier.nonces(owner, nonce >> 8), 1 << (nonce & 0xff), 'the verifier burned that nonce'
+      authenticator.nonces(owner, nonce >> 8),
+      1 << (nonce & 0xff),
+      'the authenticator burned that nonce'
     );
     assertEq(hub.nonces(owner, nonce >> 8), 0, 'and the hub burned nothing on this route');
-    assertEq(results[0].length, 0, 'updateAuth returns nothing');
+    assertEq(results[0].length, 0, 'updateAuthentication returns nothing');
   }
 
   /**
    * FWD-14 — the same call with an empty signature is refused even when the owner sends it
-   * @dev `forward` does `targets[i].call(...)`, so the `msg.sender` the verifier sees is the hub,
-   * never the account that submitted the transaction. The verifier's owner branch is therefore out
-   * of reach from here, and the empty signature that branch would have accepted is checked instead
-   * — and fails. This is the line that stops the hub being a trusted authenticator for anybody:
-   * if the verifier took the hub's word for who the owner was, this call would approve a key for
-   * `owner` on nothing but the say-so of whoever paid for the gas.
+   * @dev `forward` does `targets[i].call(...)`, so the `msg.sender` the authenticator sees is the
+   * hub, never the account that submitted the transaction. The authenticator's owner branch is
+   * therefore out of reach from here, and the empty signature that branch would have accepted is
+   * checked instead — and fails. This is the line that stops the hub being a trusted authenticator
+   * for anybody: if the authenticator took the hub's word for who the owner was, this call would
+   * approve a key for `owner` on nothing but the say-so of whoever paid for the gas.
    */
   function test_FWD_14_emptySignatureIsRefusedEvenFromTheOwner() public {
     SessionKey memory fresh = _secpKey(recipient, block.timestamp + 30 days);
@@ -479,142 +490,158 @@ contract PermitsTest is VerifierBase {
 
     bytes[] memory data = new bytes[](1);
     data[0] = abi.encodeWithSignature(
-      S_UPDATE_AUTH, owner, _approveKey(fresh), nonce, deadline, noSignature
+      S_UPDATE_AUTHENTICATION, owner, _approveKey(fresh), nonce, deadline, noSignature
     );
-    address[] memory targets = _one(address(verifier));
+    address[] memory targets = _one(address(authenticator));
 
     vm.prank(owner);
-    vm.expectRevert(ISessionAuthVerifier.InvalidApprovalSignature.selector);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
     hub.forward(targets, data, _bits(0));
 
-    assertFalse(verifier.approvedKeys(owner, freshHash), 'nothing was approved');
+    assertFalse(authenticator.approvedKeys(owner, freshHash), 'nothing was approved');
 
-    // the same instruction, from the same account, straight at the verifier: there the owner IS
+    // the same instruction, from the same account, straight at the authenticator: there the owner IS
     // `msg.sender` and the empty signature is accepted, which is what makes the refusal above
     // evidence about the hop through the hub rather than about the payload
     vm.prank(owner);
-    verifier.updateAuth(owner, _approveKey(fresh), nonce, deadline, noSignature);
-    assertTrue(verifier.approvedKeys(owner, freshHash), 'accepted when the owner calls directly');
+    authenticator.updateAuthentication(owner, _approveKey(fresh), nonce, deadline, noSignature);
+    assertTrue(
+      authenticator.approvedKeys(owner, freshHash), 'accepted when the owner calls directly'
+    );
   }
 
   /**
-   * FWD-15 — `forward` reaches a verifier the owner never delegated
-   * @dev Deliberate, and worth pinning because the order rails do gate on the delegation: the
-   * hub's `_verifyAuth` refuses an undelegated verifier outright. The forwarder has no such gate
-   * and needs none — `updateAuth` carries the owner's own signature, so a verifier the owner has
-   * not delegated is simply a verifier whose opinion the hub will never ask for.
+   * FWD-15 — `forward` reaches an authenticator the owner never delegated
+   * @dev Deliberate, and worth pinning because the order rails do gate on the delegation:
+   * `checkDelegation` refuses an undelegated authenticator outright. The forwarder has no such gate
+   * and needs none — `updateAuthentication` carries the owner's own signature, so an authenticator
+   * the owner has not delegated is simply one whose opinion the hub will never ask for.
    */
-  function test_FWD_15_forwardReachesAnUndelegatedVerifier() public {
+  function test_FWD_15_forwardReachesAnUndelegatedAuthenticator() public {
     SessionKey memory fresh = _secpKey(sessionSigner, block.timestamp + 30 days);
     uint256 nonce = 302;
     uint256 deadline = block.timestamp + 1 hours;
 
-    assertFalse(hub.authDelegated(owner, address(verifier)), 'the owner never delegated it');
+    assertFalse(hub.authDelegated(owner, address(authenticator)), 'the owner never delegated it');
 
     bytes32 freshHash = _keyHash(fresh);
     bytes memory approvalSig = _signSessionApproval(fresh, true, nonce, deadline);
 
     bytes[] memory data = new bytes[](1);
     data[0] = abi.encodeWithSignature(
-      S_UPDATE_AUTH, owner, _approveKey(fresh), nonce, deadline, approvalSig
+      S_UPDATE_AUTHENTICATION, owner, _approveKey(fresh), nonce, deadline, approvalSig
     );
 
     vm.prank(relayer);
-    hub.forward(_one(address(verifier)), data, _bits(0));
+    hub.forward(_one(address(authenticator)), data, _bits(0));
 
-    assertTrue(verifier.approvedKeys(owner, freshHash), 'the key was approved anyway');
-    assertFalse(hub.authDelegated(owner, address(verifier)), 'and still nothing is delegated');
+    assertTrue(authenticator.approvedKeys(owner, freshHash), 'the key was approved anyway');
+    assertFalse(hub.authDelegated(owner, address(authenticator)), 'and still nothing is delegated');
   }
 
   /**
-   * FWD-16 — `initAuth` and `verifyAuth` are not on the allowlist, and must never be
-   * @dev The security-critical half of the allowlist. `initAuth` takes no signature, nonce or
-   * deadline: it trusts its caller absolutely, and the hub is the caller every forwarded call
-   * arrives as. Were its selector relayable, anyone could hand a verifier an arbitrary key for an
-   * arbitrary owner and then sign that owner's orders with it. `verifyAuth` is the same shape of
-   * hazard pointed at the order rails. Both selectors are rebuilt here from signature strings
-   * written out by hand, because deriving them from the production interface would let a wrong
-   * signature there agree with a wrong expectation here.
+   * FWD-16 — `initAuthentication` and the two `authenticate*` entry points are not forwardable
+   * @dev The security-critical half of the allowlist. `initAuthentication` takes no signature, nonce
+   * or deadline: it trusts its caller absolutely, and the hub is the caller every forwarded call
+   * arrives as. Were its selector relayable, anyone could hand an authenticator an arbitrary key for
+   * an arbitrary owner and then sign that owner's orders with it. `authenticateExecution` and
+   * `authenticateFulfillment` are the same shape of hazard pointed at the order rails, and there are
+   * two of them now where there was one `verifyAuth`. All three selectors are rebuilt here from
+   * signature strings written out by hand, because deriving them from the production interface would
+   * let a wrong signature there agree with a wrong expectation here.
    */
-  function test_FWD_16_initAuthAndVerifyAuthAreNotForwardable() public {
+  function test_FWD_16_initAndAuthenticateAreNotForwardable() public {
     SessionKey memory victimKey = _secpKey(relayer, block.timestamp + 30 days);
     bytes32 victimHash = _keyHash(victimKey);
     bytes memory payload = _encodeKey(victimKey);
 
-    address[] memory targets = _one(address(verifier));
+    address[] memory targets = _one(address(authenticator));
 
     bytes[] memory initData = new bytes[](1);
-    initData[0] = abi.encodeWithSignature(S_INIT_AUTH, owner, payload);
+    initData[0] = abi.encodeWithSignature(S_INIT_AUTHENTICATION, owner, payload);
 
-    bytes[] memory verifyData = new bytes[](1);
-    verifyData[0] = abi.encodeWithSignature(
-      S_VERIFY_AUTH, owner, payload, uint256(0), block.timestamp, payload, payload
+    ExecutionOrder memory execOrder =
+      _openExecutionOrder(new ERC20Transfer[](0), new GenericCall[](0), 0, block.timestamp);
+    FulfillmentOrder memory fulfillOrder = _openFulfillmentOrder(
+      new ERC20Transfer[](0), new ValidationParams[](0), new GenericCall[](0), 0, block.timestamp
     );
 
-    // First, that the two strings above really do name those entry points. Both the calldata and
-    // the expected selector below are derived from them, so a mistyped signature would agree with
-    // itself and the refusals would prove nothing. Sent straight at the verifier they reach its
-    // hub-only gate and come back with its error — which a selector matching no function could
-    // not do, since the verifier has no fallback and would revert with nothing at all.
-    (bool initOk, bytes memory initRet) = address(verifier).call(initData[0]);
-    assertFalse(initOk, 'initAuth refused the call');
-    assertEq(
-      initRet,
-      abi.encodeWithSelector(IAuthVerifier.NotAllowanceHub.selector),
-      'and refused it at the hub-only gate, so the selector reached the real initAuth'
+    bytes[] memory executionData = new bytes[](1);
+    executionData[0] = abi.encodeWithSelector(
+      bytes4(keccak256(bytes(S_AUTHENTICATE_EXECUTION))), owner, execOrder, payload
     );
 
-    (bool verifyOk, bytes memory verifyRet) = address(verifier).call(verifyData[0]);
-    assertFalse(verifyOk, 'verifyAuth refused the call');
-    assertEq(
-      verifyRet,
-      abi.encodeWithSelector(IAuthVerifier.NotAllowanceHub.selector),
-      'likewise, so that selector reached the real verifyAuth'
+    bytes[] memory fulfillmentData = new bytes[](1);
+    fulfillmentData[0] = abi.encodeWithSelector(
+      bytes4(keccak256(bytes(S_AUTHENTICATE_FULFILLMENT))), owner, fulfillOrder, payload
     );
+
+    // First, that the three strings above really do name those entry points. Both the calldata and
+    // the expected selectors below are derived from them, so a mistyped signature would agree with
+    // itself and the refusals would prove nothing. Sent straight at the authenticator they reach its
+    // hub-only gate and come back with its error — which a selector matching no function could not
+    // do, since the authenticator has no fallback and would revert with nothing at all.
+    _assertReachesTheHubOnlyGate(initData[0], 'initAuthentication');
+    _assertReachesTheHubOnlyGate(executionData[0], 'authenticateExecution');
+    _assertReachesTheHubOnlyGate(fulfillmentData[0], 'authenticateFulfillment');
 
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ICallsForwarder.NotSupportedSelector.selector, bytes4(keccak256(bytes(S_INIT_AUTH)))
+        ICallsForwarder.NotSupportedSelector.selector,
+        bytes4(keccak256(bytes(S_INIT_AUTHENTICATION)))
       )
     );
     hub.forward(targets, initData, _bits(0));
 
-    assertFalse(verifier.approvedKeys(owner, victimHash), 'no key was planted on the owner');
+    assertFalse(authenticator.approvedKeys(owner, victimHash), 'no key was planted on the owner');
 
     // a set failure bit does not downgrade the refusal into a skipped entry: the check runs
     // before the call, and `allowFailure` only ever covers a call that was made and reverted
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ICallsForwarder.NotSupportedSelector.selector, bytes4(keccak256(bytes(S_INIT_AUTH)))
+        ICallsForwarder.NotSupportedSelector.selector,
+        bytes4(keccak256(bytes(S_INIT_AUTHENTICATION)))
       )
     );
     hub.forward(targets, initData, _bits(type(uint256).max));
 
-    // and the verification entry point is refused by the same list
+    // and both authentication entry points are refused by the same list
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ICallsForwarder.NotSupportedSelector.selector, bytes4(keccak256(bytes(S_VERIFY_AUTH)))
+        ICallsForwarder.NotSupportedSelector.selector,
+        bytes4(keccak256(bytes(S_AUTHENTICATE_EXECUTION)))
       )
     );
-    hub.forward(targets, verifyData, _bits(0));
+    hub.forward(targets, executionData, _bits(0));
+
+    vm.prank(relayer);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        ICallsForwarder.NotSupportedSelector.selector,
+        bytes4(keccak256(bytes(S_AUTHENTICATE_FULFILLMENT)))
+      )
+    );
+    hub.forward(targets, fulfillmentData, _bits(0));
 
     // the control: on the same target, in the same shape, the one selector that IS listed goes
-    // through — so the two refusals above are about those selectors and not about the verifier
+    // through — so the refusals above are about those selectors and not about the authenticator
     uint256 nonce = 303;
     uint256 deadline = block.timestamp + 1 hours;
     bytes memory approvalSig = _signSessionApproval(victimKey, true, nonce, deadline);
 
     bytes[] memory updateData = new bytes[](1);
     updateData[0] = abi.encodeWithSignature(
-      S_UPDATE_AUTH, owner, _approveKey(victimKey), nonce, deadline, approvalSig
+      S_UPDATE_AUTHENTICATION, owner, _approveKey(victimKey), nonce, deadline, approvalSig
     );
 
     vm.prank(relayer);
     hub.forward(targets, updateData, _bits(0));
-    assertTrue(verifier.approvedKeys(owner, victimHash), 'updateAuth is the listed way in');
+    assertTrue(
+      authenticator.approvedKeys(owner, victimHash), 'updateAuthentication is the listed way in'
+    );
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -715,9 +742,9 @@ contract PermitsTest is VerifierBase {
   /**
    * FWD-PAUSE-01 — a pause does not close the forwarder
    * @dev Intended: relaying a permit moves nobody's assets, it only records an allowance, and an
-   * allowance granted during a pause cannot be spent while the pause holds — both order entry
-   * points are shut, which the second half of this case shows on the same paused hub. Keeping
-   * `forward` open means a user mid-flow can still land the approval half of their transaction.
+   * allowance granted during a pause cannot be spent while the pause holds — the order entry points
+   * are shut, which the second half of this case shows on the same paused hub. Keeping `forward`
+   * open means a user mid-flow can still land the approval half of their transaction.
    */
   function test_FWD_PAUSE_01_forwardStillWorksWhilePaused() public {
     uint256 value = 5 ether;
@@ -738,14 +765,14 @@ contract PermitsTest is VerifierBase {
     // the allowance it granted is unspendable until the pause lifts
     vm.prank(owner);
     vm.expectRevert(Pausable.EnforcedPause.selector);
-    hub.transferAndExecute(
+    hub.executeOrderWithDelegatedAuthentication(
       owner,
-      _erc20s(_wethTransfer(1 ether)),
-      new ERC721Transfer[](0),
-      new GenericCall[](0),
-      block.timestamp,
-      _flags(false, false, false),
-      ''
+      _openExecutionOrder(
+        _erc20s(_wethTransfer(1 ether)), new GenericCall[](0), 0, block.timestamp
+      ),
+      address(0),
+      '',
+      false
     );
   }
 
@@ -777,11 +804,11 @@ contract PermitsTest is VerifierBase {
   /**
    * FWD-REENTRY-01 — a relayed permit may reenter the hub and start an order
    * @dev Confirmed-intended behaviour, pinned rather than fixed. `forward` takes no lock: it moves
-   * no assets of its own, and the lock that matters is the one {KSAllowanceHubV2-transferAndExecute}
-   * takes for the duration of an order. So a target called from inside a batch is free to open
-   * one, and the order it opens is authorised on its own merits — here the owner's Permit2
-   * signature over an open-caller witness, which is what lets the token contract submit it at all.
-   * The assertion is that the reentrant order actually settled, not merely that nothing reverted.
+   * no assets of its own, and the lock that matters is the one an order entry point takes for the
+   * duration of an order. So a target called from inside a batch is free to open one, and the order
+   * it opens is authorised on its own merits — here the owner's Permit2 signature over an
+   * open-relayer witness, which is what lets the token contract submit it at all. The assertion is
+   * that the reentrant order actually settled, not merely that nothing reverted.
    */
   function test_FWD_REENTRY_01_relayedPermitMayReenterTheHub() public {
     ReentrantPermitMock reentrant = new ReentrantPermitMock(address(hub));
@@ -792,22 +819,12 @@ contract PermitsTest is VerifierBase {
 
     ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(amount));
     GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
-    bytes memory permitSig =
-      _signExecutionOrder(erc20s, new ERC721Transfer[](0), calls, ANY, nonce, deadline);
+
+    ExecutionOrder memory order = _openExecutionOrder(erc20s, calls, nonce, deadline);
+    bytes memory permitSig = _signExecutionWitness(order);
 
     reentrant.setReentry(
-      abi.encodeCall(
-        IKSAllowanceHubV2.transferAndExecute,
-        (
-          owner,
-          erc20s,
-          new ERC721Transfer[](0),
-          calls,
-          deadline,
-          _flags(true, false, false),
-          _permit2AuthData(nonce, permitSig)
-        )
-      )
+      abi.encodeCall(IKSAllowanceHubV2.executeOrderWithPermit2Signature, (owner, order, permitSig))
     );
 
     // a well-formed EIP-2612 payload, so the allowlist lets it through; the mock ignores the
@@ -833,6 +850,17 @@ contract PermitsTest is VerifierBase {
   // -----------------------------------------------------------------------------------------------
   // Helpers
   // -----------------------------------------------------------------------------------------------
+
+  /// @dev A direct call must reach the authenticator's hub-only gate, proving the selector is real
+  function _assertReachesTheHubOnlyGate(bytes memory callData, string memory what) private {
+    (bool ok, bytes memory ret) = address(authenticator).call(callData);
+    assertFalse(ok, string.concat(what, ' refused the call'));
+    assertEq(
+      ret,
+      abi.encodeWithSelector(IOrderAuthenticator.NotAllowanceHub.selector),
+      string.concat('and refused it at the hub-only gate, so the selector reached the real ', what)
+    );
+  }
 
   /// @dev Permit2's single-allowance digest, rebuilt from the literals above
   function _permit2SingleDigest(IAllowanceTransfer.PermitSingle memory single)

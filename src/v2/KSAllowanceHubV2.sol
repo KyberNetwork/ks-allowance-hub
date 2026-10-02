@@ -1,22 +1,24 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.36;
 
-import {IAuthVerifier} from '../base/interfaces/IAuthVerifier.sol';
 import {IKSAllowanceHubV2} from './interfaces/IKSAllowanceHubV2.sol';
+import {IOrderAuthenticator} from './interfaces/IOrderAuthenticator.sol';
 
-import {AuthDelegator} from '../base/AuthDelegator.sol';
-import {CallsForwarder} from '../base/CallsForwarder.sol';
 import {MsgSender} from '../base/MsgSender.sol';
 
-import {PackedBits} from '../base/types/PackedBits.sol';
+import {AuthDelegator} from './AuthDelegator.sol';
+import {CallsForwarder} from './CallsForwarder.sol';
 
-import {CallsApprovalLibrary} from './types/CallsApproval.sol';
-import {ERC20Transfer, ERC20TransferLibrary} from './types/ERC20Transfer.sol';
-import {ERC721Transfer, ERC721TransferLibrary} from './types/ERC721Transfer.sol';
-import {ExecutionWitnessLibrary} from './types/ExecutionWitness.sol';
-import {FulfillmentWitnessLibrary} from './types/FulfillmentWitness.sol';
-import {GenericCall, GenericCallLibrary} from './types/GenericCall.sol';
-import {ValidationParams, ValidationParamsLibrary} from './types/ValidationParams.sol';
+import {ERC20Transfer, ERC20TransferLib} from './types/ERC20Transfer.sol';
+import {ERC721Transfer, ERC721TransferLib} from './types/ERC721Transfer.sol';
+import {ExecutionOrder} from './types/ExecutionOrder.sol';
+import {ExecutionWitnessLib} from './types/ExecutionWitness.sol';
+import {FulfillmentOrder} from './types/FulfillmentOrder.sol';
+import {FulfillmentSolution} from './types/FulfillmentSolution.sol';
+import {FulfillmentWitnessLib} from './types/FulfillmentWitness.sol';
+import {GenericCall, GenericCallLib} from './types/GenericCall.sol';
+import {SolutionApprovalLib} from './types/SolutionApproval.sol';
+import {ValidationParams, ValidationParamsLib} from './types/ValidationParams.sol';
 
 import {ManagementBase} from 'ks-common-sc/src/base/ManagementBase.sol';
 import {ManagementPausable} from 'ks-common-sc/src/base/ManagementPausable.sol';
@@ -26,24 +28,27 @@ import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer
 import {KSRoles} from 'ks-common-sc/src/libraries/KSRoles.sol';
 import {CalldataDecoder} from 'ks-common-sc/src/libraries/calldata/CalldataDecoder.sol';
 
-import {ECDSA} from 'openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol';
+import {
+  SignatureChecker
+} from 'openzeppelin-contracts/contracts/utils/cryptography/SignatureChecker.sol';
 
 /**
  * @title KSAllowanceHubV2
  * @notice Single approval target for KyberSwap: pulls a user's ERC20s and ERC721s and hands them
  * to whitelisted routers in one transaction, so users approve this hub instead of every router.
- * @dev Assets are authorised over one of two rails, selected by `authFlags`:
- * - Permit2, where the owner's Permit2 signature carries a witness binding the rest of the order;
- * - a delegated {IAuthVerifier}, pre-authorised through {AuthDelegator}, which checks an owner
- *   signature over the order.
- * An owner acting on their own behalf needs neither. `authData` is packed per rail:
- * `abi.encode(nonce, signature)` for Permit2, `abi.encode(verifier, nonce, key, signature)` for a
- * verifier.
+ * @dev The owner signs one order struct — {ExecutionOrder} or {FulfillmentOrder} — which pins what
+ * may move, where to, and the `relayer` or `solver` who may submit it. Only the ERC20 pull rail is
+ * the submitter's: the delegated entry points take it as an argument, and the Permit2-signature ones
+ * have no choice to make.
  *
- * `authFlags` carries three switches, and higher bits are ignored:
- * - bit 0: pull the ERC20s with an owner-signed Permit2 transfer, not a standing approval;
- * - bit 1: pull them through the owner's Permit2 allowance, not an approval to this hub;
- * - bit 2: the owner named `msg.sender` in what they signed, rather than leaving it open.
+ * An order is authenticated either by the owner's own Permit2 signature, which carries the order
+ * its witness, or by an {IOrderAuthenticator} the owner delegated through {AuthDelegator}. An owner
+ * submitting on their own behalf needs neither.
+ *
+ * A fulfillment splits in two: the owner fixes `ownerCalls` and the validators, while a
+ * {FulfillmentSolution} supplies the route, approved by the `solutionApprover` the order names.
+ * The validators run between the two, so they bound the solver's work before the owner's tail
+ * acts on it.
  */
 contract KSAllowanceHubV2 is
   IKSAllowanceHubV2,
@@ -53,16 +58,19 @@ contract KSAllowanceHubV2 is
   CallsForwarder,
   MsgSender
 {
-  using ERC20TransferLibrary for ERC20Transfer[];
-  using ERC721TransferLibrary for ERC721Transfer[];
-  using GenericCallLibrary for GenericCall[];
-  using ValidationParamsLibrary for ValidationParams[];
+  using ERC20TransferLib for ERC20Transfer[];
+  using ERC721TransferLib for ERC721Transfer[];
+  using GenericCallLib for GenericCall[];
+  using ValidationParamsLib for ValidationParams[];
   using CalldataDecoder for bytes;
 
-  /// @notice Only routers holding this role may be called by {transferAndExecute} / {transferAndFulfill}
+  /// @notice Only routers holding this role may be called by a settled order
   bytes32 internal constant WHITELISTED_ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
 
-  /// @notice Stands in for "the owner did not name a caller", so anyone may submit the order
+  /**
+   * @notice Stands in for "the owner named nobody": any caller may submit the order, and on
+   * `solutionApprover` any route is accepted without an approval signature
+   */
   address internal constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
   address internal immutable PERMIT2;
@@ -94,138 +102,249 @@ contract KSAllowanceHubV2 is
   }
 
   /// @inheritdoc IKSAllowanceHubV2
-  function transferAndExecute(
+  function executeOrderWithDelegatedAuthentication(
     address owner,
-    ERC20Transfer[] calldata erc20Transfers,
-    ERC721Transfer[] calldata erc721Transfers,
-    GenericCall[] calldata genericCalls,
-    uint256 deadline,
-    PackedBits authFlags,
-    bytes calldata authData
+    ExecutionOrder calldata order,
+    address authenticator,
+    bytes calldata authenticationData,
+    bool usePermit2Allowances
   )
     external
     payable
     whenNotPaused
-    checkDeadline(deadline)
+    checkDeadline(order.deadline)
+    lock(owner)
+    guardNativeSpend
+    checkDelegation(owner, authenticator)
+    returns (bytes[] memory results, uint256 gasUsed)
+  {
+    uint256 gasStart = gasleft();
+
+    // Being the caller is the owner's own authentication; anyone else must present a credential
+    if (msg.sender != owner) {
+      IOrderAuthenticator(authenticator).authenticateExecution(owner, order, authenticationData);
+    }
+
+    _transferERC20s(order.erc20Transfers, owner, usePermit2Allowances);
+    return _settleExecution(owner, order, gasStart);
+  }
+
+  /// @inheritdoc IKSAllowanceHubV2
+  function executeOrderWithPermit2Signature(
+    address owner,
+    ExecutionOrder calldata order,
+    bytes calldata permit2Signature
+  )
+    external
+    payable
+    whenNotPaused
+    checkDeadline(order.deadline)
     lock(owner)
     guardNativeSpend
     returns (bytes[] memory results, uint256 gasUsed)
   {
     uint256 gasStart = gasleft();
 
-    // Bit 0: the Permit2 signature-transfer rail
-    if (authFlags.pos(0)) {
-      if (msg.sender == owner) {
-        _permitTransferFrom(owner, erc20Transfers, deadline, authData);
-      } else {
-        // The permit covers only tokens and amounts, so the witness binds the rest of what the
-        // owner agreed to: who may submit, where the tokens land, the NFTs and the calls
-        bytes32 witness = ExecutionWitnessLibrary.hash(
-          _signedCaller(authFlags), erc20Transfers.toTargets(), erc721Transfers, genericCalls
-        );
+    // Self-submitted: nothing to bind, since the owner is already the caller. Relayed: the order
+    // goes in as the witness, which is what stops a relayer altering it
+    if (msg.sender == owner) {
+      _permitTransferFrom(
+        owner, order.erc20Transfers, order.nonce, order.deadline, permit2Signature
+      );
+    } else if (msg.sender == order.relayer || order.relayer == DEAD_ADDRESS) {
+      bytes32 witness = ExecutionWitnessLib.hash(
+        order.relayer,
+        order.erc20Transfers.extractTargets(),
+        order.erc721Transfers,
+        order.genericCalls
+      );
 
-        _permitWitnessTransferFrom(
-          owner,
-          erc20Transfers,
-          deadline,
-          authData,
-          witness,
-          ExecutionWitnessLibrary.EXECUTION_WITNESS_PERMIT2_TYPE_STRING
-        );
-      }
+      _permitWitnessTransferFrom(
+        owner,
+        order.erc20Transfers,
+        order.nonce,
+        order.deadline,
+        witness,
+        ExecutionWitnessLib.EXECUTION_WITNESS_PERMIT2_TYPE_STRING,
+        permit2Signature
+      );
     } else {
-      if (msg.sender != owner) {
-        bytes memory data =
-          abi.encode(_signedCaller(authFlags), erc20Transfers, erc721Transfers, genericCalls);
-        // Trailing `false` tells the verifier which payload shape to decode
-        _verifyAuth(owner, abi.encodePacked(data, false), deadline, authData);
-      }
-
-      _transferERC20s(owner, erc20Transfers, authFlags);
+      revert UnauthorizedRelayer(msg.sender, order.relayer);
     }
 
-    results = _settleAndExecute(owner, erc20Transfers, erc721Transfers, _noCalls(), (genericCalls));
+    return _settleExecution(owner, order, gasStart);
+  }
+
+  /// @inheritdoc IKSAllowanceHubV2
+  function fulfillOrderWithDelegatedAuthentication(
+    address owner,
+    FulfillmentOrder calldata order,
+    address authenticator,
+    bytes calldata authenticationData,
+    FulfillmentSolution calldata solution,
+    bytes calldata solutionSignature,
+    bool usePermit2Allowances
+  )
+    external
+    payable
+    whenNotPaused
+    checkDeadline(order.deadline)
+    checkDeadline(solution.deadline)
+    lock(owner)
+    guardNativeSpend
+    checkDelegation(owner, authenticator)
+    returns (bytes[] memory results, uint256 gasUsed)
+  {
+    uint256 gasStart = gasleft();
+
+    // Being the caller is the owner's own authentication; anyone else must present a credential
+    if (msg.sender != owner) {
+      IOrderAuthenticator(authenticator).authenticateFulfillment(owner, order, authenticationData);
+    }
+
+    bytes32 orderHash = order.hash();
+    // The sentinel means the owner accepted any route, so there is no approval to check
+    if (order.solutionApprover != DEAD_ADDRESS) {
+      _approveSolution(owner, order.solutionApprover, orderHash, solution, solutionSignature);
+    }
+
+    // Snapshot before anything moves, so a validator measures the whole order and not just its tail
+    bytes[] memory beforeExecutionOutputs = order.validationParams.beforeExecution();
+    _transferERC20s(order.erc20Transfers, owner, usePermit2Allowances);
+    return _settleFulfillment(owner, order, solution, orderHash, beforeExecutionOutputs, gasStart);
+  }
+
+  /// @inheritdoc IKSAllowanceHubV2
+  function fulfillOrderWithPermit2Signature(
+    address owner,
+    FulfillmentOrder calldata order,
+    bytes calldata permit2Signature,
+    FulfillmentSolution calldata solution,
+    bytes calldata solutionSignature
+  )
+    external
+    payable
+    whenNotPaused
+    checkDeadline(order.deadline)
+    checkDeadline(solution.deadline)
+    lock(owner)
+    guardNativeSpend
+    returns (bytes[] memory results, uint256 gasUsed)
+  {
+    uint256 gasStart = gasleft();
+
+    bytes32 orderHash = order.hash();
+    // The sentinel means the owner accepted any route, so there is no approval to check
+    if (order.solutionApprover != DEAD_ADDRESS) {
+      _approveSolution(owner, order.solutionApprover, orderHash, solution, solutionSignature);
+    }
+
+    // Snapshot before anything moves, so a validator measures the whole order and not just its tail
+    bytes[] memory beforeExecutionOutputs = order.validationParams.beforeExecution();
+
+    // Self-submitted: nothing to bind, since the owner is already the caller. Relayed: the order
+    // goes in as the witness, which is what stops a solver altering it
+    if (msg.sender == owner) {
+      _permitTransferFrom(
+        owner, order.erc20Transfers, order.nonce, order.deadline, permit2Signature
+      );
+    } else if (msg.sender == order.solver || order.solver == DEAD_ADDRESS) {
+      bytes32 witness = FulfillmentWitnessLib.hash(
+        order.solver,
+        order.erc20Transfers.extractTargets(),
+        order.erc721Transfers,
+        order.ownerCalls,
+        order.validationParams,
+        order.solutionApprover
+      );
+
+      _permitWitnessTransferFrom(
+        owner,
+        order.erc20Transfers,
+        order.nonce,
+        order.deadline,
+        witness,
+        FulfillmentWitnessLib.FULFILLMENT_WITNESS_PERMIT2_TYPE_STRING,
+        permit2Signature
+      );
+    } else {
+      revert UnauthorizedSolver(msg.sender, order.solver);
+    }
+
+    return _settleFulfillment(owner, order, solution, orderHash, beforeExecutionOutputs, gasStart);
+  }
+
+  /**
+   * @dev Shared tail of both execution rails: the NFT leg, the event, then the owner's calls. The
+   * ERC20s have already moved by here, which is the only thing the two rails do differently.
+   */
+  function _settleExecution(address owner, ExecutionOrder calldata order, uint256 gasStart)
+    internal
+    returns (bytes[] memory results, uint256 gasUsed)
+  {
+    order.erc721Transfers.execute(owner);
+
+    emit TransferTokens(
+      msg.sender,
+      owner,
+      order.hash(),
+      order.erc20Transfers,
+      order.erc721Transfers,
+      order.genericCalls.toNativeTransfers()
+    );
+
+    results = new bytes[](order.genericCalls.length);
+    _executeCalls(order.genericCalls, results, 0);
 
     unchecked {
       gasUsed = gasStart - gasleft();
     }
   }
 
-  /// @inheritdoc IKSAllowanceHubV2
-  function transferAndFulfill(
+  /// @dev Shared tail of both fulfillment rails, as {_settleExecution} is for an execution
+  function _settleFulfillment(
     address owner,
-    ERC20Transfer[] calldata erc20Transfers,
-    ERC721Transfer[] calldata erc721Transfers,
-    GenericCall[] calldata ownerCalls,
-    ValidationParams[] calldata validationParams,
-    uint256 deadline,
-    PackedBits authFlags,
-    bytes calldata authData,
-    GenericCall[] calldata solverCalls,
-    uint256 callsNonce,
-    bytes calldata callsSignature
-  )
-    external
-    payable
-    whenNotPaused
-    checkDeadline(deadline)
-    lock(owner)
-    guardNativeSpend
-    returns (bytes[] memory results, uint256 gasUsed)
-  {
-    uint256 gasStart = gasleft();
+    FulfillmentOrder calldata order,
+    FulfillmentSolution calldata solution,
+    bytes32 orderHash,
+    bytes[] memory beforeExecutionOutputs,
+    uint256 gasStart
+  ) internal returns (bytes[] memory results, uint256 gasUsed) {
+    order.erc721Transfers.execute(owner);
 
-    // Snapshot first, so the validators measure the whole transaction and not just its tail
-    bytes[] memory beforeExecutionOutputs = validationParams.beforeExecution();
-    address callsSigner = _callsSigner(owner, solverCalls, callsNonce, deadline, callsSignature);
+    emit TransferTokens(
+      msg.sender,
+      owner,
+      orderHash,
+      order.erc20Transfers,
+      order.erc721Transfers,
+      solution.solverCalls.toNativeTransfers(order.ownerCalls)
+    );
 
-    // Bit 0: the Permit2 signature-transfer rail
-    if (authFlags.pos(0)) {
-      if (msg.sender == owner) {
-        _permitTransferFrom(owner, erc20Transfers, deadline, authData);
-      } else {
-        // The owner signs *who* may choose the solver's route rather than the route itself, so
-        // the validators and their own tail are what bound the outcome
-        bytes32 witness = FulfillmentWitnessLibrary.hash(
-          _signedCaller(authFlags),
-          erc20Transfers.toTargets(),
-          erc721Transfers,
-          ownerCalls,
-          validationParams,
-          callsSigner
-        );
-
-        _permitWitnessTransferFrom(
-          owner,
-          erc20Transfers,
-          deadline,
-          authData,
-          witness,
-          FulfillmentWitnessLibrary.FULFILLMENT_WITNESS_PERMIT2_TYPE_STRING
-        );
-      }
-    } else {
-      if (msg.sender != owner) {
-        bytes memory data = abi.encode(
-          _signedCaller(authFlags),
-          erc20Transfers,
-          erc721Transfers,
-          ownerCalls,
-          validationParams,
-          callsSigner
-        );
-        // Trailing `true` tells the verifier which payload shape to decode
-        _verifyAuth(owner, abi.encodePacked(data, true), deadline, authData);
-      }
-
-      _transferERC20s(owner, erc20Transfers, authFlags);
-    }
-
-    results = _settleAndExecute(owner, erc20Transfers, erc721Transfers, solverCalls, ownerCalls);
-    validationParams.afterExecution(beforeExecutionOutputs);
+    // The validators bound what the solver did, so they run before the owner's tail acts on it
+    results = new bytes[](solution.solverCalls.length + order.ownerCalls.length);
+    _executeCalls(solution.solverCalls, results, 0);
+    order.validationParams.afterExecution(beforeExecutionOutputs);
+    _executeCalls(order.ownerCalls, results, solution.solverCalls.length);
 
     unchecked {
       gasUsed = gasStart - gasleft();
+    }
+  }
+
+  /// @dev Recovers the solution approver and checks it is the one the order named
+  function _approveSolution(
+    address owner,
+    address solutionApprover,
+    bytes32 orderHash,
+    FulfillmentSolution calldata solution,
+    bytes calldata solutionSignature
+  ) internal {
+    _useUnorderedNonce(owner, solution.nonce);
+
+    bytes32 digest = _hashTypedDataV4(SolutionApprovalLib.hash(owner, orderHash, solution));
+    if (!SignatureChecker.isValidSignatureNow(solutionApprover, digest, solutionSignature)) {
+      revert InvalidSolutionSignature();
     }
   }
 
@@ -233,15 +352,15 @@ contract KSAllowanceHubV2 is
   function _permitTransferFrom(
     address owner,
     ERC20Transfer[] calldata erc20Transfers,
+    uint256 nonce,
     uint256 deadline,
-    bytes calldata authData
+    bytes calldata signature
   ) internal {
-    (
-      ISignatureTransfer.PermitBatchTransferFrom memory permit,
-      ISignatureTransfer.SignatureTransferDetails[] memory details
-    ) = _toPermitAndDetails(erc20Transfers, deadline, authData);
+    ISignatureTransfer.PermitBatchTransferFrom memory permit =
+      erc20Transfers.toPermitBatchTransferFrom(nonce, deadline);
+    ISignatureTransfer.SignatureTransferDetails[] memory details =
+      erc20Transfers.toSignatureTransferDetails();
 
-    bytes calldata signature = authData.decodeBytes(1);
     ISignatureTransfer(PERMIT2).permitTransferFrom(permit, details, owner, signature);
   }
 
@@ -249,61 +368,28 @@ contract KSAllowanceHubV2 is
   function _permitWitnessTransferFrom(
     address owner,
     ERC20Transfer[] calldata erc20Transfers,
+    uint256 nonce,
     uint256 deadline,
-    bytes calldata authData,
     bytes32 witness,
-    string memory witnessTypeString
+    string memory witnessTypeString,
+    bytes calldata signature
   ) internal {
-    (
-      ISignatureTransfer.PermitBatchTransferFrom memory permit,
-      ISignatureTransfer.SignatureTransferDetails[] memory details
-    ) = _toPermitAndDetails(erc20Transfers, deadline, authData);
+    ISignatureTransfer.PermitBatchTransferFrom memory permit =
+      erc20Transfers.toPermitBatchTransferFrom(nonce, deadline);
+    ISignatureTransfer.SignatureTransferDetails[] memory details =
+      erc20Transfers.toSignatureTransferDetails();
 
-    bytes calldata signature = authData.decodeBytes(1);
     ISignatureTransfer(PERMIT2)
       .permitWitnessTransferFrom(permit, details, owner, witness, witnessTypeString, signature);
   }
 
-  /**
-   * @dev Hands the order to a verifier the owner delegated through {AuthDelegator}. The verifier
-   * must revert when the signature does not authorise `data`; returning normally means success.
-   * Expects `authData` as `abi.encode(verifier, nonce, key, signature)`.
-   */
-  function _verifyAuth(address owner, bytes memory data, uint256 deadline, bytes calldata authData)
-    internal
-  {
-    address verifier = authData.decodeAddress(0);
-    if (!authDelegated[owner][verifier]) {
-      revert NotDelegatedVerifier();
-    }
-
-    uint256 nonce = authData.decodeUint256(1);
-    bytes calldata key = authData.decodeBytes(2);
-    bytes calldata signature = authData.decodeBytes(3);
-    IAuthVerifier(verifier).verifyAuth(owner, data, nonce, deadline, key, signature);
-  }
-
-  /**
-   * @dev The caller identity that goes into the signed payload, per `authFlags` bit 2. The flag
-   * only decides which value is rebuilt; the owner's signature is what makes it binding, so a
-   * mismatched flag simply fails verification.
-   */
-  function _signedCaller(PackedBits authFlags) internal view returns (address signer) {
-    assembly ('memory-safe') {
-      switch and(shr(2, authFlags), 0x1)
-      case 0 { signer := DEAD_ADDRESS }
-      default { signer := caller() }
-    }
-  }
-
   /// @dev Pulls the ERC20s over Permit2's allowance rail, or over a plain approval to this hub
   function _transferERC20s(
-    address owner,
     ERC20Transfer[] calldata erc20Transfers,
-    PackedBits authFlags
+    address owner,
+    bool usePermit2Allowances
   ) internal {
-    // Bit 1: the Permit2 allowance rail
-    if (authFlags.pos(1)) {
+    if (usePermit2Allowances) {
       IAllowanceTransfer.AllowanceTransferDetails[] memory details =
         erc20Transfers.toAllowanceTransferDetails(owner);
       IAllowanceTransfer(PERMIT2).transferFrom(details);
@@ -312,80 +398,13 @@ contract KSAllowanceHubV2 is
     }
   }
 
-  /**
-   * @dev Shared tail of both entry points: the NFT leg, the event, then the router calls. The
-   * owner's tail runs last, after the solver has finished, so it acts on the end state.
-   */
-  function _settleAndExecute(
-    address owner,
-    ERC20Transfer[] calldata erc20Transfers,
-    ERC721Transfer[] calldata erc721Transfers,
-    GenericCall[] calldata solverCalls,
-    GenericCall[] calldata ownerCalls
-  ) internal returns (bytes[] memory results) {
-    erc721Transfers.execute(owner);
-
-    emit TransferTokens(
-      msg.sender, owner, erc20Transfers, erc721Transfers, solverCalls.toNativeTransfers(ownerCalls)
-    );
-
-    results = new bytes[](solverCalls.length + ownerCalls.length);
-    for (uint256 i = 0; i < solverCalls.length; i++) {
-      _checkRole(WHITELISTED_ROUTER_ROLE, solverCalls[i].router);
-      results[i] = solverCalls[i].execute();
-    }
-    for (uint256 i = 0; i < ownerCalls.length; i++) {
-      _checkRole(WHITELISTED_ROUTER_ROLE, ownerCalls[i].router);
-      results[solverCalls.length + i] = ownerCalls[i].execute();
-    }
-  }
-
-  /// @dev An empty call list: on this entry point the owner signs the calls, so no solver leg
-  function _noCalls() internal pure returns (GenericCall[] calldata empty) {
-    assembly ('memory-safe') {
-      empty.offset := 0
-      empty.length := 0
-    }
-  }
-
-  /// @dev Shapes the ERC20 legs into the permit and transfer details Permit2 expects
-  function _toPermitAndDetails(
-    ERC20Transfer[] calldata erc20Transfers,
-    uint256 deadline,
-    bytes calldata authData
-  )
+  /// @dev Runs one call list into `results` from `offset`, checking each router role as it goes
+  function _executeCalls(GenericCall[] calldata calls, bytes[] memory results, uint256 offset)
     internal
-    pure
-    returns (
-      ISignatureTransfer.PermitBatchTransferFrom memory permit,
-      ISignatureTransfer.SignatureTransferDetails[] memory details
-    )
   {
-    uint256 nonce = authData.decodeUint256(0);
-    permit = erc20Transfers.toPermitBatchTransferFrom(nonce, deadline);
-    details = erc20Transfers.toSignatureTransferDetails();
-  }
-
-  /**
-   * @dev Recovers who approved `solverCalls`, or {DEAD_ADDRESS} when no
-   * signature is given, which an owner's signature naming that address reads as "any calls".
-   * The nonce is burned against the owner, so one approval cannot be settled twice.
-   */
-  function _callsSigner(
-    address owner,
-    GenericCall[] calldata solverCalls,
-    uint256 callsNonce,
-    uint256 deadline,
-    bytes calldata callsSignature
-  ) internal returns (address) {
-    if (callsSignature.length == 0) {
-      return DEAD_ADDRESS;
+    for (uint256 i = 0; i < calls.length; i++) {
+      _checkRole(WHITELISTED_ROUTER_ROLE, calls[i].router);
+      results[offset + i] = calls[i].execute();
     }
-
-    _useUnorderedNonce(owner, callsNonce);
-
-    bytes32 digest =
-      _hashTypedDataV4(CallsApprovalLibrary.hash(owner, solverCalls, callsNonce, deadline));
-    return ECDSA.recover(digest, callsSignature);
   }
 }

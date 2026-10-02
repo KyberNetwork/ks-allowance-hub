@@ -1,15 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {ERC721Transfer, ERC721TransferLibrary} from './ERC721Transfer.sol';
-import {GenericCall, GenericCallLibrary} from './GenericCall.sol';
-import {ValidationParams, ValidationParamsLibrary} from './ValidationParams.sol';
+import {ERC721Transfer, ERC721TransferLib} from './ERC721Transfer.sol';
+import {GenericCall, GenericCallLib} from './GenericCall.sol';
+import {ValidationParams, ValidationParamsLib} from './ValidationParams.sol';
 
 /**
- * @notice Attached to the owner's Permit2 signature on a relayed {KSAllowanceHubV2-transferAndFulfill}
- * @dev Deliberately does not pin the solver's route: it names who may choose it (`callsSigner`)
- * and the validators that bound the result. `ownerCalls` is the exception — a tail the owner
- * fixes exactly, for effects no validator can check on this chain.
+ * @notice Attached to the owner's Permit2 signature on a relayed
+ * {KSAllowanceHubV2-fulfillOrderWithPermit2Signature}
+ * @dev Deliberately does not pin the solver's route; it names who may choose it and the
+ * validators that bound the result instead.
+ * @param solver Who may submit; the dead-address sentinel leaves it open to anyone
+ * @param erc20Targets Where each ERC20 leg lands, in order
+ * @param erc721Transfers The NFT leg
+ * @param ownerCalls The tail the owner fixes exactly, for effects no validator can check
+ * @param validationParams The validators that bound the solver's route
+ * @param callsSigner Who may approve that route
  */
 struct FulfillmentWitness {
   address solver;
@@ -20,12 +26,10 @@ struct FulfillmentWitness {
   address callsSigner;
 }
 
-using FulfillmentWitnessLibrary for FulfillmentWitness global;
-
-library FulfillmentWitnessLibrary {
-  using ERC721TransferLibrary for ERC721Transfer[];
-  using GenericCallLibrary for GenericCall[];
-  using ValidationParamsLibrary for ValidationParams[];
+library FulfillmentWitnessLib {
+  using ERC721TransferLib for ERC721Transfer[];
+  using GenericCallLib for GenericCall[];
+  using ValidationParamsLib for ValidationParams[];
 
   string internal constant FULFILLMENT_WITNESS_PERMIT2_TYPE_STRING = 'FulfillmentWitness witness)'
     'ERC721Transfer(address token,uint256 tokenId,address target)'

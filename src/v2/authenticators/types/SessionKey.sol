@@ -24,15 +24,20 @@ struct SessionKey {
   uint256 expiration;
 }
 
-using SessionKeyLibrary for SessionKey global;
+using SessionKeyLib for SessionKey global;
 
-library SessionKeyLibrary {
+library SessionKeyLib {
   using CalldataDecoder for bytes;
 
   bytes32 internal constant SESSION_KEY_TYPEHASH =
     keccak256('SessionKey(bytes publicKey,uint8 keyType,uint256 expiration)');
 
-  /// @dev EIP-712 hash identifying the key: its public half, scheme and expiry together
+  /**
+   * @dev EIP-712 hash identifying the key: its public half, scheme and expiry together. The raw
+   * `publicKey` bytes are hashed, so two encodings that differ only in padding are two different
+   * keys here even when they resolve to the same signer — an approval, and a revocation, is per
+   * encoding rather than per signer.
+   */
   function hash(SessionKey calldata sessionKey) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(
@@ -44,7 +49,14 @@ library SessionKeyLibrary {
     );
   }
 
-  /// @notice Checks `signature` over `digest` under this key's scheme
+  /**
+   * @notice Checks `signature` over `digest` under this key's scheme
+   * @dev `signature` is encoded per `keyType`, mirroring `publicKey`: a 65-byte ECDSA signature or
+   * an ERC-1271 blob for Secp256k1, `abi.encodePacked(r, s)` for P256, an encoded
+   * `WebAuthn.WebAuthnAuth` for WebAuthn, and a PKCS#1 v1.5 signature for RSA. The P256 words are
+   * read without a length check, so a short signature reads whatever follows it in calldata and
+   * fails verification rather than reverting.
+   */
   function verify(SessionKey calldata key, bytes32 digest, bytes calldata signature)
     internal
     view

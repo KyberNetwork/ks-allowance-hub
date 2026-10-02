@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.36;
 
-import {HubBase} from 'test/v2/base/HubBase.sol';
+import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
 import {ERC1155SeedMock} from 'test/v2/mocks/PermitTokenMocks.sol';
 
@@ -23,13 +23,13 @@ import {Vm} from 'forge-std/Vm.sol';
 
 /**
  * @title ManagementTest
- * @notice B6 — `MGMT-01..11`: constructor wiring, the EIP-712 domain, ERC-165, the role admin
- * surface and all three rescue paths.
+ * @notice `MGMT-01..11` and `DOM-01`: constructor wiring, both EIP-712 domains, ERC-165, the role
+ * admin surface and all three rescue paths.
  * @dev Every role hash, interface id and domain field on the expected side of an assertion is
  * written out here rather than imported, so the suite disagrees with the hub whenever the hub is
  * wrong. Interface ids are rebuilt by xor-ing selectors transcribed from the interface source.
  */
-contract ManagementTest is HubBase {
+contract ManagementTest is AuthenticatorBase {
   // Role hashes, written out rather than imported
   bytes32 internal constant ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
   bytes32 internal constant GUARDIAN_ROLE = keccak256('GUARDIAN_ROLE');
@@ -46,20 +46,34 @@ contract ManagementTest is HubBase {
   // MGMT-01..03 — deploy-time state and the read surface
   // -----------------------------------------------------------------------------------------------
 
-  /// MGMT-01 — everything the constructor is responsible for, including its one event
   /**
-   * MGMT-12 — the EIP-712 domain separator matches the literal domain, and is chain-scoped
-   * @dev The second leg is what makes this bite rather than mirror: OpenZeppelin rebuilds the
-   * separator once the chain id has moved since deployment, so one cannot be replayed elsewhere.
+   * MGMT-12 / DOM-01 — both signing domains publish a separator, each its own and each chain-scoped
+   * @dev The two contracts now inherit the same {EIP712Base}, so one statement covers both. Each
+   * separator must match the domain written out from its own name, version and address; the two must
+   * differ from each other, since the hub and the authenticator scope their signatures separately;
+   * and each must be rebuilt once the chain id has moved, which is what stops a signature being
+   * replayed onto another chain. The third leg is what makes the first bite rather than mirror.
    */
-  function test_MGMT_12_domainSeparator() public {
-    bytes32 expected = lDomainSeparator('KyberSwap Allowance Hub', '2.0.0', address(hub));
-    assertEq(hub.DOMAIN_SEPARATOR(), expected, 'separator matches the hand-written domain');
+  function test_DOM_01_bothDomainSeparators() public {
+    bytes32 expectedHub = lDomainSeparator('KyberSwap Allowance Hub', '2.0.0', address(hub));
+    bytes32 expectedAuthenticator = _authenticatorDomain();
+
+    assertEq(hub.DOMAIN_SEPARATOR(), expectedHub, "the hub's matches its hand-written domain");
+    assertEq(
+      authenticator.DOMAIN_SEPARATOR(), expectedAuthenticator, "the authenticator's matches its own"
+    );
+    assertTrue(expectedHub != expectedAuthenticator, 'and the two domains are not the same');
 
     vm.chainId(block.chainid + 1);
-    assertTrue(hub.DOMAIN_SEPARATOR() != expected, 'a different chain gives a different separator');
+    assertTrue(
+      hub.DOMAIN_SEPARATOR() != expectedHub, 'a different chain gives the hub a new separator'
+    );
+    assertTrue(
+      authenticator.DOMAIN_SEPARATOR() != expectedAuthenticator, 'and the authenticator one too'
+    );
   }
 
+  /// MGMT-01 — everything the constructor is responsible for, including its one event
   function test_MGMT_01_constructorWiring() public {
     // `PERMIT2` is an internal immutable with no getter, so the constructor argument is only
     // observable through the rails that use it, which the AUTH-* cases exercise

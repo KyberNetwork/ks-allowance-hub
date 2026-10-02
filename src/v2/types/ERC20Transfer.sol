@@ -16,9 +16,9 @@ struct ERC20Transfer {
   uint160 amount;
 }
 
-using ERC20TransferLibrary for ERC20Transfer global;
+using ERC20TransferLib for ERC20Transfer global;
 
-library ERC20TransferLibrary {
+library ERC20TransferLib {
   using TokenHelper for address;
 
   bytes32 internal constant ERC20_TRANSFER_TYPEHASH =
@@ -125,7 +125,7 @@ library ERC20TransferLibrary {
   }
 
   /// @dev The target of each transfer, in order; this is what a witness binds
-  function toTargets(ERC20Transfer[] calldata transfers)
+  function extractTargets(ERC20Transfer[] calldata transfers)
     internal
     pure
     returns (address[] memory targets)
@@ -136,8 +136,8 @@ library ERC20TransferLibrary {
     }
   }
 
-  /// @dev As {toTargets}, for an array already in memory
-  function toTargetsMemory(ERC20Transfer[] memory transfers)
+  /// @dev As {extractTargets}, for an array already in memory
+  function extractTargetsMemory(ERC20Transfer[] memory transfers)
     internal
     pure
     returns (address[] memory targets)

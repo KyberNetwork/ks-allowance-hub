@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {ERC721Transfer, ERC721TransferLibrary} from './ERC721Transfer.sol';
-import {GenericCall, GenericCallLibrary} from './GenericCall.sol';
+import {ERC721Transfer, ERC721TransferLib} from './ERC721Transfer.sol';
+import {GenericCall, GenericCallLib} from './GenericCall.sol';
 
 /**
- * @notice Attached to the owner's Permit2 signature on a relayed {KSAllowanceHubV2-transferAndExecute}
- * @dev Pins everything the permit itself does not: who may submit, where the tokens land, the NFT
- * leg and the exact router calls.
+ * @notice Attached to the owner's Permit2 signature on a relayed
+ * {KSAllowanceHubV2-executeOrderWithPermit2Signature}
+ * @dev Pins everything the permit itself does not. The permit covers only tokens and amounts.
+ * @param relayer Who may submit; the dead-address sentinel leaves it open to anyone
+ * @param erc20Targets Where each ERC20 leg lands, in order
+ * @param erc721Transfers The NFT leg
+ * @param genericCalls The exact router calls the owner agreed to
  */
 struct ExecutionWitness {
   address relayer;
@@ -16,11 +20,9 @@ struct ExecutionWitness {
   GenericCall[] genericCalls;
 }
 
-using ExecutionWitnessLibrary for ExecutionWitness global;
-
-library ExecutionWitnessLibrary {
-  using ERC721TransferLibrary for ERC721Transfer[];
-  using GenericCallLibrary for GenericCall[];
+library ExecutionWitnessLib {
+  using ERC721TransferLib for ERC721Transfer[];
+  using GenericCallLib for GenericCall[];
 
   string internal constant EXECUTION_WITNESS_PERMIT2_TYPE_STRING = 'ExecutionWitness witness)'
     'ERC721Transfer(address token,uint256 tokenId,address target)'

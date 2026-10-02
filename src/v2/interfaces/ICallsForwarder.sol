@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {PackedBits} from '../types/PackedBits.sol';
+import {PackedBits} from '../../base/types/PackedBits.sol';
 
 /// @title ICallsForwarder
 /// @notice Interface of {CallsForwarder}
 interface ICallsForwarder {
-  /**
-   * @notice The payload's selector is not one this contract will relay
-   * @param selector The refused selector, read from the first four bytes of the payload
-   */
+  /// @notice The payload's selector is not one this contract will relay
   error NotSupportedSelector(bytes4 selector);
 
   /**
