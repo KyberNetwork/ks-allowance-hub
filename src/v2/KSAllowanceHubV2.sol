@@ -125,7 +125,7 @@ contract KSAllowanceHubV2 is
       IOrderAuthenticator(authenticator).authenticateExecution(owner, order, authenticationData);
     }
 
-    _transferERC20s(order.erc20Transfers, owner, usePermit2Allowances);
+    _transferERC20s(owner, order.erc20Transfers, usePermit2Allowances);
     return _settleExecution(owner, order, gasStart);
   }
 
@@ -210,7 +210,7 @@ contract KSAllowanceHubV2 is
 
     // Snapshot before anything moves, so a validator measures the whole order and not just its tail
     bytes[] memory beforeExecutionOutputs = order.validationParams.beforeExecution();
-    _transferERC20s(order.erc20Transfers, owner, usePermit2Allowances);
+    _transferERC20s(owner, order.erc20Transfers, usePermit2Allowances);
     return _settleFulfillment(owner, order, solution, orderHash, beforeExecutionOutputs, gasStart);
   }
 
@@ -385,8 +385,8 @@ contract KSAllowanceHubV2 is
 
   /// @dev Pulls the ERC20s over Permit2's allowance rail, or over a plain approval to this hub
   function _transferERC20s(
-    ERC20Transfer[] calldata erc20Transfers,
     address owner,
+    ERC20Transfer[] calldata erc20Transfers,
     bool usePermit2Allowances
   ) internal {
     if (usePermit2Allowances) {
