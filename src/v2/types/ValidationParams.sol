@@ -6,6 +6,7 @@ import {IKSActionValidator} from 'ks-action-validator-sc/src/interfaces/IKSActio
 /**
  * @notice A validator to run around an order, and the inputs it needs
  * @dev In a fulfillment the solver picks the route, so these are what actually bound the outcome.
+ * `validator` is arbitrary and not whitelisted.
  */
 struct ValidationParams {
   address validator;
@@ -14,9 +15,9 @@ struct ValidationParams {
   bytes afterExecutionInput;
 }
 
-using ValidationParamsLibrary for ValidationParams global;
+using ValidationParamsLib for ValidationParams global;
 
-library ValidationParamsLibrary {
+library ValidationParamsLib {
   bytes32 internal constant VALIDATION_PARAMS_TYPEHASH = keccak256(
     'ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)'
   );

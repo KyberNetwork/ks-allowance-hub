@@ -8,13 +8,14 @@ import {HubBase} from 'test/v2/base/HubBase.sol';
 import {EchoRouterMock, ReentrantRouterMock, RouterMock} from 'test/v2/mocks/RouterMock.sol';
 import {ReentrantReceiverMock} from 'test/v2/mocks/TokenMocks.sol';
 
-import {IKSGenericRouter} from 'src/base/interfaces/IKSGenericRouter.sol';
 import {IMsgSender} from 'src/base/interfaces/IMsgSender.sol';
 import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
 
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
+import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
+import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
 import {NativeTransfer} from 'src/v2/types/NativeTransfer.sol';
 import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
@@ -23,51 +24,49 @@ import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessCon
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 /**
- * @notice SET-01..04, OWN-07, ROUTER-01..03, LOCK-01..04 — the settlement tail of both entry points.
- * @dev The role constant and the `TransferTokens` signature are written out here rather than
- * imported: an expected value taken from the contract under test would agree with a wrong one.
+ * @notice `SET-01..04`, `OWN-07`, `ROUTER-01..03` and `LOCK-01..04` — the settlement tail shared by
+ * all four entry points.
+ * @dev The role constant, the `TransferTokens` topic and the router's own function signature are
+ * written out rather than imported: an expected value taken from the contract under test would agree
+ * with a wrong one. The topic lives in {HubBase}, which is where the log picker needs it.
  */
 contract SettlementTest is HubBase {
   uint160 internal constant AMOUNT = 5 ether;
 
-  /// @dev Transcribed from {IKSAllowanceHubV2-TransferTokens}, never imported
-  bytes32 internal constant TRANSFER_TOKENS_TOPIC = keccak256(
-    'TransferTokens(address,address,(address,address,uint160)[],(address,uint256,address)[],(address,uint256)[])'
-  );
-
   bytes32 internal constant ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
+
+  /// @dev Transcribed from {IKSGenericRouter}, so a wrong production selector cannot agree with it
+  string internal constant S_KS_EXECUTE = 'ksExecute(bytes)';
 
   // -----------------------------------------------------------------------------------------
   // SET — the settlement event and the results array
   // -----------------------------------------------------------------------------------------
 
-  /// SET-01 — the whole `TransferTokens` payload of a relayed order, byte for byte
+  /**
+   * SET-01 — the whole `TransferTokens` payload of a relayed order, byte for byte
+   * @dev `orderHash` joined the indexed fields in the restructure, so there are four topics now and
+   * the third is compared against the order hash rebuilt from the hand-written literals.
+   */
   function test_SET_01_transferTokensPayload() public {
     ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
     ERC721Transfer[] memory nfts = _erc721s(_nftTransfer(address(router)));
     GenericCall[] memory calls = _calls(_routerCall(0, hex'abcd'));
     uint256 deadline = block.timestamp + 1 hours;
 
-    bytes memory signature = _signExecutionOrder(erc20s, nfts, calls, ANY, 11, deadline);
+    ExecutionOrder memory order = _executionOrder(ANY, erc20s, nfts, calls, 11, deadline);
+    bytes memory signature = _signExecutionWitness(order);
 
     vm.recordLogs();
 
     vm.prank(relayer);
-    hub.transferAndExecute(
-      owner,
-      erc20s,
-      nfts,
-      calls,
-      deadline,
-      _flags(true, false, false),
-      _permit2AuthData(11, signature)
-    );
+    hub.executeOrderWithPermit2Signature(owner, order, signature);
 
     Vm.Log memory entry = _settlementLog();
 
-    assertEq(entry.topics.length, 3, 'caller and owner are indexed');
+    assertEq(entry.topics.length, 4, 'caller, owner and the order hash are indexed');
     assertEq(_topicAddress(entry.topics[1]), relayer, 'caller is the submitter, not the owner');
     assertEq(_topicAddress(entry.topics[2]), owner, 'owner is the account the assets came from');
+    assertEq(entry.topics[3], lExecutionOrderHash(order), 'the order hash the owner signed');
     // No call carries value, so the native leg is empty
     assertEq(entry.data, abi.encode(erc20s, nfts, new NativeTransfer[](0)), 'payload');
   }
@@ -88,14 +87,12 @@ contract SettlementTest is HubBase {
     vm.recordLogs();
 
     vm.prank(owner);
-    hub.transferAndExecute{value: 1}(
+    hub.executeOrderWithDelegatedAuthentication{value: 1}(
       owner,
-      new ERC20Transfer[](0),
-      new ERC721Transfer[](0),
-      calls,
-      block.timestamp,
-      _flags(false, false, false),
-      ''
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp),
+      address(0),
+      '',
+      false
     );
 
     Vm.Log memory entry = _settlementLog();
@@ -110,7 +107,7 @@ contract SettlementTest is HubBase {
     assertEq(address(hub).balance, 0, 'nothing stranded in the hub');
   }
 
-  /// SET-03 — an order that moves nothing and calls nobody still settles and still reports
+  /// SET-03 — an order that moves nothing and calls nobody still settles and still emits
   function test_SET_03_emptyOrderStillEmits() public {
     ERC20Transfer[] memory noErc20s = new ERC20Transfer[](0);
     ERC721Transfer[] memory noNfts = new ERC721Transfer[](0);
@@ -118,19 +115,15 @@ contract SettlementTest is HubBase {
     vm.recordLogs();
 
     vm.prank(owner);
-    (bytes[] memory results, uint256 gasUsed) = hub.transferAndExecute(
+    bytes[] memory results = hub.executeOrderWithDelegatedAuthentication(
       owner,
-      noErc20s,
-      noNfts,
-      new GenericCall[](0),
-      block.timestamp,
-      _flags(false, false, false),
-      ''
+      _openExecutionOrder(noErc20s, new GenericCall[](0), 0, block.timestamp),
+      address(0),
+      '',
+      false
     );
 
     assertEq(results.length, 0, 'no calls, no results');
-    assertGt(gasUsed, 0, 'gas is measured');
-    assertLt(gasUsed, 1_000_000, 'and it is the inner cost, not the block gas limit');
 
     Vm.Log memory entry = _settlementLog();
     assertEq(
@@ -154,14 +147,12 @@ contract SettlementTest is HubBase {
     calls[2] = GenericCall({router: address(echoA), value: 0, data: hex'cc'});
 
     vm.prank(owner);
-    (bytes[] memory results,) = hub.transferAndExecute(
+    bytes[] memory results = hub.executeOrderWithDelegatedAuthentication(
       owner,
-      new ERC20Transfer[](0),
-      new ERC721Transfer[](0),
-      calls,
-      block.timestamp,
-      _flags(false, false, false),
-      ''
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp),
+      address(0),
+      '',
+      false
     );
 
     assertEq(results.length, 3, 'one result per call');
@@ -177,7 +168,8 @@ contract SettlementTest is HubBase {
    * @dev Four calls, two of them valued, one from each list and neither at the end of its own.
    * A merge that reversed the two lists, or that walked one of them only, or that kept the
    * zero-value entries, produces a different array from the one written out here — and the two
-   * entries differ in both target and amount, so nothing about the expectation is symmetric.
+   * entries differ in both target and amount, so nothing about the expectation is symmetric. The
+   * order hash in the topic is the fulfillment's, which is a different type from an execution's.
    */
   function test_OWN_07_eventCoversBothLists() public {
     GenericCall[] memory solverCalls = new GenericCall[](2);
@@ -196,25 +188,20 @@ contract SettlementTest is HubBase {
     uint256 router2Before = address(router2).balance;
     vm.deal(owner, 3);
 
+    FulfillmentOrder memory order = _openFulfillmentOrder(
+      new ERC20Transfer[](0), new ValidationParams[](0), ownerCalls, 0, block.timestamp
+    );
+
     vm.recordLogs();
 
     vm.prank(owner);
-    hub.transferAndFulfill{value: 3}(
-      owner,
-      new ERC20Transfer[](0),
-      new ERC721Transfer[](0),
-      ownerCalls,
-      new ValidationParams[](0),
-      block.timestamp,
-      _flags(false, false, false),
-      '',
-      solverCalls,
-      0,
-      ''
+    hub.fulfillOrderWithDelegatedAuthentication{value: 3}(
+      owner, order, address(0), '', _route(solverCalls), '', false
     );
 
     Vm.Log memory entry = _settlementLog();
 
+    assertEq(entry.topics[3], lFulfillmentOrderHash(order), 'the fulfillment order hash');
     assertEq(
       entry.data,
       abi.encode(new ERC20Transfer[](0), new ERC721Transfer[](0), expected),
@@ -250,14 +237,8 @@ contract SettlementTest is HubBase {
         IAccessControl.AccessControlUnauthorizedAccount.selector, address(stranger), ROUTER_ROLE
       )
     );
-    hub.transferAndExecute(
-      owner,
-      erc20s,
-      new ERC721Transfer[](0),
-      calls,
-      block.timestamp,
-      _flags(false, false, false),
-      ''
+    hub.executeOrderWithDelegatedAuthentication(
+      owner, _openExecutionOrder(erc20s, calls, 0, block.timestamp), address(0), '', false
     );
 
     assertEq(stranger.callCount(), 0, 'never called');
@@ -272,14 +253,12 @@ contract SettlementTest is HubBase {
     assertTrue(hub.hasRole(ROUTER_ROLE, address(router)), 'whitelisted at deploy');
 
     vm.prank(owner);
-    hub.transferAndExecute(
+    hub.executeOrderWithDelegatedAuthentication(
       owner,
-      new ERC20Transfer[](0),
-      new ERC721Transfer[](0),
-      calls,
-      block.timestamp,
-      _flags(false, false, false),
-      ''
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp),
+      address(0),
+      '',
+      false
     );
     assertEq(router.callCount(), 1, 'the first order went through');
 
@@ -293,14 +272,12 @@ contract SettlementTest is HubBase {
         IAccessControl.AccessControlUnauthorizedAccount.selector, address(router), ROUTER_ROLE
       )
     );
-    hub.transferAndExecute(
+    hub.executeOrderWithDelegatedAuthentication(
       owner,
-      new ERC20Transfer[](0),
-      new ERC721Transfer[](0),
-      calls,
-      block.timestamp,
-      _flags(false, false, false),
-      ''
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp),
+      address(0),
+      '',
+      false
     );
 
     assertEq(router.callCount(), 1, 'and no second call happened');
@@ -315,18 +292,16 @@ contract SettlementTest is HubBase {
     calls[0] = GenericCall({router: address(router), value: 0, data: dataA});
     calls[1] = GenericCall({router: address(router2), value: 0, data: dataB});
 
-    vm.expectCall(address(router), 0, abi.encodeCall(IKSGenericRouter.ksExecute, (dataA)), 1);
-    vm.expectCall(address(router2), 0, abi.encodeCall(IKSGenericRouter.ksExecute, (dataB)), 1);
+    vm.expectCall(address(router), 0, abi.encodeWithSignature(S_KS_EXECUTE, dataA), 1);
+    vm.expectCall(address(router2), 0, abi.encodeWithSignature(S_KS_EXECUTE, dataB), 1);
 
     vm.prank(owner);
-    hub.transferAndExecute(
+    hub.executeOrderWithDelegatedAuthentication(
       owner,
-      new ERC20Transfer[](0),
-      new ERC721Transfer[](0),
-      calls,
-      block.timestamp,
-      _flags(false, false, false),
-      ''
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp),
+      address(0),
+      '',
+      false
     );
 
     assertEq(router.callCount(), 1, 'router once');
@@ -349,21 +324,13 @@ contract SettlementTest is HubBase {
     GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
     uint256 deadline = block.timestamp + 1 hours;
 
-    bytes memory signature =
-      _signExecutionOrder(erc20s, new ERC721Transfer[](0), calls, ANY, 12, deadline);
+    ExecutionOrder memory order = _openExecutionOrder(erc20s, calls, 12, deadline);
+    bytes memory signature = _signExecutionWitness(order);
 
     assertEq(hub.msgSender(), address(0), 'no locker before the order');
 
     vm.prank(relayer);
-    hub.transferAndExecute(
-      owner,
-      erc20s,
-      new ERC721Transfer[](0),
-      calls,
-      deadline,
-      _flags(true, false, false),
-      _permit2AuthData(12, signature)
-    );
+    hub.executeOrderWithPermit2Signature(owner, order, signature);
 
     assertEq(router.seenMsgSender(), owner, 'the router was shown the owner');
     assertTrue(router.seenMsgSender() != relayer, 'and not the relayer that submitted');
@@ -383,14 +350,8 @@ contract SettlementTest is HubBase {
 
     vm.prank(owner);
     vm.expectRevert(IMsgSender.AlreadyLocked.selector);
-    hub.transferAndExecute(
-      owner,
-      new ERC20Transfer[](0),
-      new ERC721Transfer[](0),
-      calls,
-      deadline,
-      _flags(false, false, false),
-      ''
+    hub.executeOrderWithDelegatedAuthentication(
+      owner, _openExecutionOrder(new ERC20Transfer[](0), calls, 0, deadline), address(0), '', false
     );
   }
 
@@ -405,14 +366,12 @@ contract SettlementTest is HubBase {
 
     vm.prank(owner);
     vm.expectRevert(IMsgSender.AlreadyLocked.selector);
-    hub.transferAndExecute(
+    hub.executeOrderWithDelegatedAuthentication(
       owner,
-      new ERC20Transfer[](0),
-      nfts,
-      new GenericCall[](0),
-      deadline,
-      _flags(false, false, false),
-      ''
+      _executionOrder(ANY, new ERC20Transfer[](0), nfts, new GenericCall[](0), 0, deadline),
+      address(0),
+      '',
+      false
     );
 
     assertEq(nft.ownerOf(NFT_ID), owner, 'the NFT never moved');
@@ -433,14 +392,12 @@ contract SettlementTest is HubBase {
     GenericCall[] memory calls = _calls(GenericCall({router: address(evil), value: 0, data: hex''}));
 
     vm.prank(owner);
-    (bytes[] memory results,) = hub.transferAndExecute(
+    bytes[] memory results = hub.executeOrderWithDelegatedAuthentication(
       owner,
-      new ERC20Transfer[](0),
-      new ERC721Transfer[](0),
-      calls,
-      block.timestamp,
-      _flags(false, false, false),
-      ''
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp),
+      address(0),
+      '',
+      false
     );
 
     assertEq(results.length, 1, 'the order settled');
@@ -457,37 +414,14 @@ contract SettlementTest is HubBase {
   /// @dev The reentry payload both mocks use: a well-formed order that only the lock can refuse
   function _emptyOrderCalldata(uint256 deadline) internal view returns (bytes memory) {
     return abi.encodeCall(
-      IKSAllowanceHubV2.transferAndExecute,
+      IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
       (
         owner,
-        new ERC20Transfer[](0),
-        new ERC721Transfer[](0),
-        new GenericCall[](0),
-        deadline,
-        _flags(false, false, false),
-        ''
+        _openExecutionOrder(new ERC20Transfer[](0), new GenericCall[](0), 0, deadline),
+        address(0),
+        '',
+        false
       )
     );
-  }
-
-  /// @dev Picks the single `TransferTokens` the hub emitted out of the whole fork's log stream
-  function _settlementLog() internal returns (Vm.Log memory entry) {
-    Vm.Log[] memory entries = vm.getRecordedLogs();
-
-    uint256 found;
-    for (uint256 i = 0; i < entries.length; i++) {
-      if (entries[i].emitter != address(hub)) continue;
-      if (entries[i].topics.length == 0) continue;
-      if (entries[i].topics[0] != TRANSFER_TOKENS_TOPIC) continue;
-
-      entry = entries[i];
-      found++;
-    }
-
-    assertEq(found, 1, 'exactly one TransferTokens per order');
-  }
-
-  function _topicAddress(bytes32 topic) internal pure returns (address) {
-    return address(uint160(uint256(topic)));
   }
 }

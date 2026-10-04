@@ -108,7 +108,7 @@ contract ERC721PermitV4Mock is ERC721, EIP712 {
 
 /**
  * @notice A "token" whose EIP-2612 `permit` calls back into the hub before it returns
- * @dev {CallsForwarder-forward} takes no reentrancy lock, so a relayed permit is free to start an
+ * @dev {CallsForwarder-forwardCalls} takes no reentrancy lock, so a relayed permit is free to start an
  * order while the batch that relayed it is still running. That is deliberate — the forwarder moves
  * no assets of its own and every payload it relays authorises itself — and this mock is what makes
  * it observable. The permit arguments are ignored on purpose: the subject is the callback, not a

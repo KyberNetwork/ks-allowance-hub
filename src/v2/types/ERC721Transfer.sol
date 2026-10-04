@@ -10,9 +10,9 @@ struct ERC721Transfer {
   address target;
 }
 
-using ERC721TransferLibrary for ERC721Transfer global;
+using ERC721TransferLib for ERC721Transfer global;
 
-library ERC721TransferLibrary {
+library ERC721TransferLib {
   bytes32 internal constant ERC721_TRANSFER_TYPEHASH =
     keccak256('ERC721Transfer(address token,uint256 tokenId,address target)');
 

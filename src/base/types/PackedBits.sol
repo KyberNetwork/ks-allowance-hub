@@ -8,9 +8,9 @@ pragma solidity ^0.8.0;
  */
 type PackedBits is bytes32;
 
-using PackedBitsLibrary for PackedBits global;
+using PackedBitsLib for PackedBits global;
 
-library PackedBitsLibrary {
+library PackedBitsLib {
   /// @dev The bit at `index`, masked so the result is a canonical bool
   function pos(PackedBits self, uint256 index) internal pure returns (bool bit) {
     assembly ('memory-safe') {
