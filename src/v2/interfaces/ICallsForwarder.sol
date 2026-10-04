@@ -16,8 +16,21 @@ interface ICallsForwarder {
    * @param allowFailure One bit per entry: set to carry on when that call reverts
    * @return results Each call's return data, in order
    */
-  function forward(address[] calldata targets, bytes[] calldata data, PackedBits allowFailure)
+  function forwardCalls(address[] calldata targets, bytes[] calldata data, PackedBits allowFailure)
     external
     payable
     returns (bytes[] memory results);
+
+  /**
+   * @notice Runs several of this contract's own calls in one transaction
+   * @dev Each entry is `delegatecall`ed, so every one sees the whole `msg.value`; the native-spend
+   * guard bounds the batch rather than refusing value outright.
+   * @param data One ABI-encoded call to this contract per entry
+   * @return results Each call's return data, in order
+   * @return gasUsages Gas spent inside each call, in order
+   */
+  function multicall(bytes[] calldata data)
+    external
+    payable
+    returns (bytes[] memory results, uint256[] memory gasUsages);
 }

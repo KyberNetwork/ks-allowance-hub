@@ -34,6 +34,7 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 import {
   IERC20Permit
 } from 'openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol';
+import {Errors} from 'openzeppelin-contracts/contracts/utils/Errors.sol';
 import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
 
 /**
@@ -464,7 +465,7 @@ contract GuardsTest is AuthenticatorBase {
 
     bytes[] memory batch = new bytes[](2);
     batch[0] =
-      abi.encodeCall(ICallsForwarder.forward, (tokens, permits, PackedBits.wrap(bytes32(0))));
+      abi.encodeCall(ICallsForwarder.forwardCalls, (tokens, permits, PackedBits.wrap(bytes32(0))));
     batch[1] = abi.encodeCall(
       IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
       (owner, _openExecutionOrder(erc20s, calls, 0, deadline), address(0), '', false)
@@ -475,7 +476,7 @@ contract GuardsTest is AuthenticatorBase {
     vm.deal(owner, VALUE);
 
     vm.prank(owner);
-    bytes[] memory results = hub.multicall{value: VALUE}(batch);
+    (bytes[] memory results, uint256[] memory gasUsages) = hub.multicall{value: VALUE}(batch);
 
     assertEq(results.length, 2, 'one result per sub-call');
     assertEq(IERC20(USDC).allowance(owner, address(hub)), permitValue, 'the permit was relayed');
@@ -485,9 +486,10 @@ contract GuardsTest is AuthenticatorBase {
     assertEq(address(router).balance - routerNativeBefore, 0.5 ether, 'the native leg was paid');
     assertEq(address(hub).balance, VALUE - 0.5 ether, 'the unspent half stayed behind');
 
-    (bytes[] memory inner, uint256 gasUsed) = abi.decode(results[1], (bytes[], uint256));
+    bytes[] memory inner = abi.decode(results[1], (bytes[]));
     assertEq(inner.length, 1, 'the order reported its own call');
-    assertGt(gasUsed, 0, 'and its own gas');
+    assertEq(gasUsages.length, 2, 'one gas figure per sub-call');
+    assertGt(gasUsages[1], 0, 'and the order reported the gas it spent');
   }
 
   /// MC-02 — each sub-call may spend the value, but the batch as a whole may not spend it twice
@@ -559,7 +561,7 @@ contract GuardsTest is AuthenticatorBase {
     uint256 routerWethBefore = IERC20(WETH).balanceOf(address(router));
 
     vm.prank(owner);
-    bytes[] memory results = hub.multicall(batch);
+    (bytes[] memory results,) = hub.multicall(batch);
 
     assertEq(results.length, 2, 'two results');
     assertEq(
@@ -568,10 +570,49 @@ contract GuardsTest is AuthenticatorBase {
     assertEq(router.callCount(), 2, 'both calls ran');
     assertEq(router.lastData(), hex'b2', 'the second order ran last');
 
-    (bytes[] memory innerFirst,) = abi.decode(results[0], (bytes[], uint256));
-    (bytes[] memory innerSecond,) = abi.decode(results[1], (bytes[], uint256));
+    bytes[] memory innerFirst = abi.decode(results[0], (bytes[]));
+    bytes[] memory innerSecond = abi.decode(results[1], (bytes[]));
     assertEq(abi.decode(innerFirst[0], (uint256)), 1, 'first sub-call saw the first router call');
     assertEq(abi.decode(innerSecond[0], (uint256)), 2, 'and the second saw the second');
+  }
+
+  /**
+   * MC-07 — each entry is measured on its own, not given a running total of the batch
+   * @dev The same two entries are run in both orders, and the order-settling one has to be the
+   * dearer of the two either way. That is what separates a per-entry figure from a cumulative one:
+   * a running total only ever grows, so it reports the *second* entry as dearer whichever entry it
+   * is, and the reversed arrangement catches it. Cold-storage costs fall on whichever entry runs
+   * first, so they work against the assertion in one arrangement and for it in the other. An empty
+   * `forwardCalls` is the cheap entry — it runs no sub-call at all.
+   */
+  function test_MC_07_gasIsMeasuredPerEntry() public {
+    bytes memory cheap = abi.encodeCall(
+      ICallsForwarder.forwardCalls, (new address[](0), new bytes[](0), PackedBits.wrap(bytes32(0)))
+    );
+
+    bytes[] memory cheapFirst = new bytes[](2);
+    cheapFirst[0] = cheap;
+    cheapFirst[1] = _orderCalldata(1 ether, hex'c1');
+
+    uint256 available = gasleft();
+
+    vm.prank(owner);
+    (bytes[] memory results, uint256[] memory gasUsages) = hub.multicall(cheapFirst);
+
+    assertEq(results.length, 2, 'one result per entry');
+    assertEq(gasUsages.length, 2, 'and one gas figure per entry');
+    assertGt(gasUsages[0], 0, 'even the empty entry costs something');
+    assertGt(gasUsages[1], gasUsages[0], 'the entry that settled an order cost more');
+    assertLt(gasUsages[0] + gasUsages[1], available, 'never more than the caller had left');
+
+    bytes[] memory orderFirst = new bytes[](2);
+    orderFirst[0] = _orderCalldata(1 ether, hex'c2');
+    orderFirst[1] = cheap;
+
+    vm.prank(owner);
+    (, uint256[] memory reversed) = hub.multicall(orderFirst);
+
+    assertGt(reversed[0], reversed[1], 'and still cost more when it ran first');
   }
 
   /// MC-05 — the hub has no `receive`, so a bare transfer cannot strand native in it
@@ -589,7 +630,7 @@ contract GuardsTest is AuthenticatorBase {
   /**
    * MC-06 — one batch approves a session key at an authenticator and then spends on it
    * @dev The capability the refactor exists for, end to end. The relayer submits both halves and
-   * signs neither: `forward` relays the owner's `updateAuthentication` — the authenticator sees the
+   * signs neither: `forwardCalls` relays the owner's `updateAuthentication` — the authenticator sees the
    * hub as `msg.sender`, so the owner's own approval signature is what authorises it — and the order
    * in the next slot settles on the key that call has just approved, over the delegated rail, with
    * the session key signing rather than the wallet. Nothing outside the batch approves the key,
@@ -625,7 +666,7 @@ contract GuardsTest is AuthenticatorBase {
 
     bytes[] memory batch = new bytes[](2);
     batch[0] =
-      abi.encodeCall(ICallsForwarder.forward, (targets, relayed, PackedBits.wrap(bytes32(0))));
+      abi.encodeCall(ICallsForwarder.forwardCalls, (targets, relayed, PackedBits.wrap(bytes32(0))));
     batch[1] = abi.encodeCall(
       IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
       (owner, order, address(authenticator), orderAuth, false)
@@ -645,7 +686,7 @@ contract GuardsTest is AuthenticatorBase {
     uint256 routerWethBefore = IERC20(WETH).balanceOf(address(router));
 
     vm.prank(relayer);
-    bytes[] memory results = hub.multicall(batch);
+    (bytes[] memory results,) = hub.multicall(batch);
 
     assertEq(results.length, 2, 'one result per sub-call');
     assertTrue(authenticator.approvedKeys(owner, keyHash), 'the batch approved the key');
@@ -698,7 +739,7 @@ contract GuardsTest is AuthenticatorBase {
 
     if (value > 0 && !allPayable) {
       vm.prank(owner);
-      vm.expectRevert(bytes(''));
+      vm.expectRevert(Errors.FailedCall.selector);
       hub.multicall{value: value}(batch);
 
       assertEq(hub.nonces(owner, 0), 0, 'the whole batch rolled back');
@@ -708,7 +749,7 @@ contract GuardsTest is AuthenticatorBase {
     }
 
     vm.prank(owner);
-    bytes[] memory results = hub.multicall{value: value}(batch);
+    (bytes[] memory results,) = hub.multicall{value: value}(batch);
 
     assertEq(results.length, count, 'one result per sub-call');
     for (uint256 i = 0; i < count; i++) {
@@ -806,7 +847,7 @@ contract GuardsTest is AuthenticatorBase {
     }
   }
 
-  /// @dev A whole EIP-2612 `permit` call for {ICallsForwarder-forward} to relay to USDC
+  /// @dev A whole EIP-2612 `permit` call for {ICallsForwarder-forwardCalls} to relay to USDC
   function _usdcPermitCall(address spender, uint256 value, uint256 deadline)
     internal
     returns (bytes memory)

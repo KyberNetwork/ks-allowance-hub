@@ -22,7 +22,7 @@ interface IAuthDelegator {
    * @notice Delegates authentication to `authenticator`, or withdraws it
    * @dev `data` reaches the authenticator only when delegating, so withdrawing cannot be blocked by
    * one that reverts. Withdrawing leaves the authenticator's own state alone; drop that through
-   * {ICallsForwarder-forward} first when both should go.
+   * {ICallsForwarder-forwardCalls} first when both should go.
    * @param owner Account whose orders the authenticator may approve
    * @param authenticator Contract that will authenticate future orders
    * @param delegated True to delegate the authenticator, false to withdraw it

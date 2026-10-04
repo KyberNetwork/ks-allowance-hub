@@ -107,7 +107,7 @@ contract SettlementTest is HubBase {
     assertEq(address(hub).balance, 0, 'nothing stranded in the hub');
   }
 
-  /// SET-03 — an order that moves nothing and calls nobody still settles and still reports
+  /// SET-03 — an order that moves nothing and calls nobody still settles and still emits
   function test_SET_03_emptyOrderStillEmits() public {
     ERC20Transfer[] memory noErc20s = new ERC20Transfer[](0);
     ERC721Transfer[] memory noNfts = new ERC721Transfer[](0);
@@ -115,7 +115,7 @@ contract SettlementTest is HubBase {
     vm.recordLogs();
 
     vm.prank(owner);
-    (bytes[] memory results, uint256 gasUsed) = hub.executeOrderWithDelegatedAuthentication(
+    bytes[] memory results = hub.executeOrderWithDelegatedAuthentication(
       owner,
       _openExecutionOrder(noErc20s, new GenericCall[](0), 0, block.timestamp),
       address(0),
@@ -124,8 +124,6 @@ contract SettlementTest is HubBase {
     );
 
     assertEq(results.length, 0, 'no calls, no results');
-    assertGt(gasUsed, 0, 'gas is measured');
-    assertLt(gasUsed, 1_000_000, 'and it is the inner cost, not the block gas limit');
 
     Vm.Log memory entry = _settlementLog();
     assertEq(
@@ -149,7 +147,7 @@ contract SettlementTest is HubBase {
     calls[2] = GenericCall({router: address(echoA), value: 0, data: hex'cc'});
 
     vm.prank(owner);
-    (bytes[] memory results,) = hub.executeOrderWithDelegatedAuthentication(
+    bytes[] memory results = hub.executeOrderWithDelegatedAuthentication(
       owner,
       _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp),
       address(0),
@@ -394,7 +392,7 @@ contract SettlementTest is HubBase {
     GenericCall[] memory calls = _calls(GenericCall({router: address(evil), value: 0, data: hex''}));
 
     vm.prank(owner);
-    (bytes[] memory results,) = hub.executeOrderWithDelegatedAuthentication(
+    bytes[] memory results = hub.executeOrderWithDelegatedAuthentication(
       owner,
       _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp),
       address(0),

@@ -130,7 +130,18 @@ around the limit, and none is shaped around the margin either.
 
 | - [x] | - [ ] | `20261002T032856Z/ORD-01b` | The asset source moved out of both signed orders and onto the two delegated entry points as a `bool` parameter; the Permit2-signature rails take none, because `permitWitnessTransferFrom` consults no allowance. One signed order now settles on either pull rail at the submitter's choice, bounded by the rest of the order, which is still signed. `ORD-01`'s old property — the flag is covered by the signature — is retired with its premise: the member no longer exists. The two `T712` legs that showed the bit moving the order hash go with it | `ORD-01` `test_ORD_01_theAssetSourceIsTheSubmittersArgument`, `ORD-01b` `test_ORD_01b_thePermit2SignatureRailConsultsNoAllowance` — `test/v2/ExecuteOrder.t.sol`; both order typehash literals in `test/base/V2TestBase.sol` and the two transcribed authenticator signatures in `ExecuteOrder.t.sol`/`Relay.t.sol` lost the `bool` | `forge test`, `forge test --isolate` — 191 passed. Mutation: forcing the source to Permit2 regardless of the argument fails 28 tests. Non-vacuity: `ORD-01b` revokes the plain allowance outright rather than asserting an infinite one went unchanged, which would have proved nothing |
 
+| - [x] | - [ ] | `20261002T032856Z/MC-07` | Gas accounting moved from the four entry points to `multicall`, which reports one figure per entry as `uint256[] gasUsages`; the entry points return only their results. `CallsForwarder` implements `multicall` itself rather than inheriting Solady's, whose return type a Solidity override cannot change, over `Address.functionDelegateCall`; it is declared in `ICallsForwarder` alongside `forwardCalls`, which this run renamed from `forward`. Two baseline gas legs retired with their premise (`SET-03`, `EX-FUZZ`), and `MC-04`'s inner decode corrected: it read `(bytes[], uint256)` off a single-array return, which did not revert but took the array's length for the gas figure | `MC-07` `test_MC_07_gasIsMeasuredPerEntry`, plus the `MC-01` legs — `test/v2/Guards.t.sol` | `forge test`, `forge test --isolate` — 193 passed. Mutation: a constant per entry fails `MC-07`, and so does a running batch total, which an earlier version of this row's oracle did **not** catch. Non-vacuity: the two entries run in both orders, since a cumulative figure always names the second entry the dearer one; cold-storage cost falls on whichever entry runs first, so it works against the assertion in one arrangement |
+
 ### Notes for this run
+
+Gas reporting then moved to `multicall`, per entry. Dropping Solady's `Multicallable` for an
+`address(this).delegatecall` loop — the form `forward` already uses — cost nothing: the hub went from
+22,560 to **22,381**, because four entry points stopped computing and returning a figure.
+`Address.functionDelegateCall` was then adopted at the owner's direction: it bubbles a sub-call's
+revert data exactly as the hand-written form did, and the one divergence — a **data-less** revert
+surfacing as `Errors.FailedCall()` rather than empty — is the clearer error of the two.
+`MC-FUZZ`'s expectation moved from `bytes('')` to that selector, which is the only baseline it
+touched. It costs 103 bytes, leaving the hub at **22,484** with 2,092 spare. Suite: **193**.
 
 The owner then moved `usePermit2Allowances` out of the signed orders and onto the delegated entry
 points, the Permit2-signature rails taking no such argument. Authority: the owner's instruction, and

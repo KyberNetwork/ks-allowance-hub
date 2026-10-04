@@ -36,9 +36,9 @@ import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
 /**
  * @title RelayTest
  * @notice `PF-01..09`, `PF-FUZZ` and `FWD-13..19` plus `FWD-PAUSE/VALUE/REENTRY`: the
- * self-authorising calls {ICallsForwarder-forward} relays, its selector allowlist, its per-entry
+ * self-authorising calls {ICallsForwarder-forwardCalls} relays, its selector allowlist, its per-entry
  * failure bits and the things it deliberately does not guard.
- * @dev `forward` makes a plain `call` per entry, so the observable oracle is never the return
+ * @dev `forwardCalls` makes a plain `call` per entry, so the observable oracle is never the return
  * value: it is the allowance, approval or nonce the target holds afterwards. Every digest here is
  * built from a type string written out in this file from EIP-2612, the DAI permit and the ERC-721
  * permit drafts, and every relayed call is assembled from a hand-written function signature — no
@@ -140,7 +140,7 @@ contract RelayTest is AuthenticatorBase {
     // anyone may relay someone else's permit: the signature inside is the authorisation, and the
     // forwarder — not the relayer — is the `msg.sender` the token sees
     vm.prank(relayer);
-    bytes[] memory results = hub.forward(_one(address(permitToken)), data, _bits(0));
+    bytes[] memory results = hub.forwardCalls(_one(address(permitToken)), data, _bits(0));
 
     assertEq(permitToken.allowance(owner, address(hub)), value, 'allowance');
     assertEq(permitToken.nonces(owner), 1, 'nonce consumed');
@@ -164,7 +164,7 @@ contract RelayTest is AuthenticatorBase {
       abi.encodeWithSignature(S_DAI_PERMIT, owner, address(hub), nonce, expiry, true, v, r, s);
 
     vm.prank(relayer);
-    hub.forward(_one(DAI), data, _bits(0));
+    hub.forwardCalls(_one(DAI), data, _bits(0));
 
     // DAI reads `allowed` as all-or-nothing rather than as an amount
     assertEq(_daiAllowance(owner, address(hub)), type(uint256).max, 'allowance');
@@ -189,7 +189,7 @@ contract RelayTest is AuthenticatorBase {
       abi.encodeWithSignature(S_ERC721_V3_PERMIT, address(hub), PERMIT_NFT_ID, deadline, v, r, s);
 
     vm.prank(relayer);
-    hub.forward(_one(address(nftV3)), data, _bits(0));
+    hub.forwardCalls(_one(address(nftV3)), data, _bits(0));
 
     assertEq(nftV3.getApproved(PERMIT_NFT_ID), address(hub), 'approval');
     assertEq(nftV3.nonces(PERMIT_NFT_ID), 1, 'nonce consumed');
@@ -204,7 +204,7 @@ contract RelayTest is AuthenticatorBase {
     data[0] = _erc721V4Call(address(hub), deadline, nonce);
 
     vm.prank(relayer);
-    hub.forward(_one(address(nftV4)), data, _bits(0));
+    hub.forwardCalls(_one(address(nftV4)), data, _bits(0));
 
     assertEq(nftV4.getApproved(PERMIT_NFT_ID), address(hub), 'approval');
     assertTrue(nftV4.nonceUsed(owner, nonce), 'nonce consumed');
@@ -224,7 +224,7 @@ contract RelayTest is AuthenticatorBase {
     data[0] = abi.encodeWithSignature(S_PERMIT2_BATCH_PERMIT, owner, batch, signature);
 
     vm.prank(relayer);
-    hub.forward(_one(PERMIT2), data, _bits(0));
+    hub.forwardCalls(_one(PERMIT2), data, _bits(0));
 
     (uint160 allowed, uint48 storedExpiration, uint48 storedNonce) =
       IAllowanceTransfer(PERMIT2).allowance(owner, WETH, address(hub));
@@ -254,7 +254,7 @@ contract RelayTest is AuthenticatorBase {
         ICallsForwarder.NotSupportedSelector.selector, bytes4(keccak256(bytes(S_ERC20_TRANSFER)))
       )
     );
-    hub.forward(_one(address(permitToken)), data, _bits(0));
+    hub.forwardCalls(_one(address(permitToken)), data, _bits(0));
 
     // a set failure bit does not turn the refusal into a skipped entry
     vm.prank(relayer);
@@ -263,7 +263,7 @@ contract RelayTest is AuthenticatorBase {
         ICallsForwarder.NotSupportedSelector.selector, bytes4(keccak256(bytes(S_ERC20_TRANSFER)))
       )
     );
-    hub.forward(_one(address(permitToken)), data, _bits(type(uint256).max));
+    hub.forwardCalls(_one(address(permitToken)), data, _bits(type(uint256).max));
 
     // a payload too short to hold a selector reads as zero, which matches nothing
     bytes[] memory empty = new bytes[](1);
@@ -273,7 +273,7 @@ contract RelayTest is AuthenticatorBase {
     vm.expectRevert(
       abi.encodeWithSelector(ICallsForwarder.NotSupportedSelector.selector, bytes4(0))
     );
-    hub.forward(_one(address(permitToken)), empty, _bits(0));
+    hub.forwardCalls(_one(address(permitToken)), empty, _bits(0));
   }
 
   /// PF-06b — the refusal unwinds the entries that already ran ahead of it
@@ -295,7 +295,7 @@ contract RelayTest is AuthenticatorBase {
         ICallsForwarder.NotSupportedSelector.selector, bytes4(keccak256(bytes(S_ERC20_TRANSFER)))
       )
     );
-    hub.forward(targets, data, _bits(0));
+    hub.forwardCalls(targets, data, _bits(0));
 
     assertEq(permitToken.allowance(owner, address(hub)), 0, 'the earlier permit rolled back');
     assertEq(permitToken.nonces(owner), 0, 'and burned nothing');
@@ -308,10 +308,10 @@ contract RelayTest is AuthenticatorBase {
     twoTargets[1] = address(permitToken2);
 
     vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-    hub.forward(twoTargets, new bytes[](1), _bits(0));
+    hub.forwardCalls(twoTargets, new bytes[](1), _bits(0));
 
     vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-    hub.forward(_one(address(permitToken)), new bytes[](2), _bits(0));
+    hub.forwardCalls(_one(address(permitToken)), new bytes[](2), _bits(0));
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -327,7 +327,7 @@ contract RelayTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(abi.encodeWithSelector(ERC20Permit.ERC2612ExpiredSignature.selector, expired));
-    hub.forward(targets, data, _bits(0));
+    hub.forwardCalls(targets, data, _bits(0));
 
     assertEq(permitToken.allowance(owner, address(hub)), 0, 'the good permit rolled back too');
     assertEq(permitToken.nonces(owner), 0, 'nothing consumed');
@@ -341,7 +341,7 @@ contract RelayTest is AuthenticatorBase {
     (address[] memory targets, bytes[] memory data) = _goodThenExpired(value, expired);
 
     vm.prank(relayer);
-    bytes[] memory results = hub.forward(targets, data, _bits(1 << 1));
+    bytes[] memory results = hub.forwardCalls(targets, data, _bits(1 << 1));
 
     assertEq(permitToken.allowance(owner, address(hub)), value, 'the good permit landed');
     assertEq(permitToken.nonces(owner), 1, 'and consumed exactly its own nonce');
@@ -401,7 +401,7 @@ contract RelayTest is AuthenticatorBase {
     if (bubbles) {
       vm.prank(relayer);
       vm.expectRevert(abi.encodeWithSelector(ERC20Permit.ERC2612ExpiredSignature.selector, expired));
-      hub.forward(targets, data, allowFailure);
+      hub.forwardCalls(targets, data, allowFailure);
 
       assertEq(permitToken.allowance(owner, address(hub)), 0, 'the whole batch rolled back');
       assertEq(permitToken.nonces(owner), 0, 'and burned no nonce');
@@ -409,7 +409,7 @@ contract RelayTest is AuthenticatorBase {
     }
 
     vm.prank(relayer);
-    bytes[] memory results = hub.forward(targets, data, allowFailure);
+    bytes[] memory results = hub.forwardCalls(targets, data, allowFailure);
 
     assertEq(results.length, count, 'one result per entry');
     assertEq(permitToken.nonces(owner), validCount, 'one nonce per permit that worked');
@@ -459,7 +459,7 @@ contract RelayTest is AuthenticatorBase {
     );
 
     vm.prank(relayer);
-    bytes[] memory results = hub.forward(_one(address(authenticator)), data, _bits(0));
+    bytes[] memory results = hub.forwardCalls(_one(address(authenticator)), data, _bits(0));
 
     assertTrue(authenticator.approvedKeys(owner, freshHash), 'the key is approved');
     assertEq(
@@ -473,7 +473,7 @@ contract RelayTest is AuthenticatorBase {
 
   /**
    * FWD-14 — the same call with an empty signature is refused even when the owner sends it
-   * @dev `forward` does `targets[i].call(...)`, so the `msg.sender` the authenticator sees is the
+   * @dev `forwardCalls` does `targets[i].call(...)`, so the `msg.sender` the authenticator sees is the
    * hub, never the account that submitted the transaction. The authenticator's owner branch is
    * therefore out of reach from here, and the empty signature that branch would have accepted is
    * checked instead — and fails. This is the line that stops the hub being a trusted authenticator
@@ -496,7 +496,7 @@ contract RelayTest is AuthenticatorBase {
 
     vm.prank(owner);
     vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
-    hub.forward(targets, data, _bits(0));
+    hub.forwardCalls(targets, data, _bits(0));
 
     assertFalse(authenticator.approvedKeys(owner, freshHash), 'nothing was approved');
 
@@ -511,7 +511,7 @@ contract RelayTest is AuthenticatorBase {
   }
 
   /**
-   * FWD-15 — `forward` reaches an authenticator the owner never delegated
+   * FWD-15 — `forwardCalls` reaches an authenticator the owner never delegated
    * @dev Deliberate, and worth pinning because the order rails do gate on the delegation:
    * `checkDelegation` refuses an undelegated authenticator outright. The forwarder has no such gate
    * and needs none — `updateAuthentication` carries the owner's own signature, so an authenticator
@@ -533,7 +533,7 @@ contract RelayTest is AuthenticatorBase {
     );
 
     vm.prank(relayer);
-    hub.forward(_one(address(authenticator)), data, _bits(0));
+    hub.forwardCalls(_one(address(authenticator)), data, _bits(0));
 
     assertTrue(authenticator.approvedKeys(owner, freshHash), 'the key was approved anyway');
     assertFalse(hub.authDelegated(owner, address(authenticator)), 'and still nothing is delegated');
@@ -592,7 +592,7 @@ contract RelayTest is AuthenticatorBase {
         bytes4(keccak256(bytes(S_INIT_AUTHENTICATION)))
       )
     );
-    hub.forward(targets, initData, _bits(0));
+    hub.forwardCalls(targets, initData, _bits(0));
 
     assertFalse(authenticator.approvedKeys(owner, victimHash), 'no key was planted on the owner');
 
@@ -605,7 +605,7 @@ contract RelayTest is AuthenticatorBase {
         bytes4(keccak256(bytes(S_INIT_AUTHENTICATION)))
       )
     );
-    hub.forward(targets, initData, _bits(type(uint256).max));
+    hub.forwardCalls(targets, initData, _bits(type(uint256).max));
 
     // and both authentication entry points are refused by the same list
     vm.prank(relayer);
@@ -615,7 +615,7 @@ contract RelayTest is AuthenticatorBase {
         bytes4(keccak256(bytes(S_AUTHENTICATE_EXECUTION)))
       )
     );
-    hub.forward(targets, executionData, _bits(0));
+    hub.forwardCalls(targets, executionData, _bits(0));
 
     vm.prank(relayer);
     vm.expectRevert(
@@ -624,7 +624,7 @@ contract RelayTest is AuthenticatorBase {
         bytes4(keccak256(bytes(S_AUTHENTICATE_FULFILLMENT)))
       )
     );
-    hub.forward(targets, fulfillmentData, _bits(0));
+    hub.forwardCalls(targets, fulfillmentData, _bits(0));
 
     // the control: on the same target, in the same shape, the one selector that IS listed goes
     // through — so the refusals above are about those selectors and not about the authenticator
@@ -638,7 +638,7 @@ contract RelayTest is AuthenticatorBase {
     );
 
     vm.prank(relayer);
-    hub.forward(targets, updateData, _bits(0));
+    hub.forwardCalls(targets, updateData, _bits(0));
     assertTrue(
       authenticator.approvedKeys(owner, victimHash), 'updateAuthentication is the listed way in'
     );
@@ -673,7 +673,7 @@ contract RelayTest is AuthenticatorBase {
     data[0] = abi.encodeWithSignature(S_PERMIT2_SINGLE_PERMIT, owner, single, signature);
 
     vm.prank(relayer);
-    hub.forward(_one(PERMIT2), data, _bits(0));
+    hub.forwardCalls(_one(PERMIT2), data, _bits(0));
 
     (uint160 allowed, uint48 storedExpiration, uint48 storedNonce) =
       IAllowanceTransfer(PERMIT2).allowance(owner, USDC, address(hub));
@@ -686,14 +686,14 @@ contract RelayTest is AuthenticatorBase {
   /// FWD-18 — an empty batch is a legal no-op rather than an error
   function test_FWD_18_emptyBatchIsANoOp() public {
     vm.prank(relayer);
-    bytes[] memory results = hub.forward(new address[](0), new bytes[](0), _bits(0));
+    bytes[] memory results = hub.forwardCalls(new address[](0), new bytes[](0), _bits(0));
 
     assertEq(results.length, 0, 'no entries, no results');
 
     // the length check passes on two empties, so the failure bits are never consulted either
     vm.prank(relayer);
     bytes[] memory withBits =
-      hub.forward(new address[](0), new bytes[](0), _bits(type(uint256).max));
+      hub.forwardCalls(new address[](0), new bytes[](0), _bits(type(uint256).max));
     assertEq(withBits.length, 0, 'and the bits change nothing about that');
   }
 
@@ -712,7 +712,8 @@ contract RelayTest is AuthenticatorBase {
     data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
 
     vm.prank(relayer);
-    bytes[] memory results = hub.forward(_one(address(permitToken)), data, _bits(type(uint256).max));
+    bytes[] memory results =
+      hub.forwardCalls(_one(address(permitToken)), data, _bits(type(uint256).max));
 
     assertEq(permitToken.allowance(owner, address(hub)), value, 'the state change still landed');
     assertEq(permitToken.nonces(owner), 1, 'and the nonce was still consumed');
@@ -724,7 +725,7 @@ contract RelayTest is AuthenticatorBase {
 
     vm.prank(relayer);
     bytes[] memory failedResults =
-      hub.forward(_one(address(permitToken)), failing, _bits(type(uint256).max));
+      hub.forwardCalls(_one(address(permitToken)), failing, _bits(type(uint256).max));
 
     assertEq(
       failedResults[0],
@@ -736,14 +737,14 @@ contract RelayTest is AuthenticatorBase {
   }
 
   // -----------------------------------------------------------------------------------------------
-  // FWD-PAUSE / FWD-VALUE / FWD-REENTRY — the guards `forward` deliberately does without
+  // FWD-PAUSE / FWD-VALUE / FWD-REENTRY — the guards `forwardCalls` deliberately does without
   // -----------------------------------------------------------------------------------------------
 
   /**
    * FWD-PAUSE-01 — a pause does not close the forwarder
    * @dev Intended: relaying a permit moves nobody's assets, it only records an allowance, and an
    * allowance granted during a pause cannot be spent while the pause holds — the order entry points
-   * are shut, which the second half of this case shows on the same paused hub. Keeping `forward`
+   * are shut, which the second half of this case shows on the same paused hub. Keeping `forwardCalls`
    * open means a user mid-flow can still land the approval half of their transaction.
    */
   function test_FWD_PAUSE_01_forwardStillWorksWhilePaused() public {
@@ -757,7 +758,7 @@ contract RelayTest is AuthenticatorBase {
     hub.pause();
 
     vm.prank(relayer);
-    hub.forward(_one(address(permitToken)), data, _bits(0));
+    hub.forwardCalls(_one(address(permitToken)), data, _bits(0));
 
     assertTrue(hub.paused(), 'the hub is still paused');
     assertEq(permitToken.allowance(owner, address(hub)), value, 'and the permit was relayed');
@@ -777,8 +778,8 @@ contract RelayTest is AuthenticatorBase {
   }
 
   /**
-   * FWD-VALUE-01 — value sent with `forward` is stranded in the hub
-   * @dev `forward` is payable and carries no native-spend guard, because none of the seven calls
+   * FWD-VALUE-01 — value sent with `forwardCalls` is stranded in the hub
+   * @dev `forwardCalls` is payable and carries no native-spend guard, because none of the seven calls
    * it relays takes value: it forwards `data` only, never `msg.value`. So anything attached simply
    * stays, with no `receive` and no refund to send it back. Not a loss of user funds — a rescuer
    * sweeps it — but it is the contract's behaviour and a caller should not expect change.
@@ -794,7 +795,7 @@ contract RelayTest is AuthenticatorBase {
     assertEq(address(hub).balance, 0, 'the hub starts empty');
 
     vm.prank(relayer);
-    hub.forward{value: 1 ether}(_one(address(permitToken)), data, _bits(0));
+    hub.forwardCalls{value: 1 ether}(_one(address(permitToken)), data, _bits(0));
 
     assertEq(address(hub).balance, 1 ether, 'every wei of it stayed behind');
     assertEq(relayer.balance, 0, 'and none came back to the sender');
@@ -803,7 +804,7 @@ contract RelayTest is AuthenticatorBase {
 
   /**
    * FWD-REENTRY-01 — a relayed permit may reenter the hub and start an order
-   * @dev Confirmed-intended behaviour, pinned rather than fixed. `forward` takes no lock: it moves
+   * @dev Confirmed-intended behaviour, pinned rather than fixed. `forwardCalls` takes no lock: it moves
    * no assets of its own, and the lock that matters is the one an order entry point takes for the
    * duration of an order. So a target called from inside a batch is free to open one, and the order
    * it opens is authorised on its own merits — here the owner's Permit2 signature over an
@@ -837,7 +838,7 @@ contract RelayTest is AuthenticatorBase {
     uint256 before = IERC20(WETH).balanceOf(address(router));
 
     vm.prank(relayer);
-    hub.forward(_one(address(reentrant)), data, _bits(0));
+    hub.forwardCalls(_one(address(reentrant)), data, _bits(0));
 
     assertEq(reentrant.permitCount(), 1, 'the forwarder did relay the permit');
     assertEq(

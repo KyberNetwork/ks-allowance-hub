@@ -82,7 +82,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     uint256 balanceBefore = IERC20(WETH).balanceOf(address(router));
 
     vm.prank(relayer);
-    (bytes[] memory results,) = hub.executeOrderWithPermit2Signature(owner, order, signature);
+    bytes[] memory results = hub.executeOrderWithPermit2Signature(owner, order, signature);
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - balanceBefore, AMOUNT, 'erc20 leg');
     assertEq(nft.ownerOf(NFT_ID), address(router), 'erc721 leg');
@@ -429,14 +429,10 @@ contract ExecuteOrderTest is AuthenticatorBase {
     uint256 untouched = IERC20(WETH).balanceOf(recipient);
     vm.deal(relayer, value);
 
-    uint256 gasBudget = gasleft();
-
     vm.recordLogs();
 
     vm.prank(relayer);
-    (bytes[] memory results, uint256 gasUsed) = hub.executeOrderWithDelegatedAuthentication{
-      value: value
-    }(
+    bytes[] memory results = hub.executeOrderWithDelegatedAuthentication{value: value}(
       owner, order, address(authenticator), authData, false
     );
 
@@ -446,8 +442,6 @@ contract ExecuteOrderTest is AuthenticatorBase {
     assertEq(router.callCount(), f.callCount, 'router called once per entry');
     assertEq(IERC20(WETH).balanceOf(recipient), untouched, 'unnamed account untouched');
     if (f.moveNft) assertEq(nft.ownerOf(NFT_ID), address(router2), 'nft leg');
-    assertGt(gasUsed, 0, 'gasUsed is reported');
-    assertLt(gasUsed, gasBudget, 'gasUsed cannot exceed what was available');
 
     assertEq(
       authenticator.nonces(owner, f.nonce >> 8),
@@ -496,7 +490,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     vm.recordLogs();
 
     vm.prank(relayer);
-    (bytes[] memory results,) =
+    bytes[] memory results =
       hub.executeOrderWithPermit2Signature{value: value}(owner, order, signature);
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, f.amount, 'exact amount moved');

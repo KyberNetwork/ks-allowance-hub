@@ -87,7 +87,7 @@ contract SessionOrderAuthenticator is
     bool approved = data.decodeUint256(1) != 0;
 
     // Only the owner authenticates themselves by calling; anyone else, the hub included, has to
-    // present a signature, because `forward` relays this from any caller
+    // present a signature, because `forwardCalls` relays this from any caller
     if (msg.sender != owner) {
       _useUnorderedNonce(owner, nonce);
 

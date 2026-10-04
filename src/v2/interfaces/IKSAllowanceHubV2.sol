@@ -46,7 +46,6 @@ interface IKSAllowanceHubV2 {
    * @param usePermit2Allowances Draw the ERC20 legs on the owner's Permit2 allowance rather than on
    * a plain allowance to this hub
    * @return results Return data of each router call, in order
-   * @return gasUsed Gas spent inside this call, excluding intrinsic and calldata cost
    */
   function executeOrderWithDelegatedAuthentication(
     address owner,
@@ -54,7 +53,7 @@ interface IKSAllowanceHubV2 {
     address authenticator,
     bytes calldata authenticationData,
     bool usePermit2Allowances
-  ) external payable returns (bytes[] memory results, uint256 gasUsed);
+  ) external payable returns (bytes[] memory results);
 
   /**
    * @notice Pulls the owner's assets and runs the order's calls, funded by the owner's Permit2
@@ -63,13 +62,12 @@ interface IKSAllowanceHubV2 {
    * @param order What the owner signed, and what the witness binds
    * @param permit2Signature The owner's Permit2 signature over the permit and that witness
    * @return results Return data of each router call, in order
-   * @return gasUsed Gas spent inside this call, excluding intrinsic and calldata cost
    */
   function executeOrderWithPermit2Signature(
     address owner,
     ExecutionOrder calldata order,
     bytes calldata permit2Signature
-  ) external payable returns (bytes[] memory results, uint256 gasUsed);
+  ) external payable returns (bytes[] memory results);
 
   /**
    * @notice Settles a fulfillment authenticated by a delegated {IOrderAuthenticator}: a solver
@@ -85,7 +83,6 @@ interface IKSAllowanceHubV2 {
    * @param usePermit2Allowances Draw the ERC20 legs on the owner's Permit2 allowance rather than on
    * a plain allowance to this hub
    * @return results Return data of every router call, the solution's first then the owner's
-   * @return gasUsed Gas spent inside this call, excluding intrinsic and calldata cost
    */
   function fulfillOrderWithDelegatedAuthentication(
     address owner,
@@ -95,7 +92,7 @@ interface IKSAllowanceHubV2 {
     FulfillmentSolution calldata solution,
     bytes calldata solutionSignature,
     bool usePermit2Allowances
-  ) external payable returns (bytes[] memory results, uint256 gasUsed);
+  ) external payable returns (bytes[] memory results);
 
   /**
    * @notice As {fulfillOrderWithDelegatedAuthentication}, but funded by the owner's Permit2
@@ -106,7 +103,6 @@ interface IKSAllowanceHubV2 {
    * @param solution The route the solver chose
    * @param solutionSignature Approval of `solution` by the `solutionApprover` the order names
    * @return results Return data of every router call, the solution's first then the owner's
-   * @return gasUsed Gas spent inside this call, excluding intrinsic and calldata cost
    */
   function fulfillOrderWithPermit2Signature(
     address owner,
@@ -114,5 +110,5 @@ interface IKSAllowanceHubV2 {
     bytes calldata permit2Signature,
     FulfillmentSolution calldata solution,
     bytes calldata solutionSignature
-  ) external payable returns (bytes[] memory results, uint256 gasUsed);
+  ) external payable returns (bytes[] memory results);
 }

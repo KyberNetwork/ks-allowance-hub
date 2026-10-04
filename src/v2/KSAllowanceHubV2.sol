@@ -116,17 +116,15 @@ contract KSAllowanceHubV2 is
     lock(owner)
     guardNativeSpend
     checkDelegation(owner, authenticator)
-    returns (bytes[] memory results, uint256 gasUsed)
+    returns (bytes[] memory results)
   {
-    uint256 gasStart = gasleft();
-
     // Being the caller is the owner's own authentication; anyone else must present a credential
     if (msg.sender != owner) {
       IOrderAuthenticator(authenticator).authenticateExecution(owner, order, authenticationData);
     }
 
-    _transferERC20s(order.erc20Transfers, owner, usePermit2Allowances);
-    return _settleExecution(owner, order, gasStart);
+    _transferERC20s(owner, order.erc20Transfers, usePermit2Allowances);
+    return _settleExecution(owner, order);
   }
 
   /// @inheritdoc IKSAllowanceHubV2
@@ -141,10 +139,8 @@ contract KSAllowanceHubV2 is
     checkDeadline(order.deadline)
     lock(owner)
     guardNativeSpend
-    returns (bytes[] memory results, uint256 gasUsed)
+    returns (bytes[] memory results)
   {
-    uint256 gasStart = gasleft();
-
     // Self-submitted: nothing to bind, since the owner is already the caller. Relayed: the order
     // goes in as the witness, which is what stops a relayer altering it
     if (msg.sender == owner) {
@@ -172,7 +168,7 @@ contract KSAllowanceHubV2 is
       revert UnauthorizedRelayer(msg.sender, order.relayer);
     }
 
-    return _settleExecution(owner, order, gasStart);
+    return _settleExecution(owner, order);
   }
 
   /// @inheritdoc IKSAllowanceHubV2
@@ -193,10 +189,8 @@ contract KSAllowanceHubV2 is
     lock(owner)
     guardNativeSpend
     checkDelegation(owner, authenticator)
-    returns (bytes[] memory results, uint256 gasUsed)
+    returns (bytes[] memory results)
   {
-    uint256 gasStart = gasleft();
-
     // Being the caller is the owner's own authentication; anyone else must present a credential
     if (msg.sender != owner) {
       IOrderAuthenticator(authenticator).authenticateFulfillment(owner, order, authenticationData);
@@ -210,8 +204,8 @@ contract KSAllowanceHubV2 is
 
     // Snapshot before anything moves, so a validator measures the whole order and not just its tail
     bytes[] memory beforeExecutionOutputs = order.validationParams.beforeExecution();
-    _transferERC20s(order.erc20Transfers, owner, usePermit2Allowances);
-    return _settleFulfillment(owner, order, solution, orderHash, beforeExecutionOutputs, gasStart);
+    _transferERC20s(owner, order.erc20Transfers, usePermit2Allowances);
+    return _settleFulfillment(owner, order, solution, orderHash, beforeExecutionOutputs);
   }
 
   /// @inheritdoc IKSAllowanceHubV2
@@ -229,10 +223,8 @@ contract KSAllowanceHubV2 is
     checkDeadline(solution.deadline)
     lock(owner)
     guardNativeSpend
-    returns (bytes[] memory results, uint256 gasUsed)
+    returns (bytes[] memory results)
   {
-    uint256 gasStart = gasleft();
-
     bytes32 orderHash = order.hash();
     // The sentinel means the owner accepted any route, so there is no approval to check
     if (order.solutionApprover != DEAD_ADDRESS) {
@@ -271,16 +263,16 @@ contract KSAllowanceHubV2 is
       revert UnauthorizedSolver(msg.sender, order.solver);
     }
 
-    return _settleFulfillment(owner, order, solution, orderHash, beforeExecutionOutputs, gasStart);
+    return _settleFulfillment(owner, order, solution, orderHash, beforeExecutionOutputs);
   }
 
   /**
    * @dev Shared tail of both execution rails: the NFT leg, the event, then the owner's calls. The
    * ERC20s have already moved by here, which is the only thing the two rails do differently.
    */
-  function _settleExecution(address owner, ExecutionOrder calldata order, uint256 gasStart)
+  function _settleExecution(address owner, ExecutionOrder calldata order)
     internal
-    returns (bytes[] memory results, uint256 gasUsed)
+    returns (bytes[] memory results)
   {
     order.erc721Transfers.execute(owner);
 
@@ -295,10 +287,6 @@ contract KSAllowanceHubV2 is
 
     results = new bytes[](order.genericCalls.length);
     _executeCalls(order.genericCalls, results, 0);
-
-    unchecked {
-      gasUsed = gasStart - gasleft();
-    }
   }
 
   /// @dev Shared tail of both fulfillment rails, as {_settleExecution} is for an execution
@@ -307,9 +295,8 @@ contract KSAllowanceHubV2 is
     FulfillmentOrder calldata order,
     FulfillmentSolution calldata solution,
     bytes32 orderHash,
-    bytes[] memory beforeExecutionOutputs,
-    uint256 gasStart
-  ) internal returns (bytes[] memory results, uint256 gasUsed) {
+    bytes[] memory beforeExecutionOutputs
+  ) internal returns (bytes[] memory results) {
     order.erc721Transfers.execute(owner);
 
     emit TransferTokens(
@@ -326,10 +313,6 @@ contract KSAllowanceHubV2 is
     _executeCalls(solution.solverCalls, results, 0);
     order.validationParams.afterExecution(beforeExecutionOutputs);
     _executeCalls(order.ownerCalls, results, solution.solverCalls.length);
-
-    unchecked {
-      gasUsed = gasStart - gasleft();
-    }
   }
 
   /// @dev Recovers the solution approver and checks it is the one the order named
@@ -385,8 +368,8 @@ contract KSAllowanceHubV2 is
 
   /// @dev Pulls the ERC20s over Permit2's allowance rail, or over a plain approval to this hub
   function _transferERC20s(
-    ERC20Transfer[] calldata erc20Transfers,
     address owner,
+    ERC20Transfer[] calldata erc20Transfers,
     bool usePermit2Allowances
   ) internal {
     if (usePermit2Allowances) {

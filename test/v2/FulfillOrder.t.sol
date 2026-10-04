@@ -81,7 +81,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     uint256 before = IERC20(WETH).balanceOf(address(router));
 
     vm.prank(owner);
-    (bytes[] memory results,) =
+    bytes[] memory results =
       hub.fulfillOrderWithPermit2Signature(owner, order, permitSig, route, approval);
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'erc20 leg');
@@ -115,7 +115,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     uint256 before = IERC20(WETH).balanceOf(address(router));
 
     vm.prank(solver);
-    (bytes[] memory results,) = hub.fulfillOrderWithPermit2Signature(
+    bytes[] memory results = hub.fulfillOrderWithPermit2Signature(
       owner, order, signature, _route(_calls(_routerCall(0, hex'01'))), ''
     );
 
@@ -278,7 +278,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     uint256 before = IERC20(WETH).balanceOf(address(router));
 
     vm.prank(owner);
-    (bytes[] memory results,) = hub.fulfillOrderWithDelegatedAuthentication(
+    bytes[] memory results = hub.fulfillOrderWithDelegatedAuthentication(
       owner, withTailA, address(0), '', route, approvalA, false
     );
 
@@ -437,7 +437,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     );
 
     vm.prank(owner);
-    (bytes[] memory results,) = hub.fulfillOrderWithDelegatedAuthentication(
+    bytes[] memory results = hub.fulfillOrderWithDelegatedAuthentication(
       owner, open, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
     );
 
@@ -729,7 +729,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     assertEq(hub.nonces(owner, 0), 0, 'the hub burned no nonce of its own');
 
     vm.prank(owner);
-    (bytes[] memory executeResults,) = hub.executeOrderWithDelegatedAuthentication(
+    bytes[] memory executeResults = hub.executeOrderWithDelegatedAuthentication(
       owner,
       _openExecutionOrder(new ERC20Transfer[](0), solverCalls, 0, block.timestamp),
       address(0),
@@ -973,7 +973,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     vm.recordLogs();
 
     vm.prank(relayer);
-    (bytes[] memory results,) = hub.fulfillOrderWithDelegatedAuthentication(
+    bytes[] memory results = hub.fulfillOrderWithDelegatedAuthentication(
       owner, order, address(authenticator), authData, route, approval, false
     );
 
@@ -1014,7 +1014,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     vm.recordLogs();
 
     vm.prank(solver);
-    (bytes[] memory results,) =
+    bytes[] memory results =
       hub.fulfillOrderWithPermit2Signature(owner, order, signature, route, approval);
 
     _assertFuzzSettled(f, order, results, before);
@@ -1034,7 +1034,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     private
     returns (bytes[] memory results)
   {
-    (results,) = hub.fulfillOrderWithDelegatedAuthentication(
+    results = hub.fulfillOrderWithDelegatedAuthentication(
       owner,
       _openFulfillmentOrder(
         new ERC20Transfer[](0), new ValidationParams[](0), ownerCalls, 0, block.timestamp
