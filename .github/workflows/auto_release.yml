@@ -1,0 +1,88 @@
+name: Auto Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  auto-release:
+    if: |
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.title, 'feat(deploy): v')
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Extract version from PR title
+        id: extract-version
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          # Extract any version starting with 'v'
+          VERSION=$(echo "$PR_TITLE" | sed -n 's/^feat(deploy): \(v[^[:space:]]*\).*$/\1/p')
+          if [ -z "$VERSION" ]; then
+            echo "ERROR: Could not extract version from PR title: $PR_TITLE"
+            echo "Expected format: 'feat(deploy): v<version>'"
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Validate version format
+        env:
+          VERSION: ${{ steps.extract-version.outputs.version }}
+        run: |
+          if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
+            echo "ERROR: Version $VERSION does not follow semantic versioning format"
+            echo "Expected format: vX.Y.Z or vX.Y.Z-suffix"
+            exit 1
+          fi
+
+      - name: Checkout main branch
+        run: |
+          git checkout main
+          git pull origin main
+
+      - name: Create and push tag
+        env:
+          VERSION: ${{ steps.extract-version.outputs.version }}
+        run: |
+          # Check if tag already exists
+          if git tag -l "$VERSION" | grep -q "$VERSION"; then
+            echo "ERROR: Tag $VERSION already exists"
+            exit 1
+          fi
+          git tag -a "$VERSION" -m "ks-allowance-hub $VERSION"
+          git push origin "$VERSION" || { echo "ERROR: Failed to push tag"; exit 1; }
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          VERSION: ${{ steps.extract-version.outputs.version }}
+        run: |
+          # Auto-generate release notes
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --generate-notes
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Auto-release workflow failed for PR #${{ github.event.pull_request.number }}"
+          echo "Version: ${{ steps.extract-version.outputs.version }}"

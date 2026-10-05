@@ -1,0 +1,39 @@
+name: Run Foundry Build
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Run Foundry Build
+
+    runs-on: self-hosted
+
+    strategy:
+      fail-fast: true
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Install Foundry
+        uses: KyberNetwork/foundry-toolchain@master
+        with:
+          version: v1.8.1
+          cache: false
+
+      - name: Run Forge Build
+        id: build
+        run: |
+          forge --version
+          forge build src --sizes

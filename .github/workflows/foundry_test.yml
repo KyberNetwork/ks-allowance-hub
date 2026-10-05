@@ -1,4 +1,4 @@
-name: CI
+name: Run Foundry Test
 
 permissions:
   contents: read
@@ -8,6 +8,7 @@ on:
     branches:
       - main
   pull_request:
+  workflow_dispatch:
 
 env:
   RPC_137: ${{ secrets.RPC_137 }}
@@ -25,9 +26,14 @@ env:
   RPC_143: ${{ secrets.RPC_143 }}
 
 jobs:
-  check:
-    name: Foundry project
-    runs-on: ubuntu-latest
+  test:
+    name: Run Foundry Test
+
+    runs-on: self-hosted
+
+    strategy:
+      fail-fast: true
+
     steps:
       - uses: actions/checkout@v5
         with:
@@ -36,16 +42,10 @@ jobs:
           token: ${{ secrets.GH_PAT }}
 
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
+        uses: KyberNetwork/foundry-toolchain@master
+        with:
+          version: v1.8.1
 
-      - name: Show Forge version
-        run: forge --version
-
-      - name: Run Forge fmt
-        run: forge fmt --check
-
-      - name: Run Forge build
-        run: forge build src --sizes
-
-      - name: Run Forge tests
+      - name: Run Forge Test
+        id: test
         run: forge test -vvv --isolate
