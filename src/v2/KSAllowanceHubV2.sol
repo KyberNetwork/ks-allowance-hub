@@ -17,6 +17,7 @@ import {FulfillmentOrder} from './types/FulfillmentOrder.sol';
 import {FulfillmentSolution} from './types/FulfillmentSolution.sol';
 import {FulfillmentWitnessLib} from './types/FulfillmentWitness.sol';
 import {GenericCall, GenericCallLib} from './types/GenericCall.sol';
+import {NativeTransfer} from './types/NativeTransfer.sol';
 import {SolutionApprovalLib} from './types/SolutionApproval.sol';
 import {ValidationParams, ValidationParamsLib} from './types/ValidationParams.sol';
 
@@ -42,8 +43,9 @@ import {
  * have no choice to make.
  *
  * An order is authenticated either by the owner's own Permit2 signature, which carries the order
- * its witness, or by an {IOrderAuthenticator} the owner delegated through {AuthDelegator}. An owner
- * submitting on their own behalf needs neither.
+ * as its witness, or by an {IOrderAuthenticator} the owner delegated through {AuthDelegator}. An
+ * owner submitting on their own behalf needs no authenticator; on the Permit2 rails they still
+ * sign, with no witness to bind.
  *
  * A fulfillment splits in two: the owner fixes `ownerCalls` and the validators, while a
  * {FulfillmentSolution} supplies the route, approved by the `solutionApprover` the order names.
@@ -123,6 +125,14 @@ contract KSAllowanceHubV2 is
       IOrderAuthenticator(authenticator).authenticateExecution(owner, order, authenticationData);
     }
 
+    _announceTransfers(
+      owner,
+      order.hash(),
+      order.erc20Transfers,
+      order.erc721Transfers,
+      order.genericCalls.toNativeTransfers()
+    );
+
     _transferERC20s(owner, order.erc20Transfers, usePermit2Allowances);
     return _settleExecution(owner, order);
   }
@@ -141,6 +151,14 @@ contract KSAllowanceHubV2 is
     guardNativeSpend
     returns (bytes[] memory results)
   {
+    _announceTransfers(
+      owner,
+      order.hash(),
+      order.erc20Transfers,
+      order.erc721Transfers,
+      order.genericCalls.toNativeTransfers()
+    );
+
     // Self-submitted: nothing to bind, since the owner is already the caller. Relayed: the order
     // goes in as the witness, which is what stops a relayer altering it
     if (msg.sender == owner) {
@@ -204,8 +222,17 @@ contract KSAllowanceHubV2 is
 
     // Snapshot before anything moves, so a validator measures the whole order and not just its tail
     bytes[] memory beforeExecutionOutputs = order.validationParams.beforeExecution();
+
+    _announceTransfers(
+      owner,
+      orderHash,
+      order.erc20Transfers,
+      order.erc721Transfers,
+      solution.solverCalls.toNativeTransfers(order.ownerCalls)
+    );
+
     _transferERC20s(owner, order.erc20Transfers, usePermit2Allowances);
-    return _settleFulfillment(owner, order, solution, orderHash, beforeExecutionOutputs);
+    return _settleFulfillment(owner, order, solution, beforeExecutionOutputs);
   }
 
   /// @inheritdoc IKSAllowanceHubV2
@@ -233,6 +260,14 @@ contract KSAllowanceHubV2 is
 
     // Snapshot before anything moves, so a validator measures the whole order and not just its tail
     bytes[] memory beforeExecutionOutputs = order.validationParams.beforeExecution();
+
+    _announceTransfers(
+      owner,
+      orderHash,
+      order.erc20Transfers,
+      order.erc721Transfers,
+      solution.solverCalls.toNativeTransfers(order.ownerCalls)
+    );
 
     // Self-submitted: nothing to bind, since the owner is already the caller. Relayed: the order
     // goes in as the witness, which is what stops a solver altering it
@@ -263,72 +298,20 @@ contract KSAllowanceHubV2 is
       revert UnauthorizedSolver(msg.sender, order.solver);
     }
 
-    return _settleFulfillment(owner, order, solution, orderHash, beforeExecutionOutputs);
+    return _settleFulfillment(owner, order, solution, beforeExecutionOutputs);
   }
 
-  /**
-   * @dev Shared tail of both execution rails: the NFT leg, the event, then the owner's calls. The
-   * ERC20s have already moved by here, which is the only thing the two rails do differently.
-   */
-  function _settleExecution(address owner, ExecutionOrder calldata order)
-    internal
-    returns (bytes[] memory results)
-  {
-    order.erc721Transfers.execute(owner);
-
-    emit TransferTokens(
-      msg.sender,
-      owner,
-      order.hash(),
-      order.erc20Transfers,
-      order.erc721Transfers,
-      order.genericCalls.toNativeTransfers()
-    );
-
-    results = new bytes[](order.genericCalls.length);
-    _executeCalls(order.genericCalls, results, 0);
-  }
-
-  /// @dev Shared tail of both fulfillment rails, as {_settleExecution} is for an execution
-  function _settleFulfillment(
+  /// @dev The one {TransferTokens} emit site, so neither rail carries its own copy of the encoder
+  function _announceTransfers(
     address owner,
-    FulfillmentOrder calldata order,
-    FulfillmentSolution calldata solution,
     bytes32 orderHash,
-    bytes[] memory beforeExecutionOutputs
-  ) internal returns (bytes[] memory results) {
-    order.erc721Transfers.execute(owner);
-
-    emit TransferTokens(
-      msg.sender,
-      owner,
-      orderHash,
-      order.erc20Transfers,
-      order.erc721Transfers,
-      solution.solverCalls.toNativeTransfers(order.ownerCalls)
-    );
-
-    // The validators bound what the solver did, so they run before the owner's tail acts on it
-    results = new bytes[](solution.solverCalls.length + order.ownerCalls.length);
-    _executeCalls(solution.solverCalls, results, 0);
-    order.validationParams.afterExecution(beforeExecutionOutputs);
-    _executeCalls(order.ownerCalls, results, solution.solverCalls.length);
-  }
-
-  /// @dev Recovers the solution approver and checks it is the one the order named
-  function _approveSolution(
-    address owner,
-    address solutionApprover,
-    bytes32 orderHash,
-    FulfillmentSolution calldata solution,
-    bytes calldata solutionSignature
+    ERC20Transfer[] calldata erc20Transfers,
+    ERC721Transfer[] calldata erc721Transfers,
+    NativeTransfer[] memory nativeTransfers
   ) internal {
-    _useUnorderedNonce(owner, solution.nonce);
-
-    bytes32 digest = _hashTypedDataV4(SolutionApprovalLib.hash(owner, orderHash, solution));
-    if (!SignatureChecker.isValidSignatureNow(solutionApprover, digest, solutionSignature)) {
-      revert InvalidSolutionSignature();
-    }
+    emit TransferTokens(
+      msg.sender, owner, orderHash, erc20Transfers, erc721Transfers, nativeTransfers
+    );
   }
 
   /// @dev Permit2 signature transfer by the owner themselves, so there is nothing to witness
@@ -366,6 +349,22 @@ contract KSAllowanceHubV2 is
       .permitWitnessTransferFrom(permit, details, owner, witness, witnessTypeString, signature);
   }
 
+  /// @dev Recovers the solution approver and checks it is the one the order named
+  function _approveSolution(
+    address owner,
+    address solutionApprover,
+    bytes32 orderHash,
+    FulfillmentSolution calldata solution,
+    bytes calldata solutionSignature
+  ) internal {
+    _useUnorderedNonce(owner, solution.nonce);
+
+    bytes32 digest = _hashTypedDataV4(SolutionApprovalLib.hash(owner, orderHash, solution));
+    if (!SignatureChecker.isValidSignatureNow(solutionApprover, digest, solutionSignature)) {
+      revert InvalidSolutionSignature();
+    }
+  }
+
   /// @dev Pulls the ERC20s over Permit2's allowance rail, or over a plain approval to this hub
   function _transferERC20s(
     address owner,
@@ -379,6 +378,36 @@ contract KSAllowanceHubV2 is
     } else {
       erc20Transfers.execute(owner);
     }
+  }
+
+  /**
+   * @dev Shared tail of both execution rails: the NFT leg, then the order's calls. The ERC20s
+   * have already moved by here, which is the only thing the two rails do differently.
+   */
+  function _settleExecution(address owner, ExecutionOrder calldata order)
+    internal
+    returns (bytes[] memory results)
+  {
+    order.erc721Transfers.execute(owner);
+
+    results = new bytes[](order.genericCalls.length);
+    _executeCalls(order.genericCalls, results, 0);
+  }
+
+  /// @dev Shared tail of both fulfillment rails, as {_settleExecution} is for an execution
+  function _settleFulfillment(
+    address owner,
+    FulfillmentOrder calldata order,
+    FulfillmentSolution calldata solution,
+    bytes[] memory beforeExecutionOutputs
+  ) internal returns (bytes[] memory results) {
+    order.erc721Transfers.execute(owner);
+
+    // The validators bound what the solver did, so they run before the owner's tail acts on it
+    results = new bytes[](solution.solverCalls.length + order.ownerCalls.length);
+    _executeCalls(solution.solverCalls, results, 0);
+    order.validationParams.afterExecution(beforeExecutionOutputs);
+    _executeCalls(order.ownerCalls, results, solution.solverCalls.length);
   }
 
   /// @dev Runs one call list into `results` from `offset`, checking each router role as it goes

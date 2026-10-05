@@ -21,7 +21,7 @@ interface IKSAllowanceHubV2 {
   error InvalidSolutionSignature();
 
   /**
-   * @notice Emitted once per settled order, before the router calls run
+   * @notice Emitted once per order, before its transfers and calls run
    * @dev `nativeTransfers` lists only the calls carrying value, so an order with none emits an
    * empty array rather than a run of zeros.
    */
@@ -57,10 +57,11 @@ interface IKSAllowanceHubV2 {
 
   /**
    * @notice Pulls the owner's assets and runs the order's calls, funded by the owner's Permit2
-   * signature with the order carried as its witness
+   * signature
    * @param owner Account the assets come from
-   * @param order What the owner signed, and what the witness binds
-   * @param permit2Signature The owner's Permit2 signature over the permit and that witness
+   * @param order What the owner signed
+   * @param permit2Signature The owner's Permit2 signature over the permit, and over the order as
+   * its witness when relayed
    * @return results Return data of each router call, in order
    */
   function executeOrderWithPermit2Signature(
@@ -96,10 +97,11 @@ interface IKSAllowanceHubV2 {
 
   /**
    * @notice As {fulfillOrderWithDelegatedAuthentication}, but funded by the owner's Permit2
-   * signature with the order carried as its witness
+   * signature
    * @param owner Account the assets come from
-   * @param order What the owner signed, and what the witness binds
-   * @param permit2Signature The owner's Permit2 signature over the permit and that witness
+   * @param order What the owner signed
+   * @param permit2Signature The owner's Permit2 signature over the permit, and over the order as
+   * its witness when relayed
    * @param solution The route the solver chose
    * @param solutionSignature Approval of `solution` by the `solutionApprover` the order names
    * @return results Return data of every router call, the solution's first then the owner's
