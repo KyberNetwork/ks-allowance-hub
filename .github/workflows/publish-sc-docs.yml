@@ -19,5 +19,6 @@ jobs:
       FOUNDRYUP_REF: 'refs/tags/v1.8.1'
       FORGE_VERSION: 'v1.8.1'
       DOCS_REPO: 'KyberNetwork/kyber-sc-docs'
+      RUNS_ON: 'ubuntu-latest'
     secrets:
       GH_PAT: ${{ secrets.GH_PAT }}
