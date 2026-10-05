@@ -15,16 +15,20 @@ abstract contract MsgSender is IMsgSender {
 
   bytes32 internal constant LOCKER_SLOT = bytes32(erc7201('ks-allowance-hub.locker'));
 
-  /// @dev Holds the asset owner, not the caller, so relayed and direct orders look alike downstream
   modifier lock(address locker) {
+    _lock(locker);
+    _;
+    LOCKER_SLOT.asAddress().tstore(address(0));
+  }
+
+  /// @dev Claims the lock, refusing a slot that is already held
+  function _lock(address locker) internal {
     TransientSlot.AddressSlot slot = LOCKER_SLOT.asAddress();
     if (slot.tload() != address(0)) {
       revert AlreadyLocked();
     }
 
     slot.tstore(locker);
-    _;
-    slot.tstore(address(0));
   }
 
   /// @inheritdoc IMsgSender

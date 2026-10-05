@@ -32,10 +32,15 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
   constructor(string memory name, string memory version) EIP712Base(name, version) {}
 
   modifier checkDelegation(address owner, address authenticator) {
+    _checkDelegation(owner, authenticator);
+    _;
+  }
+
+  /// @dev The check itself, held in one place rather than inlined at every modifier use
+  function _checkDelegation(address owner, address authenticator) internal view {
     if (authenticator != address(0) && !authDelegated[owner][authenticator]) {
       revert NotDelegatedAuthenticator(owner, authenticator);
     }
-    _;
   }
 
   /// @inheritdoc IAuthDelegator
