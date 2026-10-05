@@ -34,22 +34,32 @@ library ERC20TransferLib {
     return keccak256(abi.encode(ERC20_TRANSFER_TYPEHASH, self.token, self.target, self.amount));
   }
 
-  /// @dev EIP-712 hash of the array: its member hashes, concatenated and hashed
-  function hash(ERC20Transfer[] calldata transfers) internal pure returns (bytes32) {
+  /**
+   * @dev EIP-712 hash of the array: its member hashes, concatenated and hashed. Word-sized members
+   * already sit in memory exactly as `abi.encodePacked` would lay them out, so the digest is taken
+   * over the array's own data and nothing is copied to reach it.
+   */
+  function hash(ERC20Transfer[] calldata transfers) internal pure returns (bytes32 digest) {
     bytes32[] memory hashes = new bytes32[](transfers.length);
     for (uint256 i = 0; i < transfers.length; i++) {
       hashes[i] = hash(transfers[i]);
     }
-    return keccak256(abi.encodePacked(hashes));
+
+    assembly ('memory-safe') {
+      digest := keccak256(add(hashes, 0x20), shl(5, mload(hashes)))
+    }
   }
 
   /// @dev As {hash}, for an array already in memory
-  function hashMemory(ERC20Transfer[] memory transfers) internal pure returns (bytes32) {
+  function hashMemory(ERC20Transfer[] memory transfers) internal pure returns (bytes32 digest) {
     bytes32[] memory hashes = new bytes32[](transfers.length);
     for (uint256 i = 0; i < transfers.length; i++) {
       hashes[i] = hashMemory(transfers[i]);
     }
-    return keccak256(abi.encodePacked(hashes));
+
+    assembly ('memory-safe') {
+      digest := keccak256(add(hashes, 0x20), shl(5, mload(hashes)))
+    }
   }
 
   /// @dev Pulls each transfer from `owner` straight to its target

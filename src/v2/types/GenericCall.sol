@@ -34,24 +34,32 @@ library GenericCallLib {
       keccak256(abi.encode(GENERIC_CALL_TYPEHASH, self.router, self.value, keccak256(self.data)));
   }
 
-  /// @dev EIP-712 hash of the array: its member hashes, concatenated and hashed
-  function hash(GenericCall[] calldata calls) internal pure returns (bytes32) {
+  /**
+   * @dev EIP-712 hash of the array: its member hashes, concatenated and hashed. Word-sized members
+   * already sit in memory exactly as `abi.encodePacked` would lay them out, so the digest is taken
+   * over the array's own data and nothing is copied to reach it.
+   */
+  function hash(GenericCall[] calldata calls) internal pure returns (bytes32 digest) {
     bytes32[] memory callsHashes = new bytes32[](calls.length);
     for (uint256 i = 0; i < calls.length; i++) {
       callsHashes[i] = hash(calls[i]);
     }
 
-    return keccak256(abi.encodePacked(callsHashes));
+    assembly ('memory-safe') {
+      digest := keccak256(add(callsHashes, 0x20), shl(5, mload(callsHashes)))
+    }
   }
 
   /// @dev As {hash}, for an array already in memory
-  function hashMemory(GenericCall[] memory calls) internal pure returns (bytes32) {
+  function hashMemory(GenericCall[] memory calls) internal pure returns (bytes32 digest) {
     bytes32[] memory callsHashes = new bytes32[](calls.length);
     for (uint256 i = 0; i < calls.length; i++) {
       callsHashes[i] = hashMemory(calls[i]);
     }
 
-    return keccak256(abi.encodePacked(callsHashes));
+    assembly ('memory-safe') {
+      digest := keccak256(add(callsHashes, 0x20), shl(5, mload(callsHashes)))
+    }
   }
 
   /// @dev Calls the router, forwarding the call's share of the native sent to the hub

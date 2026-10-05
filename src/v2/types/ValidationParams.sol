@@ -48,24 +48,32 @@ library ValidationParamsLib {
     );
   }
 
-  /// @dev EIP-712 hash of the array: its member hashes, concatenated and hashed
-  function hash(ValidationParams[] calldata params) internal pure returns (bytes32) {
+  /**
+   * @dev EIP-712 hash of the array: its member hashes, concatenated and hashed. Word-sized members
+   * already sit in memory exactly as `abi.encodePacked` would lay them out, so the digest is taken
+   * over the array's own data and nothing is copied to reach it.
+   */
+  function hash(ValidationParams[] calldata params) internal pure returns (bytes32 digest) {
     bytes32[] memory paramsHashes = new bytes32[](params.length);
     for (uint256 i = 0; i < params.length; i++) {
       paramsHashes[i] = hash(params[i]);
     }
 
-    return keccak256(abi.encodePacked(paramsHashes));
+    assembly ('memory-safe') {
+      digest := keccak256(add(paramsHashes, 0x20), shl(5, mload(paramsHashes)))
+    }
   }
 
   /// @dev As {hash}, for an array already in memory
-  function hashMemory(ValidationParams[] memory params) internal pure returns (bytes32) {
+  function hashMemory(ValidationParams[] memory params) internal pure returns (bytes32 digest) {
     bytes32[] memory paramsHashes = new bytes32[](params.length);
     for (uint256 i = 0; i < params.length; i++) {
       paramsHashes[i] = hashMemory(params[i]);
     }
 
-    return keccak256(abi.encodePacked(paramsHashes));
+    assembly ('memory-safe') {
+      digest := keccak256(add(paramsHashes, 0x20), shl(5, mload(paramsHashes)))
+    }
   }
 
   /**

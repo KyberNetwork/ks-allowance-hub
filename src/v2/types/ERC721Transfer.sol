@@ -26,22 +26,32 @@ library ERC721TransferLib {
     return keccak256(abi.encode(ERC721_TRANSFER_TYPEHASH, self.token, self.tokenId, self.target));
   }
 
-  /// @dev EIP-712 hash of the array: its member hashes, concatenated and hashed
-  function hash(ERC721Transfer[] calldata transfers) internal pure returns (bytes32) {
+  /**
+   * @dev EIP-712 hash of the array: its member hashes, concatenated and hashed. Word-sized members
+   * already sit in memory exactly as `abi.encodePacked` would lay them out, so the digest is taken
+   * over the array's own data and nothing is copied to reach it.
+   */
+  function hash(ERC721Transfer[] calldata transfers) internal pure returns (bytes32 digest) {
     bytes32[] memory hashes = new bytes32[](transfers.length);
     for (uint256 i = 0; i < transfers.length; i++) {
       hashes[i] = hash(transfers[i]);
     }
-    return keccak256(abi.encodePacked(hashes));
+
+    assembly ('memory-safe') {
+      digest := keccak256(add(hashes, 0x20), shl(5, mload(hashes)))
+    }
   }
 
   /// @dev As {hash}, for an array already in memory
-  function hashMemory(ERC721Transfer[] memory transfers) internal pure returns (bytes32) {
+  function hashMemory(ERC721Transfer[] memory transfers) internal pure returns (bytes32 digest) {
     bytes32[] memory hashes = new bytes32[](transfers.length);
     for (uint256 i = 0; i < transfers.length; i++) {
       hashes[i] = hashMemory(transfers[i]);
     }
-    return keccak256(abi.encodePacked(hashes));
+
+    assembly ('memory-safe') {
+      digest := keccak256(add(hashes, 0x20), shl(5, mload(hashes)))
+    }
   }
 
   /// @dev Moves each token from `owner` to its target, so the hub never holds the NFT
