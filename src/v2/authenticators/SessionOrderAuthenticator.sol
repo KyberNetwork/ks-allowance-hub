@@ -74,8 +74,6 @@ contract SessionOrderAuthenticator is
     uint256 deadline,
     bytes calldata signature
   ) external checkDeadline(deadline) {
-    // Untrusted pointer: the hash below is what makes it safe, since only material the owner
-    // approved can produce an approved key hash
     SessionKey calldata key;
     assembly ('memory-safe') {
       key := add(data.offset, calldataload(data.offset))
