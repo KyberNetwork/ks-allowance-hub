@@ -5,6 +5,7 @@ import {IKSGenericRouter} from '../../base/interfaces/IKSGenericRouter.sol';
 
 import {NativeTransfer} from './NativeTransfer.sol';
 
+import {DynamicArrayLib} from 'solady/utils/DynamicArrayLib.sol';
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
@@ -75,7 +76,7 @@ library GenericCallLib {
     returns (NativeTransfer[] memory transfers)
   {
     uint256 index = 0;
-    transfers = new NativeTransfer[](genericCalls.length);
+    transfers = _mallocNativeTransfers(genericCalls.length);
 
     for (uint256 i = 0; i < genericCalls.length; i++) {
       GenericCall calldata call = genericCalls[i];
@@ -100,7 +101,7 @@ library GenericCallLib {
     returns (NativeTransfer[] memory transfers)
   {
     uint256 index = 0;
-    transfers = new NativeTransfer[](solverCalls.length + ownerCalls.length);
+    transfers = _mallocNativeTransfers(solverCalls.length + ownerCalls.length);
 
     for (uint256 i = 0; i < solverCalls.length; i++) {
       GenericCall calldata call = solverCalls[i];
@@ -117,6 +118,22 @@ library GenericCallLib {
 
     assembly ('memory-safe') {
       mstore(transfers, index)
+    }
+  }
+
+  /**
+   * @dev Pointer slots and nothing else: assigning a struct to a memory array element writes a
+   * pointer to a freshly built struct, so the bodies `new` allocates and zeroes are discarded
+   * unread. The callers write a pointer to every slot they then keep, truncating the rest away.
+   */
+  function _mallocNativeTransfers(uint256 length)
+    private
+    pure
+    returns (NativeTransfer[] memory array)
+  {
+    uint256[] memory buffer = DynamicArrayLib.malloc(length);
+    assembly ('memory-safe') {
+      array := buffer
     }
   }
 }
