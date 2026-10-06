@@ -3,6 +3,9 @@ pragma solidity ^0.8.0;
 
 import {IKSActionValidator} from 'ks-action-validator-sc/src/interfaces/IKSActionValidator.sol';
 
+import {DynamicArrayLibExt} from '../../base/libraries/DynamicArrayLibExt.sol';
+import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
+
 /**
  * @notice A validator to run around an order, and the inputs it needs
  * @dev In a fulfillment the solver picks the route, so these are what actually bound the outcome.
@@ -53,27 +56,23 @@ library ValidationParamsLib {
    * already sit in memory exactly as `abi.encodePacked` would lay them out, so the digest is taken
    * over the array's own data and nothing is copied to reach it.
    */
-  function hash(ValidationParams[] calldata params) internal pure returns (bytes32 digest) {
-    bytes32[] memory paramsHashes = new bytes32[](params.length);
+  function hash(ValidationParams[] calldata params) internal pure returns (bytes32) {
+    bytes32[] memory paramsHashes = EfficientHashLib.malloc(params.length);
     for (uint256 i = 0; i < params.length; i++) {
       paramsHashes[i] = hash(params[i]);
     }
 
-    assembly ('memory-safe') {
-      digest := keccak256(add(paramsHashes, 0x20), shl(5, mload(paramsHashes)))
-    }
+    return EfficientHashLib.hash(paramsHashes);
   }
 
   /// @dev As {hash}, for an array already in memory
-  function hashMemory(ValidationParams[] memory params) internal pure returns (bytes32 digest) {
-    bytes32[] memory paramsHashes = new bytes32[](params.length);
+  function hashMemory(ValidationParams[] memory params) internal pure returns (bytes32) {
+    bytes32[] memory paramsHashes = EfficientHashLib.malloc(params.length);
     for (uint256 i = 0; i < params.length; i++) {
       paramsHashes[i] = hashMemory(params[i]);
     }
 
-    assembly ('memory-safe') {
-      digest := keccak256(add(paramsHashes, 0x20), shl(5, mload(paramsHashes)))
-    }
+    return EfficientHashLib.hash(paramsHashes);
   }
 
   /**
@@ -84,7 +83,7 @@ library ValidationParamsLib {
     internal
     returns (bytes[] memory beforeExecutionOutputs)
   {
-    beforeExecutionOutputs = new bytes[](params.length);
+    beforeExecutionOutputs = DynamicArrayLibExt.malloc(params.length);
     for (uint256 i = 0; i < params.length; i++) {
       ValidationParams calldata _params = params[i];
       beforeExecutionOutputs[i] = IKSActionValidator(_params.validator)

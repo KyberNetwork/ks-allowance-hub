@@ -5,6 +5,9 @@ import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 import {TokenHelper} from 'ks-common-sc/src/libraries/token/TokenHelper.sol';
 
+import {DynamicArrayLib} from 'solady/utils/DynamicArrayLib.sol';
+import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
+
 /**
  * @notice One ERC20 leg of an order: how much of `token` leaves the owner for `target`
  * @dev `amount` is `uint160` to match Permit2's allowance width, so the same struct feeds both the
@@ -39,27 +42,23 @@ library ERC20TransferLib {
    * already sit in memory exactly as `abi.encodePacked` would lay them out, so the digest is taken
    * over the array's own data and nothing is copied to reach it.
    */
-  function hash(ERC20Transfer[] calldata transfers) internal pure returns (bytes32 digest) {
-    bytes32[] memory hashes = new bytes32[](transfers.length);
+  function hash(ERC20Transfer[] calldata transfers) internal pure returns (bytes32) {
+    bytes32[] memory hashes = EfficientHashLib.malloc(transfers.length);
     for (uint256 i = 0; i < transfers.length; i++) {
       hashes[i] = hash(transfers[i]);
     }
 
-    assembly ('memory-safe') {
-      digest := keccak256(add(hashes, 0x20), shl(5, mload(hashes)))
-    }
+    return EfficientHashLib.hash(hashes);
   }
 
   /// @dev As {hash}, for an array already in memory
-  function hashMemory(ERC20Transfer[] memory transfers) internal pure returns (bytes32 digest) {
-    bytes32[] memory hashes = new bytes32[](transfers.length);
+  function hashMemory(ERC20Transfer[] memory transfers) internal pure returns (bytes32) {
+    bytes32[] memory hashes = EfficientHashLib.malloc(transfers.length);
     for (uint256 i = 0; i < transfers.length; i++) {
       hashes[i] = hashMemory(transfers[i]);
     }
 
-    assembly ('memory-safe') {
-      digest := keccak256(add(hashes, 0x20), shl(5, mload(hashes)))
-    }
+    return EfficientHashLib.hash(hashes);
   }
 
   /// @dev Pulls each transfer from `owner` straight to its target
@@ -140,7 +139,7 @@ library ERC20TransferLib {
     pure
     returns (address[] memory targets)
   {
-    targets = new address[](transfers.length);
+    targets = DynamicArrayLib.asAddressArray(DynamicArrayLib.malloc(transfers.length));
     for (uint256 i = 0; i < transfers.length; i++) {
       targets[i] = transfers[i].target;
     }
@@ -152,7 +151,7 @@ library ERC20TransferLib {
     pure
     returns (address[] memory targets)
   {
-    targets = new address[](transfers.length);
+    targets = DynamicArrayLib.asAddressArray(DynamicArrayLib.malloc(transfers.length));
     for (uint256 i = 0; i < transfers.length; i++) {
       targets[i] = transfers[i].target;
     }

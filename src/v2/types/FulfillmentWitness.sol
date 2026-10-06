@@ -2,8 +2,11 @@
 pragma solidity ^0.8.0;
 
 import {ERC721Transfer, ERC721TransferLib} from './ERC721Transfer.sol';
+
 import {GenericCall, GenericCallLib} from './GenericCall.sol';
 import {ValidationParams, ValidationParamsLib} from './ValidationParams.sol';
+import {DynamicArrayLib} from 'solady/utils/DynamicArrayLib.sol';
+import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
  * @notice Attached to the owner's Permit2 signature on a relayed
@@ -58,7 +61,9 @@ library FulfillmentWitnessLib {
       abi.encode(
         FULFILLMENT_WITNESS_TYPEHASH,
         solver,
-        keccak256(abi.encodePacked(erc20Targets)),
+        EfficientHashLib.hash(
+          DynamicArrayLib.asBytes32Array(DynamicArrayLib.toUint256Array(erc20Targets))
+        ),
         erc721Transfers.hash(),
         ownerCalls.hash(),
         validationParams.hash(),
@@ -80,7 +85,9 @@ library FulfillmentWitnessLib {
       abi.encode(
         FULFILLMENT_WITNESS_TYPEHASH,
         solver,
-        keccak256(abi.encodePacked(erc20Targets)),
+        EfficientHashLib.hash(
+          DynamicArrayLib.asBytes32Array(DynamicArrayLib.toUint256Array(erc20Targets))
+        ),
         erc721Transfers.hashMemory(),
         ownerCalls.hashMemory(),
         validationParams.hashMemory(),

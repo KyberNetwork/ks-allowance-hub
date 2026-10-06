@@ -3,6 +3,8 @@ pragma solidity ^0.8.0;
 
 import {IERC721} from 'openzeppelin-contracts/contracts/token/ERC721/IERC721.sol';
 
+import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
+
 /// @notice One ERC721 leg of an order, moved directly from the owner to `target`
 struct ERC721Transfer {
   address token;
@@ -31,27 +33,23 @@ library ERC721TransferLib {
    * already sit in memory exactly as `abi.encodePacked` would lay them out, so the digest is taken
    * over the array's own data and nothing is copied to reach it.
    */
-  function hash(ERC721Transfer[] calldata transfers) internal pure returns (bytes32 digest) {
-    bytes32[] memory hashes = new bytes32[](transfers.length);
+  function hash(ERC721Transfer[] calldata transfers) internal pure returns (bytes32) {
+    bytes32[] memory hashes = EfficientHashLib.malloc(transfers.length);
     for (uint256 i = 0; i < transfers.length; i++) {
       hashes[i] = hash(transfers[i]);
     }
 
-    assembly ('memory-safe') {
-      digest := keccak256(add(hashes, 0x20), shl(5, mload(hashes)))
-    }
+    return EfficientHashLib.hash(hashes);
   }
 
   /// @dev As {hash}, for an array already in memory
-  function hashMemory(ERC721Transfer[] memory transfers) internal pure returns (bytes32 digest) {
-    bytes32[] memory hashes = new bytes32[](transfers.length);
+  function hashMemory(ERC721Transfer[] memory transfers) internal pure returns (bytes32) {
+    bytes32[] memory hashes = EfficientHashLib.malloc(transfers.length);
     for (uint256 i = 0; i < transfers.length; i++) {
       hashes[i] = hashMemory(transfers[i]);
     }
 
-    assembly ('memory-safe') {
-      digest := keccak256(add(hashes, 0x20), shl(5, mload(hashes)))
-    }
+    return EfficientHashLib.hash(hashes);
   }
 
   /// @dev Moves each token from `owner` to its target, so the hub never holds the NFT

@@ -17,6 +17,10 @@ import {
 } from 'openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol';
 import {LowLevelCall} from 'openzeppelin-contracts/contracts/utils/LowLevelCall.sol';
 
+import {DynamicArrayLib} from 'solady/utils/DynamicArrayLib.sol';
+
+import {DynamicArrayLibExt} from '../base/libraries/DynamicArrayLibExt.sol';
+
 /**
  * @title CallsForwarder
  * @notice Relays calls that authorise themselves — token permits and authenticator updates — so
@@ -45,7 +49,7 @@ abstract contract CallsForwarder is ICallsForwarder, NativeSpendGuard, Common {
     returns (bytes[] memory results)
   {
     bool success;
-    results = new bytes[](targets.length);
+    results = DynamicArrayLibExt.malloc(targets.length);
 
     for (uint256 i = 0; i < targets.length; i++) {
       // A payload shorter than a selector reads as zero, which matches nothing below
@@ -76,8 +80,9 @@ abstract contract CallsForwarder is ICallsForwarder, NativeSpendGuard, Common {
     returns (bytes[] memory results, uint256[] memory gasUsages)
   {
     bool success;
-    results = new bytes[](data.length);
-    gasUsages = new uint256[](data.length);
+    results = DynamicArrayLibExt.malloc(data.length);
+
+    gasUsages = DynamicArrayLib.malloc(data.length);
 
     for (uint256 i = 0; i < data.length; i++) {
       uint256 gasStart = gasleft();

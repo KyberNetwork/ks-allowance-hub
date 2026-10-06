@@ -5,6 +5,8 @@ import {IKSGenericRouter} from '../../base/interfaces/IKSGenericRouter.sol';
 
 import {NativeTransfer} from './NativeTransfer.sol';
 
+import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
+
 /**
  * @notice One router call in an order
  * @dev `value` is paid out of the native the hub was sent, and `router` must hold the whitelisted
@@ -39,27 +41,23 @@ library GenericCallLib {
    * already sit in memory exactly as `abi.encodePacked` would lay them out, so the digest is taken
    * over the array's own data and nothing is copied to reach it.
    */
-  function hash(GenericCall[] calldata calls) internal pure returns (bytes32 digest) {
-    bytes32[] memory callsHashes = new bytes32[](calls.length);
+  function hash(GenericCall[] calldata calls) internal pure returns (bytes32) {
+    bytes32[] memory callsHashes = EfficientHashLib.malloc(calls.length);
     for (uint256 i = 0; i < calls.length; i++) {
       callsHashes[i] = hash(calls[i]);
     }
 
-    assembly ('memory-safe') {
-      digest := keccak256(add(callsHashes, 0x20), shl(5, mload(callsHashes)))
-    }
+    return EfficientHashLib.hash(callsHashes);
   }
 
   /// @dev As {hash}, for an array already in memory
-  function hashMemory(GenericCall[] memory calls) internal pure returns (bytes32 digest) {
-    bytes32[] memory callsHashes = new bytes32[](calls.length);
+  function hashMemory(GenericCall[] memory calls) internal pure returns (bytes32) {
+    bytes32[] memory callsHashes = EfficientHashLib.malloc(calls.length);
     for (uint256 i = 0; i < calls.length; i++) {
       callsHashes[i] = hashMemory(calls[i]);
     }
 
-    assembly ('memory-safe') {
-      digest := keccak256(add(callsHashes, 0x20), shl(5, mload(callsHashes)))
-    }
+    return EfficientHashLib.hash(callsHashes);
   }
 
   /// @dev Calls the router, forwarding the call's share of the native sent to the hub

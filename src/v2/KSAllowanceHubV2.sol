@@ -5,6 +5,7 @@ import {IKSAllowanceHubV2} from './interfaces/IKSAllowanceHubV2.sol';
 import {IOrderAuthenticator} from './interfaces/IOrderAuthenticator.sol';
 
 import {MsgSender} from '../base/MsgSender.sol';
+import {DynamicArrayLibExt} from '../base/libraries/DynamicArrayLibExt.sol';
 
 import {AuthDelegator} from './AuthDelegator.sol';
 import {CallsForwarder} from './CallsForwarder.sol';
@@ -390,7 +391,7 @@ contract KSAllowanceHubV2 is
   {
     order.erc721Transfers.execute(owner);
 
-    results = new bytes[](order.genericCalls.length);
+    results = DynamicArrayLibExt.malloc(order.genericCalls.length);
     _executeCalls(order.genericCalls, results, 0);
   }
 
@@ -404,7 +405,7 @@ contract KSAllowanceHubV2 is
     order.erc721Transfers.execute(owner);
 
     // The validators bound what the solver did, so they run before the owner's tail acts on it
-    results = new bytes[](solution.solverCalls.length + order.ownerCalls.length);
+    results = DynamicArrayLibExt.malloc(solution.solverCalls.length + order.ownerCalls.length);
     _executeCalls(solution.solverCalls, results, 0);
     order.validationParams.afterExecution(beforeExecutionOutputs);
     _executeCalls(order.ownerCalls, results, solution.solverCalls.length);
