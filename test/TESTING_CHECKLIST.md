@@ -223,8 +223,10 @@ re-verifies it against the `src/` and build changes below, and corrects two thin
 
 The standing size item moved. `optimizer_runs` for `src/v2/KSAllowanceHubV2.sol` is now **2000**,
 not 500. At 2000 the hub was 24,628 runtime bytes — **52 over** EIP-170 — before the work in this
-run, and is now **23,954** with **622** to spare. No test is shaped around either figure, and none
-is shaped around the margin.
+run, and is now **23,954** with **622** to spare. Every size figure here is of code alone:
+`bytecode_hash` and `cbor_metadata` are off, so solc appends no metadata trailer, which is itself
+worth 54 bytes. No test is shaped around any of these figures, and none is shaped around the
+margin.
 
 | Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
 |---|---|---|---|---|---|
