@@ -331,3 +331,40 @@ implausible test count and wrote no snapshot; it was not pursued, 3000 and 4000 
 **`new T[](` no longer appears anywhere in `src/v2`.** Every allocation goes through an allocator
 that leaves memory the code is about to overwrite alone: eight `EfficientHashLib.malloc`, three
 `DynamicArrayLib.malloc`, five `DynamicArrayLibExt.malloc`, and the eight struct slots above.
+
+## Run `20261006T172638Z`
+
+Scope: no change to `src/**` or `test/**`. This run corrects the evidence recorded for the
+optimizer setting at run `20261006T134124Z` and records which instrument to use for gas in this
+repository. The hub is unchanged at **23,642** runtime bytes with **934** to spare, and the suite
+unchanged at **193**.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261006T172638Z/MEAS-01` | The optimizer setting re-measured from the hub's own per-entry gas rather than from test totals. `multicall` returns `gasUsages`, taken inside the hub as `gasStart - gasleft()` around one delegatecall, so it cannot see mock deployment, harness framing or fuzz inputs. Against that, 500 to 2000 is worth 351 gas on a cold execution order and 84 on an empty `forwardCalls`; above 2000 the hub saves 39 gas at 3000 and 54 at 4000, and 6000 is identical to 4000. **2000 holds**, now because the remaining gain is 0.03% of an order against 194 to 495 bytes, not because higher settings cost gas | `MC-07` `test_MC_07_gasIsMeasuredPerEntry` — `test/v2/Guards.t.sol` — is the standing case for the figures themselves. The measurement above used a throwaway probe batching an empty `forwardCalls` with two execution orders, read at five settings and then removed | `forge test`, `forge test --isolate` — **193 passed, 0 failed** at 500, 2000, 3000, 4000 and 6000. Sizes: 21,747 / 23,642 / 23,836 / 23,987 / 24,137 |
+
+### Notes for this run
+
+**Correction to run `20261006T134124Z`.** Its optimizer note records 3000 as costing 202,646 more
+deterministic gas with `OWN-04` 5.20% worse. Both figures are of the test harness, not the hub.
+`compilation_restrictions` pins `src/v2/KSAllowanceHubV2.sol` to the `runs-N` profile, and that
+profile reaches every file that imports the hub — which is the whole test tree and its mocks. At
+3000 `RouterMock` deploys 2,151 bytes rather than 1,900, and each in-body deployment pays the
+difference at 200 gas per byte. Tracing `ROUTER-01` at both settings shows it exactly: every
+sub-call flat, the hub call itself 77,265 against 77,259 — six gas **cheaper** at 3000 — and
+`new RouterMock` 462,839 against 515,393, which is 52,554 of the 52,588 the case moved. The
+conclusion of that note survives; its evidence does not.
+
+**`forge test --gas-report` is not comparable across builds either, unless the fuzz cases are
+excluded.** Over the whole suite it reported `executeOrderWithPermit2Signature`'s median falling
+60,755 gas between 2000 and 3000 while its min moved 0 and its max 141, which no uniform shift can
+produce: the fuzz cases contribute most of the calls and their inputs vary with the artifact. Run
+with `--no-match-test 'Fuzz|FUZZ'`, call counts identical, the four entry points move between 15 and
+45 gas.
+
+**So three instruments each have a failure mode, and only one of them does not.** A test's total gas
+carries mock deployment cost, which moves with the hub's own size. A fuzz mean is not comparable
+between builds at all. A gas report inherits the fuzz problem unless those cases are excluded. The
+figures `multicall` already returns carry none of this, and are what gas accounting was moved into
+`multicall` for. Any gas claim in an earlier run section that rests on a test total or a fuzz mean
+should be re-measured against them before it is relied on.

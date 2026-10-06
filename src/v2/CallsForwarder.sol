@@ -81,7 +81,6 @@ abstract contract CallsForwarder is ICallsForwarder, NativeSpendGuard, Common {
   {
     bool success;
     results = DynamicArrayLibExt.malloc(data.length);
-
     gasUsages = DynamicArrayLib.malloc(data.length);
 
     for (uint256 i = 0; i < data.length; i++) {
