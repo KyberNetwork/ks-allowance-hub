@@ -288,3 +288,46 @@ fourteen order-path cases while inline and none once routed through one shared h
 instance the cause was solc's inliner spending its budget differently, not the edited code: adding a
 second `malloc` call site turned it from inlined into a shared function, and every caller then paid
 a jump. Any further change here needs re-measuring as a whole.
+
+## Run `20261006T134124Z`
+
+Scope: no reshaping, no case ID changes. Two more allocation changes in `src/v2/types/**` and a
+third measurement of the optimizer setting. `src/v1/**` and `test/v1/**` remain frozen.
+
+The hub is **23,642** runtime bytes with **934** to spare, from 23,954 at the previous run. Code
+alone, as before: no metadata trailer.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261006T134124Z/ALLOC-02` | The eight struct-array allocations drop `new` as well. A memory array of structs holds a pointer per element, and assigning a struct to an element builds a fresh struct and writes its pointer, so the bodies `new T[](n)` allocates and zeroes are discarded unread — the waste is per element, not merely the slot. Four private allocators hand back pointer slots: three in `ERC20TransferLib` for Permit2's shapes, one in `GenericCallLib` for `NativeTransfer`. They sit with their types rather than in `src/base/libraries/`, which must not import a Permit2 interface or a `src/v2` type | no case ID changes. `toPermitBatchTransferFrom` and `toSignatureTransferDetails` run on every Permit2 rail and `toAllowanceTransferDetails` on the delegated rail, so the whole suite is the check, against the **real Permit2** on the fork rather than a mock | `forge test`, `forge test --isolate` — **193 passed, 0 failed**; EIP-712 suite **28 passed**. 260 bytes freed and 57,252 gas off 63 of the 161 deterministic cases, none regressed. The premise was read off the optimised IR first: the element assignment compiles to `mstore(index_access(...), freshBody)`, a pointer write, not a copy into the pre-allocated body |
+| - [x] | - [ ] | `20261006T134124Z/CD-01` | Three loops over a `calldata` array bound each element to a `memory` local, which copies the struct out of calldata per element to read two of its fields. They bind `calldata` now, as every other loop in `src/v2/types/**` already did | no case ID changes — `toPermitBatchTransferFrom`, `toSignatureTransferDetails` and `toAllowanceTransferDetails` in `src/v2/types/ERC20Transfer.sol`. The `*Memory` twins are untouched: their source is already memory, so the binding copies a pointer and not a struct | `forge test`, `forge test --isolate` — **193 passed, 0 failed**. 52 bytes freed and 15,741 gas net: the Permit2 rails drop 1,200 to 1,820 each, against 19 cases on the delegated and native paths costing 34 to 51 more |
+
+### Notes for this run
+
+**Why the struct arrays were passed over at the previous run, and why that was wrong.** They were
+recorded as needing a custom allocator to wire `n` struct pointers. No wiring is needed: the
+assignment writes its own pointer, so an allocator that returns bare slots is sufficient and the
+pre-allocated bodies were never read. That made these the most wasteful of the allocations rather
+than the hardest, and they were the largest single win of either run.
+
+**The memory layout rule this turns on,** since it is not what the ABI encoding suggests. In memory
+an element is stored inline only when it is a value type that fits a word: `uint256[]`, `bytes32[]`
+and `address[]` are flattened, which is what lets `OBS-01` hash the data region in place and
+`asAddressArray` cast for free. A struct is a reference type there and stored by pointer **even when
+every field is static and its size is known at compile time**. Calldata and storage flatten such a
+struct; memory does not. A probe confirmed it: for `uint256[]` and `bytes32[]` the slot holds the
+value, while for a two-word static struct the slot holds a memory offset and the value is one hop
+away. One consequence worth keeping: ABI-encoded bytes cannot be reinterpreted as a `T[] memory` of
+structs, which is why `abi.decode` must walk the encoding, and why staying in `calldata` — `CD-01` —
+costs nothing.
+
+**The optimizer setting was measured a third time and still holds at 2000.** With 934 bytes spare
+size is no longer the constraint, so this is a gas choice. At 3000 the deterministic cases cost
+202,646 more gas and `OWN-04` 5.20% more, at 4000 500,357 and 5.17%, while the order paths move
+between −0.05% and −0.01%. Three sweeps across three quite different states of `src/` have now
+agreed, so 2000 reads as an optimum rather than an artifact of one of them. A 6000 leg reported an
+implausible test count and wrote no snapshot; it was not pursued, 3000 and 4000 being decisive.
+
+**`new T[](` no longer appears anywhere in `src/v2`.** Every allocation goes through an allocator
+that leaves memory the code is about to overwrite alone: eight `EfficientHashLib.malloc`, three
+`DynamicArrayLib.malloc`, five `DynamicArrayLibExt.malloc`, and the eight struct slots above.
