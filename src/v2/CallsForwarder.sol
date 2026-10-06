@@ -15,7 +15,6 @@ import {IERC721Permit_v4} from 'ks-common-sc/src/interfaces/IERC721Permit_v4.sol
 import {
   IERC20Permit
 } from 'openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol';
-import {Address} from 'openzeppelin-contracts/contracts/utils/Address.sol';
 import {LowLevelCall} from 'openzeppelin-contracts/contracts/utils/LowLevelCall.sol';
 
 /**
@@ -76,12 +75,18 @@ abstract contract CallsForwarder is ICallsForwarder, NativeSpendGuard, Common {
     guardNativeSpend
     returns (bytes[] memory results, uint256[] memory gasUsages)
   {
+    bool success;
     results = new bytes[](data.length);
     gasUsages = new uint256[](data.length);
 
     for (uint256 i = 0; i < data.length; i++) {
       uint256 gasStart = gasleft();
-      results[i] = Address.functionDelegateCall(address(this), data[i]);
+
+      (success, results[i]) = address(this).delegatecall(data[i]);
+      if (!success) {
+        LowLevelCall.bubbleRevert(results[i]);
+      }
+
       unchecked {
         gasUsages[i] = gasStart - gasleft();
       }

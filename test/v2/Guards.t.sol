@@ -34,7 +34,6 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 import {
   IERC20Permit
 } from 'openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol';
-import {Errors} from 'openzeppelin-contracts/contracts/utils/Errors.sol';
 import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
 
 /**
@@ -738,8 +737,10 @@ contract GuardsTest is AuthenticatorBase {
     vm.deal(owner, value);
 
     if (value > 0 && !allPayable) {
+      // The non-payable guard reverts with no data and `multicall` bubbles what it was handed, so
+      // the batch surfaces an empty revert. `bytes('')` matches that and nothing carrying data
       vm.prank(owner);
-      vm.expectRevert(Errors.FailedCall.selector);
+      vm.expectRevert(bytes(''));
       hub.multicall{value: value}(batch);
 
       assertEq(hub.nonces(owner, 0), 0, 'the whole batch rolled back');
