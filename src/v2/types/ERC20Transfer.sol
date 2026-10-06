@@ -80,7 +80,7 @@ library ERC20TransferLib {
     permit.deadline = deadline;
 
     for (uint256 i = 0; i < transfers.length; i++) {
-      ERC20Transfer memory transfer = transfers[i];
+      ERC20Transfer calldata transfer = transfers[i];
       permit.permitted[i] =
         ISignatureTransfer.TokenPermissions({token: transfer.token, amount: transfer.amount});
     }
@@ -111,7 +111,7 @@ library ERC20TransferLib {
   {
     details = _mallocSignatureTransferDetails(transfers.length);
     for (uint256 i = 0; i < transfers.length; i++) {
-      ERC20Transfer memory transfer = transfers[i];
+      ERC20Transfer calldata transfer = transfers[i];
       details[i] = ISignatureTransfer.SignatureTransferDetails({
         to: transfer.target, requestedAmount: transfer.amount
       });
@@ -165,7 +165,7 @@ library ERC20TransferLib {
   {
     details = _mallocAllowanceTransferDetails(transfers.length);
     for (uint256 i = 0; i < transfers.length; i++) {
-      ERC20Transfer memory transfer = transfers[i];
+      ERC20Transfer calldata transfer = transfers[i];
       details[i] = IAllowanceTransfer.AllowanceTransferDetails({
         from: owner, to: transfer.target, token: transfer.token, amount: transfer.amount
       });
