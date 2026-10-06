@@ -214,3 +214,75 @@ helpers in `src/v2/types/ERC20Transfer.sol` and `hash(AuthDelegation memory)` in
   `src/interfaces/ICREATE3Factory.sol` via `lib/ks-common-sc/script/Base.s.sol` does not reproduce
   once the script path is excluded. Closure for the rows above rests on the non-vacuity checks and
   the mutation pass, with the coverage report as corroboration.
+
+## Run `20261006T083553Z`
+
+Scope: no reshaping. Every case ID carries over and the suite's shape is unchanged; this run
+re-verifies it against the `src/` and build changes below, and corrects two things recorded at run
+`20261002T032856Z`. `src/v1/**` and `test/v1/**` remain frozen.
+
+The standing size item moved. `optimizer_runs` for `src/v2/KSAllowanceHubV2.sol` is now **2000**,
+not 500. At 2000 the hub was 24,628 runtime bytes — **52 over** EIP-170 — before the work in this
+run, and is now **23,954** with **622** to spare. No test is shaped around either figure, and none
+is shaped around the margin.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261006T083553Z/REG-01` | `multicall` is back on `address(this).delegatecall` with `LowLevelCall.bubbleRevert`, reversing the `Address.functionDelegateCall` note below. A sub-call's revert data still bubbles byte for byte; the one divergence is that a **data-less** revert bubbles empty rather than becoming `Errors.FailedCall()`, so `MC-FUZZ`'s expectation returns to `bytes('')` | `MC-03` `test_MC_03_subCallRevertBubbles`, `MC-FUZZ` `testFuzz_MC_FUZZ_valueNeedsAnAllPayableBatch` — `test/v2/Guards.t.sol`. The only baseline assertion this run touches | `forge test`, `forge test --isolate` — **193 passed, 0 failed**. Non-vacuity: `bytes('')` is strict rather than a wildcard — a throwaway probe confirmed it accepts an empty revert and rejects one carrying data (`WithData(1) != EvmError: Revert`), so the case still separates the two shapes |
+| - [x] | - [ ] | `20261006T083553Z/OBS-01` | Twelve array digests are taken over the array's own data through Solady's `EfficientHashLib` instead of `keccak256(abi.encodePacked(...))`: the eight member-hash arrays and the four `address[] erc20Targets` in the witness libraries. `abi.encodePacked` pads array members to a word, so a word-sized member array already holds exactly those bytes — but the oracle, not that reasoning, is what establishes the digests are unchanged | `T712-DIFF` `testFuzz_T712_DIFF_*` (six properties), `T712-ARRAY` `test_T712_ARRAY_addressArrayEncoding` — `test/v2/types/Eip712.t.sol` | `forge test` — **28 passed** in the EIP-712 suite, 193 overall. Non-vacuity: the `T712-DIFF` properties compare production hashing against the hand-written literal encoding, so any digest change fails them; they were run against every variant below, accepted and rejected alike |
+| - [x] | - [ ] | `20261006T083553Z/ALLOC-01` | Sixteen allocations no longer pay for zeroing they never used: eight via `EfficientHashLib.malloc`, three via `DynamicArrayLib.malloc` (`extractTargets` and `gasUsages`), and five `bytes[]` via `DynamicArrayLibExt.malloc`, a one-function library in `src/base/libraries/` holding the only hand-written assembly added here, since Solady has no `bytes[]` cast. The safety property is that **every slot is written before anything reads one**, checked per site: notably `forwardCalls` reverts on an unsupported selector rather than skipping, and `_executeCalls` covers both ranges of the fulfillment results array | no case ID changes — the whole suite is the check, since a slot left unwritten would surface as a corrupt digest, result or snapshot | `forge test`, `forge test --isolate` — **193 passed, 0 failed**. The eight remaining `new T[]` sites are struct arrays, left alone: `new T[](n)` also allocates and wires `n` struct pointers, so skipping that needs a custom allocator rather than a library call |
+| - [x] | - [ ] | `20261006T083553Z/BUILD-01` | Behaviour-preserving `src/` changes re-verified with no test edits: the shared modifier bodies (`checkDeadline`, `checkDelegation`, `lock`'s acquire half) moved into internal functions, and `TransferTokens` moved to a single emit site ahead of an order's transfers. CI runs build, lint and test as three GitHub-hosted jobs on `foundry-toolchain` pinned to `v1.8.1` | no case ID changes | `forge test`, `forge test --isolate` — **193 passed**; `forge fmt --check` clean. CI green on the same tree at **forge 1.8.1**, 193 passed, which also clears the earlier red run: that was the unpinned toolchain drifting to 1.8.4 and failing the test build with `Variable _2 is 3 too deep in the stack`, not anything in `src/` |
+
+### Notes for this run
+
+**How gas was measured, and a warning about how it was measured before.** Only the 161
+deterministic cases are read for gas here. Fuzz means are not comparable across builds: a control
+that added an unused import — byte-identical contract, no semantic change — still moved 18 cases,
+14 of them fuzz, by up to 1,813 gas, because the fuzzer's inputs vary with the compiled artifact and
+different inputs mean different array lengths. Any gas figure in an earlier run section that rests
+on a `*_FUZZ_*` mean should be re-measured before it is trusted.
+
+**Correction to run `20261002T032856Z`, first item.** That run recorded
+`Address.functionDelegateCall` as adopted at the owner's direction, on the grounds that a data-less
+revert surfacing as `Errors.FailedCall()` is the clearer of the two errors, and recorded
+`MC-FUZZ`'s expectation moving from `bytes('')` to that selector. The owner has reversed both. The
+note stays in place because this file is append-only; `REG-01` above is the live statement.
+
+**Correction to run `20261002T032856Z`, second item.** Fourteen `hashMemory` overloads and the four
+`*Memory` converters were listed as dead code whose deletion would not shrink the hub. That remains
+true, and they are now load-bearing for a second reason: the `T712-DIFF` properties that police
+`OBS-01` and `ALLOC-01` hash through them.
+
+**A behaviour change with no case pinning it.** `TransferTokens` now fires before any of an order's
+transfers rather than after both legs, so a log consumer can attribute the `Transfer` events that
+follow to an `orderHash` without buffering them, which `multicall` batching is what makes worth
+having. Nothing in the suite reads the event's *position* in the log stream: the existing assertions
+check its payload and that it is emitted once per order, and both hold at either position. Pinning
+the order would be new coverage, not a carried baseline, and is not claimed here.
+
+**One regression, named rather than rounded away.** `test_AUTH_03_witnessPinsTheCallList` costs 13
+more gas than before this run. It is the residue of `malloc` being shared rather than inlined once
+it gained call sites; every other deterministic case is unchanged or cheaper.
+
+**Measured and rejected.** Each was verified against the `T712-DIFF` oracle first, so correctness
+was never the reason:
+
+- `optimizer_runs` above 2000. At 3000 the hub grows 194 bytes and
+  `test_OWN_04_ownerCallRouterMustBeWhitelisted` costs **5.19%** more; 4000 and 6000 are worse
+  again. The order paths move by −0.05% to −0.01%, so there is nothing to buy.
+- `EfficientHashLib.free` on the hash arrays. Costs 100 bytes and returns ~34,600 gas of what
+  `malloc` won: its guard only resets the free pointer when the buffer is still the top allocation,
+  and the inner leaf hashes allocate above it during the loop, so it correctly declines to free
+  while the guard is paid for on every call.
+- Hand-writing the per-struct leaf hashes in place of `abi.encode`. Costs every rail between 1.4%
+  and 3%, since an assembly block stops those small functions being inlined at call sites that run
+  once per array member. The win in `OBS-01` is that an array hash runs once per array.
+- `unchecked` on the 26 loop counters. Changes **nothing**: with metadata stripped the executable
+  code is byte-identical, because `via_ir` already proves `i + 1` cannot overflow from `i < length`.
+
+**These changes do not compose, so combinations were measured rather than summed.** `extractTargets`
+and `gasUsages` each save bytes alone and cost 86 together; the five `bytes[]` sites regressed
+fourteen order-path cases while inline and none once routed through one shared helper. In every
+instance the cause was solc's inliner spending its budget differently, not the edited code: adding a
+second `malloc` call site turned it from inlined into a shared function, and every caller then paid
+a jump. Any further change here needs re-measuring as a whole.

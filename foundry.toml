@@ -6,6 +6,8 @@ verbosity = 3
 via_ir = true
 dynamic_test_linking = true
 ffi = true
+bytecode_hash = "none"
+cbor_metadata = false
 
 additional_compiler_profiles = [
   { name = "runs-2000", via_ir = true, optimizer_runs = 2000 }
