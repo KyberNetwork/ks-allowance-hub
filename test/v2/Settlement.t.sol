@@ -22,6 +22,7 @@ import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
 import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
+import {IKSGenericRouter} from 'src/base/interfaces/IKSGenericRouter.sol';
 
 /**
  * @notice `SET-01..04`, `OWN-07`, `ROUTER-01..03` and `LOCK-01..04` — the settlement tail shared by
@@ -36,8 +37,6 @@ contract SettlementTest is HubBase {
   bytes32 internal constant ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
 
   /// @dev Transcribed from {IKSGenericRouter}, so a wrong production selector cannot agree with it
-  string internal constant S_KS_EXECUTE = 'ksExecute(bytes)';
-
   // -----------------------------------------------------------------------------------------
   // SET — the settlement event and the results array
   // -----------------------------------------------------------------------------------------
@@ -272,8 +271,8 @@ contract SettlementTest is HubBase {
     calls[0] = GenericCall({router: address(router), value: 0, data: dataA});
     calls[1] = GenericCall({router: address(router2), value: 0, data: dataB});
 
-    vm.expectCall(address(router), 0, abi.encodeWithSignature(S_KS_EXECUTE, dataA), 1);
-    vm.expectCall(address(router2), 0, abi.encodeWithSignature(S_KS_EXECUTE, dataB), 1);
+    vm.expectCall(address(router), 0, abi.encodeCall(IKSGenericRouter.ksExecute, (dataA)), 1);
+    vm.expectCall(address(router2), 0, abi.encodeCall(IKSGenericRouter.ksExecute, (dataB)), 1);
 
     vm.prank(owner);
     hub.executeOrderWithDelegatedAuthentication(

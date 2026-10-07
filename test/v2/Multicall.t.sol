@@ -43,10 +43,6 @@ contract MulticallTest is AuthenticatorBase {
   uint256 internal constant PREFUND = 1 ether;
   uint256 internal constant VALUE = 1 ether;
 
-  /// @dev Transcribed from {IOrderAuthenticator}: the allowlist entry MC-06 relays
-  string internal constant S_UPDATE_AUTHENTICATION =
-    'updateAuthentication(address,bytes,uint256,uint256,bytes)';
-
   /// @dev EIP-2612, transcribed rather than imported from any token or helper
   bytes32 internal constant L_PERMIT_TYPEHASH =
     keccak256('Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)');
@@ -263,8 +259,9 @@ contract MulticallTest is AuthenticatorBase {
     targets[0] = address(authenticator);
 
     bytes[] memory relayed = new bytes[](1);
-    relayed[0] = abi.encodeWithSignature(
-      S_UPDATE_AUTHENTICATION, owner, _approveKey(key), approvalNonce, deadline, approvalSig
+    relayed[0] = abi.encodeCall(
+      IOrderAuthenticator.updateAuthentication,
+      (owner, _approveKey(key), approvalNonce, deadline, approvalSig)
     );
 
     bytes[] memory batch = new bytes[](2);

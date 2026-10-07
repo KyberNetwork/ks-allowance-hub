@@ -65,7 +65,8 @@ contract ForwarderTest is AuthenticatorBase {
     'PermitSingle(PermitDetails details,address spender,uint256 sigDeadline)';
 
   // -----------------------------------------------------------------------------------------------
-  // Literal function signatures, transcribed from the same sources
+  // Literal `permit` signatures. These six share one name across six interfaces, so a selector
+  // has to be named by its argument list rather than taken from a function
   // -----------------------------------------------------------------------------------------------
 
   string internal constant S_EIP2612_PERMIT =
@@ -79,20 +80,6 @@ contract ForwarderTest is AuthenticatorBase {
     'permit(address,((address,uint160,uint48,uint48)[],address,uint256),bytes)';
   string internal constant S_PERMIT2_SINGLE_PERMIT =
     'permit(address,((address,uint160,uint48,uint48),address,uint256),bytes)';
-
-  /// @dev The seventh entry on the allowlist, transcribed from {IOrderAuthenticator}
-  string internal constant S_UPDATE_AUTHENTICATION =
-    'updateAuthentication(address,bytes,uint256,uint256,bytes)';
-
-  /// @dev Its three neighbours on the same interface, which the allowlist must NOT carry
-  string internal constant S_INIT_AUTHENTICATION = 'initAuthentication(address,bytes)';
-  string internal constant S_AUTHENTICATE_EXECUTION =
-    'authenticateExecution((address,address,(address,address,uint160)[],(address,uint256,address)[],(address,uint256,bytes)[],uint256,uint256),bytes)';
-  string internal constant S_AUTHENTICATE_FULFILLMENT =
-    'authenticateFulfillment((address,address,(address,address,uint160)[],(address,uint256,address)[],(address,bytes32,bytes,bytes)[],(address,uint256,bytes)[],address,uint256,uint256),bytes)';
-
-  /// @dev Anything outside the allowlist; the forwarder must refuse it by name
-  string internal constant S_ERC20_TRANSFER = 'transfer(address,uint256)';
 
   /// @dev The canonical DAI, which is the reference implementation of the seven-word permit
   address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
@@ -246,12 +233,12 @@ contract ForwarderTest is AuthenticatorBase {
    */
   function test_PF_06_unsupportedSelectorRefused() public {
     bytes[] memory data = new bytes[](1);
-    data[0] = abi.encodeWithSignature(S_ERC20_TRANSFER, relayer, uint256(1));
+    data[0] = abi.encodeCall(IERC20.transfer, (relayer, 1));
 
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ICallsForwarder.NotSupportedSelector.selector, bytes4(keccak256(bytes(S_ERC20_TRANSFER)))
+        ICallsForwarder.NotSupportedSelector.selector, IERC20.transfer.selector
       )
     );
     hub.forwardCalls(_one(address(permitToken)), data, _bits(0));
@@ -260,7 +247,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ICallsForwarder.NotSupportedSelector.selector, bytes4(keccak256(bytes(S_ERC20_TRANSFER)))
+        ICallsForwarder.NotSupportedSelector.selector, IERC20.transfer.selector
       )
     );
     hub.forwardCalls(_one(address(permitToken)), data, _bits(type(uint256).max));
@@ -287,12 +274,12 @@ contract ForwarderTest is AuthenticatorBase {
 
     bytes[] memory data = new bytes[](2);
     data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
-    data[1] = abi.encodeWithSignature(S_ERC20_TRANSFER, relayer, uint256(1));
+    data[1] = abi.encodeCall(IERC20.transfer, (relayer, 1));
 
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ICallsForwarder.NotSupportedSelector.selector, bytes4(keccak256(bytes(S_ERC20_TRANSFER)))
+        ICallsForwarder.NotSupportedSelector.selector, IERC20.transfer.selector
       )
     );
     hub.forwardCalls(targets, data, _bits(0));
@@ -454,8 +441,9 @@ contract ForwarderTest is AuthenticatorBase {
     bytes memory approvalSig = _signSessionApproval(fresh, true, nonce, deadline);
 
     bytes[] memory data = new bytes[](1);
-    data[0] = abi.encodeWithSignature(
-      S_UPDATE_AUTHENTICATION, owner, _approveKey(fresh), nonce, deadline, approvalSig
+    data[0] = abi.encodeCall(
+      IOrderAuthenticator.updateAuthentication,
+      (owner, _approveKey(fresh), nonce, deadline, approvalSig)
     );
 
     vm.prank(relayer);
@@ -491,8 +479,9 @@ contract ForwarderTest is AuthenticatorBase {
     bytes memory noSignature = '';
 
     bytes[] memory data = new bytes[](1);
-    data[0] = abi.encodeWithSignature(
-      S_UPDATE_AUTHENTICATION, owner, _approveKey(fresh), nonce, deadline, noSignature
+    data[0] = abi.encodeCall(
+      IOrderAuthenticator.updateAuthentication,
+      (owner, _approveKey(fresh), nonce, deadline, noSignature)
     );
     address[] memory targets = _one(address(authenticator));
 
@@ -530,8 +519,9 @@ contract ForwarderTest is AuthenticatorBase {
     bytes memory approvalSig = _signSessionApproval(fresh, true, nonce, deadline);
 
     bytes[] memory data = new bytes[](1);
-    data[0] = abi.encodeWithSignature(
-      S_UPDATE_AUTHENTICATION, owner, _approveKey(fresh), nonce, deadline, approvalSig
+    data[0] = abi.encodeCall(
+      IOrderAuthenticator.updateAuthentication,
+      (owner, _approveKey(fresh), nonce, deadline, approvalSig)
     );
 
     vm.prank(relayer);
@@ -560,7 +550,7 @@ contract ForwarderTest is AuthenticatorBase {
     address[] memory targets = _one(address(authenticator));
 
     bytes[] memory initData = new bytes[](1);
-    initData[0] = abi.encodeWithSignature(S_INIT_AUTHENTICATION, owner, payload);
+    initData[0] = abi.encodeCall(IOrderAuthenticator.initAuthentication, (owner, payload));
 
     ExecutionOrder memory execOrder =
       _openExecutionOrder(new ERC20Transfer[](0), new GenericCall[](0), 0, block.timestamp);
@@ -569,20 +559,16 @@ contract ForwarderTest is AuthenticatorBase {
     );
 
     bytes[] memory executionData = new bytes[](1);
-    executionData[0] = abi.encodeWithSelector(
-      bytes4(keccak256(bytes(S_AUTHENTICATE_EXECUTION))), execOrder, payload
-    );
+    executionData[0] =
+      abi.encodeCall(IOrderAuthenticator.authenticateExecution, (execOrder, payload));
 
     bytes[] memory fulfillmentData = new bytes[](1);
-    fulfillmentData[0] = abi.encodeWithSelector(
-      bytes4(keccak256(bytes(S_AUTHENTICATE_FULFILLMENT))), fulfillOrder, payload
-    );
+    fulfillmentData[0] =
+      abi.encodeCall(IOrderAuthenticator.authenticateFulfillment, (fulfillOrder, payload));
 
-    // First, that the three strings above really do name those entry points. Both the calldata and
-    // the expected selectors below are derived from them, so a mistyped signature would agree with
-    // itself and the refusals would prove nothing. Sent straight at the authenticator they reach its
-    // hub-only gate and come back with its error — which a selector matching no function could not
-    // do, since the authenticator has no fallback and would revert with nothing at all.
+    // Sent straight at the authenticator, each of the three reaches its hub-only gate and comes
+    // back with that error, so the refusals below are the forwarder's own and not the authenticator
+    // declining a caller it would have declined anyway.
     _assertReachesTheHubOnlyGate(initData[0], 'initAuthentication');
     _assertReachesTheHubOnlyGate(executionData[0], 'authenticateExecution');
     _assertReachesTheHubOnlyGate(fulfillmentData[0], 'authenticateFulfillment');
@@ -591,7 +577,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.expectRevert(
       abi.encodeWithSelector(
         ICallsForwarder.NotSupportedSelector.selector,
-        bytes4(keccak256(bytes(S_INIT_AUTHENTICATION)))
+        IOrderAuthenticator.initAuthentication.selector
       )
     );
     hub.forwardCalls(targets, initData, _bits(0));
@@ -604,7 +590,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.expectRevert(
       abi.encodeWithSelector(
         ICallsForwarder.NotSupportedSelector.selector,
-        bytes4(keccak256(bytes(S_INIT_AUTHENTICATION)))
+        IOrderAuthenticator.initAuthentication.selector
       )
     );
     hub.forwardCalls(targets, initData, _bits(type(uint256).max));
@@ -614,7 +600,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.expectRevert(
       abi.encodeWithSelector(
         ICallsForwarder.NotSupportedSelector.selector,
-        bytes4(keccak256(bytes(S_AUTHENTICATE_EXECUTION)))
+        IOrderAuthenticator.authenticateExecution.selector
       )
     );
     hub.forwardCalls(targets, executionData, _bits(0));
@@ -623,7 +609,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.expectRevert(
       abi.encodeWithSelector(
         ICallsForwarder.NotSupportedSelector.selector,
-        bytes4(keccak256(bytes(S_AUTHENTICATE_FULFILLMENT)))
+        IOrderAuthenticator.authenticateFulfillment.selector
       )
     );
     hub.forwardCalls(targets, fulfillmentData, _bits(0));
@@ -635,8 +621,9 @@ contract ForwarderTest is AuthenticatorBase {
     bytes memory approvalSig = _signSessionApproval(victimKey, true, nonce, deadline);
 
     bytes[] memory updateData = new bytes[](1);
-    updateData[0] = abi.encodeWithSignature(
-      S_UPDATE_AUTHENTICATION, owner, _approveKey(victimKey), nonce, deadline, approvalSig
+    updateData[0] = abi.encodeCall(
+      IOrderAuthenticator.updateAuthentication,
+      (owner, _approveKey(victimKey), nonce, deadline, approvalSig)
     );
 
     vm.prank(relayer);

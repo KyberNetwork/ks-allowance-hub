@@ -17,6 +17,7 @@ import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
 
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
+import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
 
 /**
  * @notice `AUTH-01..13`, `ORD-01..02` and the two execute-rail fuzz properties — every
@@ -39,9 +40,6 @@ contract ExecuteOrderTest is AuthenticatorBase {
    * @dev Transcribed from {IOrderAuthenticator}, with {ExecutionOrder} expanded to its tuple. A
    * selector taken from the production interface would agree with a wrong signature there.
    */
-  string internal constant S_AUTHENTICATE_EXECUTION =
-    'authenticateExecution((address,address,(address,address,uint160)[],(address,uint256,address)[],(address,uint256,bytes)[],uint256,uint256),bytes)';
-
   SessionKey internal key;
 
   function setUp() public override {
@@ -342,7 +340,8 @@ contract ExecuteOrderTest is AuthenticatorBase {
       _executionOrder(ANY, erc20s, new ERC721Transfer[](0), calls, 43, deadline);
     bytes memory authData = _executionAuthData(order, key, sessionKeyPk);
 
-    bytes memory expectedCall = abi.encodeWithSignature(S_AUTHENTICATE_EXECUTION, order, authData);
+    bytes memory expectedCall =
+      abi.encodeCall(IOrderAuthenticator.authenticateExecution, (order, authData));
 
     uint256 before = IERC20(WETH).balanceOf(address(router));
 

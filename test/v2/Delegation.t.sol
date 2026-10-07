@@ -55,9 +55,6 @@ contract DelegationTest is AuthenticatorBase {
     uint256 deadlineOffset;
   }
 
-  /// @dev Transcribed from {IOrderAuthenticator}, so production cannot vouch for its own signature
-  string internal constant S_INIT_AUTHENTICATION = 'initAuthentication(address,bytes)';
-
   SessionKey internal key;
 
   function setUp() public override {
@@ -332,7 +329,8 @@ contract DelegationTest is AuthenticatorBase {
     bad.setReverting(true);
 
     bytes memory empty = '';
-    bytes memory expectedCall = abi.encodeWithSignature(S_INIT_AUTHENTICATION, owner, empty);
+    bytes memory expectedCall =
+      abi.encodeCall(IOrderAuthenticator.initAuthentication, (owner, empty));
 
     vm.expectCall(address(bad), expectedCall, 0);
 
@@ -358,7 +356,8 @@ contract DelegationTest is AuthenticatorBase {
     uint256 deadline = block.timestamp + 1 days;
 
     bytes memory payload = hex'00';
-    bytes memory expectedCall = abi.encodeWithSignature(S_INIT_AUTHENTICATION, owner, payload);
+    bytes memory expectedCall =
+      abi.encodeCall(IOrderAuthenticator.initAuthentication, (owner, payload));
 
     // twice: once below while the authenticator still answers, and once on the refused attempt at
     // the end, which reaches it just as far before being turned away
@@ -396,7 +395,8 @@ contract DelegationTest is AuthenticatorBase {
     bad.setReverting(true);
 
     bytes memory payload = hex'00';
-    bytes memory expectedCall = abi.encodeWithSignature(S_INIT_AUTHENTICATION, owner, payload);
+    bytes memory expectedCall =
+      abi.encodeCall(IOrderAuthenticator.initAuthentication, (owner, payload));
 
     vm.expectCall(address(bad), expectedCall, 0);
 

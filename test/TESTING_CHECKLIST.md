@@ -672,3 +672,28 @@ by subject. Neither is the accident that `NONCE` and `MC` were.
 for the reason those runs record: `FulfillOrderTest` produces a solc internal compiler error under
 `via_ir` when another case joins it.
 
+## Run `20261007T183512Z`
+
+Scope: test files only, no case added or removed. Five hand-written function signatures give way to
+`abi.encodeCall` and `.selector` on the interfaces that declare them.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261007T183512Z/ABI-01` | `initAuthentication`, `updateAuthentication`, `authenticateExecution`, `authenticateFulfillment`, `ksExecute` and `transfer` are named through their interfaces instead of transcribed signature strings. The six `permit` signatures stay literal | no case ID changes; `DEL-13..15`, `MC-06`, `AUTH-11`, `FWD-*`, `SET-*` | `forge test` |
+
+### Notes for this run
+
+**A transcribed signature only earns its keep when the name is ambiguous.** The six `permit`
+constants share one name across six interfaces, so a selector there has to be named by its argument
+list. Every other entry point in the suite has a unique name, and `abi.encodeCall(IFace.fn, (...))`
+is checked by the compiler against the declaration. The two `authenticate*` strings carried the
+whole order tuple and had to be hand-edited when the order gained a member, which is the failure the
+transcription invited.
+
+**This does not make the refusals circular.** `FWD-16` asserts that `forwardCalls` refuses these
+selectors, so a selector the hub wrongly allowlisted would not revert and the case would fail,
+wherever the expected value came from. What the transcription used to guard — that the string names
+a function that exists — the compiler now guarantees, which is why the three
+`_assertReachesTheHubOnlyGate` legs no longer carry that argument and state only what they still
+hold: the refusal is the forwarder's own.
+
