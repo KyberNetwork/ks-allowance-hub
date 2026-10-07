@@ -32,3 +32,8 @@ jobs:
       - name: Run Forge Lint
         id: lint
         run: forge fmt --check
+
+      - name: Check the EIP-712 bindings are current
+        run: |
+          forge bind-json
+          git diff --exit-code utils/JsonBindings.sol
