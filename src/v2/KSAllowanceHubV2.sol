@@ -121,8 +121,7 @@ contract KSAllowanceHubV2 is
     checkDelegation(owner, authenticator)
     returns (bytes[] memory results)
   {
-    // Being the caller is the owner's own authentication; anyone else must present a credential,
-    // and must be who the order named, exactly as on the Permit2 rail
+    // Being the caller is the owner's own authentication; anyone else must present a credential
     if (msg.sender != owner) {
       if (msg.sender != order.relayer && order.relayer != DEAD_ADDRESS) {
         revert UnauthorizedRelayer(msg.sender, order.relayer);
@@ -214,8 +213,7 @@ contract KSAllowanceHubV2 is
     checkDelegation(owner, authenticator)
     returns (bytes[] memory results)
   {
-    // Being the caller is the owner's own authentication; anyone else must present a credential,
-    // and must be who the order named, exactly as on the Permit2 rail
+    // Being the caller is the owner's own authentication; anyone else must present a credential
     if (msg.sender != owner) {
       if (msg.sender != order.solver && order.solver != DEAD_ADDRESS) {
         revert UnauthorizedSolver(msg.sender, order.solver);
