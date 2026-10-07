@@ -284,7 +284,9 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the approved order settled');
     assertEq(results.length, 2, 'route and tail both ran');
-    assertEq(hub.nonces(owner, 0), 1 << 7, 'and the approval burned exactly the route nonce');
+    assertEq(
+      hub.nonces(lNonceKey(approver), 0), 1 << 7, 'and the approval burned exactly the route nonce'
+    );
 
     FulfillmentOrder memory withTailB = _orderWithTail(_calls(_routerCall(0, hex'bb')), deadline);
     assertTrue(lFulfillmentOrderHash(withTailB) != hashA, 'the two orders really do differ');
@@ -397,7 +399,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     hub.fulfillOrderWithDelegatedAuthentication(
       owner, named, address(0), '', route, approval, false
     );
-    assertEq(hub.nonces(owner, 0), 1 << 80, 'the hub burned exactly the route nonce');
+    assertEq(hub.nonces(lNonceKey(approver), 0), 1 << 80, 'the hub burned exactly the route nonce');
 
     vm.prank(owner);
     vm.expectRevert(IUnorderedNonce.NonceAlreadyUsed.selector);
@@ -420,7 +422,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     assertEq(
       IERC20(WETH).balanceOf(address(router)) - before, 2 * AMOUNT, 'the sentinel route ran twice'
     );
-    assertEq(hub.nonces(owner, 0), 1 << 80, 'and burned nothing of its own');
+    assertEq(hub.nonces(lNonceKey(approver), 0), 1 << 80, 'and burned nothing of its own');
   }
 
   /**
@@ -443,7 +445,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     assertEq(results.length, 1, 'the route ran');
     assertEq(router.callCount(), 1, 'once');
-    assertEq(hub.nonces(owner, 0), 0, 'the sentinel route burns no nonce');
+    assertEq(hub.nonces(lNonceKey(owner), 0), 0, 'the sentinel route burns no nonce');
 
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(
@@ -528,7 +530,7 @@ contract FulfillOrderTest is AuthenticatorBase {
       owner, order, address(authenticator), authData, route, '', false
     );
 
-    assertEq(authenticator.nonces(owner, 0), 1 << 21, 'the order nonce burned');
+    assertEq(authenticator.nonces(_keyHash(key), 0), 1 << 21, 'the order nonce burned');
     assertEq(router.callCount(), 1, 'the route ran once');
 
     vm.prank(relayer);
@@ -726,7 +728,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     assertEq(results.length, 2, 'one result per solver call and no more');
     assertEq(router.callCount(), 2, 'nothing beyond the solver route ran');
     assertEq(router2.callCount(), 0, 'and no other router was touched');
-    assertEq(hub.nonces(owner, 0), 0, 'the hub burned no nonce of its own');
+    assertEq(hub.nonces(lNonceKey(owner), 0), 0, 'the hub burned no nonce of its own');
 
     vm.prank(owner);
     bytes[] memory executeResults = hub.executeOrderWithDelegatedAuthentication(
@@ -979,12 +981,12 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     _assertFuzzSettled(f, order, results, before);
     assertEq(
-      authenticator.nonces(owner, f.nonce >> 8),
+      authenticator.nonces(_keyHash(key), f.nonce >> 8),
       1 << (f.nonce & 0xff),
       'the authenticator burned exactly the order nonce'
     );
     assertEq(
-      hub.nonces(owner, f.nonce >> 8),
+      hub.nonces(lNonceKey(approver), f.nonce >> 8),
       f.approveSolution ? 1 << (f.nonce & 0xff) : 0,
       'and the hub burned the route nonce exactly when an approver was named'
     );

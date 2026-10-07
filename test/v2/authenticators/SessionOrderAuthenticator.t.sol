@@ -63,9 +63,11 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'tokens moved');
     assertEq(
-      authenticator.nonces(owner, nonce >> 8), 1 << (nonce & 0xff), 'authenticator nonce spent'
+      authenticator.nonces(_keyHash(key), nonce >> 8),
+      1 << (nonce & 0xff),
+      'authenticator nonce spent'
     );
-    assertEq(hub.nonces(owner, 0), 0, 'hub nonce untouched on this rail');
+    assertEq(hub.nonces(lNonceKey(owner), 0), 0, 'hub nonce untouched on this rail');
   }
 
   // -------------------------------------------------------------------------------------------
@@ -84,7 +86,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     authenticator.updateAuthentication(owner, _approveKey(fresh), 0, block.timestamp + 1 days, '');
 
     assertTrue(authenticator.approvedKeys(owner, _keyHash(fresh)), 'approved');
-    assertEq(authenticator.nonces(owner, 0), 0, 'no nonce spent without a signature');
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'no nonce spent without a signature');
   }
 
   /// SV-02b — but not on someone else's behalf
@@ -151,7 +153,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     authenticator.updateAuthentication(owner, _revokeKey(key), 32, deadline, sig);
 
     assertFalse(authenticator.approvedKeys(owner, _keyHash(key)), 'revoked');
-    assertEq(authenticator.nonces(owner, 0), 1 << 32, 'nonce spent');
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 1 << 32, 'nonce spent');
   }
 
   /**
@@ -172,7 +174,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
     authenticator.updateAuthentication(owner, _revokeKey(fresh), 33, deadline, approval);
-    assertEq(authenticator.nonces(owner, 0), 0, 'a refused update burns nothing');
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'a refused update burns nothing');
 
     // the same signature, submitted as what the owner actually signed
     vm.prank(relayer);
@@ -190,7 +192,11 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     authenticator.updateAuthentication(owner, _revokeKey(key), 34, deadline, revocation);
     assertFalse(authenticator.approvedKeys(owner, _keyHash(key)), 'revoked on its own direction');
 
-    assertEq(authenticator.nonces(owner, 0), (1 << 33) | (1 << 34), 'one nonce per accepted update');
+    assertEq(
+      authenticator.nonces(lNonceKey(owner), 0),
+      (1 << 33) | (1 << 34),
+      'one nonce per accepted update'
+    );
   }
 
   /// SV-REV-04 — revocation is not permanent: the same key may be approved again afterwards
@@ -264,14 +270,18 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     authenticator.updateAuthentication(owner, approve, nonce, deadline, garbage);
 
     assertTrue(authenticator.approvedKeys(owner, freshHash), 'approved on a signature over nothing');
-    assertEq(authenticator.nonces(owner, nonce >> 8), 0, 'and the nonce it named was never burned');
+    assertEq(
+      authenticator.nonces(lNonceKey(owner), nonce >> 8),
+      0,
+      'and the nonce it named was never burned'
+    );
 
     // the same calldata a second time, byte for byte: it settles again, which is the replay the
     // untouched bitmap implies
     vm.prank(owner);
     authenticator.updateAuthentication(owner, approve, nonce, deadline, garbage);
     assertTrue(authenticator.approvedKeys(owner, freshHash), 'still approved');
-    assertEq(authenticator.nonces(owner, nonce >> 8), 0, 'still nothing burned');
+    assertEq(authenticator.nonces(lNonceKey(owner), nonce >> 8), 0, 'still nothing burned');
 
     // and with an effect the third time, so "it settles again" is more than an idempotent write:
     // the state is moved away in between and the identical call moves it back
@@ -285,7 +295,9 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
       authenticator.approvedKeys(owner, freshHash), 'and the very same call approves it again'
     );
     assertEq(
-      authenticator.nonces(owner, nonce >> 8), 0, 'across all four calls, no nonce was spent'
+      authenticator.nonces(lNonceKey(owner), nonce >> 8),
+      0,
+      'across all four calls, no nonce was spent'
     );
 
     // the contrast that makes the above about the branch and not about the signature: the same
@@ -658,7 +670,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     vm.prank(owner);
     authenticator.updateAuthentication(owner, _updateData(fresh, !f.approved), 0, deadline, '');
     assertEq(authenticator.approvedKeys(owner, _keyHash(fresh)), !f.approved, 'pre-state');
-    assertEq(authenticator.nonces(owner, 0), 0, 'no nonce spent without a signature');
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'no nonce spent without a signature');
 
     bytes memory sig = _signSessionApproval(fresh, f.approved, f.nonce, deadline);
 
@@ -668,7 +680,9 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     );
 
     assertEq(authenticator.approvedKeys(owner, _keyHash(fresh)), f.approved, 'direction applied');
-    assertEq(authenticator.nonces(owner, f.nonce >> 8), 1 << (f.nonce & 0xff), 'nonce spent');
+    assertEq(
+      authenticator.nonces(lNonceKey(owner), f.nonce >> 8), 1 << (f.nonce & 0xff), 'nonce spent'
+    );
 
     // the approval binds the whole key, so a different scheme over the same bytes is a different key
     SessionKey memory other = SessionKey({
@@ -694,7 +708,9 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     _executeViaAuthenticator(fuzzKey, sessionKeyPk, nonce, deadline, true);
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT);
-    assertEq(authenticator.nonces(owner, nonce >> 8), 1 << (nonce & 0xff), 'exact nonce bit');
+    assertEq(
+      authenticator.nonces(_keyHash(fuzzKey), nonce >> 8), 1 << (nonce & 0xff), 'exact nonce bit'
+    );
   }
 
   // -------------------------------------------------------------------------------------------

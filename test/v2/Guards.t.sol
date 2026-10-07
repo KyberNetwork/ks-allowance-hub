@@ -697,11 +697,16 @@ contract GuardsTest is AuthenticatorBase {
     assertEq(router.callCount(), 1, 'the router leg ran once');
     assertEq(router.seenMsgSender(), owner, 'for the owner, not for the relayer who submitted');
     assertEq(
-      authenticator.nonces(owner, 0),
-      (1 << approvalNonce) | (1 << orderNonce),
-      'one authenticator nonce for the approval and one for the order'
+      authenticator.nonces(lNonceKey(owner), 0),
+      1 << approvalNonce,
+      'the approval burned a nonce of the owner, who signed it'
     );
-    assertEq(hub.nonces(owner, 0), 0, 'and the hub burned none of its own');
+    assertEq(
+      authenticator.nonces(keyHash, 0),
+      1 << orderNonce,
+      'and the order burned one of the session key, which signed that'
+    );
+    assertEq(hub.nonces(lNonceKey(owner), 0), 0, 'and the hub burned none of its own');
   }
 
   struct BatchFuzz {
@@ -743,7 +748,7 @@ contract GuardsTest is AuthenticatorBase {
       vm.expectRevert(bytes(''));
       hub.multicall{value: value}(batch);
 
-      assertEq(hub.nonces(owner, 0), 0, 'the whole batch rolled back');
+      assertEq(hub.nonces(lNonceKey(owner), 0), 0, 'the whole batch rolled back');
       assertEq(address(hub).balance, 0, 'and none of the value stuck');
       assertEq(owner.balance, value, 'which is back with the sender');
       return;
@@ -761,7 +766,9 @@ contract GuardsTest is AuthenticatorBase {
       }
     }
 
-    assertEq(hub.nonces(owner, 0), expectedBitmap, 'exactly the payable indices burned a nonce');
+    assertEq(
+      hub.nonces(lNonceKey(owner), 0), expectedBitmap, 'exactly the payable indices burned a nonce'
+    );
     assertEq(address(hub).balance, value, 'a payable batch keeps whatever it did not spend');
   }
 

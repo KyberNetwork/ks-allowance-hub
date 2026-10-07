@@ -402,8 +402,10 @@ contract SettlementTest is HubBase {
 
     assertEq(results.length, 1, 'the order settled');
     assertEq(results[0].length, 0, 'revokeNonce returns nothing');
-    assertEq(hub.nonces(address(evil), 0), 1 << 7, "burned against the router's own bitmap");
-    assertEq(hub.nonces(owner, 0), 0, "and not against the owner's");
+    assertEq(
+      hub.nonces(lNonceKey(address(evil)), 0), 1 << 7, "burned against the router's own bitmap"
+    );
+    assertEq(hub.nonces(lNonceKey(owner), 0), 0, "and not against the owner's");
     assertEq(hub.msgSender(), address(0), 'the lock still released cleanly');
   }
 

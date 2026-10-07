@@ -83,7 +83,7 @@ contract DelegationTest is AuthenticatorBase {
 
     assertTrue(hub.authDelegated(owner, address(authenticator)), 'delegated');
     assertTrue(authenticator.approvedKeys(owner, _keyHash(key)), 'key approved without a signature');
-    assertEq(hub.nonces(owner, word), 0, 'no hub nonce consumed');
+    assertEq(hub.nonces(lNonceKey(owner), word), 0, 'no hub nonce consumed');
   }
 
   /// DEL-02 — a third party may submit the delegation when it carries the owner's signature
@@ -97,7 +97,7 @@ contract DelegationTest is AuthenticatorBase {
     hub.updateDelegation(owner, address(authenticator), true, _encodeKey(key), nonce, deadline, sig);
 
     assertTrue(hub.authDelegated(owner, address(authenticator)));
-    assertEq(hub.nonces(owner, nonce >> 8), 1 << (nonce & 0xff), 'exact bit set');
+    assertEq(hub.nonces(lNonceKey(owner), nonce >> 8), 1 << (nonce & 0xff), 'exact bit set');
 
     // NONCE-02 — the same nonce cannot be spent twice
     vm.prank(relayer);
@@ -233,7 +233,9 @@ contract DelegationTest is AuthenticatorBase {
     hub.updateDelegation(owner, address(authenticator), false, '', 6, deadline, withdrawSig);
 
     assertFalse(hub.authDelegated(owner, address(authenticator)), 'withdrawn by the relayer');
-    assertEq(hub.nonces(owner, 0), (1 << 5) | (1 << 6), 'one hub nonce per accepted decision');
+    assertEq(
+      hub.nonces(lNonceKey(owner), 0), (1 << 5) | (1 << 6), 'one hub nonce per accepted decision'
+    );
   }
 
   // -------------------------------------------------------------------------------------------
@@ -420,7 +422,9 @@ contract DelegationTest is AuthenticatorBase {
     hub.updateDelegation(owner, address(authenticator), true, _encodeKey(key), nonce, deadline, sig);
 
     assertTrue(hub.authDelegated(owner, address(authenticator)));
-    assertEq(hub.nonces(owner, nonce >> 8), 1 << (nonce & 0xff), 'exact bit for this nonce');
+    assertEq(
+      hub.nonces(lNonceKey(owner), nonce >> 8), 1 << (nonce & 0xff), 'exact bit for this nonce'
+    );
   }
 
   // -------------------------------------------------------------------------------------------
@@ -432,9 +436,9 @@ contract DelegationTest is AuthenticatorBase {
     vm.prank(owner);
     hub.revokeNonce(nonce);
 
-    assertEq(hub.nonces(owner, nonce >> 8), 1 << (nonce & 0xff), 'exact bit');
+    assertEq(hub.nonces(lNonceKey(owner), nonce >> 8), 1 << (nonce & 0xff), 'exact bit');
     // a neighbouring word is untouched
-    assertEq(hub.nonces(owner, (nonce >> 8) + 1), 0, 'neighbouring word clean');
+    assertEq(hub.nonces(lNonceKey(owner), (nonce >> 8) + 1), 0, 'neighbouring word clean');
   }
 
   /// NONCE-01 — the documented boundaries
@@ -447,12 +451,12 @@ contract DelegationTest is AuthenticatorBase {
 
       // nonces 0 and 255 share word 0, so assert the bit rather than the whole word
       uint256 bit = 1 << (nonces[i] & 0xff);
-      assertEq(hub.nonces(owner, nonces[i] >> 8) & bit, bit, 'boundary bit set');
+      assertEq(hub.nonces(lNonceKey(owner), nonces[i] >> 8) & bit, bit, 'boundary bit set');
     }
 
     // 0 and 256 share a bit position but live in different words
-    assertEq(hub.nonces(owner, 0), (1 << 0) | (1 << 255), 'word 0 holds 0 and 255');
-    assertEq(hub.nonces(owner, 1), 1 << 0, 'word 1 holds 256');
+    assertEq(hub.nonces(lNonceKey(owner), 0), (1 << 0) | (1 << 255), 'word 0 holds 0 and 255');
+    assertEq(hub.nonces(lNonceKey(owner), 1), 1 << 0, 'word 1 holds 256');
   }
 
   /// NONCE-04 — revoking twice reverts
@@ -472,8 +476,8 @@ contract DelegationTest is AuthenticatorBase {
     vm.prank(owner);
     authenticator.revokeNonce(3);
 
-    assertEq(hub.nonces(owner, 0), 1 << 3);
-    assertEq(authenticator.nonces(owner, 0), 1 << 3);
+    assertEq(hub.nonces(lNonceKey(owner), 0), 1 << 3);
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 1 << 3);
 
     // spending it on one side does not spend it on the other
     vm.prank(owner);

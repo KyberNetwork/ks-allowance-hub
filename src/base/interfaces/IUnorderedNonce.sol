@@ -8,11 +8,12 @@ interface IUnorderedNonce {
   error NonceAlreadyUsed();
 
   /**
-   * @notice Spent-nonce bitmap, keyed by owner and by the nonce's word index
-   * @param owner Account whose nonces these are
+   * @notice Spent-nonce bitmap, keyed by signer namespace and by the nonce's word index
+   * @param signer Namespace the nonces belong to: whoever signed the data they guard, as an
+   * address widened to a word or as the hash of a signing key
    * @param word The nonce's top bits, i.e. `nonce >> 8`
    */
-  function nonces(address owner, uint256 word) external view returns (uint256);
+  function nonces(bytes32 signer, uint256 word) external view returns (uint256);
 
   /**
    * @notice Burns one of the caller's own nonces, cancelling a signature that has not been used

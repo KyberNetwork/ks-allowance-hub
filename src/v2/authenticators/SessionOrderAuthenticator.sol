@@ -111,11 +111,12 @@ contract SessionOrderAuthenticator is
     if (block.timestamp > key.expiration) {
       revert SessionKeyExpired(block.timestamp, key.expiration);
     }
-    if (!approvedKeys[owner][key.hash()]) {
+    bytes32 keyHash = key.hash();
+    if (!approvedKeys[owner][keyHash]) {
       revert SessionKeyNotApproved(owner, key);
     }
 
-    _useUnorderedNonce(owner, order.nonce);
+    _useUnorderedNonce(keyHash, order.nonce);
 
     bytes32 digest = _hashTypedDataV4(order.hash());
     bytes calldata signature = data.decodeBytes(1);
@@ -138,11 +139,12 @@ contract SessionOrderAuthenticator is
     if (block.timestamp > key.expiration) {
       revert SessionKeyExpired(block.timestamp, key.expiration);
     }
-    if (!approvedKeys[owner][key.hash()]) {
+    bytes32 keyHash = key.hash();
+    if (!approvedKeys[owner][keyHash]) {
       revert SessionKeyNotApproved(owner, key);
     }
 
-    _useUnorderedNonce(owner, order.nonce);
+    _useUnorderedNonce(keyHash, order.nonce);
 
     bytes32 digest = _hashTypedDataV4(order.hash());
     bytes calldata signature = data.decodeBytes(1);

@@ -337,6 +337,11 @@ abstract contract V2TestBase is Test {
   // Array builders
   // ---------------------------------------------------------------------------------------------
 
+  /// @dev The nonce namespace of a plain account, transcribed from {UnorderedNonce}
+  function lNonceKey(address signer) internal pure returns (bytes32) {
+    return bytes32(uint256(uint160(signer)));
+  }
+
   function _erc20s(ERC20Transfer memory a) internal pure returns (ERC20Transfer[] memory out) {
     out = new ERC20Transfer[](1);
     out[0] = a;

@@ -517,3 +517,45 @@ per router call it was worth are left on the table.
 because `FulfillOrderTest` produces a solc internal compiler error under `via_ir` when another case
 joins it, as the previous run recorded.
 
+## Run `20261007T114314Z`
+
+Scope: a nonce belongs to the signer of the data it guards. `UnorderedNonce` keys by namespace and
+keeps an address overload, so the call sites that were already right read as they did and the diff
+is the two that moved: `KSAllowanceHubV2` and `SessionOrderAuthenticator`. `src/v1/**` and
+`test/v1/**` remain frozen and do not use this base. The hub is **23,907** runtime bytes with
+**669** to spare, 14 fewer than before the change.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261007T114314Z/NONCE-06` | **Production change.** `UnorderedNonce` keys its bitmap by a `bytes32` signer namespace rather than by an address, and each nonce now burns against whoever signed the data it guards: the approver for a route, the session key for an order, the owner for a delegation or a key approval. Two kinds of signed data in one contract no longer collide on a number | `NONCE-06`, `NONCE-07` in `test/v2/NonceNamespace.t.sol`; `MC-06` split in two | `forge test` |
+
+### Notes for this run
+
+**Where each nonce now lands, and who signs.** `AuthDelegation` and `SessionApproval` are verified
+against the owner and keep the owner's namespace, which is what they always had. `SolutionApproval`
+is verified against `order.solutionApprover` and moves there. Both order types are verified against
+the session key and move to its hash, which the two `authenticate*` paths already had in hand for
+the approval lookup.
+
+**The collision this removes.** Each contract held two kinds of signed data under one owner-keyed
+bitmap, so unrelated signatures competed for the same numbers: spending 7 as the owner blocked a
+session key's order with nonce 7, and spending 9 as the owner blocked an approver's route with nonce
+9. `NONCE-06` and `NONCE-07` spend the number in the owner's namespace first and then settle
+somebody else's signature carrying it. Keying either one back to the owner fails them with
+`NonceAlreadyUsed()`, so they pin the collision rather than restating the mapping.
+
+**An order nonce is now spendable once per session key, and that is intended.** The order digest
+does not include the key, so two approved keys sign the same digest and each has a namespace of its
+own; the identical order settles once per key, where one owner-keyed bitmap used to stop the second.
+An approved key already acts on the account with the owner's authority, so a second key authorising
+the same transfer is the owner authorising it twice. This is a property of approving a key, not of
+how the nonce is keyed.
+
+**The owner can no longer revoke a single pending key-signed order,** because `revokeNonce` reaches
+only the caller's own namespace. That follows from the same thing: the lever against a key is the
+key, and revoking it withdraws the authority behind every order it signed.
+
+**`MC-06` splits in two,** which is the clearest statement of the change in the suite: the batch's
+session approval and its order used to be one assertion over one bitmap, and are now one assertion
+per namespace — the approval against the owner, the order against the key.
+

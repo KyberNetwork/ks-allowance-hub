@@ -463,11 +463,13 @@ contract RelayTest is AuthenticatorBase {
 
     assertTrue(authenticator.approvedKeys(owner, freshHash), 'the key is approved');
     assertEq(
-      authenticator.nonces(owner, nonce >> 8),
+      authenticator.nonces(lNonceKey(owner), nonce >> 8),
       1 << (nonce & 0xff),
       'the authenticator burned that nonce'
     );
-    assertEq(hub.nonces(owner, nonce >> 8), 0, 'and the hub burned nothing on this route');
+    assertEq(
+      hub.nonces(lNonceKey(owner), nonce >> 8), 0, 'and the hub burned nothing on this route'
+    );
     assertEq(results[0].length, 0, 'updateAuthentication returns nothing');
   }
 
