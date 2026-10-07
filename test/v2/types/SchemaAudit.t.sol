@@ -5,6 +5,8 @@ import {Test} from 'forge-std/Test.sol';
 
 import {JsonBindings} from 'utils/JsonBindings.sol';
 
+import {PermitHash} from 'test/libraries/PermitHash.sol';
+
 import {SessionApprovalLib} from 'src/v2/authenticators/types/SessionApproval.sol';
 import {SessionKeyLib} from 'src/v2/authenticators/types/SessionKey.sol';
 import {AuthDelegationLib} from 'src/v2/types/AuthDelegation.sol';
@@ -26,8 +28,10 @@ import {ValidationParamsLib} from 'src/v2/types/ValidationParams.sol';
  * every other case in the suite: the hub is self-consistent, and Permit2 derives its witness
  * typehash from the string the hub hands it, so the fork checks the hub against itself. These
  * schemas come from `forge bind-json`, which reads the struct declarations, so nothing here is a
- * transcription. Regenerate with `FOUNDRY_PROFILE=bindjson forge bind-json`; `foundry.toml` pins
- * the file set under `[bind_json]`, without which the output is not reproducible.
+ * transcription. Regenerate with `forge bind-json`; `foundry.toml` pins the file set under
+ * `[bind_json]`, without which the output is not reproducible. The command is a fixed point, not a
+ * one-shot: the generated file is itself compiled, and imports the types it binds, so a type added
+ * to the set appears only on the following run.
  */
 contract SchemaAuditTest is Test {
   function test_T712_SCHEMA_typehashesMatchTheirStructs() public pure {
@@ -95,6 +99,41 @@ contract SchemaAuditTest is Test {
       SessionApprovalLib.SESSION_APPROVAL_TYPEHASH,
       keccak256(bytes(JsonBindings.schema_SessionApproval)),
       'SessionApproval'
+    );
+  }
+
+  /**
+   * @dev T712-SCHEMA-PERMIT2 — the witness type strings the hub hands Permit2. Permit2 closes its
+   * own stub with the string it is given and hashes the concatenation, so the two together must
+   * reproduce the schema `bind-json` derived from the struct. This also pins which colliding
+   * schema {SchemaHash} reads for which rail: the suffixes follow discovery order, and a swap
+   * fails here.
+   */
+  function test_T712_SCHEMA_PERMIT2_witnessTypeStringsMatchTheirStructs() public pure {
+    assertEq(
+      PermitHash._TOKEN_PERMISSIONS_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_TokenPermissions)),
+      'TokenPermissions'
+    );
+    assertEq(
+      string(
+        abi.encodePacked(
+          PermitHash._PERMIT_BATCH_WITNESS_TRANSFER_FROM_TYPEHASH_STUB,
+          ExecutionWitnessLib.EXECUTION_WITNESS_PERMIT2_TYPE_STRING
+        )
+      ),
+      JsonBindings.schema_PermitBatchWitnessTransferFrom_0,
+      'ExecutionWitness permit'
+    );
+    assertEq(
+      string(
+        abi.encodePacked(
+          PermitHash._PERMIT_BATCH_WITNESS_TRANSFER_FROM_TYPEHASH_STUB,
+          FulfillmentWitnessLib.FULFILLMENT_WITNESS_PERMIT2_TYPE_STRING
+        )
+      ),
+      JsonBindings.schema_PermitBatchWitnessTransferFrom_1,
+      'FulfillmentWitness permit'
     );
   }
 }

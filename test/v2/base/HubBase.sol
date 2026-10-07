@@ -14,8 +14,10 @@ import {KSAllowanceHubV2} from 'src/v2/KSAllowanceHubV2.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
+import {ExecutionWitness} from 'src/v2/types/ExecutionWitness.sol';
 import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
 import {FulfillmentSolution} from 'src/v2/types/FulfillmentSolution.sol';
+import {FulfillmentWitness} from 'src/v2/types/FulfillmentWitness.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
 import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
@@ -300,22 +302,19 @@ abstract contract HubBase is V2TestBase {
     internal
     returns (bytes memory)
   {
-    bytes32 witness = lExecutionWitness(
-      witnessRelayer, _targets(order.erc20Transfers), order.erc721Transfers, order.genericCalls
-    );
+    ExecutionWitness memory witness = ExecutionWitness({
+      relayer: witnessRelayer,
+      erc20Targets: _targets(order.erc20Transfers),
+      erc721Transfers: order.erc721Transfers,
+      genericCalls: order.genericCalls
+    });
 
     (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(order.erc20Transfers);
 
     return _sign(
       ownerKey,
-      lPermit2BatchWitnessDigest(
-        tokens,
-        amounts,
-        address(hub),
-        order.nonce,
-        order.deadline,
-        witness,
-        lExecutionWitnessTypeString()
+      lPermit2ExecutionWitnessDigest(
+        tokens, amounts, address(hub), order.nonce, order.deadline, witness
       )
     );
   }
@@ -332,27 +331,21 @@ abstract contract HubBase is V2TestBase {
     GenericCall[] memory witnessOwnerCalls,
     address witnessApprover
   ) internal returns (bytes memory) {
-    bytes32 witness = lFulfillmentWitness(
-      witnessSolver,
-      _targets(order.erc20Transfers),
-      order.erc721Transfers,
-      witnessOwnerCalls,
-      order.validationParams,
-      witnessApprover
-    );
+    FulfillmentWitness memory witness = FulfillmentWitness({
+      solver: witnessSolver,
+      erc20Targets: _targets(order.erc20Transfers),
+      erc721Transfers: order.erc721Transfers,
+      ownerCalls: witnessOwnerCalls,
+      validationParams: order.validationParams,
+      callsSigner: witnessApprover
+    });
 
     (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(order.erc20Transfers);
 
     return _sign(
       ownerKey,
-      lPermit2BatchWitnessDigest(
-        tokens,
-        amounts,
-        address(hub),
-        order.nonce,
-        order.deadline,
-        witness,
-        lFulfillmentWitnessTypeString()
+      lPermit2FulfillmentWitnessDigest(
+        tokens, amounts, address(hub), order.nonce, order.deadline, witness
       )
     );
   }

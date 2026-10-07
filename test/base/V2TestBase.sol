@@ -3,8 +3,20 @@ pragma solidity 0.8.36;
 
 import {Test} from 'forge-std/Test.sol';
 
-import {SchemaHash} from 'test/base/SchemaHash.sol';
+import {PermitHash} from 'test/libraries/PermitHash.sol';
 
+import {SchemaHash} from 'test/base/SchemaHash.sol';
+import {
+  PermitBatchWitnessTransferFrom as Permit2ExecutionWitness
+} from 'test/base/types/Permit2ExecutionWitness.sol';
+import {
+  PermitBatchWitnessTransferFrom as Permit2FulfillmentWitness
+} from 'test/base/types/Permit2FulfillmentWitness.sol';
+import {TokenPermissions} from 'test/base/types/TokenPermissions.sol';
+
+import {KeyType} from 'src/v2/authenticators/types/KeyType.sol';
+import {SessionKey} from 'src/v2/authenticators/types/SessionKey.sol';
+import {AuthDelegation} from 'src/v2/types/AuthDelegation.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
@@ -19,12 +31,12 @@ import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 /**
  * @title V2TestBase
  * @notice Global base for the V2 suite.
- * @dev Every EIP-712 string, typehash and struct hash below is hand-written from the Solidity
- * struct definitions. Nothing here may import a production constant or hashing library: Permit2
- * derives its typehash from the string the hub passes it, so a test that signs with the same
- * production constant agrees with a wrong type string just as happily as with a right one. These
- * literals are the independent oracle, and `test/v2/types/Eip712.t.sol` compares the production
- * constants against them.
+ * @dev Every typehash and struct hash below is derived from the Solidity struct definitions, by
+ * {SchemaHash} over the `forge bind-json` schemas. Nothing here may import a production constant or
+ * hashing library: Permit2 derives its typehash from the string the hub passes it, so a test that
+ * signs with the same production constant agrees with a wrong type string just as happily as with a
+ * right one. The schemas are the independent oracle, and `test/v2/types/SchemaAudit.t.sol` compares
+ * the production constants against them.
  *
  * The struct types are imported for their ABI shape only. Each one carries a `using ... global`
  * attachment, so the production hashers are reachable from any file that imports them — they are
@@ -44,31 +56,6 @@ abstract contract V2TestBase is Test {
   // ---------------------------------------------------------------------------------------------
   // Literal type strings, transcribed from the structs in src/**/types
   // ---------------------------------------------------------------------------------------------
-
-  string internal constant L_ERC20_TRANSFER =
-    'ERC20Transfer(address token,address target,uint160 amount)';
-  string internal constant L_ERC721_TRANSFER =
-    'ERC721Transfer(address token,uint256 tokenId,address target)';
-  string internal constant L_GENERIC_CALL = 'GenericCall(address router,uint256 value,bytes data)';
-  string internal constant L_VALIDATION_PARAMS =
-    'ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)';
-  string internal constant L_TOKEN_PERMISSIONS = 'TokenPermissions(address token,uint256 amount)';
-
-  string internal constant L_EXECUTION_WITNESS =
-    'ExecutionWitness(address relayer,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls)';
-  string internal constant L_FULFILLMENT_WITNESS =
-    'FulfillmentWitness(address solver,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner)';
-  string internal constant L_AUTH_DELEGATION =
-    'AuthDelegation(address authenticator,bool delegated,bytes data,uint256 nonce,uint256 deadline)';
-
-  string internal constant L_SESSION_KEY =
-    'SessionKey(bytes publicKey,uint8 keyType,uint256 expiration)';
-  string internal constant L_SESSION_APPROVAL =
-    'SessionApproval(SessionKey sessionKey,bool approved,uint256 nonce,uint256 deadline)';
-
-  /// @dev Permit2 prepends this and hashes the concatenation, so the witness string closes its paren
-  string internal constant L_PERMIT2_BATCH_WITNESS_STUB =
-    'PermitBatchWitnessTransferFrom(TokenPermissions[] permitted,address spender,uint256 nonce,uint256 deadline,';
 
   // ---------------------------------------------------------------------------------------------
   // Actors
@@ -96,69 +83,6 @@ abstract contract V2TestBase is Test {
 
   function _forkMainnet() internal {
     vm.createSelectFork('mainnet', FORK_BLOCK);
-  }
-
-  // ---------------------------------------------------------------------------------------------
-  // Hand-written EIP-712 typehashes
-  // ---------------------------------------------------------------------------------------------
-
-  /// @dev The EIP-712 `encodeType` string: the type and its referenced types, in order
-  function lExecutionWitnessEncodeType() internal pure returns (string memory) {
-    return string(abi.encodePacked(L_EXECUTION_WITNESS, L_ERC721_TRANSFER, L_GENERIC_CALL));
-  }
-
-  function lExecutionWitnessTypehash() internal pure returns (bytes32) {
-    return keccak256(bytes(lExecutionWitnessEncodeType()));
-  }
-
-  /// @dev The EIP-712 `encodeType` string: the type and its referenced types, in order
-  function lFulfillmentWitnessEncodeType() internal pure returns (string memory) {
-    return string(
-      abi.encodePacked(
-        L_FULFILLMENT_WITNESS, L_ERC721_TRANSFER, L_GENERIC_CALL, L_VALIDATION_PARAMS
-      )
-    );
-  }
-
-  function lFulfillmentWitnessTypehash() internal pure returns (bytes32) {
-    return keccak256(bytes(lFulfillmentWitnessEncodeType()));
-  }
-
-  /// @dev `ExecutionWitness witness)` + referenced types, sorted: ERC721Transfer, ExecutionWitness,
-  /// GenericCall, TokenPermissions
-  function lExecutionWitnessTypeString() internal pure returns (string memory) {
-    return string(
-      abi.encodePacked(
-        'ExecutionWitness witness)',
-        L_ERC721_TRANSFER,
-        L_EXECUTION_WITNESS,
-        L_GENERIC_CALL,
-        L_TOKEN_PERMISSIONS
-      )
-    );
-  }
-
-  /// @dev Sorted: ERC721Transfer, FulfillmentWitness, GenericCall, TokenPermissions,
-  /// ValidationParams
-  function lFulfillmentWitnessTypeString() internal pure returns (string memory) {
-    return string(
-      abi.encodePacked(
-        'FulfillmentWitness witness)',
-        L_ERC721_TRANSFER,
-        L_FULFILLMENT_WITNESS,
-        L_GENERIC_CALL,
-        L_TOKEN_PERMISSIONS,
-        L_VALIDATION_PARAMS
-      )
-    );
-  }
-
-  function lSessionKeyTypehash() internal pure returns (bytes32) {
-    return keccak256(bytes(L_SESSION_KEY));
-  }
-
-  function lSessionApprovalTypehash() internal pure returns (bytes32) {
-    return keccak256(abi.encodePacked(L_SESSION_APPROVAL, L_SESSION_KEY));
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -238,15 +162,14 @@ abstract contract V2TestBase is Test {
     uint256 nonce,
     uint256 deadline
   ) internal pure returns (bytes32) {
-    return keccak256(
-      abi.encode(
-        keccak256(bytes(L_AUTH_DELEGATION)),
-        authenticator,
-        delegated,
-        keccak256(data),
-        nonce,
-        deadline
-      )
+    return SchemaHash.authDelegation(
+      AuthDelegation({
+        authenticator: authenticator,
+        delegated: delegated,
+        data: data,
+        nonce: nonce,
+        deadline: deadline
+      })
     );
   }
 
@@ -255,7 +178,9 @@ abstract contract V2TestBase is Test {
     pure
     returns (bytes32)
   {
-    return keccak256(abi.encode(lSessionKeyTypehash(), keccak256(publicKey), keyType, expiration));
+    return SchemaHash.sessionKey(
+      SessionKey({publicKey: publicKey, keyType: KeyType(keyType), expiration: expiration})
+    );
   }
 
   function lSessionApproval(bytes32 keyHash, bool approved, uint256 nonce, uint256 deadline)
@@ -263,40 +188,74 @@ abstract contract V2TestBase is Test {
     pure
     returns (bytes32)
   {
-    return keccak256(abi.encode(lSessionApprovalTypehash(), keyHash, approved, nonce, deadline));
+    return
+      keccak256(
+        abi.encode(SchemaHash.sessionApprovalTypehash(), keyHash, approved, nonce, deadline)
+      );
   }
 
   // ---------------------------------------------------------------------------------------------
   // Permit2 digest, rebuilt rather than imported
   // ---------------------------------------------------------------------------------------------
 
-  /**
-   * @dev Mirrors Permit2's `PermitBatchWitnessTransferFrom` hashing from its published layout.
-   * `witnessTypeString` is supplied by the caller and must be a literal from this file.
-   */
-  function lPermit2BatchWitnessDigest(
+  /// @dev Permit2's `permitted` array, built from the order's ERC-20 legs
+  function lTokenPermissions(address[] memory tokens, uint256[] memory amounts)
+    internal
+    pure
+    returns (TokenPermissions[] memory permitted)
+  {
+    permitted = new TokenPermissions[](tokens.length);
+    for (uint256 i = 0; i < tokens.length; i++) {
+      permitted[i] = TokenPermissions({token: tokens[i], amount: amounts[i]});
+    }
+  }
+
+  /// @dev The digest the owner signs for a relayed execution, hashed from the Permit2 struct
+  function lPermit2ExecutionWitnessDigest(
     address[] memory tokens,
     uint256[] memory amounts,
     address spender,
     uint256 nonce,
     uint256 deadline,
-    bytes32 witness,
-    string memory witnessTypeString
+    ExecutionWitness memory witness
   ) internal view returns (bytes32) {
-    bytes32[] memory permitted = new bytes32[](tokens.length);
-    for (uint256 i = 0; i < tokens.length; i++) {
-      permitted[i] =
-        keccak256(abi.encode(keccak256(bytes(L_TOKEN_PERMISSIONS)), tokens[i], amounts[i]));
-    }
-
-    bytes32 typeHash = keccak256(abi.encodePacked(L_PERMIT2_BATCH_WITNESS_STUB, witnessTypeString));
-
-    bytes32 structHash = keccak256(
-      abi.encode(
-        typeHash, keccak256(abi.encodePacked(permitted)), spender, nonce, deadline, witness
+    return lPermit2Digest(
+      SchemaHash.permit2ExecutionWitness(
+        Permit2ExecutionWitness({
+          permitted: lTokenPermissions(tokens, amounts),
+          spender: spender,
+          nonce: nonce,
+          deadline: deadline,
+          witness: witness
+        })
       )
     );
+  }
 
+  /// @dev The fulfillment counterpart of {lPermit2ExecutionWitnessDigest}
+  function lPermit2FulfillmentWitnessDigest(
+    address[] memory tokens,
+    uint256[] memory amounts,
+    address spender,
+    uint256 nonce,
+    uint256 deadline,
+    FulfillmentWitness memory witness
+  ) internal view returns (bytes32) {
+    return lPermit2Digest(
+      SchemaHash.permit2FulfillmentWitness(
+        Permit2FulfillmentWitness({
+          permitted: lTokenPermissions(tokens, amounts),
+          spender: spender,
+          nonce: nonce,
+          deadline: deadline,
+          witness: witness
+        })
+      )
+    );
+  }
+
+  /// @dev Binds a Permit2 `structHash` to Permit2's own domain
+  function lPermit2Digest(bytes32 structHash) internal view returns (bytes32) {
     return keccak256(abi.encodePacked('\x19\x01', _permit2DomainSeparator(), structHash));
   }
 
@@ -311,18 +270,17 @@ abstract contract V2TestBase is Test {
     bytes32[] memory permitted = new bytes32[](tokens.length);
     for (uint256 i = 0; i < tokens.length; i++) {
       permitted[i] =
-        keccak256(abi.encode(keccak256(bytes(L_TOKEN_PERMISSIONS)), tokens[i], amounts[i]));
+        keccak256(abi.encode(PermitHash._TOKEN_PERMISSIONS_TYPEHASH, tokens[i], amounts[i]));
     }
 
-    bytes32 typeHash = keccak256(
-      abi.encodePacked(
-        'PermitBatchTransferFrom(TokenPermissions[] permitted,address spender,uint256 nonce,uint256 deadline)',
-        L_TOKEN_PERMISSIONS
-      )
-    );
-
     bytes32 structHash = keccak256(
-      abi.encode(typeHash, keccak256(abi.encodePacked(permitted)), spender, nonce, deadline)
+      abi.encode(
+        PermitHash._PERMIT_BATCH_TRANSFER_FROM_TYPEHASH,
+        keccak256(abi.encodePacked(permitted)),
+        spender,
+        nonce,
+        deadline
+      )
     );
 
     return keccak256(abi.encodePacked('\x19\x01', _permit2DomainSeparator(), structHash));

@@ -5,16 +5,13 @@ import {V2TestBase} from 'test/base/V2TestBase.sol';
 
 import {KeyType} from 'src/v2/authenticators/types/KeyType.sol';
 import {SessionApprovalLib} from 'src/v2/authenticators/types/SessionApproval.sol';
-import {SessionKey, SessionKeyLib} from 'src/v2/authenticators/types/SessionKey.sol';
+import {SessionKey} from 'src/v2/authenticators/types/SessionKey.sol';
 
 /**
  * @notice T712-09..10 — the two authenticator-side EIP-712 types.
- * @dev The production constants are the values under test; every expected value is built from the
- * literals in {V2TestBase}, which were transcribed from the struct definitions. Together with
- * `test/v2/types/Eip712.t.sol` this is the only place a production type string or typehash may be
- * read, and there it is never the expected side.
- *
- * Each row also pins the struct encoding, not only the typehash. No contract is under test here, so
+ * @dev The production hashers are the values under test; every expected value is built from the
+ * schemas `forge bind-json` derived from the struct definitions. These rows pin the struct
+ * encoding; `SchemaAudit.t.sol` pins the typehashes themselves. No contract is under test here, so
  * this batch inherits the global base directly.
  */
 contract AuthenticatorEip712Test is V2TestBase {
@@ -22,9 +19,7 @@ contract AuthenticatorEip712Test is V2TestBase {
   // T712-09 — SessionKey
   // -------------------------------------------------------------------------------------------
 
-  function test_T712_09_sessionKeyTypehashAndStructHash() public view {
-    assertEq(SessionKeyLib.SESSION_KEY_TYPEHASH, lSessionKeyTypehash(), 'typehash');
-
+  function test_T712_09_sessionKeyStructHash() public view {
     SessionKey memory key = _sampleKey();
 
     assertEq(
@@ -38,9 +33,7 @@ contract AuthenticatorEip712Test is V2TestBase {
   // T712-10 — SessionApproval
   // -------------------------------------------------------------------------------------------
 
-  function test_T712_10_sessionApprovalTypehashAndStructHash() public pure {
-    assertEq(SessionApprovalLib.SESSION_APPROVAL_TYPEHASH, lSessionApprovalTypehash(), 'typehash');
-
+  function test_T712_10_sessionApprovalStructHash() public pure {
     bytes32 keyHash = keccak256('an arbitrary key hash');
 
     assertEq(

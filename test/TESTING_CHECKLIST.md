@@ -25,8 +25,10 @@ Notes for the reviewer:
   makes a wrong EIP-712 type string visible; the mainnet fork alone does not, because Permit2
   derives its typehash from the string the hub hands it.
 - Tests run against a mainnet fork at block 23,932,050 with the **real** Permit2.
-- `test/libraries/PermitHash.sol` is deliberately not reused: it takes the witness type string as a
-  parameter, which reintroduces exactly that circularity.
+- `test/libraries/PermitHash.sol` supplies the Permit2 constants the signing helpers need — its
+  stub, its leaf typehash, its witness-free batch typehash — because those are Permit2's own spec
+  and name no hub type. Its hashing functions stay unused: `hashWithWitness` takes the witness type
+  string as a parameter, which reintroduces exactly that circularity.
 - Two production bugs found during discovery were fixed by the author before implementation: the
   P256/WebAuthn `decodeBytes32` word index, and the `AuthFlags` byte mask that produced
   non-canonical bools. `SV-KEY-P256-*`, `SV-KEY-WEBAUTHN-*`, `AUTH-09` and `AUTH-12` are their
@@ -410,3 +412,52 @@ added to `FulfillOrderTest` may hit the same wall with nothing to go on.
 `keccak256(self.data)` for the third, worth 46 bytes and 243 gas per router call. It is left out
 because `router` and `value` would stop being masked by the hash while no case dirties a `router`
 word — the invariant would be argued rather than held. It wants a `DIRTY-05` first.
+
+## Run `20261007T110305Z`
+
+Scope: the struct is now the source of truth for every signed type, Permit2's included, and no hand-
+written EIP-712 type string for a hub type remains in the suite. `src/v1/**` and `test/v1/**` remain
+frozen. No production code changed: `forge build src` reports no change, and the hub is still 23,717
+runtime bytes.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261007T110305Z/712-02` | The Permit2 signed type is declared as a struct and hashed from the schema `forge bind-json` derives from it, replacing the hand-rolled mirror of Permit2's layout. `PermitBatchWitnessTransferFrom` is declared twice, once per witness, because Permit2 gives both variants the same type name | `T712-SCHEMA-PERMIT2` in `test/v2/types/SchemaAudit.t.sol`; `test/base/types/Permit2{Execution,Fulfillment}Witness.sol`, `test/base/types/TokenPermissions.sol`, `SchemaHash.permit2{Execution,Fulfillment}Witness` | `forge test` |
+| - [x] | - [ ] | `20261007T110305Z/712-03` | The last seven hand-written type strings are gone. `AuthDelegation` and `SessionKey` hash from their schemas; `SessionApproval` takes its typehash from its schema, keeping the field signature production uses. Five `T712-*` rows that compared a production typehash against a transcription are deleted as duplicates of the schema audit, which covers all thirteen | `T712-08b`, `T712-09`, `T712-10` reshaped; `T712-04..08` deleted; `test/base/V2TestBase.sol` 425 -> 383 lines | `forge test` |
+| - [x] | - [ ] | `20261007T110305Z/BIND-01` | `forge bind-json` regeneration is a fixed point, not a one-shot, and the `[bind_json] include` set in `foundry.toml` is what makes it reproducible. The CI guard added in `ecf7df5` is sound because the committed bindings already sit at the fixed point | no case ID changes; `utils/JsonBindings.sol` at 17 schemas | `forge bind-json && git diff --exit-code utils/JsonBindings.sol` |
+
+### Notes for this run
+
+**`forge bind-json` converges rather than completing.** The generated file is itself compiled and
+imports the types it binds, so a type added to the include set appears only on the *following* run:
+the first run compiles a tree in which nothing imports it yet. Deleting `utils/JsonBindings.sol`
+before regenerating makes this worse, because that removes a project file the types are reached
+through, and the run then emits a subset. Run it twice after changing the set, leave the output in
+place, and the result is byte-identical on every run after that — verified 6/6 on the previous set
+and 3/3 on this one. An earlier reading of this behaviour as nondeterminism in the tool was wrong,
+and was an artefact of deleting the file between runs.
+
+**The colliding type name is handled, not dropped.** Permit2 hardcodes the name
+`PermitBatchWitnessTransferFrom` for both witness variants, so the two declarations collide. `bind-
+json` suffixes them `_0` and `_1` in discovery order and emits both. Which suffix is which is not
+assumed: `T712-SCHEMA-PERMIT2` asserts each against the stub Permit2 prepends plus the witness
+string the hub passes, so a swap fails there, and swapping them by hand was confirmed to fail.
+
+**Why Permit2's own constants are on the expected side and its functions are not.** The signing
+helpers read `_PERMIT_BATCH_WITNESS_TRANSFER_FROM_TYPEHASH_STUB`, `_TOKEN_PERMISSIONS_TYPEHASH` and
+`_PERMIT_BATCH_TRANSFER_FROM_TYPEHASH` from the vendored `test/libraries/PermitHash.sol`. Those are
+Permit2's spec and name no hub type, so they carry no circularity. `hashWithWitness` still does,
+because the witness type string is its parameter, and stays unused.
+
+**`SessionApproval` keeps a typehash rather than a struct hash.** Production hashes it from a key
+that is already hashed, and `T712-10` uses a key hash of its own choosing that is no real key's
+hash. Hashing the struct through the cheatcode would have forced that case to supply a real
+`SessionKey` and quietly narrowed what it pins, so only the typehash is derived.
+
+**Replacing an oracle is where coverage disappears quietly, so each conversion was mutation-
+tested.** Reordering the referenced types inside the production witness type string fails
+`T712-SCHEMA-PERMIT2`; swapping `nonce` and `deadline` in `AuthDelegationLib.hash` fails `T712-08b`;
+hashing a session key's `publicKey` length instead of its content fails `T712-09`. The deleted
+`T712-04..08` rows were duplicates in the strict sense that the schema audit asserts the same
+equality with a mechanically derived string in place of a transcribed one.
+

@@ -4,69 +4,29 @@ pragma solidity 0.8.36;
 import {V2TestBase} from 'test/base/V2TestBase.sol';
 
 import {AuthDelegationLib} from 'src/v2/types/AuthDelegation.sol';
-import {ERC20Transfer, ERC20TransferLib} from 'src/v2/types/ERC20Transfer.sol';
-import {ERC721Transfer, ERC721TransferLib} from 'src/v2/types/ERC721Transfer.sol';
-import {ExecutionOrder, ExecutionOrderLib} from 'src/v2/types/ExecutionOrder.sol';
+import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
+import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
+import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {ExecutionWitnessLib} from 'src/v2/types/ExecutionWitness.sol';
-import {FulfillmentOrder, FulfillmentOrderLib} from 'src/v2/types/FulfillmentOrder.sol';
-import {FulfillmentSolution, FulfillmentSolutionLib} from 'src/v2/types/FulfillmentSolution.sol';
+import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
+import {FulfillmentSolution} from 'src/v2/types/FulfillmentSolution.sol';
 import {FulfillmentWitnessLib} from 'src/v2/types/FulfillmentWitness.sol';
-import {GenericCall, GenericCallLib} from 'src/v2/types/GenericCall.sol';
+import {GenericCall} from 'src/v2/types/GenericCall.sol';
 import {SolutionApprovalLib} from 'src/v2/types/SolutionApproval.sol';
-import {ValidationParams, ValidationParamsLib} from 'src/v2/types/ValidationParams.sol';
+import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
 /**
- * @notice T712-01..08 and T712-13..17, plus the calldata/memory differential and the
- * array-encoding anchor.
- * @dev The production constants are the values under test here; every expected value is built from
- * the literals in {V2TestBase}, which were transcribed from the struct definitions. Together with
- * `test/v2/authenticators/types/Eip712.t.sol` this is the only place a production type string or
- * typehash may be read, and there it is never the expected side.
+ * @notice T712-08b..12 and T712-17, plus the calldata/memory differential and the array-encoding
+ * anchor.
+ * @dev The production hashers are the values under test here; every expected value is built from
+ * the schemas `forge bind-json` derived from the struct definitions. The bare typehashes are
+ * audited in `SchemaAudit.t.sol`; what these rows add is the struct and array encoding around
+ * them, which a typehash comparison alone does not reach.
  */
 contract Eip712Test is V2TestBase {
   // -------------------------------------------------------------------------------------------
-  // T712-01..08 — production constants against hand-written literals
+  // T712-08b..12 — struct and array encodings, against the schemas the structs declare
   // -------------------------------------------------------------------------------------------
-
-  function test_T712_01_executionWitnessTypehash() public pure {
-    assertEq(ExecutionWitnessLib.EXECUTION_WITNESS_TYPEHASH, lExecutionWitnessTypehash());
-  }
-
-  function test_T712_01b_executionWitnessPermit2TypeString() public pure {
-    assertEq(
-      ExecutionWitnessLib.EXECUTION_WITNESS_PERMIT2_TYPE_STRING, lExecutionWitnessTypeString()
-    );
-  }
-
-  function test_T712_02_fulfillmentWitnessTypehash() public pure {
-    assertEq(FulfillmentWitnessLib.FULFILLMENT_WITNESS_TYPEHASH, lFulfillmentWitnessTypehash());
-  }
-
-  function test_T712_02b_fulfillmentWitnessPermit2TypeString() public pure {
-    assertEq(
-      FulfillmentWitnessLib.FULFILLMENT_WITNESS_PERMIT2_TYPE_STRING, lFulfillmentWitnessTypeString()
-    );
-  }
-
-  function test_T712_04_validationParamsTypehash() public pure {
-    assertEq(ValidationParamsLib.VALIDATION_PARAMS_TYPEHASH, keccak256(bytes(L_VALIDATION_PARAMS)));
-  }
-
-  function test_T712_05_erc20TransferTypehash() public pure {
-    assertEq(ERC20TransferLib.ERC20_TRANSFER_TYPEHASH, keccak256(bytes(L_ERC20_TRANSFER)));
-  }
-
-  function test_T712_06_erc721TransferTypehash() public pure {
-    assertEq(ERC721TransferLib.ERC721_TRANSFER_TYPEHASH, keccak256(bytes(L_ERC721_TRANSFER)));
-  }
-
-  function test_T712_07_genericCallTypehash() public pure {
-    assertEq(GenericCallLib.GENERIC_CALL_TYPEHASH, keccak256(bytes(L_GENERIC_CALL)));
-  }
-
-  function test_T712_08_authDelegationTypehash() public pure {
-    assertEq(AuthDelegationLib.AUTH_DELEGATION_TYPEHASH, keccak256(bytes(L_AUTH_DELEGATION)));
-  }
 
   /// @dev Both directions, because `delegated` is what separates a delegation from a withdrawal
   function test_T712_08b_authDelegationStructHash() public pure {
