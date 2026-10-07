@@ -99,7 +99,7 @@ contract SessionOrderAuthenticator is
   }
 
   /// @inheritdoc IOrderAuthenticator
-  function authenticateExecution(address owner, ExecutionOrder calldata order, bytes calldata data)
+  function authenticateExecution(ExecutionOrder calldata order, bytes calldata data)
     external
     onlyAllowanceHub
   {
@@ -112,8 +112,8 @@ contract SessionOrderAuthenticator is
       revert SessionKeyExpired(block.timestamp, key.expiration);
     }
     bytes32 keyHash = key.hash();
-    if (!approvedKeys[owner][keyHash]) {
-      revert SessionKeyNotApproved(owner, key);
+    if (!approvedKeys[order.owner][keyHash]) {
+      revert SessionKeyNotApproved(order.owner, key);
     }
 
     _useUnorderedNonce(keyHash, order.nonce);
@@ -126,11 +126,10 @@ contract SessionOrderAuthenticator is
   }
 
   /// @inheritdoc IOrderAuthenticator
-  function authenticateFulfillment(
-    address owner,
-    FulfillmentOrder calldata order,
-    bytes calldata data
-  ) external onlyAllowanceHub {
+  function authenticateFulfillment(FulfillmentOrder calldata order, bytes calldata data)
+    external
+    onlyAllowanceHub
+  {
     SessionKey calldata key;
     assembly ('memory-safe') {
       key := add(data.offset, calldataload(data.offset))
@@ -140,8 +139,8 @@ contract SessionOrderAuthenticator is
       revert SessionKeyExpired(block.timestamp, key.expiration);
     }
     bytes32 keyHash = key.hash();
-    if (!approvedKeys[owner][keyHash]) {
-      revert SessionKeyNotApproved(owner, key);
+    if (!approvedKeys[order.owner][keyHash]) {
+      revert SessionKeyNotApproved(order.owner, key);
     }
 
     _useUnorderedNonce(keyHash, order.nonce);

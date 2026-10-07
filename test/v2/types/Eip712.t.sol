@@ -144,22 +144,13 @@ contract Eip712Test is V2TestBase {
   function test_T712_solutionApprovalStructHash() public view {
     FulfillmentSolution memory solution = _sampleSolution();
     bytes32 orderHash = keccak256('an arbitrary order hash');
-    bytes32 expected = lSolutionApproval(address(0xA11CE), orderHash, solution);
+    bytes32 expected = lSolutionApproval(orderHash, solution);
 
-    assertEq(
-      SolutionApprovalLib.hashMemory(address(0xA11CE), orderHash, solution),
-      expected,
-      'memory hasher'
-    );
-    assertEq(
-      this.extHashSolutionApproval(address(0xA11CE), orderHash, solution),
-      expected,
-      'calldata hasher'
-    );
+    assertEq(SolutionApprovalLib.hashMemory(orderHash, solution), expected, 'memory hasher');
+    assertEq(this.extHashSolutionApproval(orderHash, solution), expected, 'calldata hasher');
 
     assertTrue(
-      SolutionApprovalLib.hashMemory(address(0xA11CE), keccak256('another order'), solution)
-        != expected,
+      SolutionApprovalLib.hashMemory(keccak256('another order'), solution) != expected,
       'the order hash changes the approval'
     );
   }
@@ -239,12 +230,12 @@ contract Eip712Test is V2TestBase {
     return s.hash();
   }
 
-  function extHashSolutionApproval(
-    address approvalOwner,
-    bytes32 orderHash,
-    FulfillmentSolution calldata solution
-  ) external pure returns (bytes32) {
-    return SolutionApprovalLib.hash(approvalOwner, orderHash, solution);
+  function extHashSolutionApproval(bytes32 orderHash, FulfillmentSolution calldata solution)
+    external
+    pure
+    returns (bytes32)
+  {
+    return SolutionApprovalLib.hash(orderHash, solution);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -293,6 +284,7 @@ contract Eip712Test is V2TestBase {
   function _sampleExecutionOrder() private pure returns (ExecutionOrder memory) {
     (, ERC721Transfer[] memory nfts, GenericCall[] memory calls) = _sample();
     return ExecutionOrder({
+      owner: address(0xA11CE),
       relayer: ANY,
       erc20Transfers: _sampleErc20s(),
       erc721Transfers: nfts,
@@ -305,6 +297,7 @@ contract Eip712Test is V2TestBase {
   function _sampleFulfillmentOrder() private pure returns (FulfillmentOrder memory) {
     (, ERC721Transfer[] memory nfts, GenericCall[] memory ownerCalls) = _sample();
     return FulfillmentOrder({
+      owner: address(0xA11CE),
       solver: ANY,
       erc20Transfers: _sampleErc20s(),
       erc721Transfers: nfts,

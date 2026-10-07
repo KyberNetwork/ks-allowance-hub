@@ -5,7 +5,6 @@ import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.s
 
 import {SessionKey} from 'src/v2/authenticators/types/SessionKey.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
-import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
@@ -13,14 +12,14 @@ import {GenericCall} from 'src/v2/types/GenericCall.sol';
 import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
 /**
- * @title DirtyCalldataTest
+ * @title CalldataHygieneTest
  * @notice DIRTY-01..04 — an order hash is taken from unmasked calldata on every rail
  * @dev The leaf hashes copy their struct's calldata words without masking them, which is only
  * sound because settling the order reads the same fields through Solidity, and that read rejects a
  * word carrying dirty high bits. These cases hold that: a rail that stopped reading the fields, or
  * only needed the digest, would let a dirty payload through and fail here.
  */
-contract DirtyCalldataTest is AuthenticatorBase {
+contract CalldataHygieneTest is AuthenticatorBase {
   uint160 internal constant AMOUNT = 5 ether;
 
   SessionKey internal key;
@@ -37,7 +36,6 @@ contract DirtyCalldataTest is AuthenticatorBase {
       abi.encodeCall(
         IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
         (
-          owner,
           _openExecutionOrder(
             _erc20s(_wethTransfer(AMOUNT)), _calls(_routerCall(0, hex'01')), 90, block.timestamp
           ),
@@ -64,8 +62,7 @@ contract DirtyCalldataTest is AuthenticatorBase {
     _assertDirtyTokenWordIsRefused(
       relayer,
       abi.encodeCall(
-        IKSAllowanceHubV2.executeOrderWithPermit2Signature,
-        (owner, order, _signExecutionWitness(order))
+        IKSAllowanceHubV2.executeOrderWithPermit2Signature, (order, _signExecutionWitness(order))
       )
     );
   }
@@ -81,7 +78,6 @@ contract DirtyCalldataTest is AuthenticatorBase {
       abi.encodeCall(
         IKSAllowanceHubV2.fulfillOrderWithDelegatedAuthentication,
         (
-          owner,
           order,
           address(authenticator),
           _fulfillmentAuthData(order, key, sessionKeyPk),
@@ -103,7 +99,6 @@ contract DirtyCalldataTest is AuthenticatorBase {
       abi.encodeCall(
         IKSAllowanceHubV2.fulfillOrderWithPermit2Signature,
         (
-          owner,
           order,
           _signPlainPermit(_erc20s(_wethTransfer(AMOUNT)), 93, deadline),
           _solution(_calls(_routerCall(0, hex'02')), 2, deadline),

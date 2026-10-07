@@ -75,14 +75,12 @@ contract FulfillOrderTest is AuthenticatorBase {
     FulfillmentSolution memory route = _solution(_calls(_routerCall(0, hex'01')), 1, deadline);
 
     bytes memory permitSig = _signPlainPermit(erc20s, 61, deadline);
-    bytes memory approval =
-      _signSolutionApproval(approverKey, owner, lFulfillmentOrderHash(order), route);
+    bytes memory approval = _signSolutionApproval(approverKey, lFulfillmentOrderHash(order), route);
 
     uint256 before = IERC20(WETH).balanceOf(address(router));
 
     vm.prank(owner);
-    bytes[] memory results =
-      hub.fulfillOrderWithPermit2Signature(owner, order, permitSig, route, approval);
+    bytes[] memory results = hub.fulfillOrderWithPermit2Signature(order, permitSig, route, approval);
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'erc20 leg');
     assertEq(results.length, 1, 'one router result');
@@ -97,7 +95,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(owner);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.fulfillOrderWithPermit2Signature(owner, again, permitSig2, otherRoute, approval);
+    hub.fulfillOrderWithPermit2Signature(again, permitSig2, otherRoute, approval);
   }
 
   /// AUTH-07 — a solver submits, and the witness names who may choose the route, not the route
@@ -116,7 +114,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(solver);
     bytes[] memory results = hub.fulfillOrderWithPermit2Signature(
-      owner, order, signature, _route(_calls(_routerCall(0, hex'01'))), ''
+      order, signature, _route(_calls(_routerCall(0, hex'01'))), ''
     );
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'erc20 leg');
@@ -147,14 +145,13 @@ contract FulfillOrderTest is AuthenticatorBase {
       deadline
     );
     FulfillmentSolution memory route = _solution(solverCalls, 1, deadline);
-    bytes memory approval =
-      _signSolutionApproval(approverKey, owner, lFulfillmentOrderHash(named), route);
+    bytes memory approval = _signSolutionApproval(approverKey, lFulfillmentOrderHash(named), route);
     bytes memory matchingWitness = _signFulfillmentWitness(named);
 
     uint256 before = IERC20(WETH).balanceOf(address(router));
 
     vm.prank(solver);
-    hub.fulfillOrderWithPermit2Signature(owner, named, matchingWitness, route, approval);
+    hub.fulfillOrderWithPermit2Signature(named, matchingWitness, route, approval);
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the matching order settled');
 
     FulfillmentOrder memory swapped = _fulfillmentOrder(
@@ -169,14 +166,14 @@ contract FulfillOrderTest is AuthenticatorBase {
     );
     FulfillmentSolution memory route2 = _solution(solverCalls, 2, deadline);
     bytes memory approval2 =
-      _signSolutionApproval(approverKey, owner, lFulfillmentOrderHash(swapped), route2);
+      _signSolutionApproval(approverKey, lFulfillmentOrderHash(swapped), route2);
     // the owner signed a witness naming nobody, so the approver in the order is not the one signed
     bytes memory openWitness =
       _signFulfillmentWitness(swapped, swapped.solver, swapped.ownerCalls, ANY);
 
     vm.prank(solver);
     vm.expectRevert(PERMIT2_INVALID_SIGNER);
-    hub.fulfillOrderWithPermit2Signature(owner, swapped, openWitness, route2, approval2);
+    hub.fulfillOrderWithPermit2Signature(swapped, openWitness, route2, approval2);
   }
 
   /**
@@ -207,7 +204,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     uint256 before = IERC20(WETH).balanceOf(address(router));
     vm.prank(solver);
-    hub.fulfillOrderWithPermit2Signature(owner, pinned, pinnedSig, route, '');
+    hub.fulfillOrderWithPermit2Signature(pinned, pinnedSig, route, '');
     assertEq(
       IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the named solver may submit'
     );
@@ -228,7 +225,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     vm.expectRevert(
       abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedSolver.selector, relayer, solver)
     );
-    hub.fulfillOrderWithPermit2Signature(owner, pinnedAgain, againSig, route, '');
+    hub.fulfillOrderWithPermit2Signature(pinnedAgain, againSig, route, '');
 
     assertEq(
       _permit2NonceBitmap(owner, 62 >> 8) & (1 << 62),
@@ -243,7 +240,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     before = IERC20(WETH).balanceOf(address(router));
     vm.prank(relayer);
-    hub.fulfillOrderWithPermit2Signature(owner, openOrder, openSig, route, '');
+    hub.fulfillOrderWithPermit2Signature(openOrder, openSig, route, '');
     assertEq(
       IERC20(WETH).balanceOf(address(router)) - before,
       AMOUNT,
@@ -273,13 +270,13 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     FulfillmentOrder memory withTailA = _orderWithTail(_calls(_routerCall(0, hex'aa')), deadline);
     bytes32 hashA = lFulfillmentOrderHash(withTailA);
-    bytes memory approvalA = _signSolutionApproval(approverKey, owner, hashA, route);
+    bytes memory approvalA = _signSolutionApproval(approverKey, hashA, route);
 
     uint256 before = IERC20(WETH).balanceOf(address(router));
 
     vm.prank(owner);
     bytes[] memory results = hub.fulfillOrderWithDelegatedAuthentication(
-      owner, withTailA, address(0), '', route, approvalA, false
+      withTailA, address(0), '', route, approvalA, false
     );
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the approved order settled');
@@ -292,12 +289,12 @@ contract FulfillOrderTest is AuthenticatorBase {
     assertTrue(lFulfillmentOrderHash(withTailB) != hashA, 'the two orders really do differ');
 
     FulfillmentSolution memory routeB = _solution(solverCalls, 8, deadline);
-    bytes memory approvalAB = _signSolutionApproval(approverKey, owner, hashA, routeB);
+    bytes memory approvalAB = _signSolutionApproval(approverKey, hashA, routeB);
 
     vm.prank(owner);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner, withTailB, address(0), '', routeB, approvalAB, false
+      withTailB, address(0), '', routeB, approvalAB, false
     );
 
     assertEq(router.callCount(), 2, 'the refused order ran nothing');
@@ -306,12 +303,10 @@ contract FulfillOrderTest is AuthenticatorBase {
     // A third route nonce, since the first two are spent and the point here is not the nonce guard
     FulfillmentSolution memory routeC = _solution(solverCalls, 9, deadline);
     bytes memory approvalB =
-      _signSolutionApproval(approverKey, owner, lFulfillmentOrderHash(withTailB), routeC);
+      _signSolutionApproval(approverKey, lFulfillmentOrderHash(withTailB), routeC);
 
     vm.prank(owner);
-    hub.fulfillOrderWithDelegatedAuthentication(
-      owner, withTailB, address(0), '', routeC, approvalB, false
-    );
+    hub.fulfillOrderWithDelegatedAuthentication(withTailB, address(0), '', routeC, approvalB, false);
     assertEq(router.callCount(), 4, 'route and tail ran for the second order too');
   }
 
@@ -336,7 +331,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     uint256 before = IERC20(WETH).balanceOf(address(router));
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner, open, address(0), '', _solution(solverCalls, 70, block.timestamp), '', false
+      open, address(0), '', _solution(solverCalls, 70, block.timestamp), '', false
     );
     assertEq(
       IERC20(WETH).balanceOf(address(router)) - before,
@@ -350,7 +345,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     vm.prank(owner);
     vm.expectRevert(_deadlinePassed(stale));
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner, open, address(0), '', _solution(solverCalls, 71, stale), '', false
+      open, address(0), '', _solution(solverCalls, 71, stale), '', false
     );
 
     // and the same on the Permit2 rail, whose modifier stack is written out separately
@@ -365,9 +360,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(_deadlinePassed(stale));
-    hub.fulfillOrderWithPermit2Signature(
-      owner, forRelay, witness, _solution(solverCalls, 73, stale), ''
-    );
+    hub.fulfillOrderWithPermit2Signature(forRelay, witness, _solution(solverCalls, 73, stale), '');
   }
 
   /**
@@ -392,20 +385,15 @@ contract FulfillOrderTest is AuthenticatorBase {
       80,
       deadline
     );
-    bytes memory approval =
-      _signSolutionApproval(approverKey, owner, lFulfillmentOrderHash(named), route);
+    bytes memory approval = _signSolutionApproval(approverKey, lFulfillmentOrderHash(named), route);
 
     vm.prank(owner);
-    hub.fulfillOrderWithDelegatedAuthentication(
-      owner, named, address(0), '', route, approval, false
-    );
+    hub.fulfillOrderWithDelegatedAuthentication(named, address(0), '', route, approval, false);
     assertEq(hub.nonces(lNonceKey(approver), 0), 1 << 80, 'the hub burned exactly the route nonce');
 
     vm.prank(owner);
     vm.expectRevert(IUnorderedNonce.NonceAlreadyUsed.selector);
-    hub.fulfillOrderWithDelegatedAuthentication(
-      owner, named, address(0), '', route, approval, false
-    );
+    hub.fulfillOrderWithDelegatedAuthentication(named, address(0), '', route, approval, false);
 
     // the sentinel path never reaches the burn, so this nonce stays spendable twice over
     FulfillmentOrder memory open = _openFulfillmentOrder(
@@ -415,9 +403,9 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     uint256 before = IERC20(WETH).balanceOf(address(router));
     vm.prank(owner);
-    hub.fulfillOrderWithDelegatedAuthentication(owner, open, address(0), '', openRoute, '', false);
+    hub.fulfillOrderWithDelegatedAuthentication(open, address(0), '', openRoute, '', false);
     vm.prank(owner);
-    hub.fulfillOrderWithDelegatedAuthentication(owner, open, address(0), '', openRoute, '', false);
+    hub.fulfillOrderWithDelegatedAuthentication(open, address(0), '', openRoute, '', false);
 
     assertEq(
       IERC20(WETH).balanceOf(address(router)) - before, 2 * AMOUNT, 'the sentinel route ran twice'
@@ -440,7 +428,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(owner);
     bytes[] memory results = hub.fulfillOrderWithDelegatedAuthentication(
-      owner, open, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
+      open, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
     );
 
     assertEq(results.length, 1, 'the route ran');
@@ -449,7 +437,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner, open, address(0), '', _route(_calls(_routerCall(0, hex'02'))), '', false
+      open, address(0), '', _route(_calls(_routerCall(0, hex'02'))), '', false
     );
 
     assertEq(router.callCount(), 2, 'and a different route under the same order ran as well');
@@ -469,7 +457,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     vm.prank(owner);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner, withApprover, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
+      withApprover, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
     );
   }
 
@@ -495,7 +483,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     vm.prank(owner);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner, order, address(0), '', _route(_calls(_routerCall(0, hex'01'))), hex'1234', false
+      order, address(0), '', _route(_calls(_routerCall(0, hex'01'))), hex'1234', false
     );
 
     assertEq(router.callCount(), 0, 'and nothing ran');
@@ -527,7 +515,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(relayer);
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner, order, address(authenticator), authData, route, '', false
+      order, address(authenticator), authData, route, '', false
     );
 
     assertEq(authenticator.nonces(_keyHash(key), 0), 1 << 21, 'the order nonce burned');
@@ -536,7 +524,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(IUnorderedNonce.NonceAlreadyUsed.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner, order, address(authenticator), authData, route, '', false
+      order, address(authenticator), authData, route, '', false
     );
 
     assertEq(router.callCount(), 1, 'and not a second time');
@@ -603,7 +591,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(solver);
     hub.fulfillOrderWithPermit2Signature(
-      owner, control, _signFulfillmentWitness(control), _route(solverCalls), ''
+      control, _signFulfillmentWitness(control), _route(solverCalls), ''
     );
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the signed tail settled');
@@ -627,7 +615,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(solver);
     vm.expectRevert(PERMIT2_INVALID_SIGNER);
-    hub.fulfillOrderWithPermit2Signature(owner, tampered, signature, _route(solverCalls), '');
+    hub.fulfillOrderWithPermit2Signature(tampered, signature, _route(solverCalls), '');
   }
 
   /**
@@ -653,7 +641,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(relayer);
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner, control, address(authenticator), controlAuth, _route(solverCalls), '', false
+      control, address(authenticator), controlAuth, _route(solverCalls), '', false
     );
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the signed tail settled');
@@ -670,7 +658,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(ISessionOrderAuthenticator.InvalidAuthenticationSignature.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner, tampered, address(authenticator), signedAuth, _route(solverCalls), '', false
+      tampered, address(authenticator), signedAuth, _route(solverCalls), '', false
     );
   }
 
@@ -732,7 +720,6 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(owner);
     bytes[] memory executeResults = hub.executeOrderWithDelegatedAuthentication(
-      owner,
       _openExecutionOrder(new ERC20Transfer[](0), solverCalls, 0, block.timestamp),
       address(0),
       '',
@@ -820,7 +807,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner, order, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
+      order, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
     );
 
     assertEq(validator.sequenceLength(), 2, 'both hooks ran');
@@ -876,7 +863,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(solver);
     hub.fulfillOrderWithPermit2Signature(
-      owner, order, signature, _route(_calls(_routerCall(0, hex'01'))), ''
+      order, signature, _route(_calls(_routerCall(0, hex'01'))), ''
     );
 
     assertEq(validator.sequenceLength(), 2, 'both hooks ran');
@@ -911,7 +898,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     vm.prank(owner);
     vm.expectRevert(bytes('after'));
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner, order, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
+      order, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
     );
 
     assertEq(router.callCount(), 0, 'router call rolled back');
@@ -925,7 +912,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner, order, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
+      order, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
     );
 
     assertEq(router.callCount(), 1);
@@ -967,7 +954,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     (FulfillmentOrder memory order, FulfillmentSolution memory route) = _fuzzOrder(f, relayer);
     bytes memory authData = _fulfillmentAuthData(order, key, sessionKeyPk);
     bytes memory approval = f.approveSolution
-      ? _signSolutionApproval(approverKey, owner, lFulfillmentOrderHash(order), route)
+      ? _signSolutionApproval(approverKey, lFulfillmentOrderHash(order), route)
       : bytes('');
 
     uint256 before = IERC20(WETH).balanceOf(address(router));
@@ -976,7 +963,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(relayer);
     bytes[] memory results = hub.fulfillOrderWithDelegatedAuthentication(
-      owner, order, address(authenticator), authData, route, approval, false
+      order, address(authenticator), authData, route, approval, false
     );
 
     _assertFuzzSettled(f, order, results, before);
@@ -1007,7 +994,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     (FulfillmentOrder memory order, FulfillmentSolution memory route) = _fuzzOrder(f, solver);
     bytes memory signature = _signFulfillmentWitness(order);
     bytes memory approval = f.approveSolution
-      ? _signSolutionApproval(approverKey, owner, lFulfillmentOrderHash(order), route)
+      ? _signSolutionApproval(approverKey, lFulfillmentOrderHash(order), route)
       : bytes('');
 
     uint256 before = IERC20(WETH).balanceOf(address(router));
@@ -1016,8 +1003,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     vm.recordLogs();
 
     vm.prank(solver);
-    bytes[] memory results =
-      hub.fulfillOrderWithPermit2Signature(owner, order, signature, route, approval);
+    bytes[] memory results = hub.fulfillOrderWithPermit2Signature(order, signature, route, approval);
 
     _assertFuzzSettled(f, order, results, before);
     assertEq(
@@ -1037,7 +1023,6 @@ contract FulfillOrderTest is AuthenticatorBase {
     returns (bytes[] memory results)
   {
     results = hub.fulfillOrderWithDelegatedAuthentication(
-      owner,
       _openFulfillmentOrder(
         new ERC20Transfer[](0), new ValidationParams[](0), ownerCalls, 0, block.timestamp
       ),

@@ -40,7 +40,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
    * selector taken from the production interface would agree with a wrong signature there.
    */
   string internal constant S_AUTHENTICATE_EXECUTION =
-    'authenticateExecution(address,(address,(address,address,uint160)[],(address,uint256,address)[],(address,uint256,bytes)[],uint256,uint256),bytes)';
+    'authenticateExecution((address,address,(address,address,uint160)[],(address,uint256,address)[],(address,uint256,bytes)[],uint256,uint256),bytes)';
 
   SessionKey internal key;
 
@@ -64,7 +64,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     uint256 balanceBefore = IERC20(WETH).balanceOf(address(router));
 
     vm.prank(owner);
-    hub.executeOrderWithPermit2Signature(owner, order, signature);
+    hub.executeOrderWithPermit2Signature(order, signature);
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - balanceBefore, AMOUNT);
   }
@@ -82,7 +82,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     uint256 balanceBefore = IERC20(WETH).balanceOf(address(router));
 
     vm.prank(relayer);
-    bytes[] memory results = hub.executeOrderWithPermit2Signature(owner, order, signature);
+    bytes[] memory results = hub.executeOrderWithPermit2Signature(order, signature);
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - balanceBefore, AMOUNT, 'erc20 leg');
     assertEq(nft.ownerOf(NFT_ID), address(router), 'erc721 leg');
@@ -106,7 +106,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(PERMIT2_INVALID_SIGNER);
-    hub.executeOrderWithPermit2Signature(owner, tampered, signature);
+    hub.executeOrderWithPermit2Signature(tampered, signature);
   }
 
   /**
@@ -127,7 +127,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     uint256 before = IERC20(WETH).balanceOf(address(router));
 
     vm.prank(relayer);
-    hub.executeOrderWithPermit2Signature(owner, pinned, matching);
+    hub.executeOrderWithPermit2Signature(pinned, matching);
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the matching order settled');
 
     // the owner signed a witness naming the relayer; the order submitted names nobody, so the hub
@@ -138,7 +138,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(PERMIT2_INVALID_SIGNER);
-    hub.executeOrderWithPermit2Signature(owner, openOrder, forTheRelayer);
+    hub.executeOrderWithPermit2Signature(openOrder, forTheRelayer);
   }
 
   /**
@@ -158,7 +158,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
     uint256 before = IERC20(WETH).balanceOf(address(router));
     vm.prank(relayer);
-    hub.executeOrderWithPermit2Signature(owner, pinned, pinnedSig);
+    hub.executeOrderWithPermit2Signature(pinned, pinnedSig);
     assertEq(
       IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the named relayer may submit'
     );
@@ -171,7 +171,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     vm.expectRevert(
       abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedRelayer.selector, solver, relayer)
     );
-    hub.executeOrderWithPermit2Signature(owner, pinnedAgain, pinnedAgainSig);
+    hub.executeOrderWithPermit2Signature(pinnedAgain, pinnedAgainSig);
 
     assertEq(
       _permit2NonceBitmap(owner, 51 >> 8) & (1 << 51),
@@ -184,7 +184,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
     before = IERC20(WETH).balanceOf(address(router));
     vm.prank(solver);
-    hub.executeOrderWithPermit2Signature(owner, openOrder, openSig);
+    hub.executeOrderWithPermit2Signature(openOrder, openSig);
     assertEq(
       IERC20(WETH).balanceOf(address(router)) - before,
       AMOUNT,
@@ -205,7 +205,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
       _openExecutionOrder(erc20s, new GenericCall[](0), 0, block.timestamp);
 
     vm.prank(owner);
-    hub.executeOrderWithDelegatedAuthentication(owner, order, address(0), '', false);
+    hub.executeOrderWithDelegatedAuthentication(order, address(0), '', false);
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - balanceBefore, AMOUNT);
   }
@@ -223,7 +223,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     );
 
     vm.prank(owner);
-    hub.executeOrderWithDelegatedAuthentication(owner, order, address(0), '', true);
+    hub.executeOrderWithDelegatedAuthentication(order, address(0), '', true);
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - balanceBefore, AMOUNT);
     assertEq(allowanceBefore - _permit2Allowance(WETH), AMOUNT, 'drawn on the Permit2 allowance');
@@ -245,9 +245,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
         IAuthDelegator.NotDelegatedAuthenticator.selector, owner, address(authenticator)
       )
     );
-    hub.executeOrderWithDelegatedAuthentication(
-      owner, order, address(authenticator), authData, false
-    );
+    hub.executeOrderWithDelegatedAuthentication(order, address(authenticator), authData, false);
   }
 
   /**
@@ -273,9 +271,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     uint160 allowanceBefore = _permit2Allowance(WETH);
 
     vm.prank(relayer);
-    hub.executeOrderWithDelegatedAuthentication(
-      owner, plainRail, address(authenticator), plainAuth, false
-    );
+    hub.executeOrderWithDelegatedAuthentication(plainRail, address(authenticator), plainAuth, false);
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'plain allowance rail');
     assertEq(_permit2Allowance(WETH), allowanceBefore, 'and it left the Permit2 allowance alone');
@@ -288,7 +284,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
     vm.prank(relayer);
     hub.executeOrderWithDelegatedAuthentication(
-      owner, permit2Rail, address(authenticator), permit2Auth, true
+      permit2Rail, address(authenticator), permit2Auth, true
     );
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'permit2 allowance rail');
@@ -321,7 +317,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     uint256 before = IERC20(WETH).balanceOf(address(router));
 
     vm.prank(relayer);
-    hub.executeOrderWithPermit2Signature(owner, order, witness);
+    hub.executeOrderWithPermit2Signature(order, witness);
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the signature transfer ran');
     assertEq(IERC20(WETH).allowance(owner, address(hub)), 0, 'with no plain allowance to draw on');
@@ -346,17 +342,14 @@ contract ExecuteOrderTest is AuthenticatorBase {
       _executionOrder(ANY, erc20s, new ERC721Transfer[](0), calls, 43, deadline);
     bytes memory authData = _executionAuthData(order, key, sessionKeyPk);
 
-    bytes memory expectedCall =
-      abi.encodeWithSignature(S_AUTHENTICATE_EXECUTION, owner, order, authData);
+    bytes memory expectedCall = abi.encodeWithSignature(S_AUTHENTICATE_EXECUTION, order, authData);
 
     uint256 before = IERC20(WETH).balanceOf(address(router));
 
     vm.expectCall(address(authenticator), expectedCall, 1);
 
     vm.prank(relayer);
-    hub.executeOrderWithDelegatedAuthentication(
-      owner, order, address(authenticator), authData, false
-    );
+    hub.executeOrderWithDelegatedAuthentication(order, address(authenticator), authData, false);
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'and the order settled');
   }
@@ -372,7 +365,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(SLICE_OUT_OF_BOUNDS);
     hub.executeOrderWithDelegatedAuthentication(
-      owner, order, address(authenticator), _encodeKey(key), false
+      order, address(authenticator), _encodeKey(key), false
     );
   }
 
@@ -433,7 +426,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
     vm.prank(relayer);
     bytes[] memory results = hub.executeOrderWithDelegatedAuthentication{value: value}(
-      owner, order, address(authenticator), authData, false
+      order, address(authenticator), authData, false
     );
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, f.amount, 'exact amount moved');
@@ -490,8 +483,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     vm.recordLogs();
 
     vm.prank(relayer);
-    bytes[] memory results =
-      hub.executeOrderWithPermit2Signature{value: value}(owner, order, signature);
+    bytes[] memory results = hub.executeOrderWithPermit2Signature{value: value}(order, signature);
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, f.amount, 'exact amount moved');
     assertEq(address(router).balance - routerNative, value, 'native forwarded, none stranded');

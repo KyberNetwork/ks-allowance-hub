@@ -4,7 +4,6 @@ pragma solidity 0.8.36;
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
 import {SessionKey} from 'src/v2/authenticators/types/SessionKey.sol';
-import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
@@ -24,7 +23,17 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  * then settles data signed by somebody else carrying that same number, which does not compile into
  * anything meaningful unless the namespaces are separate.
  */
-contract NonceNamespaceTest is AuthenticatorBase {
+import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
+
+/**
+ * @title NoncesTest
+ * @notice NONCE-01..07 and NONCE-FUZZ — the unordered bitmap
+ * @dev A nonce is a word index in its top bits and a bit position in its low byte, spent in any
+ * order, and a namespace belongs to whoever signed the data the nonce guards. The boundary cases
+ * pin the split between word and bit; the namespace cases pin that two kinds of signed data in one
+ * contract cannot collide on a number.
+ */
+contract NoncesTest is AuthenticatorBase {
   uint160 internal constant AMOUNT = 1 ether;
 
   SessionKey internal key;
@@ -53,7 +62,7 @@ contract NonceNamespaceTest is AuthenticatorBase {
     uint256 before = IERC20(WETH).balanceOf(address(router));
     vm.prank(relayer);
     hub.executeOrderWithDelegatedAuthentication(
-      owner, order, address(authenticator), _executionAuthData(order, key, sessionKeyPk), false
+      order, address(authenticator), _executionAuthData(order, key, sessionKeyPk), false
     );
 
     assertEq(
@@ -83,14 +92,11 @@ contract NonceNamespaceTest is AuthenticatorBase {
       deadline
     );
     FulfillmentSolution memory route = _solution(_calls(_routerCall(0, hex'01')), 9, deadline);
-    bytes memory approval =
-      _signSolutionApproval(approverKey, owner, lFulfillmentOrderHash(order), route);
+    bytes memory approval = _signSolutionApproval(approverKey, lFulfillmentOrderHash(order), route);
 
     uint256 before = IERC20(WETH).balanceOf(address(router));
     vm.prank(owner);
-    hub.fulfillOrderWithDelegatedAuthentication(
-      owner, order, address(0), '', route, approval, false
-    );
+    hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', route, approval, false);
 
     assertEq(
       IERC20(WETH).balanceOf(address(router)) - before,
@@ -99,5 +105,63 @@ contract NonceNamespaceTest is AuthenticatorBase {
     );
     assertEq(hub.nonces(lNonceKey(owner), 0), 1 << 9, 'the owner spent 9');
     assertEq(hub.nonces(lNonceKey(approver), 0), 1 << 9, 'and the approver spent their own 9');
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // NONCE — the unordered bitmap
+  // -------------------------------------------------------------------------------------------
+
+  /// NONCE-01 / NONCE-FUZZ — a nonce lands on exactly one bit, at the position it names
+  function testFuzz_NONCE_FUZZ_revokeSetsExactlyOneBit(uint256 nonce) public {
+    vm.prank(owner);
+    hub.revokeNonce(nonce);
+
+    assertEq(hub.nonces(lNonceKey(owner), nonce >> 8), 1 << (nonce & 0xff), 'exact bit');
+    // a neighbouring word is untouched
+    assertEq(hub.nonces(lNonceKey(owner), (nonce >> 8) + 1), 0, 'neighbouring word clean');
+  }
+
+  /// NONCE-01 — the documented boundaries
+  function test_NONCE_01_bitmapBoundaries() public {
+    uint256[4] memory nonces = [uint256(0), 255, 256, type(uint256).max];
+
+    for (uint256 i = 0; i < nonces.length; i++) {
+      vm.prank(owner);
+      hub.revokeNonce(nonces[i]);
+
+      // nonces 0 and 255 share word 0, so assert the bit rather than the whole word
+      uint256 bit = 1 << (nonces[i] & 0xff);
+      assertEq(hub.nonces(lNonceKey(owner), nonces[i] >> 8) & bit, bit, 'boundary bit set');
+    }
+
+    // 0 and 256 share a bit position but live in different words
+    assertEq(hub.nonces(lNonceKey(owner), 0), (1 << 0) | (1 << 255), 'word 0 holds 0 and 255');
+    assertEq(hub.nonces(lNonceKey(owner), 1), 1 << 0, 'word 1 holds 256');
+  }
+
+  /// NONCE-04 — revoking twice reverts
+  function test_NONCE_04_doubleRevoke() public {
+    vm.startPrank(owner);
+    hub.revokeNonce(9);
+    vm.expectRevert(IUnorderedNonce.NonceAlreadyUsed.selector);
+    hub.revokeNonce(9);
+    vm.stopPrank();
+  }
+
+  /// NONCE-05 — the hub and the authenticator keep separate bitmaps
+  function test_NONCE_05_hubAndAuthenticatorAreIndependent() public {
+    vm.prank(owner);
+    hub.revokeNonce(3);
+
+    vm.prank(owner);
+    authenticator.revokeNonce(3);
+
+    assertEq(hub.nonces(lNonceKey(owner), 0), 1 << 3);
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 1 << 3);
+
+    // spending it on one side does not spend it on the other
+    vm.prank(owner);
+    vm.expectRevert(IUnorderedNonce.NonceAlreadyUsed.selector);
+    hub.revokeNonce(3);
   }
 }

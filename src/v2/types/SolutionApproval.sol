@@ -9,34 +9,32 @@ import {FulfillmentSolution} from './FulfillmentSolution.sol';
  * replayed against another.
  */
 struct SolutionApproval {
-  address owner;
   bytes32 orderHash;
   FulfillmentSolution solution;
 }
 
 library SolutionApprovalLib {
   bytes32 internal constant SOLUTION_APPROVAL_TYPEHASH = keccak256(
-    'SolutionApproval(address owner,bytes32 orderHash,FulfillmentSolution solution)'
+    'SolutionApproval(bytes32 orderHash,FulfillmentSolution solution)'
     'FulfillmentSolution(GenericCall[] solverCalls,uint256 nonce,uint256 deadline)'
     'GenericCall(address router,uint256 value,bytes data)'
   );
 
   /// @dev EIP-712 hash of the approval the solution approver produces
-  function hash(address owner, bytes32 orderHash, FulfillmentSolution calldata solution)
+  function hash(bytes32 orderHash, FulfillmentSolution calldata solution)
     internal
     pure
     returns (bytes32)
   {
-    return keccak256(abi.encode(SOLUTION_APPROVAL_TYPEHASH, owner, orderHash, solution.hash()));
+    return keccak256(abi.encode(SOLUTION_APPROVAL_TYPEHASH, orderHash, solution.hash()));
   }
 
   /// @dev As {hash}, for a solution already in memory
-  function hashMemory(address owner, bytes32 orderHash, FulfillmentSolution memory solution)
+  function hashMemory(bytes32 orderHash, FulfillmentSolution memory solution)
     internal
     pure
     returns (bytes32)
   {
-    return
-      keccak256(abi.encode(SOLUTION_APPROVAL_TYPEHASH, owner, orderHash, solution.hashMemory()));
+    return keccak256(abi.encode(SOLUTION_APPROVAL_TYPEHASH, orderHash, solution.hashMemory()));
   }
 }

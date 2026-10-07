@@ -106,7 +106,6 @@ contract KSAllowanceHubV2 is
 
   /// @inheritdoc IKSAllowanceHubV2
   function executeOrderWithDelegatedAuthentication(
-    address owner,
     ExecutionOrder calldata order,
     address authenticator,
     bytes calldata authenticationData,
@@ -116,34 +115,33 @@ contract KSAllowanceHubV2 is
     payable
     whenNotPaused
     checkDeadline(order.deadline)
-    lock(owner)
+    lock(order.owner)
+    checkDelegation(order.owner, authenticator)
     guardNativeSpend
-    checkDelegation(owner, authenticator)
     returns (bytes[] memory results)
   {
     // Being the caller is the owner's own authentication; anyone else must present a credential
-    if (msg.sender != owner) {
+    if (msg.sender != order.owner) {
       if (msg.sender != order.relayer && order.relayer != DEAD_ADDRESS) {
         revert UnauthorizedRelayer(msg.sender, order.relayer);
       }
-      IOrderAuthenticator(authenticator).authenticateExecution(owner, order, authenticationData);
+      IOrderAuthenticator(authenticator).authenticateExecution(order, authenticationData);
     }
 
     _announceTransfers(
-      owner,
+      order.owner,
       order.hash(),
       order.erc20Transfers,
       order.erc721Transfers,
       order.genericCalls.toNativeTransfers()
     );
 
-    _transferERC20s(owner, order.erc20Transfers, usePermit2Allowances);
-    return _settleExecution(owner, order);
+    _transferERC20s(order.owner, order.erc20Transfers, usePermit2Allowances);
+    return _settleExecution(order);
   }
 
   /// @inheritdoc IKSAllowanceHubV2
   function executeOrderWithPermit2Signature(
-    address owner,
     ExecutionOrder calldata order,
     bytes calldata permit2Signature
   )
@@ -151,23 +149,23 @@ contract KSAllowanceHubV2 is
     payable
     whenNotPaused
     checkDeadline(order.deadline)
-    lock(owner)
+    lock(order.owner)
     guardNativeSpend
     returns (bytes[] memory results)
   {
     _announceTransfers(
-      owner,
+      order.owner,
       order.hash(),
       order.erc20Transfers,
       order.erc721Transfers,
       order.genericCalls.toNativeTransfers()
     );
 
-    // Self-submitted: nothing to bind, since the owner is already the caller. Relayed: the order
+    // Self-submitted: nothing to bind, since the order.owner is already the caller. Relayed: the order
     // goes in as the witness, which is what stops a relayer altering it
-    if (msg.sender == owner) {
+    if (msg.sender == order.owner) {
       _permitTransferFrom(
-        owner, order.erc20Transfers, order.nonce, order.deadline, permit2Signature
+        order.owner, order.erc20Transfers, order.nonce, order.deadline, permit2Signature
       );
     } else if (msg.sender == order.relayer || order.relayer == DEAD_ADDRESS) {
       bytes32 witness = ExecutionWitnessLib.hash(
@@ -178,7 +176,7 @@ contract KSAllowanceHubV2 is
       );
 
       _permitWitnessTransferFrom(
-        owner,
+        order.owner,
         order.erc20Transfers,
         order.nonce,
         order.deadline,
@@ -190,12 +188,11 @@ contract KSAllowanceHubV2 is
       revert UnauthorizedRelayer(msg.sender, order.relayer);
     }
 
-    return _settleExecution(owner, order);
+    return _settleExecution(order);
   }
 
   /// @inheritdoc IKSAllowanceHubV2
   function fulfillOrderWithDelegatedAuthentication(
-    address owner,
     FulfillmentOrder calldata order,
     address authenticator,
     bytes calldata authenticationData,
@@ -208,43 +205,42 @@ contract KSAllowanceHubV2 is
     whenNotPaused
     checkDeadline(order.deadline)
     checkDeadline(solution.deadline)
-    lock(owner)
+    lock(order.owner)
+    checkDelegation(order.owner, authenticator)
     guardNativeSpend
-    checkDelegation(owner, authenticator)
     returns (bytes[] memory results)
   {
     // Being the caller is the owner's own authentication; anyone else must present a credential
-    if (msg.sender != owner) {
+    if (msg.sender != order.owner) {
       if (msg.sender != order.solver && order.solver != DEAD_ADDRESS) {
         revert UnauthorizedSolver(msg.sender, order.solver);
       }
-      IOrderAuthenticator(authenticator).authenticateFulfillment(owner, order, authenticationData);
+      IOrderAuthenticator(authenticator).authenticateFulfillment(order, authenticationData);
     }
 
     bytes32 orderHash = order.hash();
-    // The sentinel means the owner accepted any route, so there is no approval to check
+    // The sentinel means the order.owner accepted any route, so there is no approval to check
     if (order.solutionApprover != DEAD_ADDRESS) {
-      _approveSolution(owner, order.solutionApprover, orderHash, solution, solutionSignature);
+      _approveSolution(order, orderHash, solution, solutionSignature);
     }
 
     // Snapshot before anything moves, so a validator measures the whole order and not just its tail
     bytes[] memory beforeExecutionOutputs = order.validationParams.beforeExecution();
 
     _announceTransfers(
-      owner,
+      order.owner,
       orderHash,
       order.erc20Transfers,
       order.erc721Transfers,
       solution.solverCalls.toNativeTransfers(order.ownerCalls)
     );
 
-    _transferERC20s(owner, order.erc20Transfers, usePermit2Allowances);
-    return _settleFulfillment(owner, order, solution, beforeExecutionOutputs);
+    _transferERC20s(order.owner, order.erc20Transfers, usePermit2Allowances);
+    return _settleFulfillment(order, solution, beforeExecutionOutputs);
   }
 
   /// @inheritdoc IKSAllowanceHubV2
   function fulfillOrderWithPermit2Signature(
-    address owner,
     FulfillmentOrder calldata order,
     bytes calldata permit2Signature,
     FulfillmentSolution calldata solution,
@@ -255,32 +251,32 @@ contract KSAllowanceHubV2 is
     whenNotPaused
     checkDeadline(order.deadline)
     checkDeadline(solution.deadline)
-    lock(owner)
+    lock(order.owner)
     guardNativeSpend
     returns (bytes[] memory results)
   {
     bytes32 orderHash = order.hash();
-    // The sentinel means the owner accepted any route, so there is no approval to check
+    // The sentinel means the order.owner accepted any route, so there is no approval to check
     if (order.solutionApprover != DEAD_ADDRESS) {
-      _approveSolution(owner, order.solutionApprover, orderHash, solution, solutionSignature);
+      _approveSolution(order, orderHash, solution, solutionSignature);
     }
 
     // Snapshot before anything moves, so a validator measures the whole order and not just its tail
     bytes[] memory beforeExecutionOutputs = order.validationParams.beforeExecution();
 
     _announceTransfers(
-      owner,
+      order.owner,
       orderHash,
       order.erc20Transfers,
       order.erc721Transfers,
       solution.solverCalls.toNativeTransfers(order.ownerCalls)
     );
 
-    // Self-submitted: nothing to bind, since the owner is already the caller. Relayed: the order
+    // Self-submitted: nothing to bind, since the order.owner is already the caller. Relayed: the order
     // goes in as the witness, which is what stops a solver altering it
-    if (msg.sender == owner) {
+    if (msg.sender == order.owner) {
       _permitTransferFrom(
-        owner, order.erc20Transfers, order.nonce, order.deadline, permit2Signature
+        order.owner, order.erc20Transfers, order.nonce, order.deadline, permit2Signature
       );
     } else if (msg.sender == order.solver || order.solver == DEAD_ADDRESS) {
       bytes32 witness = FulfillmentWitnessLib.hash(
@@ -293,7 +289,7 @@ contract KSAllowanceHubV2 is
       );
 
       _permitWitnessTransferFrom(
-        owner,
+        order.owner,
         order.erc20Transfers,
         order.nonce,
         order.deadline,
@@ -305,7 +301,7 @@ contract KSAllowanceHubV2 is
       revert UnauthorizedSolver(msg.sender, order.solver);
     }
 
-    return _settleFulfillment(owner, order, solution, beforeExecutionOutputs);
+    return _settleFulfillment(order, solution, beforeExecutionOutputs);
   }
 
   /// @dev The one {TransferTokens} emit site, so neither rail carries its own copy of the encoder
@@ -358,16 +354,15 @@ contract KSAllowanceHubV2 is
 
   /// @dev Recovers the solution approver and checks it is the one the order named
   function _approveSolution(
-    address owner,
-    address solutionApprover,
+    FulfillmentOrder calldata order,
     bytes32 orderHash,
     FulfillmentSolution calldata solution,
     bytes calldata solutionSignature
   ) internal {
-    _useUnorderedNonce(solutionApprover, solution.nonce);
+    _useUnorderedNonce(order.solutionApprover, solution.nonce);
 
-    bytes32 digest = _hashTypedDataV4(SolutionApprovalLib.hash(owner, orderHash, solution));
-    if (!SignatureChecker.isValidSignatureNow(solutionApprover, digest, solutionSignature)) {
+    bytes32 digest = _hashTypedDataV4(SolutionApprovalLib.hash(orderHash, solution));
+    if (!SignatureChecker.isValidSignatureNow(order.solutionApprover, digest, solutionSignature)) {
       revert InvalidSolutionSignature();
     }
   }
@@ -391,11 +386,11 @@ contract KSAllowanceHubV2 is
    * @dev Shared tail of both execution rails: the NFT leg, then the order's calls. The ERC20s
    * have already moved by here, which is the only thing the two rails do differently.
    */
-  function _settleExecution(address owner, ExecutionOrder calldata order)
+  function _settleExecution(ExecutionOrder calldata order)
     internal
     returns (bytes[] memory results)
   {
-    order.erc721Transfers.execute(owner);
+    order.erc721Transfers.execute(order.owner);
 
     results = DynamicArrayLibExt.malloc(order.genericCalls.length);
     _executeCalls(order.genericCalls, results, 0);
@@ -403,14 +398,13 @@ contract KSAllowanceHubV2 is
 
   /// @dev Shared tail of both fulfillment rails, as {_settleExecution} is for an execution
   function _settleFulfillment(
-    address owner,
     FulfillmentOrder calldata order,
     FulfillmentSolution calldata solution,
     bytes[] memory beforeExecutionOutputs
   ) internal returns (bytes[] memory results) {
-    order.erc721Transfers.execute(owner);
+    order.erc721Transfers.execute(order.owner);
 
-    // The validators bound what the solver did, so they run before the owner's tail acts on it
+    // The validators bound what the solver did, so they run before the order.owner's tail acts on it
     results = DynamicArrayLibExt.malloc(solution.solverCalls.length + order.ownerCalls.length);
     _executeCalls(solution.solverCalls, results, 0);
     order.validationParams.afterExecution(beforeExecutionOutputs);

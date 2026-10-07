@@ -10,6 +10,7 @@ import {ValidationParams, ValidationParamsLib} from './ValidationParams.sol';
  * @notice An owner's signed order to move assets and leave the route to a solver
  * @dev Does not pin that route, leaving it to a {FulfillmentSolution}: the owner names an approver
  * for it and relies on the validators instead.
+ * @param owner Account the assets come from
  * @param solver Who may submit this order; the dead-address sentinel leaves it open to anyone
  * @param erc20Transfers ERC20 legs, moved from the owner to their targets
  * @param erc721Transfers ERC721 legs, moved from the owner to their targets
@@ -23,6 +24,7 @@ import {ValidationParams, ValidationParamsLib} from './ValidationParams.sol';
  * @param deadline Last timestamp at which the order may settle
  */
 struct FulfillmentOrder {
+  address owner;
   address solver;
   ERC20Transfer[] erc20Transfers;
   ERC721Transfer[] erc721Transfers;
@@ -42,7 +44,7 @@ library FulfillmentOrderLib {
   using ValidationParamsLib for ValidationParams[];
 
   bytes32 internal constant FULFILLMENT_ORDER_TYPEHASH = keccak256(
-    'FulfillmentOrder(address solver,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,ValidationParams[] validationParams,GenericCall[] ownerCalls,address solutionApprover,uint256 nonce,uint256 deadline)'
+    'FulfillmentOrder(address owner,address solver,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,ValidationParams[] validationParams,GenericCall[] ownerCalls,address solutionApprover,uint256 nonce,uint256 deadline)'
     'ERC20Transfer(address token,address target,uint160 amount)'
     'ERC721Transfer(address token,uint256 tokenId,address target)'
     'GenericCall(address router,uint256 value,bytes data)'
@@ -54,6 +56,7 @@ library FulfillmentOrderLib {
     return keccak256(
       abi.encode(
         FULFILLMENT_ORDER_TYPEHASH,
+        order.owner,
         order.solver,
         order.erc20Transfers.hash(),
         order.erc721Transfers.hash(),
@@ -71,6 +74,7 @@ library FulfillmentOrderLib {
     return keccak256(
       abi.encode(
         FULFILLMENT_ORDER_TYPEHASH,
+        order.owner,
         order.solver,
         order.erc20Transfers.hashMemory(),
         order.erc721Transfers.hashMemory(),

@@ -3,6 +3,9 @@ pragma solidity 0.8.36;
 
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
+import {
+  ISessionOrderAuthenticator
+} from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
 import {SessionKey} from 'src/v2/authenticators/types/SessionKey.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
@@ -15,18 +18,19 @@ import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 /**
- * @title SubmitterPinningTest
- * @notice ORD-02b..03b — the delegated rails honour the submitter the order names
+ * @title OrderPartiesTest
+ * @notice ORD-02b..04 — the delegated rails honour the parties the order names
  * @dev `relayer` and `solver` say who may submit an order on every rail, not only the Permit2 ones
  * that `ORD-02` and `ORD-03` cover. A credential authenticates the owner; it does not say who may
  * carry the order, so an authenticator that checked nothing of the sort would leave the field
  * unenforced. The last leg of each case is what keeps the carve-out honest: the owner is still not
- * subject to a field that exists to bound everybody else.
+ * subject to a field that exists to bound everybody else. `ORD-04` covers the remaining party,
+ * the account the order draws on.
  *
  * These live in a file of their own because `FulfillOrderTest` produces a solc internal compiler
  * error under `via_ir` when another case joins it.
  */
-contract SubmitterPinningTest is AuthenticatorBase {
+contract OrderPartiesTest is AuthenticatorBase {
   uint160 internal constant AMOUNT = 1 ether;
 
   SessionKey internal key;
@@ -52,7 +56,7 @@ contract SubmitterPinningTest is AuthenticatorBase {
     uint256 before = _routerWeth();
     vm.prank(relayer);
     hub.executeOrderWithDelegatedAuthentication(
-      owner, pinned, address(authenticator), _executionAuthData(pinned, key, sessionKeyPk), false
+      pinned, address(authenticator), _executionAuthData(pinned, key, sessionKeyPk), false
     );
     assertEq(_routerWeth() - before, AMOUNT, 'the named relayer may submit');
 
@@ -62,7 +66,7 @@ contract SubmitterPinningTest is AuthenticatorBase {
       abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedRelayer.selector, solver, relayer)
     );
     hub.executeOrderWithDelegatedAuthentication(
-      owner, again, address(authenticator), _executionAuthData(again, key, sessionKeyPk), false
+      again, address(authenticator), _executionAuthData(again, key, sessionKeyPk), false
     );
 
     // The pin is read before the credential, so an unnamed submitter is refused as such even when
@@ -73,7 +77,7 @@ contract SubmitterPinningTest is AuthenticatorBase {
       abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedRelayer.selector, solver, relayer)
     );
     hub.executeOrderWithDelegatedAuthentication(
-      owner, third, address(authenticator), _authData(key, hex'00'), false
+      third, address(authenticator), _authData(key, hex'00'), false
     );
 
     // The same stranger settles an order that names nobody, so the refusals were about the pin
@@ -81,7 +85,7 @@ contract SubmitterPinningTest is AuthenticatorBase {
     before = _routerWeth();
     vm.prank(solver);
     hub.executeOrderWithDelegatedAuthentication(
-      owner, open, address(authenticator), _executionAuthData(open, key, sessionKeyPk), false
+      open, address(authenticator), _executionAuthData(open, key, sessionKeyPk), false
     );
     assertEq(_routerWeth() - before, AMOUNT, 'the sentinel leaves it open to anyone');
 
@@ -89,8 +93,45 @@ contract SubmitterPinningTest is AuthenticatorBase {
     ExecutionOrder memory byOwner = _executionOrder(relayer, erc20s, noNfts, noCalls, 74, deadline);
     before = _routerWeth();
     vm.prank(owner);
-    hub.executeOrderWithDelegatedAuthentication(owner, byOwner, address(0), '', false);
+    hub.executeOrderWithDelegatedAuthentication(byOwner, address(0), '', false);
     assertEq(_routerWeth() - before, AMOUNT, 'the owner may submit an order naming someone else');
+  }
+
+  /**
+   * ORD-04 — the account the order draws on is the one the signature named
+   * @dev A key may be approved by more than one account, and the digest carries no second place
+   * for the submitter to point it. The two legs are the same signature against the account it
+   * names and against another that approved the same key.
+   */
+  function test_ORD_04_delegatedExecutionDrawsOnTheNamedOwner() public {
+    address other = makeAddr('other owner');
+    deal(WETH, other, 100 ether);
+    vm.prank(other);
+    IERC20(WETH).approve(address(hub), type(uint256).max);
+    vm.prank(other);
+    hub.updateDelegation(
+      other, address(authenticator), true, _encodeKey(key), 0, block.timestamp + 1 days, ''
+    );
+
+    ExecutionOrder memory order = _openExecutionOrder(
+      _erc20s(_wethTransfer(AMOUNT)), new GenericCall[](0), 75, block.timestamp + 1 hours
+    );
+    bytes memory authData = _executionAuthData(order, key, sessionKeyPk);
+
+    // Repointed first, because the refusal rolls back the nonce the authenticator burns ahead of
+    // the signature check, leaving the second leg the same number to spend
+    order.owner = other;
+    vm.prank(relayer);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidAuthenticationSignature.selector);
+    hub.executeOrderWithDelegatedAuthentication(order, address(authenticator), authData, false);
+
+    order.owner = owner;
+    uint256 before = _routerWeth();
+    uint256 otherBefore = IERC20(WETH).balanceOf(other);
+    vm.prank(relayer);
+    hub.executeOrderWithDelegatedAuthentication(order, address(authenticator), authData, false);
+    assertEq(_routerWeth() - before, AMOUNT, 'the named account paid');
+    assertEq(IERC20(WETH).balanceOf(other), otherBefore, 'and the other one did not');
   }
 
   /// ORD-03b — the delegated fulfillment rail refuses a submitter the order did not name
@@ -106,7 +147,6 @@ contract SubmitterPinningTest is AuthenticatorBase {
     uint256 before = _routerWeth();
     vm.prank(solver);
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner,
       pinned,
       address(authenticator),
       _fulfillmentAuthData(pinned, key, sessionKeyPk),
@@ -123,7 +163,6 @@ contract SubmitterPinningTest is AuthenticatorBase {
       abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedSolver.selector, relayer, solver)
     );
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner,
       again,
       address(authenticator),
       _fulfillmentAuthData(again, key, sessionKeyPk),
@@ -140,7 +179,6 @@ contract SubmitterPinningTest is AuthenticatorBase {
       abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedSolver.selector, relayer, solver)
     );
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner,
       third,
       address(authenticator),
       _authData(key, hex'00'),
@@ -154,7 +192,6 @@ contract SubmitterPinningTest is AuthenticatorBase {
     before = _routerWeth();
     vm.prank(relayer);
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner,
       open,
       address(authenticator),
       _fulfillmentAuthData(open, key, sessionKeyPk),
@@ -169,7 +206,7 @@ contract SubmitterPinningTest is AuthenticatorBase {
     before = _routerWeth();
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner, byOwner, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
+      byOwner, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
     );
     assertEq(_routerWeth() - before, AMOUNT, 'the owner may submit an order naming someone else');
   }

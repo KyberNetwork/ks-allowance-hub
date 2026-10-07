@@ -605,3 +605,70 @@ a pristine tree with nothing pre-built.
 is idempotent and a pristine tracked-only tree reproduces the committed file byte for byte at 16
 schemas.
 
+## Run `20261007T180905Z`
+
+Scope: the order carries the account it draws on. `KSAllowanceHubV2`, both order types,
+`SolutionApproval`, `IOrderAuthenticator` and `SessionOrderAuthenticator`. `src/v1/**` and
+`test/v1/**` remain frozen. The hub is **24,081** runtime bytes with **495** to spare, 174 more than
+before.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261007T180905Z/ORDER-01` | **Production change.** `owner` becomes the first member of {ExecutionOrder} and {FulfillmentOrder}, so the signed order names the account it draws on. The four order entry points lose their `owner` argument, as do `IOrderAuthenticator`'s two `authenticate*` functions and the hub's `_settleExecution`, `_settleFulfillment` and `_approveSolution` | no case ID changes; 106 call sites, 4 struct literals, 2 authenticator mocks and 3 hand-written ABI signature strings updated | `forge test` |
+| - [x] | - [ ] | `20261007T180905Z/ORDER-02` | `SolutionApproval` drops its own `owner` member, which `orderHash` covers. `checkDelegation` moves ahead of `guardNativeSpend` on both delegated entry points | `T712-09`, `T712-SCHEMA` unchanged; `SolutionApprovalLib.hash` and `hashMemory` lose a parameter | `forge test` |
+
+### Notes for this run
+
+**What the 174 bytes buy, and where they went.** Adding the member and dropping the argument cost
+254. Hoisting `order.owner` into a local recovered only 10, so the cost is the extra member in two
+typehashes and the calldata offsets rather than repeated loads, and the local was not kept. Dropping
+the redundant `owner` parameters from the authenticator interface and the three hub helpers
+recovered 60, and `SolutionApproval` losing its own member another 20.
+
+**The Permit2 witness type strings are untouched.** {ExecutionWitness} and {FulfillmentWitness} are
+projections of an order rather than the order itself, so neither their `encodeType` nor the strings
+the hub hands Permit2 move.
+
+**`ORD-04` covers the member on the delegated rail,** beside the submitter cases: the same signature
+is refused against another account that approved the same key, then settles against the one it
+names. The repointed leg runs first, because the authenticator burns its nonce ahead of the
+signature check and the refusal rolls that back, leaving the second leg the same number to spend.
+
+**`checkDelegation` runs before `guardNativeSpend`,** so an authenticator the owner never delegated
+is refused before any native-spend accounting is set up.
+
+## Run `20261007T181946Z`
+
+Scope: test files only. No production code and no case was added, removed or changed; the suite is
+the same 191 cases before and after. Every file is now named for what it holds, and no two share a
+name.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261007T181946Z/GROUP-01` | Four renames: `Relay`→`Forwarder` (holds `FWD`/`PF`), `SubmitterPinning`→`OrderParties` (`ORD-02b..04`), `DirtyCalldata`→`CalldataHygiene` (`DIRTY`), and `authenticators/types/Eip712`→`AuthenticatorEip712`, which ends two files sharing the name `Eip712.t.sol` | no case ID changes | `forge test` |
+| - [x] | - [ ] | `20261007T181946Z/GROUP-02` | Two splits: `MC` leaves `Guards.t.sol` for `Multicall.t.sol`, and `NONCE` leaves `Delegation.t.sol` for `Nonces.t.sol`, which absorbs `NonceNamespace.t.sol` | no case ID changes | `forge test` |
+
+### Notes for this run
+
+**What the names were hiding.** `Guards.t.sol` held the whole batching surface, which is not a
+guard; `Delegation.t.sol` held the nonce bitmap, which has nothing to do with delegating;
+`Relay.t.sol` named no entry point, while holding `forwardCalls` and permit forwarding; and two
+different files were both called `Eip712.t.sol`, so a stack trace naming one was ambiguous.
+
+**Which helpers moved with `MC`.** The USDC permit chain — `_usdcPermitCall`,
+`_usdcDomainSeparator`, `_usdcNonce` and `L_PERMIT_TYPEHASH` — turned out to be reachable only from
+`MC-01`, as did `S_UPDATE_AUTHENTICATION`, `_orderCalldata`, `_isPayableItem` and the `BatchFuzz`
+struct, so all of them moved. `_executeAtDeadline`, `_fulfillAtDeadline` and `_nativeSpendLeg`
+belong to `GUARD` and stayed. `AMOUNT`, `PREFUND`, `VALUE` and `ROUTER_ROLE` are one-line literals
+both files need and are now declared in each.
+
+**Two families are still split, by design.** `ORD` sits in `ExecuteOrder`, `FulfillOrder` and
+`OrderParties`, which is a split by rail and then by the parties an order names. `T712` sits in
+`types/Eip712`, `types/SchemaAudit` and `authenticators/types/AuthenticatorEip712`, which is a split
+by subject. Neither is the accident that `NONCE` and `MC` were.
+
+**`OrderParties.t.sol` is the file the earlier runs call `SubmitterPinning.t.sol`,** and
+`CalldataHygiene.t.sol` the one they call `DirtyCalldata.t.sol`. Both still exist as separate files
+for the reason those runs record: `FulfillOrderTest` produces a solc internal compiler error under
+`via_ir` when another case joins it.
+

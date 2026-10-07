@@ -59,7 +59,7 @@ contract SettlementTest is HubBase {
     vm.recordLogs();
 
     vm.prank(relayer);
-    hub.executeOrderWithPermit2Signature(owner, order, signature);
+    hub.executeOrderWithPermit2Signature(order, signature);
 
     Vm.Log memory entry = _settlementLog();
 
@@ -88,11 +88,7 @@ contract SettlementTest is HubBase {
 
     vm.prank(owner);
     hub.executeOrderWithDelegatedAuthentication{value: 1}(
-      owner,
-      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp),
-      address(0),
-      '',
-      false
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp), address(0), '', false
     );
 
     Vm.Log memory entry = _settlementLog();
@@ -116,11 +112,7 @@ contract SettlementTest is HubBase {
 
     vm.prank(owner);
     bytes[] memory results = hub.executeOrderWithDelegatedAuthentication(
-      owner,
-      _openExecutionOrder(noErc20s, new GenericCall[](0), 0, block.timestamp),
-      address(0),
-      '',
-      false
+      _openExecutionOrder(noErc20s, new GenericCall[](0), 0, block.timestamp), address(0), '', false
     );
 
     assertEq(results.length, 0, 'no calls, no results');
@@ -148,11 +140,7 @@ contract SettlementTest is HubBase {
 
     vm.prank(owner);
     bytes[] memory results = hub.executeOrderWithDelegatedAuthentication(
-      owner,
-      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp),
-      address(0),
-      '',
-      false
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp), address(0), '', false
     );
 
     assertEq(results.length, 3, 'one result per call');
@@ -196,7 +184,7 @@ contract SettlementTest is HubBase {
 
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication{value: 3}(
-      owner, order, address(0), '', _route(solverCalls), '', false
+      order, address(0), '', _route(solverCalls), '', false
     );
 
     Vm.Log memory entry = _settlementLog();
@@ -238,7 +226,7 @@ contract SettlementTest is HubBase {
       )
     );
     hub.executeOrderWithDelegatedAuthentication(
-      owner, _openExecutionOrder(erc20s, calls, 0, block.timestamp), address(0), '', false
+      _openExecutionOrder(erc20s, calls, 0, block.timestamp), address(0), '', false
     );
 
     assertEq(stranger.callCount(), 0, 'never called');
@@ -254,11 +242,7 @@ contract SettlementTest is HubBase {
 
     vm.prank(owner);
     hub.executeOrderWithDelegatedAuthentication(
-      owner,
-      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp),
-      address(0),
-      '',
-      false
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp), address(0), '', false
     );
     assertEq(router.callCount(), 1, 'the first order went through');
 
@@ -273,11 +257,7 @@ contract SettlementTest is HubBase {
       )
     );
     hub.executeOrderWithDelegatedAuthentication(
-      owner,
-      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp),
-      address(0),
-      '',
-      false
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp), address(0), '', false
     );
 
     assertEq(router.callCount(), 1, 'and no second call happened');
@@ -297,11 +277,7 @@ contract SettlementTest is HubBase {
 
     vm.prank(owner);
     hub.executeOrderWithDelegatedAuthentication(
-      owner,
-      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp),
-      address(0),
-      '',
-      false
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp), address(0), '', false
     );
 
     assertEq(router.callCount(), 1, 'router once');
@@ -330,7 +306,7 @@ contract SettlementTest is HubBase {
     assertEq(hub.msgSender(), address(0), 'no locker before the order');
 
     vm.prank(relayer);
-    hub.executeOrderWithPermit2Signature(owner, order, signature);
+    hub.executeOrderWithPermit2Signature(order, signature);
 
     assertEq(router.seenMsgSender(), owner, 'the router was shown the owner');
     assertTrue(router.seenMsgSender() != relayer, 'and not the relayer that submitted');
@@ -351,7 +327,7 @@ contract SettlementTest is HubBase {
     vm.prank(owner);
     vm.expectRevert(IMsgSender.AlreadyLocked.selector);
     hub.executeOrderWithDelegatedAuthentication(
-      owner, _openExecutionOrder(new ERC20Transfer[](0), calls, 0, deadline), address(0), '', false
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, deadline), address(0), '', false
     );
   }
 
@@ -367,7 +343,6 @@ contract SettlementTest is HubBase {
     vm.prank(owner);
     vm.expectRevert(IMsgSender.AlreadyLocked.selector);
     hub.executeOrderWithDelegatedAuthentication(
-      owner,
       _executionOrder(ANY, new ERC20Transfer[](0), nfts, new GenericCall[](0), 0, deadline),
       address(0),
       '',
@@ -393,11 +368,7 @@ contract SettlementTest is HubBase {
 
     vm.prank(owner);
     bytes[] memory results = hub.executeOrderWithDelegatedAuthentication(
-      owner,
-      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp),
-      address(0),
-      '',
-      false
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp), address(0), '', false
     );
 
     assertEq(results.length, 1, 'the order settled');
@@ -418,7 +389,6 @@ contract SettlementTest is HubBase {
     return abi.encodeCall(
       IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
       (
-        owner,
         _openExecutionOrder(new ERC20Transfer[](0), new GenericCall[](0), 0, deadline),
         address(0),
         '',

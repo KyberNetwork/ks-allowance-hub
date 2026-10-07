@@ -10,6 +10,7 @@ import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer
 /**
  * @notice An owner's signed order to move assets and run an exact list of router calls
  * @dev Pins the calls themselves, so the owner signs what will run.
+ * @param owner Account the assets come from
  * @param relayer Who may submit this order; the dead-address sentinel leaves it open to anyone
  * @param erc20Transfers ERC20 legs, moved from the owner to their targets
  * @param erc721Transfers ERC721 legs, moved from the owner to their targets
@@ -18,6 +19,7 @@ import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer
  * @param deadline Last timestamp at which the order may settle
  */
 struct ExecutionOrder {
+  address owner;
   address relayer;
   ERC20Transfer[] erc20Transfers;
   ERC721Transfer[] erc721Transfers;
@@ -34,7 +36,7 @@ library ExecutionOrderLib {
   using GenericCallLib for GenericCall[];
 
   bytes32 internal constant EXECUTION_ORDER_TYPEHASH = keccak256(
-    'ExecutionOrder(address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 deadline)'
+    'ExecutionOrder(address owner,address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 deadline)'
     'ERC20Transfer(address token,address target,uint160 amount)'
     'ERC721Transfer(address token,uint256 tokenId,address target)'
     'GenericCall(address router,uint256 value,bytes data)'
@@ -45,6 +47,7 @@ library ExecutionOrderLib {
     return keccak256(
       abi.encode(
         EXECUTION_ORDER_TYPEHASH,
+        order.owner,
         order.relayer,
         order.erc20Transfers.hash(),
         order.erc721Transfers.hash(),
@@ -60,6 +63,7 @@ library ExecutionOrderLib {
     return keccak256(
       abi.encode(
         EXECUTION_ORDER_TYPEHASH,
+        order.owner,
         order.relayer,
         order.erc20Transfers.hashMemory(),
         order.erc721Transfers.hashMemory(),

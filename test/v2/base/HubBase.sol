@@ -196,8 +196,9 @@ abstract contract HubBase is V2TestBase {
     GenericCall[] memory genericCalls,
     uint256 nonce,
     uint256 deadline
-  ) internal pure returns (ExecutionOrder memory) {
+  ) internal view returns (ExecutionOrder memory) {
     return ExecutionOrder({
+      owner: owner,
       relayer: orderRelayer,
       erc20Transfers: erc20Transfers,
       erc721Transfers: erc721Transfers,
@@ -213,7 +214,7 @@ abstract contract HubBase is V2TestBase {
     GenericCall[] memory genericCalls,
     uint256 nonce,
     uint256 deadline
-  ) internal pure returns (ExecutionOrder memory) {
+  ) internal view returns (ExecutionOrder memory) {
     return _executionOrder(
       ANY, erc20Transfers, new ERC721Transfer[](0), genericCalls, nonce, deadline
     );
@@ -228,8 +229,9 @@ abstract contract HubBase is V2TestBase {
     address solutionApprover,
     uint256 nonce,
     uint256 deadline
-  ) internal pure returns (FulfillmentOrder memory) {
+  ) internal view returns (FulfillmentOrder memory) {
     return FulfillmentOrder({
+      owner: owner,
       solver: orderSolver,
       erc20Transfers: erc20Transfers,
       erc721Transfers: erc721Transfers,
@@ -248,7 +250,7 @@ abstract contract HubBase is V2TestBase {
     GenericCall[] memory ownerCalls,
     uint256 nonce,
     uint256 deadline
-  ) internal pure returns (FulfillmentOrder memory) {
+  ) internal view returns (FulfillmentOrder memory) {
     return _fulfillmentOrder(
       ANY,
       erc20Transfers,
@@ -367,13 +369,10 @@ abstract contract HubBase is V2TestBase {
   /// @dev The solution approval lives under the hub's own EIP-712 domain
   function _signSolutionApproval(
     uint256 signerKey,
-    address approvalOwner,
     bytes32 orderHash,
     FulfillmentSolution memory solution
   ) internal returns (bytes memory) {
-    return _sign(
-      signerKey, lTypedDataHash(_hubDomain(), lSolutionApproval(approvalOwner, orderHash, solution))
-    );
+    return _sign(signerKey, lTypedDataHash(_hubDomain(), lSolutionApproval(orderHash, solution)));
   }
 
   function _signAuthDelegation(

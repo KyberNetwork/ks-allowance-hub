@@ -47,23 +47,16 @@ interface IOrderAuthenticator {
    * @dev Must revert when it does not; returning normally is read as success. The hub enforces
    * `order.deadline` before calling but never touches `order.nonce`, so an implementation owns
    * replay protection.
-   * @param owner Account the order draws on
    * @param order The order to authenticate
    * @param data Credential and signature, in whatever shape the implementation reads
    */
-  function authenticateExecution(address owner, ExecutionOrder calldata order, bytes calldata data)
-    external;
+  function authenticateExecution(ExecutionOrder calldata order, bytes calldata data) external;
 
   /**
    * @notice Checks that `data` authenticates `order` as the owner's
    * @dev As {authenticateExecution}, over the fulfillment shape
-   * @param owner Account the order draws on
    * @param order The order to authenticate
    * @param data Credential and signature, in whatever shape the implementation reads
    */
-  function authenticateFulfillment(
-    address owner,
-    FulfillmentOrder calldata order,
-    bytes calldata data
-  ) external;
+  function authenticateFulfillment(FulfillmentOrder calldata order, bytes calldata data) external;
 }

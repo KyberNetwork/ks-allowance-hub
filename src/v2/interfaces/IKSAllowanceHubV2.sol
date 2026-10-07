@@ -42,7 +42,6 @@ interface IKSAllowanceHubV2 {
    * authenticator must revert when `authenticationData` does not authenticate the order, and owns
    * its own replay protection. A credential says the owner authorised the order, not who may carry
    * it, so the hub reads the pin itself rather than leaving it to the authenticator.
-   * @param owner Account the assets come from
    * @param order What the owner signed, including who may submit it
    * @param authenticator The delegated authenticator to ask
    * @param authenticationData Credential and signature, in whatever shape that authenticator reads
@@ -51,7 +50,6 @@ interface IKSAllowanceHubV2 {
    * @return results Return data of each router call, in order
    */
   function executeOrderWithDelegatedAuthentication(
-    address owner,
     ExecutionOrder calldata order,
     address authenticator,
     bytes calldata authenticationData,
@@ -61,14 +59,12 @@ interface IKSAllowanceHubV2 {
   /**
    * @notice Pulls the owner's assets and runs the order's calls, funded by the owner's Permit2
    * signature
-   * @param owner Account the assets come from
    * @param order What the owner signed
    * @param permit2Signature The owner's Permit2 signature over the permit, and over the order as
    * its witness when relayed
    * @return results Return data of each router call, in order
    */
   function executeOrderWithPermit2Signature(
-    address owner,
     ExecutionOrder calldata order,
     bytes calldata permit2Signature
   ) external payable returns (bytes[] memory results);
@@ -80,7 +76,6 @@ interface IKSAllowanceHubV2 {
    * `order.ownerCalls` acts on it. The owner's tail is deliberately not validated. As on the
    * execution rail, the caller must be the `order.solver`, the owner themselves, or anyone when the
    * order leaves the field open.
-   * @param owner Account the assets come from
    * @param order What the owner signed, including the validators, their own tail and who may solve
    * @param authenticator The delegated authenticator to ask
    * @param authenticationData Credential and signature, in whatever shape that authenticator reads
@@ -91,7 +86,6 @@ interface IKSAllowanceHubV2 {
    * @return results Return data of every router call, the solution's first then the owner's
    */
   function fulfillOrderWithDelegatedAuthentication(
-    address owner,
     FulfillmentOrder calldata order,
     address authenticator,
     bytes calldata authenticationData,
@@ -103,7 +97,6 @@ interface IKSAllowanceHubV2 {
   /**
    * @notice As {fulfillOrderWithDelegatedAuthentication}, but funded by the owner's Permit2
    * signature
-   * @param owner Account the assets come from
    * @param order What the owner signed
    * @param permit2Signature The owner's Permit2 signature over the permit, and over the order as
    * its witness when relayed
@@ -112,7 +105,6 @@ interface IKSAllowanceHubV2 {
    * @return results Return data of every router call, the solution's first then the owner's
    */
   function fulfillOrderWithPermit2Signature(
-    address owner,
     FulfillmentOrder calldata order,
     bytes calldata permit2Signature,
     FulfillmentSolution calldata solution,

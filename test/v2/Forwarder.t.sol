@@ -34,7 +34,7 @@ import {ERC20Permit} from 'openzeppelin-contracts/contracts/token/ERC20/extensio
 import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
 
 /**
- * @title RelayTest
+ * @title ForwarderTest
  * @notice `PF-01..09`, `PF-FUZZ` and `FWD-13..19` plus `FWD-PAUSE/VALUE/REENTRY`: the
  * self-authorising calls {ICallsForwarder-forwardCalls} relays, its selector allowlist, its per-entry
  * failure bits and the things it deliberately does not guard.
@@ -45,7 +45,7 @@ import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
  * production constant, and in particular no production selector, appears on the expected side of
  * any assertion.
  */
-contract RelayTest is AuthenticatorBase {
+contract ForwarderTest is AuthenticatorBase {
   // -----------------------------------------------------------------------------------------------
   // Literal type strings
   // -----------------------------------------------------------------------------------------------
@@ -87,9 +87,9 @@ contract RelayTest is AuthenticatorBase {
   /// @dev Its three neighbours on the same interface, which the allowlist must NOT carry
   string internal constant S_INIT_AUTHENTICATION = 'initAuthentication(address,bytes)';
   string internal constant S_AUTHENTICATE_EXECUTION =
-    'authenticateExecution(address,(address,(address,address,uint160)[],(address,uint256,address)[],(address,uint256,bytes)[],uint256,uint256),bytes)';
+    'authenticateExecution((address,address,(address,address,uint160)[],(address,uint256,address)[],(address,uint256,bytes)[],uint256,uint256),bytes)';
   string internal constant S_AUTHENTICATE_FULFILLMENT =
-    'authenticateFulfillment(address,(address,(address,address,uint160)[],(address,uint256,address)[],(address,bytes32,bytes,bytes)[],(address,uint256,bytes)[],address,uint256,uint256),bytes)';
+    'authenticateFulfillment((address,address,(address,address,uint160)[],(address,uint256,address)[],(address,bytes32,bytes,bytes)[],(address,uint256,bytes)[],address,uint256,uint256),bytes)';
 
   /// @dev Anything outside the allowlist; the forwarder must refuse it by name
   string internal constant S_ERC20_TRANSFER = 'transfer(address,uint256)';
@@ -570,12 +570,12 @@ contract RelayTest is AuthenticatorBase {
 
     bytes[] memory executionData = new bytes[](1);
     executionData[0] = abi.encodeWithSelector(
-      bytes4(keccak256(bytes(S_AUTHENTICATE_EXECUTION))), owner, execOrder, payload
+      bytes4(keccak256(bytes(S_AUTHENTICATE_EXECUTION))), execOrder, payload
     );
 
     bytes[] memory fulfillmentData = new bytes[](1);
     fulfillmentData[0] = abi.encodeWithSelector(
-      bytes4(keccak256(bytes(S_AUTHENTICATE_FULFILLMENT))), owner, fulfillOrder, payload
+      bytes4(keccak256(bytes(S_AUTHENTICATE_FULFILLMENT))), fulfillOrder, payload
     );
 
     // First, that the three strings above really do name those entry points. Both the calldata and
@@ -769,7 +769,6 @@ contract RelayTest is AuthenticatorBase {
     vm.prank(owner);
     vm.expectRevert(Pausable.EnforcedPause.selector);
     hub.executeOrderWithDelegatedAuthentication(
-      owner,
       _openExecutionOrder(
         _erc20s(_wethTransfer(1 ether)), new GenericCall[](0), 0, block.timestamp
       ),
@@ -827,7 +826,7 @@ contract RelayTest is AuthenticatorBase {
     bytes memory permitSig = _signExecutionWitness(order);
 
     reentrant.setReentry(
-      abi.encodeCall(IKSAllowanceHubV2.executeOrderWithPermit2Signature, (owner, order, permitSig))
+      abi.encodeCall(IKSAllowanceHubV2.executeOrderWithPermit2Signature, (order, permitSig))
     );
 
     // a well-formed EIP-2612 payload, so the allowlist lets it through; the mock ignores the

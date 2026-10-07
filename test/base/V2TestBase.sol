@@ -110,14 +110,12 @@ abstract contract V2TestBase is Test {
     return SchemaHash.fulfillmentSolution(solution);
   }
 
-  function lSolutionApproval(
-    address approvalOwner,
-    bytes32 orderHash,
-    FulfillmentSolution memory solution
-  ) internal pure returns (bytes32) {
-    return SchemaHash.solutionApproval(
-      SolutionApproval({owner: approvalOwner, orderHash: orderHash, solution: solution})
-    );
+  function lSolutionApproval(bytes32 orderHash, FulfillmentSolution memory solution)
+    internal
+    pure
+    returns (bytes32)
+  {
+    return SchemaHash.solutionApproval(SolutionApproval({orderHash: orderHash, solution: solution}));
   }
 
   function lExecutionWitness(

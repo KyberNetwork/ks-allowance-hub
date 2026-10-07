@@ -325,11 +325,11 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(IOrderAuthenticator.NotAllowanceHub.selector);
-    authenticator.authenticateExecution(owner, execOrder, data);
+    authenticator.authenticateExecution(execOrder, data);
 
     vm.prank(relayer);
     vm.expectRevert(IOrderAuthenticator.NotAllowanceHub.selector);
-    authenticator.authenticateFulfillment(owner, fulfillOrder, data);
+    authenticator.authenticateFulfillment(fulfillOrder, data);
   }
 
   /// SV-06 — a key the owner never approved cannot authenticate anything
@@ -411,7 +411,6 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(ISessionOrderAuthenticator.InvalidAuthenticationSignature.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner,
       fulfillOrder,
       address(authenticator),
       _authData(key, sig),
@@ -436,7 +435,6 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
     vm.prank(relayer);
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner,
       fulfillOrder,
       address(authenticator),
       _fulfillmentAuthData(fulfillOrder, key, sessionKeyPk),
@@ -787,7 +785,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
     vm.prank(relayer);
     hub.fulfillOrderWithDelegatedAuthentication(
-      owner, order, address(authenticator), data, _route(_calls(_routerCall(0, hex'01'))), '', false
+      order, address(authenticator), data, _route(_calls(_routerCall(0, hex'01'))), '', false
     );
   }
 
@@ -808,7 +806,6 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     uint256 deadline
   ) private {
     hub.executeOrderWithDelegatedAuthentication(
-      owner,
       _standardOrder(nonce, deadline),
       address(authenticator),
       _authData(sessionKey, signature),
