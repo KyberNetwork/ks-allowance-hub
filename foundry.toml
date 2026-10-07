@@ -7,14 +7,13 @@ via_ir = true
 dynamic_test_linking = true
 ffi = true
 bytecode_hash = "none"
-cbor_metadata = false
 
 additional_compiler_profiles = [
-  { name = "runs-2000", via_ir = true, optimizer_runs = 2000 }
+  { name = "runs-3000", via_ir = true, optimizer_runs = 3000 }
 ]
 
 compilation_restrictions = [
-  { paths = "src/v2/KSAllowanceHubV2.sol", optimizer_runs = 2000 },
+  { paths = "src/v2/KSAllowanceHubV2.sol", optimizer_runs = 3000 },
 ]
 
 

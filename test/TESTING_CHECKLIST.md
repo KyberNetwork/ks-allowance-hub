@@ -368,3 +368,45 @@ between builds at all. A gas report inherits the fuzz problem unless those cases
 figures `multicall` already returns carry none of this, and are what gas accounting was moved into
 `multicall` for. Any gas claim in an earlier run section that rests on a test total or a fuzz mean
 should be re-measured against them before it is relied on.
+
+## Run `20261007T032617Z`
+
+Scope: the two all-static leaf hashes read their struct's calldata words directly, four new cases
+hold the invariant that makes that sound, and the optimizer setting moves to 3000. `src/v1/**` and
+`test/v1/**` remain frozen. The hub is **23,717** runtime bytes with **859** to spare.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261007T032617Z/HASH-01` | `ERC20TransferLib.hash` and `ERC721TransferLib.hash` take their three member words straight from calldata with one `calldatacopy` instead of `abi.encode`. For a struct whose members are all static the calldata region already **is** the EIP-712 member encoding, so the digest is unchanged — established by the oracle, not the reasoning. The words are copied **unmasked**, where `abi.encode` masks each field on read, and that read is also what rejects a word carrying dirty high bits | `T712-DIFF` `testFuzz_T712_DIFF_erc20Transfer` / `_erc721Transfer` reach the calldata variant through an external call, so they compare it against the memory variant on every input — which is why both `*Memory` twins stay on `abi.encode` rather than being converted with them | `forge test`, `forge test --isolate` — **197 passed, 0 failed**; EIP-712 suite **28 passed**. 132 bytes freed; 413 gas per ERC20 or ERC721 leg, flat from 1 leg to 20 |
+| - [x] | - [ ] | `20261007T032617Z/DIRTY-01` | What makes `HASH-01` sound is that settling an order reads the same fields through Solidity, and Solidity validates a calldata `address` **on access** rather than at decode: a parameter behind a `calldata` struct or array is checked the moment a field is read, and not at all if none is. A revert anywhere unwinds the frame, so a digest taken from dirty words is never observable — but only while some reader remains. These four cases hold that on every rail, submitting the dirty payload first and the identical clean payload second, so the refusal is attributable to the dirtied word rather than to anything else the payload carried | `DIRTY-01..04` — `test/v2/DirtyCalldata.t.sol`, one per rail, over `_assertDirtyTokenWordIsRefused` in `test/v2/base/HubBase.sol` | `forge test`, `forge test --isolate` — **4 passed**, 197 overall. Non-vacuity: each case's clean leg settles, so a case cannot pass by submitting a payload that was malformed anyway |
+| - [x] | - [ ] | `20261007T032617Z/BUILD-02` | `optimizer_runs` for the hub moves from 2000 to 3000, and `cbor_metadata` is no longer disabled | no case ID changes | `forge test`, `forge test --isolate` — **197 passed** at 3000. Costs 207 bytes — 194 for the setting and 13 for the metadata trailer returning — against **39 gas** per execution order, measured from the figures `multicall` returns |
+
+### Notes for this run
+
+**Where the 413 gas comes from.** Three reads of a calldata field each repeat the index bounds
+check, the offset arithmetic, the `calldataload` and the validation, and the compiler shares almost
+none of it: reading one slot five times costs 344 gas against 421 for five different slots, so only
+about 18% is eliminated. Calldata is immutable for the life of a call, so every check after the
+first is provably redundant; solc simply does not remove them. About 15 gas of the 413 is instead
+the memory `abi.encode` grows for a buffer it hashes once and never reclaims, which is why the
+saving creeps from 413 at one leg to 415 at twenty rather than staying exactly flat.
+
+**Why the free memory pointer and not the scratch space.** A four-word hash spans `0x00`–`0x80`, and
+only `0x00`–`0x40` is scratch, so the alternative writes the free memory pointer and the zero slot
+and must restore both. That is sound — Solady's `ECDSA.recover` does exactly it under
+`memory-safe-assembly` — but it costs 14 bytes more than reading `mload(0x40)` and leaving it alone,
+because the save and restore cost about what the load saved. Writing those slots **without**
+restoring them, and dropping the annotation to make that honest, costs 876 bytes: the annotation is
+what lets solc keep optimising memory across the contract. `EfficientHashLib` draws the same line,
+using the scratch space only while a hash fits in two words.
+
+**A compiler limit worth knowing about.** Adding both fulfillment cases to `FulfillOrderTest`
+produces a solc **internal compiler error** under `via_ir`. Either alone compiles; both together do
+not, and the error names no source location. That contract is at a limit, which is why
+`DIRTY-01..04` live in a file of their own rather than beside the rails they exercise. The next case
+added to `FulfillOrderTest` may hit the same wall with nothing to go on.
+
+**Measured and not taken.** `GenericCallLib.hash` can copy its two static words and keep
+`keccak256(self.data)` for the third, worth 46 bytes and 243 gas per router call. It is left out
+because `router` and `value` would stop being masked by the hash while no case dirties a `router`
+word — the invariant would be argued rather than held. It wants a `DIRTY-05` first.

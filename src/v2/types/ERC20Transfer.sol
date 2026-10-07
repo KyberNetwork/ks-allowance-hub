@@ -28,8 +28,14 @@ library ERC20TransferLib {
     keccak256('ERC20Transfer(address token,address target,uint160 amount)');
 
   /// @dev EIP-712 hash of one transfer
-  function hash(ERC20Transfer calldata self) internal pure returns (bytes32) {
-    return keccak256(abi.encode(ERC20_TRANSFER_TYPEHASH, self.token, self.target, self.amount));
+  function hash(ERC20Transfer calldata self) internal pure returns (bytes32 digest) {
+    bytes32 typehash = ERC20_TRANSFER_TYPEHASH;
+    assembly ('memory-safe') {
+      let fmp := mload(0x40)
+      mstore(fmp, typehash)
+      calldatacopy(add(fmp, 0x20), self, 0x60)
+      digest := keccak256(fmp, 0x80)
+    }
   }
 
   /// @dev As {hash}, for a transfer already in memory

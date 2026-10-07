@@ -396,4 +396,39 @@ abstract contract HubBase is V2TestBase {
       lTypedDataHash(_hubDomain(), lAuthDelegation(authenticator, delegated, data, nonce, deadline))
     );
   }
+
+  /**
+   * @dev Submits `callData` with the top 96 bits of the word holding `WETH` set, then submits it
+   * as given. The order hash reads those words straight from calldata without masking them, so the
+   * dirty payload must be refused by the field reads that settle the order. Dirty first and clean
+   * second on purpose: the clean leg settling proves the payload was refused for the dirtying and
+   * not for anything else it carried.
+   */
+  function _assertDirtyTokenWordIsRefused(address submitter, bytes memory callData) internal {
+    uint256 word = type(uint256).max;
+    for (uint256 i = 4; i + 32 <= callData.length; i += 32) {
+      bytes32 w;
+      assembly {
+        w := mload(add(add(callData, 0x20), i))
+      }
+      if (uint256(w) == uint256(uint160(WETH))) word = i;
+    }
+    assertTrue(word != type(uint256).max, 'the token word is in the payload');
+
+    bytes memory dirty = new bytes(callData.length);
+    for (uint256 i = 0; i < callData.length; i++) {
+      dirty[i] = callData[i];
+    }
+    for (uint256 i = word; i < word + 12; i++) {
+      dirty[i] = 0xff;
+    }
+
+    vm.prank(submitter);
+    (bool dirtyAccepted,) = address(hub).call(dirty);
+    assertFalse(dirtyAccepted, 'a dirty token word is refused');
+
+    vm.prank(submitter);
+    (bool cleanAccepted,) = address(hub).call(callData);
+    assertTrue(cleanAccepted, 'and the same payload settles once the word is clean');
+  }
 }

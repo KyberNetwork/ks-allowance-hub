@@ -19,8 +19,14 @@ library ERC721TransferLib {
     keccak256('ERC721Transfer(address token,uint256 tokenId,address target)');
 
   /// @dev EIP-712 hash of one transfer
-  function hash(ERC721Transfer calldata self) internal pure returns (bytes32) {
-    return keccak256(abi.encode(ERC721_TRANSFER_TYPEHASH, self.token, self.tokenId, self.target));
+  function hash(ERC721Transfer calldata self) internal pure returns (bytes32 digest) {
+    bytes32 typehash = ERC721_TRANSFER_TYPEHASH;
+    assembly ('memory-safe') {
+      let fmp := mload(0x40)
+      mstore(fmp, typehash)
+      calldatacopy(add(fmp, 0x20), self, 0x60)
+      digest := keccak256(fmp, 0x80)
+    }
   }
 
   /// @dev As {hash}, for a transfer already in memory
