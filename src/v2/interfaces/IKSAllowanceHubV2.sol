@@ -37,8 +37,11 @@ interface IKSAllowanceHubV2 {
   /**
    * @notice Pulls the owner's assets and runs the order's calls, authenticated by a delegated
    * {IOrderAuthenticator} rather than by a Permit2 signature
-   * @dev The hub checks only that `owner` delegated `authenticator`; the authenticator must revert
-   * when `authenticationData` does not authenticate the order, and owns its own replay protection.
+   * @dev The hub checks that `owner` delegated `authenticator` and that the caller is the
+   * `order.relayer`, the owner themselves, or anyone when the order leaves the field open; the
+   * authenticator must revert when `authenticationData` does not authenticate the order, and owns
+   * its own replay protection. A credential says the owner authorised the order, not who may carry
+   * it, so the hub reads the pin itself rather than leaving it to the authenticator.
    * @param owner Account the assets come from
    * @param order What the owner signed, including who may submit it
    * @param authenticator The delegated authenticator to ask
@@ -74,7 +77,9 @@ interface IKSAllowanceHubV2 {
    * @notice Settles a fulfillment authenticated by a delegated {IOrderAuthenticator}: a solver
    * supplies the route, the owner's validators bound it, and the owner's own tail runs after
    * @dev The validators run between the two call lists, so they measure the solver's work before
-   * `order.ownerCalls` acts on it. The owner's tail is deliberately not validated.
+   * `order.ownerCalls` acts on it. The owner's tail is deliberately not validated. As on the
+   * execution rail, the caller must be the `order.solver`, the owner themselves, or anyone when the
+   * order leaves the field open.
    * @param owner Account the assets come from
    * @param order What the owner signed, including the validators, their own tail and who may solve
    * @param authenticator The delegated authenticator to ask

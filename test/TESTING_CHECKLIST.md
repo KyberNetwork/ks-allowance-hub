@@ -461,3 +461,59 @@ hashing a session key's `publicKey` length instead of its content fails `T712-09
 `T712-04..08` rows were duplicates in the strict sense that the schema audit asserts the same
 equality with a mechanically derived string in place of a transcribed one.
 
+## Run `20261007T111320Z`
+
+Scope: `relayer` and `solver` are enforced on the delegated rails, which is where they were declared
+but never read. One production change, in `KSAllowanceHubV2` only. `src/v1/**` and `test/v1/**`
+remain frozen. The hub is **23,921** runtime bytes with **655** to spare, up 204 from the fix.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261007T111320Z/SUBMIT-01` | **Production fix.** The two delegated entry points now refuse a caller who is neither the `relayer`/`solver` the order names nor the owner, unless the order left the field open. The pin was enforced on the Permit2 rails only, so an order naming one relayer could be submitted by anyone holding a valid credential | `ORD-02b`, `ORD-03b` in `test/v2/SubmitterPinning.t.sol` | `forge test` |
+
+### Notes for this run
+
+**What the gap was.** `ExecutionOrder.relayer` and `FulfillmentOrder.solver` are documented as who
+may submit an order, without qualification, and the struct field is covered by the order hash either
+way. `executeOrderWithPermit2Signature` and `fulfillOrderWithPermit2Signature` read it; the two
+delegated entry points never did. The field was therefore advisory on half the surface: an owner who
+named one relayer got no narrowing at all from naming it, as long as the submitter could satisfy the
+authenticator.
+
+**Why the authenticator cannot be the place this is checked.** It receives the whole order, so a
+particular authenticator could compare the submitter itself, and `SessionOrderAuthenticator` does
+not. Leaving it there would make the guarantee a property of whichever authenticator an owner
+happened to delegate rather than of the hub, and `IOrderAuthenticator` is an open interface. The hub
+reads the pin itself, and the interface NatSpec now says so — it previously claimed the hub checks
+only the delegation.
+
+**The owner is not bound by the field.** `msg.sender == owner` short-circuits ahead of the check,
+which is what the Permit2 rails already do. The field exists to bound everybody else, and an owner
+acting for themselves has nothing to be bound to. The last leg of each new case settles an owner-
+submitted order that names a different relayer, so this carve-out is pinned rather than assumed.
+
+**The gate is read before the credential,** so an unnamed submitter is refused as such even when the
+credential it presents could never have passed. The third leg of each case submits a one-byte
+signature and still expects `UnauthorizedRelayer`/`UnauthorizedSolver`, which is what fixes the
+ordering rather than leaving it to whichever check happens to run first.
+
+**Both new cases fail against the pre-fix hub** with `next call did not revert as expected` — the
+stranger settled the pinned order — and pass after. That direction was checked explicitly, because
+the rest of the suite passes unchanged either way: nothing existing exercised a pinned relayer on a
+delegated rail, which is how the gap survived `ORD-02` and `ORD-03`.
+
+**A codeless authenticator is not a bypass.** `_checkDelegation` permits `address(0)`, and a
+stranger passing it would reach `IOrderAuthenticator(address(0)).authenticateExecution`. That
+reverts: solc emits an `extcodesize` check for the call, so it fails with `call to non-contract
+address` rather than succeeding on empty returndata. Verified against both the pre-fix and post-fix
+trees before this fix was written, since the fix would otherwise have been the only thing standing
+between a stranger and an open order.
+
+**`GenericCallLib.hash`'s partial `calldatacopy` is dropped,** not deferred. The previous run
+recorded it as wanting a `DIRTY-05` first; it is no longer intended, and the 46 bytes and 243 gas
+per router call it was worth are left on the table.
+
+**These cases live in `test/v2/SubmitterPinning.t.sol`** rather than beside `ORD-02` and `ORD-03`,
+because `FulfillOrderTest` produces a solc internal compiler error under `via_ir` when another case
+joins it, as the previous run recorded.
+
