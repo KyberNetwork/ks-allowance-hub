@@ -697,3 +697,34 @@ a function that exists — the compiler now guarantees, which is why the three
 `_assertReachesTheHubOnlyGate` legs no longer carry that argument and state only what they still
 hold: the refusal is the forwarder's own.
 
+## Run `20261007T183815Z`
+
+Scope: a coverage check. No code changed and no case was added; this run exists to replace what
+earlier runs record as an unresolved coverage gate.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261007T183815Z/COV-01` | `forge coverage --ir-minimum` runs. The hub reports **100% branch** (17/17) and **100% function** (13/13) coverage; `AuthDelegator` is 100% throughout and `CallsForwarder` 100% on branches and functions | no case ID changes | `forge coverage --ir-minimum --report summary` |
+
+### Notes for this run
+
+**The gate is closed, with a caveat.** Earlier runs record `forge coverage` as not running at all.
+Plain mode still fails, with stack-too-deep in `lib/ks-common-
+sc/src/base/ManagementRescuable.sol:63`, which is a vendored dependency. `--ir-minimum` now
+completes, where it previously failed in the analyser on the `erc7201` builtin.
+
+**Its line attribution is not trustworthy here, so the line percentages should not be read as
+gaps.** `--ir-minimum` compiles with different codegen from the profile the suite runs under, and
+the mapping drifts: it reports `KSAllowanceHubV2`'s constructor body uncovered though every `setUp`
+deploys the hub, the first statements of `forwardCalls` and `multicall` uncovered though 29 cases
+call them, `PackedBits.pos` uncovered though `PB-02` pins it, and the whole of
+`SessionOrderAuthenticator.constructor` uncovered though the authenticator is deployed in every
+authenticator case. Branch and function counts held up under spot checks; line counts did not.
+
+**The only functions nothing calls are the four `*Memory` conversions in `ERC20Transfer.sol`** —
+`toPermitBatchTransferFromMemory`, `toSignatureTransferDetailsMemory`, `extractTargetsMemory` and
+`toAllowanceTransferDetailsMemory`. They are the integration surface for a caller holding an order
+in memory, they are `internal` and uncalled so they carry no bytecode, and they are deliberately not
+covered: a test over code no production path reaches would raise the percentage without testing
+anything. They are why `ERC20Transfer.sol` reads 56%.
+
