@@ -29,7 +29,7 @@ jobs:
       - name: Install Foundry
         uses: KyberNetwork/foundry-toolchain@master
         with:
-          version: v1.8.1
+          version: v1.8.3
           cache: false
 
       - name: Run Forge Build

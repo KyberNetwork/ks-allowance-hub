@@ -16,8 +16,8 @@ jobs:
   publish-docs:
     uses: KyberNetwork/workflows-templates/.github/workflows/publish-sc-docs-v0.2.0.yml@main
     with:
-      FOUNDRYUP_REF: 'refs/tags/v1.8.1'
-      FORGE_VERSION: 'v1.8.1'
+      FOUNDRYUP_REF: 'refs/tags/v1.8.3'
+      FORGE_VERSION: 'v1.8.3'
       DOCS_REPO: 'KyberNetwork/kyber-sc-docs'
       RUNS_ON: 'ubuntu-latest'
     secrets:
