@@ -60,6 +60,5 @@ monad_mainnet = "${RPC_143}"
 include = [
   '**/src/v2/types/*.sol',
   '**/src/v2/authenticators/types/*.sol',
-  '**/test/base/types/*.sol',
 ]
 

@@ -559,3 +559,49 @@ key, and revoking it withdraws the authority behind every order it signed.
 session approval and its order used to be one assertion over one bitmap, and are now one assertion
 per namespace — the approval against the owner, the order against the key.
 
+## Run `20261007T125149Z`
+
+Scope: the bound Permit2 declarations move into the two witness files, which makes the `[bind_json]`
+file set two `src` patterns and nothing else. No behaviour changes and no code is emitted: the hub
+is still **23,907** runtime bytes with **669** to spare.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261007T125149Z/BIND-02` | The two `PermitBatchWitnessTransferFrom` declarations move from `test/base/types/` to the witness files they wrap, and `TokenPermissions` comes from `ISignatureTransfer` instead of a redeclaration. Supersedes the file paths named in run `20261007T110305Z/712-02` | `T712-SCHEMA-PERMIT2` unchanged; declarations now in `src/v2/types/{Execution,Fulfillment}Witness.sol` | `forge test` |
+
+### Notes for this run
+
+**Why the declarations moved.** The bindings guard failed on CI and nowhere else: the runner's
+regenerated file came back without `schema_TokenPermissions` or either
+`schema_PermitBatchWitnessTransferFrom` variant, which are exactly the three that were declared
+under `test/`. Eliminated with evidence: stale local artifacts (a pristine tracked-only checkout
+emits all of them), an uncompiled test tree (the check was moved into the test job, which had
+already run the suite, and it still failed), missing or ignored files (committed, and the suite
+imports them), toolchain drift (`forge 1.8.3` on the runner), and local environment overrides
+(none). What remains is that `**/test/base/types/*.sol` matches nothing there while the two `src`
+patterns match, or that the whole `include` is ignored there and the surviving schemas come from a
+fallback over `src`. Both are answered by declaring the types under `src`, which is why this was
+preferred over guessing at glob forms, each of which costs a CI round trip to test.
+
+**Where they live now.** Each variant sits beside the witness it wraps, so the collision that forced
+two files is resolved by files that already had to exist. The suffixes still follow discovery order
+and still come out `_0` for execution and `_1` for fulfillment, and `T712-SCHEMA-PERMIT2` pins which
+is which rather than trusting it.
+
+**`TokenPermissions` carries no schema and needs none.** It belongs to `ISignatureTransfer`, which
+the hub already imports, so redeclaring it was redundant; being outside the bound file set it gets
+no constant of its own. Both Permit2 schemas quote its `encodeType` in full as a referenced type, so
+the two assertions that compare those complete strings are what pin it. The standalone assertion
+against `PermitHash._TOKEN_PERMISSIONS_TYPEHASH` is dropped with it; that constant is Permit2's own
+and the witness-free rail exercises it against the real Permit2 on the fork.
+
+**The guard runs in the build job.** Every bound type is under `src`, which `forge build src
+--sizes` compiles, so the check sits directly after it. It passed through the lint job, which
+compiles nothing, and the test job, which compiles far more than the bindings need; the build job is
+the one whose output the bindings are derived from. Verified by running that job's two steps against
+a pristine tree with nothing pre-built.
+
+**Struct declarations emit no code,** so the hub's size is unchanged at 23,907 bytes. Regeneration
+is idempotent and a pristine tracked-only tree reproduces the committed file byte for byte at 16
+schemas.
+

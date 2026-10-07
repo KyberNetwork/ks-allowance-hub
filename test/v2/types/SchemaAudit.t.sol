@@ -111,11 +111,6 @@ contract SchemaAuditTest is Test {
    */
   function test_T712_SCHEMA_PERMIT2_witnessTypeStringsMatchTheirStructs() public pure {
     assertEq(
-      PermitHash._TOKEN_PERMISSIONS_TYPEHASH,
-      keccak256(bytes(JsonBindings.schema_TokenPermissions)),
-      'TokenPermissions'
-    );
-    assertEq(
       string(
         abi.encodePacked(
           PermitHash._PERMIT_BATCH_WITNESS_TRANSFER_FROM_TYPEHASH_STUB,

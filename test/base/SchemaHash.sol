@@ -7,10 +7,10 @@ import {JsonBindings} from 'utils/JsonBindings.sol';
 
 import {
   PermitBatchWitnessTransferFrom as Permit2ExecutionWitness
-} from 'test/base/types/Permit2ExecutionWitness.sol';
+} from 'src/v2/types/ExecutionWitness.sol';
 import {
   PermitBatchWitnessTransferFrom as Permit2FulfillmentWitness
-} from 'test/base/types/Permit2FulfillmentWitness.sol';
+} from 'src/v2/types/FulfillmentWitness.sol';
 
 import {SessionKey} from 'src/v2/authenticators/types/SessionKey.sol';
 import {AuthDelegation} from 'src/v2/types/AuthDelegation.sol';

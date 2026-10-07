@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import {ERC721Transfer, ERC721TransferLib} from './ERC721Transfer.sol';
 
 import {GenericCall, GenericCallLib} from './GenericCall.sol';
+import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 import {DynamicArrayLib} from 'solady/utils/DynamicArrayLib.sol';
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
@@ -21,6 +22,26 @@ struct ExecutionWitness {
   address[] erc20Targets;
   ERC721Transfer[] erc721Transfers;
   GenericCall[] genericCalls;
+}
+
+/**
+ * @notice The type Permit2 hashes on the relayed execution rail
+ * @dev Permit2 closes its own stub with the witness type string the hub hands it, and this is the
+ * result. Declaring it keeps that string checkable against a struct rather than a transcription.
+ * Permit2 names both witness variants alike, so the fulfillment one is declared beside
+ * {FulfillmentWitness} and the two never share a file.
+ * @param permitted Tokens and amounts the permit covers
+ * @param spender Who may pull them
+ * @param nonce Permit2's own nonce
+ * @param deadline Last timestamp at which the permit may be used
+ * @param witness The order, bound to the signature
+ */
+struct PermitBatchWitnessTransferFrom {
+  ISignatureTransfer.TokenPermissions[] permitted;
+  address spender;
+  uint256 nonce;
+  uint256 deadline;
+  ExecutionWitness witness;
 }
 
 library ExecutionWitnessLib {

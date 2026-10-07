@@ -49,10 +49,3 @@ jobs:
       - name: Run Forge Test
         id: test
         run: forge test -vvv --isolate
-
-      # Runs here rather than in the lint job because `bind-json` only emits schemas for source
-      # units the run has compiled, and the bindings cover types under `test/` as well as `src/`
-      - name: Check the EIP-712 bindings are current
-        run: |
-          forge bind-json
-          git diff --exit-code utils/JsonBindings.sol

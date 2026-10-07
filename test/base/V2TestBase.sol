@@ -6,13 +6,14 @@ import {Test} from 'forge-std/Test.sol';
 import {PermitHash} from 'test/libraries/PermitHash.sol';
 
 import {SchemaHash} from 'test/base/SchemaHash.sol';
+
+import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 import {
   PermitBatchWitnessTransferFrom as Permit2ExecutionWitness
-} from 'test/base/types/Permit2ExecutionWitness.sol';
+} from 'src/v2/types/ExecutionWitness.sol';
 import {
   PermitBatchWitnessTransferFrom as Permit2FulfillmentWitness
-} from 'test/base/types/Permit2FulfillmentWitness.sol';
-import {TokenPermissions} from 'test/base/types/TokenPermissions.sol';
+} from 'src/v2/types/FulfillmentWitness.sol';
 
 import {KeyType} from 'src/v2/authenticators/types/KeyType.sol';
 import {SessionKey} from 'src/v2/authenticators/types/SessionKey.sol';
@@ -202,11 +203,11 @@ abstract contract V2TestBase is Test {
   function lTokenPermissions(address[] memory tokens, uint256[] memory amounts)
     internal
     pure
-    returns (TokenPermissions[] memory permitted)
+    returns (ISignatureTransfer.TokenPermissions[] memory permitted)
   {
-    permitted = new TokenPermissions[](tokens.length);
+    permitted = new ISignatureTransfer.TokenPermissions[](tokens.length);
     for (uint256 i = 0; i < tokens.length; i++) {
-      permitted[i] = TokenPermissions({token: tokens[i], amount: amounts[i]});
+      permitted[i] = ISignatureTransfer.TokenPermissions({token: tokens[i], amount: amounts[i]});
     }
   }
 

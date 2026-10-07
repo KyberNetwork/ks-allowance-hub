@@ -5,6 +5,7 @@ import {ERC721Transfer, ERC721TransferLib} from './ERC721Transfer.sol';
 
 import {GenericCall, GenericCallLib} from './GenericCall.sol';
 import {ValidationParams, ValidationParamsLib} from './ValidationParams.sol';
+import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 import {DynamicArrayLib} from 'solady/utils/DynamicArrayLib.sol';
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
@@ -27,6 +28,24 @@ struct FulfillmentWitness {
   GenericCall[] ownerCalls;
   ValidationParams[] validationParams;
   address callsSigner;
+}
+
+/**
+ * @notice The type Permit2 hashes on the relayed fulfillment rail
+ * @dev The fulfillment counterpart of the declaration beside {ExecutionWitness}, which says why
+ * both exist and why they cannot share a file.
+ * @param permitted Tokens and amounts the permit covers
+ * @param spender Who may pull them
+ * @param nonce Permit2's own nonce
+ * @param deadline Last timestamp at which the permit may be used
+ * @param witness The order, bound to the signature
+ */
+struct PermitBatchWitnessTransferFrom {
+  ISignatureTransfer.TokenPermissions[] permitted;
+  address spender;
+  uint256 nonce;
+  uint256 deadline;
+  FulfillmentWitness witness;
 }
 
 library FulfillmentWitnessLib {

@@ -9,17 +9,14 @@ import {AuthDelegation} from "src/v2/types/AuthDelegation.sol";
 import {ERC20Transfer} from "src/v2/types/ERC20Transfer.sol";
 import {ERC721Transfer} from "src/v2/types/ERC721Transfer.sol";
 import {ExecutionOrder} from "src/v2/types/ExecutionOrder.sol";
-import {ExecutionWitness} from "src/v2/types/ExecutionWitness.sol";
+import {ExecutionWitness, PermitBatchWitnessTransferFrom as PermitBatchWitnessTransferFrom_0} from "src/v2/types/ExecutionWitness.sol";
 import {FulfillmentOrder} from "src/v2/types/FulfillmentOrder.sol";
 import {FulfillmentSolution} from "src/v2/types/FulfillmentSolution.sol";
-import {FulfillmentWitness} from "src/v2/types/FulfillmentWitness.sol";
+import {FulfillmentWitness, PermitBatchWitnessTransferFrom as PermitBatchWitnessTransferFrom_1} from "src/v2/types/FulfillmentWitness.sol";
 import {GenericCall} from "src/v2/types/GenericCall.sol";
 import {NativeTransfer} from "src/v2/types/NativeTransfer.sol";
 import {SolutionApproval} from "src/v2/types/SolutionApproval.sol";
 import {ValidationParams} from "src/v2/types/ValidationParams.sol";
-import {PermitBatchWitnessTransferFrom as PermitBatchWitnessTransferFrom_0} from "test/base/types/Permit2ExecutionWitness.sol";
-import {PermitBatchWitnessTransferFrom as PermitBatchWitnessTransferFrom_1} from "test/base/types/Permit2FulfillmentWitness.sol";
-import {TokenPermissions} from "test/base/types/TokenPermissions.sol";
 
 interface Vm {
     function parseJsonTypeArray(string calldata json, string calldata key, string calldata typeDescription) external pure returns (bytes memory);
@@ -41,14 +38,13 @@ library JsonBindings {
     string constant schema_GenericCall = "GenericCall(address router,uint256 value,bytes data)";
     string constant schema_ExecutionOrder = "ExecutionOrder(address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 deadline)ERC20Transfer(address token,address target,uint160 amount)ERC721Transfer(address token,uint256 tokenId,address target)GenericCall(address router,uint256 value,bytes data)";
     string constant schema_ExecutionWitness = "ExecutionWitness(address relayer,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls)ERC721Transfer(address token,uint256 tokenId,address target)GenericCall(address router,uint256 value,bytes data)";
+    string constant schema_PermitBatchWitnessTransferFrom_0 = "PermitBatchWitnessTransferFrom(TokenPermissions[] permitted,address spender,uint256 nonce,uint256 deadline,ExecutionWitness witness)ERC721Transfer(address token,uint256 tokenId,address target)ExecutionWitness(address relayer,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls)GenericCall(address router,uint256 value,bytes data)TokenPermissions(address token,uint256 amount)";
     string constant schema_ValidationParams = "ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)";
     string constant schema_FulfillmentOrder = "FulfillmentOrder(address solver,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,ValidationParams[] validationParams,GenericCall[] ownerCalls,address solutionApprover,uint256 nonce,uint256 deadline)ERC20Transfer(address token,address target,uint160 amount)ERC721Transfer(address token,uint256 tokenId,address target)GenericCall(address router,uint256 value,bytes data)ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)";
     string constant schema_FulfillmentSolution = "FulfillmentSolution(GenericCall[] solverCalls,uint256 nonce,uint256 deadline)GenericCall(address router,uint256 value,bytes data)";
     string constant schema_FulfillmentWitness = "FulfillmentWitness(address solver,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner)ERC721Transfer(address token,uint256 tokenId,address target)GenericCall(address router,uint256 value,bytes data)ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)";
-    string constant schema_SolutionApproval = "SolutionApproval(address owner,bytes32 orderHash,FulfillmentSolution solution)FulfillmentSolution(GenericCall[] solverCalls,uint256 nonce,uint256 deadline)GenericCall(address router,uint256 value,bytes data)";
-    string constant schema_TokenPermissions = "TokenPermissions(address token,uint256 amount)";
-    string constant schema_PermitBatchWitnessTransferFrom_0 = "PermitBatchWitnessTransferFrom(TokenPermissions[] permitted,address spender,uint256 nonce,uint256 deadline,ExecutionWitness witness)ERC721Transfer(address token,uint256 tokenId,address target)ExecutionWitness(address relayer,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls)GenericCall(address router,uint256 value,bytes data)TokenPermissions(address token,uint256 amount)";
     string constant schema_PermitBatchWitnessTransferFrom_1 = "PermitBatchWitnessTransferFrom(TokenPermissions[] permitted,address spender,uint256 nonce,uint256 deadline,FulfillmentWitness witness)ERC721Transfer(address token,uint256 tokenId,address target)FulfillmentWitness(address solver,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner)GenericCall(address router,uint256 value,bytes data)TokenPermissions(address token,uint256 amount)ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)";
+    string constant schema_SolutionApproval = "SolutionApproval(address owner,bytes32 orderHash,FulfillmentSolution solution)FulfillmentSolution(GenericCall[] solverCalls,uint256 nonce,uint256 deadline)GenericCall(address router,uint256 value,bytes data)";
 
     function serialize(SessionKey memory value) internal pure returns (string memory) {
         return vm.serializeJsonType(schema_SessionKey, abi.encode(value));
@@ -230,6 +226,26 @@ library JsonBindings {
         return abi.decode(vm.parseJsonTypeArray(json, path, schema_ExecutionWitness), (ExecutionWitness[]));
     }
 
+    function serialize(PermitBatchWitnessTransferFrom_0 memory value) internal pure returns (string memory) {
+        return vm.serializeJsonType(schema_PermitBatchWitnessTransferFrom_0, abi.encode(value));
+    }
+
+    function serialize(PermitBatchWitnessTransferFrom_0 memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
+        return vm.serializeJsonType(objectKey, valueKey, schema_PermitBatchWitnessTransferFrom_0, abi.encode(value));
+    }
+
+    function deserializePermitBatchWitnessTransferFrom_0(string memory json) public pure returns (PermitBatchWitnessTransferFrom_0 memory) {
+        return abi.decode(vm.parseJsonType(json, schema_PermitBatchWitnessTransferFrom_0), (PermitBatchWitnessTransferFrom_0));
+    }
+
+    function deserializePermitBatchWitnessTransferFrom_0(string memory json, string memory path) public pure returns (PermitBatchWitnessTransferFrom_0 memory) {
+        return abi.decode(vm.parseJsonType(json, path, schema_PermitBatchWitnessTransferFrom_0), (PermitBatchWitnessTransferFrom_0));
+    }
+
+    function deserializePermitBatchWitnessTransferFrom_0Array(string memory json, string memory path) public pure returns (PermitBatchWitnessTransferFrom_0[] memory) {
+        return abi.decode(vm.parseJsonTypeArray(json, path, schema_PermitBatchWitnessTransferFrom_0), (PermitBatchWitnessTransferFrom_0[]));
+    }
+
     function serialize(ValidationParams memory value) internal pure returns (string memory) {
         return vm.serializeJsonType(schema_ValidationParams, abi.encode(value));
     }
@@ -310,66 +326,6 @@ library JsonBindings {
         return abi.decode(vm.parseJsonTypeArray(json, path, schema_FulfillmentWitness), (FulfillmentWitness[]));
     }
 
-    function serialize(SolutionApproval memory value) internal pure returns (string memory) {
-        return vm.serializeJsonType(schema_SolutionApproval, abi.encode(value));
-    }
-
-    function serialize(SolutionApproval memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
-        return vm.serializeJsonType(objectKey, valueKey, schema_SolutionApproval, abi.encode(value));
-    }
-
-    function deserializeSolutionApproval(string memory json) public pure returns (SolutionApproval memory) {
-        return abi.decode(vm.parseJsonType(json, schema_SolutionApproval), (SolutionApproval));
-    }
-
-    function deserializeSolutionApproval(string memory json, string memory path) public pure returns (SolutionApproval memory) {
-        return abi.decode(vm.parseJsonType(json, path, schema_SolutionApproval), (SolutionApproval));
-    }
-
-    function deserializeSolutionApprovalArray(string memory json, string memory path) public pure returns (SolutionApproval[] memory) {
-        return abi.decode(vm.parseJsonTypeArray(json, path, schema_SolutionApproval), (SolutionApproval[]));
-    }
-
-    function serialize(TokenPermissions memory value) internal pure returns (string memory) {
-        return vm.serializeJsonType(schema_TokenPermissions, abi.encode(value));
-    }
-
-    function serialize(TokenPermissions memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
-        return vm.serializeJsonType(objectKey, valueKey, schema_TokenPermissions, abi.encode(value));
-    }
-
-    function deserializeTokenPermissions(string memory json) public pure returns (TokenPermissions memory) {
-        return abi.decode(vm.parseJsonType(json, schema_TokenPermissions), (TokenPermissions));
-    }
-
-    function deserializeTokenPermissions(string memory json, string memory path) public pure returns (TokenPermissions memory) {
-        return abi.decode(vm.parseJsonType(json, path, schema_TokenPermissions), (TokenPermissions));
-    }
-
-    function deserializeTokenPermissionsArray(string memory json, string memory path) public pure returns (TokenPermissions[] memory) {
-        return abi.decode(vm.parseJsonTypeArray(json, path, schema_TokenPermissions), (TokenPermissions[]));
-    }
-
-    function serialize(PermitBatchWitnessTransferFrom_0 memory value) internal pure returns (string memory) {
-        return vm.serializeJsonType(schema_PermitBatchWitnessTransferFrom_0, abi.encode(value));
-    }
-
-    function serialize(PermitBatchWitnessTransferFrom_0 memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
-        return vm.serializeJsonType(objectKey, valueKey, schema_PermitBatchWitnessTransferFrom_0, abi.encode(value));
-    }
-
-    function deserializePermitBatchWitnessTransferFrom_0(string memory json) public pure returns (PermitBatchWitnessTransferFrom_0 memory) {
-        return abi.decode(vm.parseJsonType(json, schema_PermitBatchWitnessTransferFrom_0), (PermitBatchWitnessTransferFrom_0));
-    }
-
-    function deserializePermitBatchWitnessTransferFrom_0(string memory json, string memory path) public pure returns (PermitBatchWitnessTransferFrom_0 memory) {
-        return abi.decode(vm.parseJsonType(json, path, schema_PermitBatchWitnessTransferFrom_0), (PermitBatchWitnessTransferFrom_0));
-    }
-
-    function deserializePermitBatchWitnessTransferFrom_0Array(string memory json, string memory path) public pure returns (PermitBatchWitnessTransferFrom_0[] memory) {
-        return abi.decode(vm.parseJsonTypeArray(json, path, schema_PermitBatchWitnessTransferFrom_0), (PermitBatchWitnessTransferFrom_0[]));
-    }
-
     function serialize(PermitBatchWitnessTransferFrom_1 memory value) internal pure returns (string memory) {
         return vm.serializeJsonType(schema_PermitBatchWitnessTransferFrom_1, abi.encode(value));
     }
@@ -388,5 +344,25 @@ library JsonBindings {
 
     function deserializePermitBatchWitnessTransferFrom_1Array(string memory json, string memory path) public pure returns (PermitBatchWitnessTransferFrom_1[] memory) {
         return abi.decode(vm.parseJsonTypeArray(json, path, schema_PermitBatchWitnessTransferFrom_1), (PermitBatchWitnessTransferFrom_1[]));
+    }
+
+    function serialize(SolutionApproval memory value) internal pure returns (string memory) {
+        return vm.serializeJsonType(schema_SolutionApproval, abi.encode(value));
+    }
+
+    function serialize(SolutionApproval memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
+        return vm.serializeJsonType(objectKey, valueKey, schema_SolutionApproval, abi.encode(value));
+    }
+
+    function deserializeSolutionApproval(string memory json) public pure returns (SolutionApproval memory) {
+        return abi.decode(vm.parseJsonType(json, schema_SolutionApproval), (SolutionApproval));
+    }
+
+    function deserializeSolutionApproval(string memory json, string memory path) public pure returns (SolutionApproval memory) {
+        return abi.decode(vm.parseJsonType(json, path, schema_SolutionApproval), (SolutionApproval));
+    }
+
+    function deserializeSolutionApprovalArray(string memory json, string memory path) public pure returns (SolutionApproval[] memory) {
+        return abi.decode(vm.parseJsonTypeArray(json, path, schema_SolutionApproval), (SolutionApproval[]));
     }
 }
