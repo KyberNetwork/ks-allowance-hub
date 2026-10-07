@@ -6,9 +6,12 @@ import {Test} from 'forge-std/Test.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
+import {ExecutionWitness} from 'src/v2/types/ExecutionWitness.sol';
 import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
 import {FulfillmentSolution} from 'src/v2/types/FulfillmentSolution.sol';
+import {FulfillmentWitness} from 'src/v2/types/FulfillmentWitness.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
+import {SolutionApproval} from 'src/v2/types/SolutionApproval.sol';
 import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
 /**
@@ -25,6 +28,7 @@ import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
  * attachment, so the production hashers are reachable from any file that imports them — they are
  * never to appear on the expected side of an assertion.
  */
+
 abstract contract V2TestBase is Test {
   address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
   address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
@@ -106,15 +110,21 @@ abstract contract V2TestBase is Test {
   // ---------------------------------------------------------------------------------------------
 
   /// @dev Referenced types follow the primary type in alphabetical order, per EIP-712
-  function lExecutionOrderTypehash() internal pure returns (bytes32) {
-    return keccak256(
+  /// @dev The EIP-712 `encodeType` string: the type and its referenced types, in order
+  function lExecutionOrderEncodeType() internal pure returns (string memory) {
+    return string(
       abi.encodePacked(L_EXECUTION_ORDER, L_ERC20_TRANSFER, L_ERC721_TRANSFER, L_GENERIC_CALL)
     );
   }
 
+  function lExecutionOrderTypehash() internal pure returns (bytes32) {
+    return keccak256(bytes(lExecutionOrderEncodeType()));
+  }
+
   /// @dev Sorted: ERC20Transfer, ERC721Transfer, GenericCall, ValidationParams
-  function lFulfillmentOrderTypehash() internal pure returns (bytes32) {
-    return keccak256(
+  /// @dev The EIP-712 `encodeType` string: the type and its referenced types, in order
+  function lFulfillmentOrderEncodeType() internal pure returns (string memory) {
+    return string(
       abi.encodePacked(
         L_FULFILLMENT_ORDER,
         L_ERC20_TRANSFER,
@@ -125,25 +135,49 @@ abstract contract V2TestBase is Test {
     );
   }
 
+  function lFulfillmentOrderTypehash() internal pure returns (bytes32) {
+    return keccak256(bytes(lFulfillmentOrderEncodeType()));
+  }
+
+  /// @dev The EIP-712 `encodeType` string: the type and its referenced types, in order
+  function lFulfillmentSolutionEncodeType() internal pure returns (string memory) {
+    return string(abi.encodePacked(L_FULFILLMENT_SOLUTION, L_GENERIC_CALL));
+  }
+
   function lFulfillmentSolutionTypehash() internal pure returns (bytes32) {
-    return keccak256(abi.encodePacked(L_FULFILLMENT_SOLUTION, L_GENERIC_CALL));
+    return keccak256(bytes(lFulfillmentSolutionEncodeType()));
   }
 
   /// @dev Sorted: FulfillmentSolution, GenericCall
+  /// @dev The EIP-712 `encodeType` string: the type and its referenced types, in order
+  function lSolutionApprovalEncodeType() internal pure returns (string memory) {
+    return string(abi.encodePacked(L_SOLUTION_APPROVAL, L_FULFILLMENT_SOLUTION, L_GENERIC_CALL));
+  }
+
   function lSolutionApprovalTypehash() internal pure returns (bytes32) {
-    return keccak256(abi.encodePacked(L_SOLUTION_APPROVAL, L_FULFILLMENT_SOLUTION, L_GENERIC_CALL));
+    return keccak256(bytes(lSolutionApprovalEncodeType()));
+  }
+
+  /// @dev The EIP-712 `encodeType` string: the type and its referenced types, in order
+  function lExecutionWitnessEncodeType() internal pure returns (string memory) {
+    return string(abi.encodePacked(L_EXECUTION_WITNESS, L_ERC721_TRANSFER, L_GENERIC_CALL));
   }
 
   function lExecutionWitnessTypehash() internal pure returns (bytes32) {
-    return keccak256(abi.encodePacked(L_EXECUTION_WITNESS, L_ERC721_TRANSFER, L_GENERIC_CALL));
+    return keccak256(bytes(lExecutionWitnessEncodeType()));
   }
 
-  function lFulfillmentWitnessTypehash() internal pure returns (bytes32) {
-    return keccak256(
+  /// @dev The EIP-712 `encodeType` string: the type and its referenced types, in order
+  function lFulfillmentWitnessEncodeType() internal pure returns (string memory) {
+    return string(
       abi.encodePacked(
         L_FULFILLMENT_WITNESS, L_ERC721_TRANSFER, L_GENERIC_CALL, L_VALIDATION_PARAMS
       )
     );
+  }
+
+  function lFulfillmentWitnessTypehash() internal pure returns (bytes32) {
+    return keccak256(bytes(lFulfillmentWitnessEncodeType()));
   }
 
   /// @dev `ExecutionWitness witness)` + referenced types, sorted: ERC721Transfer, ExecutionWitness,
@@ -187,96 +221,16 @@ abstract contract V2TestBase is Test {
   // Hand-written member and array hashing
   // ---------------------------------------------------------------------------------------------
 
-  function lHashErc20(ERC20Transfer memory t) internal pure returns (bytes32) {
-    return keccak256(abi.encode(keccak256(bytes(L_ERC20_TRANSFER)), t.token, t.target, t.amount));
-  }
-
-  function lHashErc721(ERC721Transfer memory t) internal pure returns (bytes32) {
-    return keccak256(abi.encode(keccak256(bytes(L_ERC721_TRANSFER)), t.token, t.tokenId, t.target));
-  }
-
-  function lHashCall(GenericCall memory c) internal pure returns (bytes32) {
-    return
-      keccak256(abi.encode(keccak256(bytes(L_GENERIC_CALL)), c.router, c.value, keccak256(c.data)));
-  }
-
-  function lHashValidation(ValidationParams memory v) internal pure returns (bytes32) {
-    return keccak256(
-      abi.encode(
-        keccak256(bytes(L_VALIDATION_PARAMS)),
-        v.validator,
-        v.action,
-        keccak256(v.beforeExecutionInput),
-        keccak256(v.afterExecutionInput)
-      )
-    );
-  }
-
-  /// @dev EIP-712 hashes an array of structs as the hash of its concatenated member hashes
-  function lHashErc20Array(ERC20Transfer[] memory ts) internal pure returns (bytes32) {
-    bytes32[] memory h = new bytes32[](ts.length);
-    for (uint256 i = 0; i < ts.length; i++) {
-      h[i] = lHashErc20(ts[i]);
-    }
-    return keccak256(abi.encodePacked(h));
-  }
-
-  function lHashErc721Array(ERC721Transfer[] memory ts) internal pure returns (bytes32) {
-    bytes32[] memory h = new bytes32[](ts.length);
-    for (uint256 i = 0; i < ts.length; i++) {
-      h[i] = lHashErc721(ts[i]);
-    }
-    return keccak256(abi.encodePacked(h));
-  }
-
-  function lHashCallArray(GenericCall[] memory cs) internal pure returns (bytes32) {
-    bytes32[] memory h = new bytes32[](cs.length);
-    for (uint256 i = 0; i < cs.length; i++) {
-      h[i] = lHashCall(cs[i]);
-    }
-    return keccak256(abi.encodePacked(h));
-  }
-
-  function lHashValidationArray(ValidationParams[] memory vs) internal pure returns (bytes32) {
-    bytes32[] memory h = new bytes32[](vs.length);
-    for (uint256 i = 0; i < vs.length; i++) {
-      h[i] = lHashValidation(vs[i]);
-    }
-    return keccak256(abi.encodePacked(h));
-  }
-
   // ---------------------------------------------------------------------------------------------
   // Hand-written struct hashes
   // ---------------------------------------------------------------------------------------------
 
   function lExecutionOrderHash(ExecutionOrder memory order) internal pure returns (bytes32) {
-    return keccak256(
-      abi.encode(
-        lExecutionOrderTypehash(),
-        order.relayer,
-        lHashErc20Array(order.erc20Transfers),
-        lHashErc721Array(order.erc721Transfers),
-        lHashCallArray(order.genericCalls),
-        order.nonce,
-        order.deadline
-      )
-    );
+    return vm.eip712HashStruct(lExecutionOrderEncodeType(), abi.encode(order));
   }
 
   function lFulfillmentOrderHash(FulfillmentOrder memory order) internal pure returns (bytes32) {
-    return keccak256(
-      abi.encode(
-        lFulfillmentOrderTypehash(),
-        order.solver,
-        lHashErc20Array(order.erc20Transfers),
-        lHashErc721Array(order.erc721Transfers),
-        lHashValidationArray(order.validationParams),
-        lHashCallArray(order.ownerCalls),
-        order.solutionApprover,
-        order.nonce,
-        order.deadline
-      )
-    );
+    return vm.eip712HashStruct(lFulfillmentOrderEncodeType(), abi.encode(order));
   }
 
   function lFulfillmentSolutionHash(FulfillmentSolution memory solution)
@@ -284,14 +238,7 @@ abstract contract V2TestBase is Test {
     pure
     returns (bytes32)
   {
-    return keccak256(
-      abi.encode(
-        lFulfillmentSolutionTypehash(),
-        lHashCallArray(solution.solverCalls),
-        solution.nonce,
-        solution.deadline
-      )
-    );
+    return vm.eip712HashStruct(lFulfillmentSolutionEncodeType(), abi.encode(solution));
   }
 
   function lSolutionApproval(
@@ -299,10 +246,9 @@ abstract contract V2TestBase is Test {
     bytes32 orderHash,
     FulfillmentSolution memory solution
   ) internal pure returns (bytes32) {
-    return keccak256(
-      abi.encode(
-        lSolutionApprovalTypehash(), approvalOwner, orderHash, lFulfillmentSolutionHash(solution)
-      )
+    return vm.eip712HashStruct(
+      lSolutionApprovalEncodeType(),
+      abi.encode(SolutionApproval({owner: approvalOwner, orderHash: orderHash, solution: solution}))
     );
   }
 
@@ -312,13 +258,15 @@ abstract contract V2TestBase is Test {
     ERC721Transfer[] memory erc721Transfers,
     GenericCall[] memory genericCalls
   ) internal pure returns (bytes32) {
-    return keccak256(
+    return vm.eip712HashStruct(
+      lExecutionWitnessEncodeType(),
       abi.encode(
-        lExecutionWitnessTypehash(),
-        signedCaller,
-        keccak256(abi.encodePacked(targets)),
-        lHashErc721Array(erc721Transfers),
-        lHashCallArray(genericCalls)
+        ExecutionWitness({
+          relayer: signedCaller,
+          erc20Targets: targets,
+          erc721Transfers: erc721Transfers,
+          genericCalls: genericCalls
+        })
       )
     );
   }
@@ -331,15 +279,17 @@ abstract contract V2TestBase is Test {
     ValidationParams[] memory validationParams,
     address callsSigner
   ) internal pure returns (bytes32) {
-    return keccak256(
+    return vm.eip712HashStruct(
+      lFulfillmentWitnessEncodeType(),
       abi.encode(
-        lFulfillmentWitnessTypehash(),
-        signedCaller,
-        keccak256(abi.encodePacked(targets)),
-        lHashErc721Array(erc721Transfers),
-        lHashCallArray(ownerCalls),
-        lHashValidationArray(validationParams),
-        callsSigner
+        FulfillmentWitness({
+          solver: signedCaller,
+          erc20Targets: targets,
+          erc721Transfers: erc721Transfers,
+          ownerCalls: ownerCalls,
+          validationParams: validationParams,
+          callsSigner: callsSigner
+        })
       )
     );
   }
