@@ -1,0 +1,100 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.36;
+
+import {Test} from 'forge-std/Test.sol';
+
+import {JsonBindings} from 'utils/JsonBindings.sol';
+
+import {SessionApprovalLib} from 'src/v2/authenticators/types/SessionApproval.sol';
+import {SessionKeyLib} from 'src/v2/authenticators/types/SessionKey.sol';
+import {AuthDelegationLib} from 'src/v2/types/AuthDelegation.sol';
+import {ERC20TransferLib} from 'src/v2/types/ERC20Transfer.sol';
+import {ERC721TransferLib} from 'src/v2/types/ERC721Transfer.sol';
+import {ExecutionOrderLib} from 'src/v2/types/ExecutionOrder.sol';
+import {ExecutionWitnessLib} from 'src/v2/types/ExecutionWitness.sol';
+import {FulfillmentOrderLib} from 'src/v2/types/FulfillmentOrder.sol';
+import {FulfillmentSolutionLib} from 'src/v2/types/FulfillmentSolution.sol';
+import {FulfillmentWitnessLib} from 'src/v2/types/FulfillmentWitness.sol';
+import {GenericCallLib} from 'src/v2/types/GenericCall.sol';
+import {SolutionApprovalLib} from 'src/v2/types/SolutionApproval.sol';
+import {ValidationParamsLib} from 'src/v2/types/ValidationParams.sol';
+
+/**
+ * @title SchemaAuditTest
+ * @notice T712-SCHEMA — every typehash against the `encodeType` its own struct declares
+ * @dev The struct is the source of truth, and a production type string that drifts from it passes
+ * every other case in the suite: the hub is self-consistent, and Permit2 derives its witness
+ * typehash from the string the hub hands it, so the fork checks the hub against itself. These
+ * schemas come from `forge bind-json`, which reads the struct declarations, so nothing here is a
+ * transcription. Regenerate with `FOUNDRY_PROFILE=bindjson forge bind-json`; `foundry.toml` pins
+ * the file set under `[bind_json]`, without which the output is not reproducible.
+ */
+contract SchemaAuditTest is Test {
+  function test_T712_SCHEMA_typehashesMatchTheirStructs() public pure {
+    assertEq(
+      ERC20TransferLib.ERC20_TRANSFER_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_ERC20Transfer)),
+      'ERC20Transfer'
+    );
+    assertEq(
+      ERC721TransferLib.ERC721_TRANSFER_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_ERC721Transfer)),
+      'ERC721Transfer'
+    );
+    assertEq(
+      GenericCallLib.GENERIC_CALL_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_GenericCall)),
+      'GenericCall'
+    );
+    assertEq(
+      ValidationParamsLib.VALIDATION_PARAMS_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_ValidationParams)),
+      'ValidationParams'
+    );
+    assertEq(
+      ExecutionOrderLib.EXECUTION_ORDER_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_ExecutionOrder)),
+      'ExecutionOrder'
+    );
+    assertEq(
+      FulfillmentOrderLib.FULFILLMENT_ORDER_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_FulfillmentOrder)),
+      'FulfillmentOrder'
+    );
+    assertEq(
+      FulfillmentSolutionLib.FULFILLMENT_SOLUTION_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_FulfillmentSolution)),
+      'FulfillmentSolution'
+    );
+    assertEq(
+      SolutionApprovalLib.SOLUTION_APPROVAL_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_SolutionApproval)),
+      'SolutionApproval'
+    );
+    assertEq(
+      ExecutionWitnessLib.EXECUTION_WITNESS_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_ExecutionWitness)),
+      'ExecutionWitness'
+    );
+    assertEq(
+      FulfillmentWitnessLib.FULFILLMENT_WITNESS_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_FulfillmentWitness)),
+      'FulfillmentWitness'
+    );
+    assertEq(
+      AuthDelegationLib.AUTH_DELEGATION_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_AuthDelegation)),
+      'AuthDelegation'
+    );
+    assertEq(
+      SessionKeyLib.SESSION_KEY_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_SessionKey)),
+      'SessionKey'
+    );
+    assertEq(
+      SessionApprovalLib.SESSION_APPROVAL_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_SessionApproval)),
+      'SessionApproval'
+    );
+  }
+}

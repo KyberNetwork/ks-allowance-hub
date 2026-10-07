@@ -55,3 +55,10 @@ sonic_mainnet = "${RPC_146}"
 monad_mainnet = "${RPC_143}"
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+[bind_json]
+include = [
+  '**/src/v2/types/*.sol',
+  '**/src/v2/authenticators/types/*.sol',
+]
+

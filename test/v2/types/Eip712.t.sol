@@ -94,25 +94,6 @@ contract Eip712Test is V2TestBase {
   // T712-13..16 — the four types the restructure introduced
   // -------------------------------------------------------------------------------------------
 
-  /// T712-13 — the order the owner signs on the execution rails
-  function test_T712_13_executionOrderTypehash() public pure {
-    assertEq(ExecutionOrderLib.EXECUTION_ORDER_TYPEHASH, lExecutionOrderTypehash());
-  }
-
-  /// T712-14 — `GenericCall` sits between `ERC721Transfer` and `ValidationParams` here
-  function test_T712_14_fulfillmentOrderTypehash() public pure {
-    assertEq(FulfillmentOrderLib.FULFILLMENT_ORDER_TYPEHASH, lFulfillmentOrderTypehash());
-  }
-
-  function test_T712_15_fulfillmentSolutionTypehash() public pure {
-    assertEq(FulfillmentSolutionLib.FULFILLMENT_SOLUTION_TYPEHASH, lFulfillmentSolutionTypehash());
-  }
-
-  /// T712-16 — references `FulfillmentSolution`, which drags `GenericCall` in behind it
-  function test_T712_16_solutionApprovalTypehash() public pure {
-    assertEq(SolutionApprovalLib.SOLUTION_APPROVAL_TYPEHASH, lSolutionApprovalTypehash());
-  }
-
   /**
    * T712-17 — both Permit2 witness strings list their referenced types in sorted order
    * @dev T712-01b and T712-02b pin the two strings byte for byte, which catches a mis-sorted
