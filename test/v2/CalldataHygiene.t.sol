@@ -37,7 +37,7 @@ contract CalldataHygieneTest is AuthenticatorBase {
         IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
         (
           _openExecutionOrder(
-            _erc20s(_wethTransfer(AMOUNT)), _calls(_routerCall(0, hex'01')), 90, block.timestamp
+            _erc20s(_tokenTransfer(AMOUNT)), _calls(_routerCall(0, hex'01')), 90, block.timestamp
           ),
           address(0),
           '',
@@ -52,7 +52,7 @@ contract CalldataHygieneTest is AuthenticatorBase {
     uint256 deadline = block.timestamp + 1 hours;
     ExecutionOrder memory order = _executionOrder(
       ANY,
-      _erc20s(_wethTransfer(AMOUNT)),
+      _erc20s(_tokenTransfer(AMOUNT)),
       new ERC721Transfer[](0),
       _calls(_routerCall(0, hex'01')),
       91,
@@ -100,7 +100,7 @@ contract CalldataHygieneTest is AuthenticatorBase {
         IKSAllowanceHubV2.fulfillOrderWithPermit2Signature,
         (
           order,
-          _signPlainPermit(_erc20s(_wethTransfer(AMOUNT)), 93, deadline),
+          _signPlainPermit(_erc20s(_tokenTransfer(AMOUNT)), 93, deadline),
           _solution(_calls(_routerCall(0, hex'02')), 2, deadline),
           ''
         )
@@ -112,7 +112,7 @@ contract CalldataHygieneTest is AuthenticatorBase {
   function _order(uint256 nonce, uint256 deadline) internal view returns (FulfillmentOrder memory) {
     return _fulfillmentOrder(
       ANY,
-      _erc20s(_wethTransfer(AMOUNT)),
+      _erc20s(_tokenTransfer(AMOUNT)),
       new ERC721Transfer[](0),
       new ValidationParams[](0),
       new GenericCall[](0),

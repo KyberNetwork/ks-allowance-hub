@@ -47,7 +47,7 @@ contract SettlementTest is HubBase {
    * order hash rebuilt from the independent oracle.
    */
   function test_SET_01_transferTokensPayload() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC721Transfer[] memory nfts = _erc721s(_nftTransfer(address(router)));
     GenericCall[] memory calls = _calls(_routerCall(0, hex'abcd'));
     uint256 deadline = block.timestamp + 1 hours;
@@ -212,11 +212,11 @@ contract SettlementTest is HubBase {
     RouterMock stranger = new RouterMock();
 
     ERC20Transfer[] memory erc20s =
-      _erc20s(ERC20Transfer({token: WETH, target: address(stranger), amount: AMOUNT}));
+      _erc20s(ERC20Transfer({token: token18, target: address(stranger), amount: AMOUNT}));
     GenericCall[] memory calls =
       _calls(GenericCall({router: address(stranger), value: 0, data: hex'01'}));
 
-    uint256 ownerBalanceBefore = IERC20(WETH).balanceOf(owner);
+    uint256 ownerBalanceBefore = IERC20(token18).balanceOf(owner);
 
     vm.prank(owner);
     vm.expectRevert(
@@ -229,8 +229,8 @@ contract SettlementTest is HubBase {
     );
 
     assertEq(stranger.callCount(), 0, 'never called');
-    assertEq(IERC20(WETH).balanceOf(owner), ownerBalanceBefore, 'the ERC20 leg rolled back too');
-    assertEq(IERC20(WETH).balanceOf(address(stranger)), 0, 'nothing reached it');
+    assertEq(IERC20(token18).balanceOf(owner), ownerBalanceBefore, 'the ERC20 leg rolled back too');
+    assertEq(IERC20(token18).balanceOf(address(stranger)), 0, 'nothing reached it');
   }
 
   /// ROUTER-02 — a guardian can drop a router, and the very next order stops working
@@ -295,7 +295,7 @@ contract SettlementTest is HubBase {
    * second transaction, because CI runs `--isolate` and transient storage does not survive one.
    */
   function test_LOCK_01_routerSeesTheOwner() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
     uint256 deadline = block.timestamp + 1 hours;
 

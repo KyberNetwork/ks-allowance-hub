@@ -57,11 +57,11 @@ contract MulticallTest is AuthenticatorBase {
     uint256 deadline = block.timestamp + 1 hours;
 
     address[] memory tokens = new address[](1);
-    tokens[0] = USDC;
+    tokens[0] = token6;
     bytes[] memory permits = new bytes[](1);
     permits[0] = _usdcPermitCall(address(hub), permitValue, deadline);
 
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     GenericCall[] memory calls = _calls(_routerCall(0.5 ether, hex'01'));
 
     bytes[] memory batch = new bytes[](2);
@@ -72,7 +72,7 @@ contract MulticallTest is AuthenticatorBase {
       (_openExecutionOrder(erc20s, calls, 0, deadline), address(0), '', false)
     );
 
-    uint256 routerWethBefore = IERC20(WETH).balanceOf(address(router));
+    uint256 routerWethBefore = IERC20(token18).balanceOf(address(router));
     uint256 routerNativeBefore = address(router).balance;
     vm.deal(owner, VALUE);
 
@@ -80,9 +80,9 @@ contract MulticallTest is AuthenticatorBase {
     (bytes[] memory results, uint256[] memory gasUsages) = hub.multicall{value: VALUE}(batch);
 
     assertEq(results.length, 2, 'one result per sub-call');
-    assertEq(IERC20(USDC).allowance(owner, address(hub)), permitValue, 'the permit was relayed');
+    assertEq(IERC20(token6).allowance(owner, address(hub)), permitValue, 'the permit was relayed');
     assertEq(
-      IERC20(WETH).balanceOf(address(router)) - routerWethBefore, AMOUNT, 'the order settled'
+      IERC20(token18).balanceOf(address(router)) - routerWethBefore, AMOUNT, 'the order settled'
     );
     assertEq(address(router).balance - routerNativeBefore, 0.5 ether, 'the native leg was paid');
     assertEq(address(hub).balance, VALUE - 0.5 ether, 'the unspent half stayed behind');
@@ -157,14 +157,14 @@ contract MulticallTest is AuthenticatorBase {
     batch[0] = _orderCalldata(1 ether, hex'a1');
     batch[1] = _orderCalldata(2 ether, hex'b2');
 
-    uint256 routerWethBefore = IERC20(WETH).balanceOf(address(router));
+    uint256 routerWethBefore = IERC20(token18).balanceOf(address(router));
 
     vm.prank(owner);
     (bytes[] memory results,) = hub.multicall(batch);
 
     assertEq(results.length, 2, 'two results');
     assertEq(
-      IERC20(WETH).balanceOf(address(router)) - routerWethBefore, 3 ether, 'both legs pulled'
+      IERC20(token18).balanceOf(address(router)) - routerWethBefore, 3 ether, 'both legs pulled'
     );
     assertEq(router.callCount(), 2, 'both calls ran');
     assertEq(router.lastData(), hex'b2', 'the second order ran last');
@@ -248,7 +248,7 @@ contract MulticallTest is AuthenticatorBase {
     hub.updateDelegation(owner, address(authenticator), true, '', 0, deadline, '');
     assertFalse(authenticator.masterKeys(owner, keyHash), 'the authenticator holds no key yet');
 
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
 
     ExecutionOrder memory order = _openExecutionOrder(erc20s, calls, orderNonce, deadline);
@@ -283,7 +283,7 @@ contract MulticallTest is AuthenticatorBase {
     );
     hub.multicall(orderOnly);
 
-    uint256 routerWethBefore = IERC20(WETH).balanceOf(address(router));
+    uint256 routerWethBefore = IERC20(token18).balanceOf(address(router));
 
     vm.prank(relayer);
     (bytes[] memory results,) = hub.multicall(batch);
@@ -291,7 +291,7 @@ contract MulticallTest is AuthenticatorBase {
     assertEq(results.length, 2, 'one result per sub-call');
     assertTrue(authenticator.masterKeys(owner, keyHash), 'the batch approved the key');
     assertEq(
-      IERC20(WETH).balanceOf(address(router)) - routerWethBefore,
+      IERC20(token18).balanceOf(address(router)) - routerWethBefore,
       AMOUNT,
       'and the order spent on it in the same transaction'
     );
@@ -334,7 +334,7 @@ contract MulticallTest is AuthenticatorBase {
     );
 
     ExecutionOrder memory order = _openExecutionOrder(
-      _erc20s(_wethTransfer(AMOUNT)), _calls(_routerCall(0, hex'01')), orderNonce, deadline
+      _erc20s(_tokenTransfer(AMOUNT)), _calls(_routerCall(0, hex'01')), orderNonce, deadline
     );
     bytes memory grantSig =
       _signSessionKeyApproval(masterKey, ephemeral, true, grantNonce, deadline, masterKeyPk);
@@ -368,7 +368,7 @@ contract MulticallTest is AuthenticatorBase {
     );
     hub.multicall(orderOnly);
 
-    uint256 routerWethBefore = IERC20(WETH).balanceOf(address(router));
+    uint256 routerWethBefore = IERC20(token18).balanceOf(address(router));
 
     vm.prank(relayer);
     hub.multicall(batch);
@@ -379,7 +379,7 @@ contract MulticallTest is AuthenticatorBase {
       'the batch minted the ephemeral key'
     );
     assertEq(
-      IERC20(WETH).balanceOf(address(router)) - routerWethBefore,
+      IERC20(token18).balanceOf(address(router)) - routerWethBefore,
       AMOUNT,
       'and it spent on it in the same transaction'
     );
@@ -464,7 +464,7 @@ contract MulticallTest is AuthenticatorBase {
       IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
       (
         _openExecutionOrder(
-          _erc20s(_wethTransfer(amount)), _calls(_routerCall(0, data)), 0, block.timestamp
+          _erc20s(_tokenTransfer(amount)), _calls(_routerCall(0, data)), 0, block.timestamp
         ),
         address(0),
         '',
@@ -473,7 +473,7 @@ contract MulticallTest is AuthenticatorBase {
     );
   }
 
-  /// @dev A whole EIP-2612 `permit` call for {ICallsForwarder-forwardCalls} to relay to USDC
+  /// @dev A whole EIP-2612 `permit` call for {ICallsForwarder-forwardCalls} to relay to token6
   function _usdcPermitCall(address spender, uint256 value, uint256 deadline)
     internal
     returns (bytes memory)
@@ -489,14 +489,14 @@ contract MulticallTest is AuthenticatorBase {
 
   /// @dev Read off the deployed token, which is an external dependency rather than code under test
   function _usdcDomainSeparator() internal view returns (bytes32) {
-    (bool ok, bytes memory data) = USDC.staticcall(abi.encodeWithSignature('DOMAIN_SEPARATOR()'));
+    (bool ok, bytes memory data) = token6.staticcall(abi.encodeWithSignature('DOMAIN_SEPARATOR()'));
     require(ok, 'usdc domain');
     return abi.decode(data, (bytes32));
   }
 
   function _usdcNonce(address account) internal view returns (uint256) {
     (bool ok, bytes memory data) =
-      USDC.staticcall(abi.encodeWithSignature('nonces(address)', account));
+      token6.staticcall(abi.encodeWithSignature('nonces(address)', account));
     require(ok, 'usdc nonce');
     return abi.decode(data, (uint256));
   }

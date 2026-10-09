@@ -75,7 +75,7 @@ contract ManagementTest is AuthenticatorBase {
 
   /// MGMT-01 — everything the constructor is responsible for, including its one event
   function test_MGMT_01_constructorWiring() public {
-    // `PERMIT2` is an internal immutable with no getter, so the constructor argument is only
+    // `permit2` is an internal immutable with no getter, so the constructor argument is only
     // observable through the rails that use it, which the AUTH-* cases exercise
     assertTrue(hub.hasRole(ROUTER_ROLE, address(router)), 'router whitelisted');
     assertTrue(hub.hasRole(ROUTER_ROLE, address(router2)), 'second router whitelisted');
@@ -92,7 +92,7 @@ contract ManagementTest is AuthenticatorBase {
 
     // The construction event is only observable on a fresh deployment
     vm.recordLogs();
-    new KSAllowanceHubV2(admin, _one(guardian), _one(rescuer), _one(address(router)), PERMIT2);
+    new KSAllowanceHubV2(admin, _one(guardian), _one(rescuer), _one(address(router)), permit2);
     Vm.Log[] memory logs = vm.getRecordedLogs();
 
     bytes32 topic = keccak256('RoleRevokerChanged(bytes32,bytes32,bytes32)');
@@ -271,12 +271,12 @@ contract ManagementTest is AuthenticatorBase {
 
   /// MGMT-08a — a zero amount means "everything", and the event carries what was resolved
   function test_MGMT_08a_rescueErc20s() public {
-    deal(WETH, address(hub), 3 ether);
-    deal(USDC, address(hub), 500e6);
+    deal(token18, address(hub), 3 ether);
+    deal(token6, address(hub), 500e6);
 
     address[] memory tokens = new address[](2);
-    tokens[0] = WETH;
-    tokens[1] = USDC;
+    tokens[0] = token18;
+    tokens[1] = token6;
 
     uint256[] memory amounts = new uint256[](2);
     amounts[0] = 0; // sweep
@@ -292,17 +292,16 @@ contract ManagementTest is AuthenticatorBase {
     vm.prank(rescuer);
     hub.rescueERC20s(tokens, amounts, recipient);
 
-    assertEq(IERC20(WETH).balanceOf(recipient), 3 ether, 'swept balance');
-    assertEq(IERC20(WETH).balanceOf(address(hub)), 0, 'nothing left behind');
-    assertEq(IERC20(USDC).balanceOf(recipient), 100e6, 'named amount');
-    assertEq(IERC20(USDC).balanceOf(address(hub)), 400e6, 'the rest stays put');
+    assertEq(IERC20(token18).balanceOf(recipient), 3 ether, 'swept balance');
+    assertEq(IERC20(token18).balanceOf(address(hub)), 0, 'nothing left behind');
+    assertEq(IERC20(token6).balanceOf(recipient), 100e6, 'named amount');
+    assertEq(IERC20(token6).balanceOf(address(hub)), 400e6, 'the rest stays put');
   }
 
   /// MGMT-08b — native arrives through the same entry point, under the native sentinel
   function test_MGMT_08b_rescueStrandedNative() public {
     // The hub has no `receive`, so native can only be planted on it — by a coinbase payment, a
     // selfdestruct, or the cheatcode standing in for either
-    _asEoa(recipient);
     vm.deal(address(hub), 2 ether);
     uint256 balanceBefore = recipient.balance;
 
@@ -323,9 +322,9 @@ contract ManagementTest is AuthenticatorBase {
 
   /// MGMT-08c — the recipient is checked, and so is the caller
   function test_MGMT_08c_rescueGuards() public {
-    deal(WETH, address(hub), 1 ether);
+    deal(token18, address(hub), 1 ether);
 
-    address[] memory tokens = _one(WETH);
+    address[] memory tokens = _one(token18);
     uint256[] memory amounts = new uint256[](1);
 
     vm.prank(rescuer);
@@ -347,7 +346,7 @@ contract ManagementTest is AuthenticatorBase {
     vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
     hub.rescueERC20s(tokens, new uint256[](2), recipient);
 
-    assertEq(IERC20(WETH).balanceOf(address(hub)), 1 ether, 'nothing moved');
+    assertEq(IERC20(token18).balanceOf(address(hub)), 1 ether, 'nothing moved');
   }
 
   /// MGMT-09 — an NFT can only be stranded by an unsafe transfer, since the hub has no hook

@@ -32,10 +32,8 @@ abstract contract AuthenticatorBase is HubBase {
     vm.label(address(authenticator), 'authenticator');
 
     (masterSigner, masterKeyPk) = makeAddrAndKey('master signer');
-    _asEoa(masterSigner);
 
     (sessionSigner, sessionKeyPk) = makeAddrAndKey('session signer');
-    _asEoa(sessionSigner);
   }
 
   // ---------------------------------------------------------------------------------------------

@@ -47,17 +47,17 @@ contract NoncesTest is AuthenticatorBase {
     authenticator.revokeNonce(7);
 
     ExecutionOrder memory order = _openExecutionOrder(
-      _erc20s(_wethTransfer(AMOUNT)), new GenericCall[](0), 7, block.timestamp + 1 hours
+      _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 7, block.timestamp + 1 hours
     );
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
     vm.prank(relayer);
     hub.executeOrderWithDelegatedAuthentication(
       order, address(authenticator), _executionAuthData(order, key, masterKeyPk), false
     );
 
     assertEq(
-      IERC20(WETH).balanceOf(address(router)) - before,
+      IERC20(token18).balanceOf(address(router)) - before,
       AMOUNT,
       'the order settled on a number the owner had already spent'
     );
@@ -74,7 +74,7 @@ contract NoncesTest is AuthenticatorBase {
     uint256 deadline = block.timestamp + 1 hours;
     FulfillmentOrder memory order = _fulfillmentOrder(
       ANY,
-      _erc20s(_wethTransfer(AMOUNT)),
+      _erc20s(_tokenTransfer(AMOUNT)),
       new ERC721Transfer[](0),
       new ValidationParams[](0),
       new GenericCall[](0),
@@ -85,12 +85,12 @@ contract NoncesTest is AuthenticatorBase {
     FulfillmentSolution memory route = _solution(_calls(_routerCall(0, hex'01')), 9, deadline);
     bytes memory approval = _signSolutionApproval(approverKey, lFulfillmentOrderHash(order), route);
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', route, approval, false);
 
     assertEq(
-      IERC20(WETH).balanceOf(address(router)) - before,
+      IERC20(token18).balanceOf(address(router)) - before,
       AMOUNT,
       'the route settled on a number the owner had already spent'
     );

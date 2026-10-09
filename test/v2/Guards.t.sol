@@ -108,7 +108,7 @@ contract GuardsTest is AuthenticatorBase {
   function test_GUARD_02_pauseClosesOrdersNotDelegation() public {
     OrderAuthenticatorMock mock = new OrderAuthenticatorMock();
 
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     uint256 deadline = block.timestamp + 1 hours;
 
     ExecutionOrder memory execOrder =
@@ -194,7 +194,7 @@ contract GuardsTest is AuthenticatorBase {
     // the Permit2 rail carries the same deadline into the permit, so the hub's own modifier has to
     // be the one that fires: a stale order must not reach Permit2 at all
     ExecutionOrder memory stale =
-      _openExecutionOrder(_erc20s(_wethTransfer(AMOUNT)), new GenericCall[](0), 91, t - 1);
+      _openExecutionOrder(_erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 91, t - 1);
     bytes memory staleSig = _signExecutionWitness(stale);
 
     vm.prank(relayer);
@@ -211,7 +211,7 @@ contract GuardsTest is AuthenticatorBase {
     vm.expectRevert(Pausable.EnforcedPause.selector);
     hub.executeOrderWithDelegatedAuthentication(
       _openExecutionOrder(
-        _erc20s(_wethTransfer(AMOUNT)), new GenericCall[](0), 0, block.timestamp - 1
+        _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 0, block.timestamp - 1
       ),
       address(0),
       '',
@@ -222,7 +222,7 @@ contract GuardsTest is AuthenticatorBase {
     vm.expectRevert(Pausable.EnforcedPause.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
       _openFulfillmentOrder(
-        _erc20s(_wethTransfer(AMOUNT)),
+        _erc20s(_tokenTransfer(AMOUNT)),
         new ValidationParams[](0),
         new GenericCall[](0),
         0,
@@ -259,10 +259,10 @@ contract GuardsTest is AuthenticatorBase {
    */
   function test_GATE_01_fulfillPermit2CarriesTheFourModifiers() public {
     uint256 deadline = block.timestamp + 1 hours;
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
 
     // control
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
     FulfillmentOrder memory control =
       _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 100, deadline);
     bytes memory controlSig = _signFulfillmentWitness(control);
@@ -271,7 +271,7 @@ contract GuardsTest is AuthenticatorBase {
     hub.fulfillOrderWithPermit2Signature(
       control, controlSig, _route(_calls(_routerCall(0, hex'01'))), ''
     );
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the control settled');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the control settled');
 
     // whenNotPaused
     FulfillmentOrder memory paused =
@@ -356,7 +356,7 @@ contract GuardsTest is AuthenticatorBase {
    */
   function test_GATE_02_theUnwatchedModifierApplications() public {
     uint256 deadline = block.timestamp + 1 hours;
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
 
     // guardNativeSpend on executeOrderWithPermit2Signature
     vm.deal(address(hub), PREFUND);
@@ -417,27 +417,27 @@ contract GuardsTest is AuthenticatorBase {
   }
 
   function _executeAtDeadline(uint256 deadline, bool shouldSettle) internal {
-    uint256 routerBefore = IERC20(WETH).balanceOf(address(router));
+    uint256 routerBefore = IERC20(token18).balanceOf(address(router));
 
     ExecutionOrder memory order =
-      _openExecutionOrder(_erc20s(_wethTransfer(AMOUNT)), new GenericCall[](0), 0, deadline);
+      _openExecutionOrder(_erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 0, deadline);
 
     vm.prank(owner);
     if (!shouldSettle) vm.expectRevert(_deadlinePassed(deadline));
     hub.executeOrderWithDelegatedAuthentication(order, address(0), '', false);
 
     assertEq(
-      IERC20(WETH).balanceOf(address(router)) - routerBefore,
+      IERC20(token18).balanceOf(address(router)) - routerBefore,
       shouldSettle ? AMOUNT : 0,
       'the execution rail moved assets only inside the deadline'
     );
   }
 
   function _fulfillAtDeadline(uint256 deadline, bool shouldSettle) internal {
-    uint256 routerBefore = IERC20(WETH).balanceOf(address(router));
+    uint256 routerBefore = IERC20(token18).balanceOf(address(router));
 
     FulfillmentOrder memory order = _openFulfillmentOrder(
-      _erc20s(_wethTransfer(AMOUNT)), new ValidationParams[](0), new GenericCall[](0), 0, deadline
+      _erc20s(_tokenTransfer(AMOUNT)), new ValidationParams[](0), new GenericCall[](0), 0, deadline
     );
     FulfillmentSolution memory route = _route(new GenericCall[](0));
 
@@ -446,7 +446,7 @@ contract GuardsTest is AuthenticatorBase {
     hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', route, '', false);
 
     assertEq(
-      IERC20(WETH).balanceOf(address(router)) - routerBefore,
+      IERC20(token18).balanceOf(address(router)) - routerBefore,
       shouldSettle ? AMOUNT : 0,
       'the fulfillment rail moved assets only inside the deadline'
     );

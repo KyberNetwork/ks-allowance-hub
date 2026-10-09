@@ -45,11 +45,12 @@ import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
  */
 
 abstract contract V2TestBase is Test {
-  address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
-  address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-  address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+  /// @dev The real Permit2, deployed from its checked-in creation code; `ART-01` ties the two
+  address internal permit2;
 
-  uint256 internal constant FORK_BLOCK = 23_932_050;
+  /// @dev The suite's two ERC20s, 18 decimals and 6
+  address internal token18;
+  address internal token6;
 
   /// @dev Sentinel the hub uses for an order that names no counterparty; written out, never
   /// imported
@@ -69,18 +70,10 @@ abstract contract V2TestBase is Test {
   address internal owner;
   uint256 internal ownerKey;
 
-  /**
-   * @dev Strips any code at `account` so it behaves as a plain EOA.
-   * Well-known test keys have EIP-7702 delegations on mainnet, so at a post-Pectra fork block an
-   * address from `makeAddrAndKey` can arrive carrying an `0xef0100..` indicator. Permit2 and
-   * `SignatureChecker` then take the ERC-1271 branch and a valid ECDSA signature fails.
-   */
-  function _asEoa(address account) internal {
-    vm.etch(account, '');
-  }
-
-  function _forkMainnet() internal {
-    vm.createSelectFork('mainnet', FORK_BLOCK);
+  /// @dev Deploys the real Permit2 on whatever chain the test is running, constructor and all, so
+  /// it scopes its EIP-712 domain to this deployment
+  function _deployPermit2() internal returns (address) {
+    return vm.deployCode('test/artifacts/Permit2.json');
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -301,7 +294,7 @@ abstract contract V2TestBase is Test {
   /// @dev Read from the deployed Permit2, which is an external dependency rather than code under
   /// test
   function _permit2DomainSeparator() internal view returns (bytes32 separator) {
-    (bool ok, bytes memory data) = PERMIT2.staticcall(abi.encodeWithSignature('DOMAIN_SEPARATOR()'));
+    (bool ok, bytes memory data) = permit2.staticcall(abi.encodeWithSignature('DOMAIN_SEPARATOR()'));
     require(ok, 'permit2 domain');
     separator = abi.decode(data, (bytes32));
   }
@@ -309,7 +302,7 @@ abstract contract V2TestBase is Test {
   /// @dev Permit2's signature-transfer nonce bitmap, read off the deployed contract
   function _permit2NonceBitmap(address account, uint256 word) internal view returns (uint256) {
     (bool ok, bytes memory data) =
-      PERMIT2.staticcall(abi.encodeWithSignature('nonceBitmap(address,uint256)', account, word));
+      permit2.staticcall(abi.encodeWithSignature('nonceBitmap(address,uint256)', account, word));
     require(ok, 'permit2 nonceBitmap');
     return abi.decode(data, (uint256));
   }

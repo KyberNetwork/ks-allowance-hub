@@ -49,7 +49,6 @@ contract FulfillOrderTest is AuthenticatorBase {
     key = _secpKey(masterSigner, block.timestamp + 30 days);
 
     (approver, approverKey) = makeAddrAndKey('solution approver');
-    _asEoa(approver);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -65,7 +64,7 @@ contract FulfillOrderTest is AuthenticatorBase {
    * refused even though the owner is the caller.
    */
   function test_AUTH_01b_fulfillmentPermit2SelfSubmitted() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ValidationParams[] memory vs = _validations(_validation(validator));
     uint256 deadline = block.timestamp + 1 hours;
 
@@ -77,12 +76,12 @@ contract FulfillOrderTest is AuthenticatorBase {
     bytes memory permitSig = _signPlainPermit(erc20s, 61, deadline);
     bytes memory approval = _signSolutionApproval(approverKey, lFulfillmentOrderHash(order), route);
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
 
     vm.prank(owner);
     bytes[] memory results = hub.fulfillOrderWithPermit2Signature(order, permitSig, route, approval);
 
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'erc20 leg');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'erc20 leg');
     assertEq(results.length, 1, 'one router result');
     assertEq(validator.sequenceLength(), 2, 'validator bracketed the order');
 
@@ -100,7 +99,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
   /// AUTH-07 — a solver submits, and the witness names who may choose the route, not the route
   function test_AUTH_07_fulfillmentPermit2Witness() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ValidationParams[] memory vs = _validations(_validation(validator));
     uint256 deadline = block.timestamp + 1 hours;
 
@@ -110,14 +109,14 @@ contract FulfillOrderTest is AuthenticatorBase {
     );
     bytes memory signature = _signFulfillmentWitness(order);
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
 
     vm.prank(solver);
     bytes[] memory results = hub.fulfillOrderWithPermit2Signature(
       order, signature, _route(_calls(_routerCall(0, hex'01'))), ''
     );
 
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'erc20 leg');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'erc20 leg');
     assertEq(results.length, 1, 'one router result');
     assertEq(validator.sequenceLength(), 2, 'validator saw both hooks');
   }
@@ -130,7 +129,7 @@ contract FulfillOrderTest is AuthenticatorBase {
    * and is about the witness rather than about the approval. The first leg is the control.
    */
   function test_AUTH_07b_solutionApproverIsBoundByTheWitness() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
     uint256 deadline = block.timestamp + 1 hours;
 
@@ -148,11 +147,13 @@ contract FulfillOrderTest is AuthenticatorBase {
     bytes memory approval = _signSolutionApproval(approverKey, lFulfillmentOrderHash(named), route);
     bytes memory matchingWitness = _signFulfillmentWitness(named);
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
 
     vm.prank(solver);
     hub.fulfillOrderWithPermit2Signature(named, matchingWitness, route, approval);
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the matching order settled');
+    assertEq(
+      IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the matching order settled'
+    );
 
     FulfillmentOrder memory swapped = _fulfillmentOrder(
       ANY,
@@ -185,7 +186,7 @@ contract FulfillOrderTest is AuthenticatorBase {
    * the middle one about the pin rather than about the submitter.
    */
   function test_ORD_03_solverPinningAndTheOpenSentinel() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     FulfillmentSolution memory route = _route(_calls(_routerCall(0, hex'01')));
     uint256 deadline = block.timestamp + 1 hours;
 
@@ -202,11 +203,11 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     bytes memory pinnedSig = _signFulfillmentWitness(pinned);
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
     vm.prank(solver);
     hub.fulfillOrderWithPermit2Signature(pinned, pinnedSig, route, '');
     assertEq(
-      IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the named solver may submit'
+      IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the named solver may submit'
     );
 
     FulfillmentOrder memory pinnedAgain = _fulfillmentOrder(
@@ -238,11 +239,11 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     bytes memory openSig = _signFulfillmentWitness(openOrder);
 
-    before = IERC20(WETH).balanceOf(address(router));
+    before = IERC20(token18).balanceOf(address(router));
     vm.prank(relayer);
     hub.fulfillOrderWithPermit2Signature(openOrder, openSig, route, '');
     assertEq(
-      IERC20(WETH).balanceOf(address(router)) - before,
+      IERC20(token18).balanceOf(address(router)) - before,
       AMOUNT,
       'the sentinel opened submission to the very same stranger'
     );
@@ -262,7 +263,7 @@ contract FulfillOrderTest is AuthenticatorBase {
    * guard rather than the binding. The first leg is the control.
    */
   function test_SOL_01_oneApprovalBindsOneOrder() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
     uint256 deadline = block.timestamp + 1 hours;
 
@@ -272,14 +273,16 @@ contract FulfillOrderTest is AuthenticatorBase {
     bytes32 hashA = lFulfillmentOrderHash(withTailA);
     bytes memory approvalA = _signSolutionApproval(approverKey, hashA, route);
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
 
     vm.prank(owner);
     bytes[] memory results = hub.fulfillOrderWithDelegatedAuthentication(
       withTailA, address(0), '', route, approvalA, false
     );
 
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the approved order settled');
+    assertEq(
+      IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the approved order settled'
+    );
     assertEq(results.length, 2, 'route and tail both ran');
     assertEq(
       hub.nonces(lNonceKey(approver), 0), 1 << 7, 'and the approval burned exactly the route nonce'
@@ -321,20 +324,20 @@ contract FulfillOrderTest is AuthenticatorBase {
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
 
     FulfillmentOrder memory open = _openFulfillmentOrder(
-      _erc20s(_wethTransfer(AMOUNT)),
+      _erc20s(_tokenTransfer(AMOUNT)),
       new ValidationParams[](0),
       new GenericCall[](0),
       70,
       orderDeadline
     );
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(
       open, address(0), '', _solution(solverCalls, 70, block.timestamp), '', false
     );
     assertEq(
-      IERC20(WETH).balanceOf(address(router)) - before,
+      IERC20(token18).balanceOf(address(router)) - before,
       AMOUNT,
       'the deadline second itself still settles'
     );
@@ -350,7 +353,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     // and the same on the Permit2 rail, whose modifier stack is written out separately
     FulfillmentOrder memory forRelay = _openFulfillmentOrder(
-      _erc20s(_wethTransfer(AMOUNT)),
+      _erc20s(_tokenTransfer(AMOUNT)),
       new ValidationParams[](0),
       new GenericCall[](0),
       72,
@@ -377,7 +380,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     FulfillmentOrder memory named = _fulfillmentOrder(
       ANY,
-      _erc20s(_wethTransfer(AMOUNT)),
+      _erc20s(_tokenTransfer(AMOUNT)),
       new ERC721Transfer[](0),
       new ValidationParams[](0),
       new GenericCall[](0),
@@ -397,18 +400,20 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     // the sentinel path never reaches the burn, so this nonce stays spendable twice over
     FulfillmentOrder memory open = _openFulfillmentOrder(
-      _erc20s(_wethTransfer(AMOUNT)), new ValidationParams[](0), new GenericCall[](0), 81, deadline
+      _erc20s(_tokenTransfer(AMOUNT)), new ValidationParams[](0), new GenericCall[](0), 81, deadline
     );
     FulfillmentSolution memory openRoute = _solution(solverCalls, 81, deadline);
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(open, address(0), '', openRoute, '', false);
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(open, address(0), '', openRoute, '', false);
 
     assertEq(
-      IERC20(WETH).balanceOf(address(router)) - before, 2 * AMOUNT, 'the sentinel route ran twice'
+      IERC20(token18).balanceOf(address(router)) - before,
+      2 * AMOUNT,
+      'the sentinel route ran twice'
     );
     assertEq(hub.nonces(lNonceKey(approver), 0), 1 << 80, 'and burned nothing of its own');
   }
@@ -497,7 +502,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   function test_SOL_04_anAuthenticatedFulfillmentCannotSettleTwice() public {
     _delegateKeyThroughHub(key);
 
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     uint256 deadline = block.timestamp + 1 hours;
 
     FulfillmentOrder memory order = _fulfillmentOrder(
@@ -577,13 +582,13 @@ contract FulfillOrderTest is AuthenticatorBase {
    * signature that was never going to be accepted. Only one byte of call data separates them.
    */
   function test_OWN_02_witnessBindsOwnerCalls() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
     GenericCall[] memory signedTail = _calls(_routerCall(0, hex'aa'));
     GenericCall[] memory swappedTail = _calls(_routerCall(0, hex'bb'));
     uint256 deadline = block.timestamp + 1 hours;
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
 
     FulfillmentOrder memory control = _fulfillmentOrder(
       ANY, erc20s, new ERC721Transfer[](0), new ValidationParams[](0), signedTail, ANY, 70, deadline
@@ -594,7 +599,7 @@ contract FulfillOrderTest is AuthenticatorBase {
       control, _signFulfillmentWitness(control), _route(solverCalls), ''
     );
 
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the signed tail settled');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the signed tail settled');
     assertEq(router.callCount(), 2, 'one solver call and one owner call');
 
     FulfillmentOrder memory signed = _fulfillmentOrder(
@@ -626,14 +631,14 @@ contract FulfillOrderTest is AuthenticatorBase {
   function test_OWN_03_authenticationBindsOwnerCalls() public {
     _delegateKeyThroughHub(key);
 
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ValidationParams[] memory vs = _validations(_validation(validator));
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
     GenericCall[] memory signedTail = _calls(_routerCall(0, hex'aa'));
     GenericCall[] memory swappedTail = _calls(_routerCall(0, hex'bb'));
     uint256 deadline = block.timestamp + 1 hours;
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
 
     FulfillmentOrder memory control =
       _fulfillmentOrder(ANY, erc20s, new ERC721Transfer[](0), vs, signedTail, ANY, 72, deadline);
@@ -644,7 +649,7 @@ contract FulfillOrderTest is AuthenticatorBase {
       control, address(authenticator), controlAuth, _route(solverCalls), '', false
     );
 
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the signed tail settled');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the signed tail settled');
     assertEq(router.callCount(), 2, 'one solver call and one owner call');
     assertEq(validator.sequenceLength(), 2, 'the validators still bracketed the order');
 
@@ -786,23 +791,23 @@ contract FulfillOrderTest is AuthenticatorBase {
   function test_VAL_01_hookOrderingAndSnapshotPairing() public {
     validator.setSnapshot(hex'aaaa');
     validator2.setSnapshot(hex'bbbb');
-    validator.observe(WETH, address(router));
+    validator.observe(token18, address(router));
 
     uint160 amount = 4 ether;
     uint256 payout = 1 ether;
-    uint256 routerBefore = IERC20(WETH).balanceOf(address(router));
+    uint256 routerBefore = IERC20(token18).balanceOf(address(router));
 
     // the router pays part of it away while it runs, so the balance changes DURING the call leg.
     // Without this the after-hook would read the same value whether it ran before or after the
     // router, and the ordering assertion below would be vacuous.
-    router.setPayout(WETH, recipient, payout);
+    router.setPayout(token18, recipient, payout);
 
     ValidationParams[] memory vs = new ValidationParams[](2);
     vs[0] = _validation(validator);
     vs[1] = _validation(validator2);
 
     FulfillmentOrder memory order = _openFulfillmentOrder(
-      _erc20s(_wethTransfer(amount)), vs, new GenericCall[](0), 0, block.timestamp
+      _erc20s(_tokenTransfer(amount)), vs, new GenericCall[](0), 0, block.timestamp
     );
 
     vm.prank(owner);
@@ -839,16 +844,16 @@ contract FulfillOrderTest is AuthenticatorBase {
    * everything" — a hook that ran at the very end would read one payout lower.
    */
   function test_VAL_02_hooksBracketThePermit2Rail() public {
-    validator.observe(WETH, address(router));
+    validator.observe(token18, address(router));
 
     uint160 amount = 4 ether;
     uint256 payout = 1 ether;
     uint256 deadline = block.timestamp + 1 hours;
-    uint256 routerBefore = IERC20(WETH).balanceOf(address(router));
+    uint256 routerBefore = IERC20(token18).balanceOf(address(router));
 
-    router.setPayout(WETH, recipient, payout);
+    router.setPayout(token18, recipient, payout);
 
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(amount));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(amount));
     FulfillmentOrder memory order = _fulfillmentOrder(
       ANY,
       erc20s,
@@ -876,7 +881,7 @@ contract FulfillOrderTest is AuthenticatorBase {
       "afterExecution ran after the solver's route and before the owner's tail"
     );
     assertEq(
-      IERC20(WETH).balanceOf(address(router)),
+      IERC20(token18).balanceOf(address(router)),
       routerBefore + amount - 2 * payout,
       'and the tail did run afterwards, paying the second time'
     );
@@ -949,7 +954,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     f.solverCallCount = uint8(bound(f.solverCallCount, 0, 3));
     f.ownerCallCount = uint8(bound(f.ownerCallCount, 0, 3));
     f.deadlineOffset = bound(f.deadlineOffset, 0, 30 days);
-    if (f.usePermit2Allowances) _grantPermit2Allowance(WETH, uint160(100 ether));
+    if (f.usePermit2Allowances) _grantPermit2Allowance(token18, uint160(100 ether));
 
     (FulfillmentOrder memory order, FulfillmentSolution memory route) = _fuzzOrder(f, relayer);
     bytes memory authData = _fulfillmentAuthData(order, key, masterKeyPk);
@@ -957,7 +962,7 @@ contract FulfillOrderTest is AuthenticatorBase {
       ? _signSolutionApproval(approverKey, lFulfillmentOrderHash(order), route)
       : bytes('');
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
 
     vm.recordLogs();
 
@@ -997,7 +1002,7 @@ contract FulfillOrderTest is AuthenticatorBase {
       ? _signSolutionApproval(approverKey, lFulfillmentOrderHash(order), route)
       : bytes('');
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
     uint256 bitmapBefore = _permit2NonceBitmap(owner, f.nonce >> 8);
 
     vm.recordLogs();
@@ -1042,7 +1047,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   {
     return _fulfillmentOrder(
       ANY,
-      _erc20s(_wethTransfer(AMOUNT)),
+      _erc20s(_tokenTransfer(AMOUNT)),
       new ERC721Transfer[](0),
       new ValidationParams[](0),
       ownerCalls,
@@ -1071,7 +1076,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     order = _fulfillmentOrder(
       f.pinSubmitter ? submitter : ANY,
-      _erc20s(_wethTransfer(f.amount)),
+      _erc20s(_tokenTransfer(f.amount)),
       f.moveNft ? _erc721s(_nftTransfer(address(router2))) : new ERC721Transfer[](0),
       _validations(_validation(validator)),
       ownerCalls,
@@ -1089,7 +1094,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     uint256 routerWethBefore
   ) private {
     assertEq(
-      IERC20(WETH).balanceOf(address(router)) - routerWethBefore, f.amount, 'exact amount moved'
+      IERC20(token18).balanceOf(address(router)) - routerWethBefore, f.amount, 'exact amount moved'
     );
     assertEq(results.length, uint256(f.solverCallCount) + f.ownerCallCount, 'one result per call');
     assertEq(router.callCount(), f.solverCallCount, 'the solver list ran here');

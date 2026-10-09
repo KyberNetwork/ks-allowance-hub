@@ -4,7 +4,6 @@ pragma solidity 0.8.36;
 import {ERC1155Mock} from 'test/v2/mocks/TokenMocks.sol';
 
 import {ERC20} from 'openzeppelin-contracts/contracts/token/ERC20/ERC20.sol';
-import {ERC20Permit} from 'openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Permit.sol';
 import {ERC721} from 'openzeppelin-contracts/contracts/token/ERC721/ERC721.sol';
 import {ECDSA} from 'openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol';
 import {EIP712} from 'openzeppelin-contracts/contracts/utils/cryptography/EIP712.sol';
@@ -14,19 +13,58 @@ import {
 
 /**
  * @title PermitTokenMocks
- * @notice Tokens for the permits {CallsForwarder} relays. Each `permit` here recovers a real
- * EIP-712 signature over its arguments in a fixed order, so a call assembled with its arguments
- * in the wrong order would recover a different signer and fail rather than pass undetected.
- * @dev The type strings below are transcribed from EIP-2612 and the ERC-721 permit drafts; the
- * tests sign against their own copies, never against these.
+ * @notice The non-standard permit flavours {CallsForwarder} relays, beside the plain EIP-2612 one
+ * {ERC20Mock} carries. Each `permit` here recovers a real EIP-712 signature over its arguments in a
+ * fixed order, so a call assembled with its arguments in the wrong order would recover a different
+ * signer and fail rather than pass undetected.
+ * @dev The type strings below are transcribed from the DAI permit and the ERC-721 permit drafts;
+ * the tests sign against their own copies, never against these.
  */
 
-/// @notice EIP-2612 token, the plainest of the permits the forwarder relays
-contract ERC20PermitMock is ERC20, ERC20Permit {
-  constructor(string memory name) ERC20(name, 'PT') ERC20Permit(name) {}
+/**
+ * @notice The seven-word permit DAI defines: a direction rather than an amount, against a counter
+ * @dev `allowed` sets the allowance to all or nothing, and the nonce is a per-holder counter the
+ * payload carries rather than a value the token looks up.
+ */
+contract ERC20DaiPermitMock is ERC20, EIP712 {
+  error DaiPermitExpired();
+  error DaiPermitInvalidNonce();
+  error DaiPermitInvalidSignature();
+
+  bytes32 private constant PERMIT_TYPEHASH =
+    keccak256('Permit(address holder,address spender,uint256 nonce,uint256 expiry,bool allowed)');
+
+  mapping(address holder => uint256 nonce) public nonces;
+
+  constructor(string memory name) ERC20(name, 'DAIP') EIP712(name, '1') {}
 
   function mint(address to, uint256 amount) external {
     _mint(to, amount);
+  }
+
+  function DOMAIN_SEPARATOR() external view returns (bytes32) {
+    return _domainSeparatorV4();
+  }
+
+  function permit(
+    address holder,
+    address spender,
+    uint256 nonce,
+    uint256 expiry,
+    bool allowed,
+    uint8 v,
+    bytes32 r,
+    bytes32 s
+  ) external {
+    require(expiry == 0 || block.timestamp <= expiry, DaiPermitExpired());
+    require(nonce == nonces[holder]++, DaiPermitInvalidNonce());
+
+    bytes32 digest = _hashTypedDataV4(
+      keccak256(abi.encode(PERMIT_TYPEHASH, holder, spender, nonce, expiry, allowed))
+    );
+    require(ECDSA.recover(digest, v, r, s) == holder, DaiPermitInvalidSignature());
+
+    _approve(holder, spender, allowed ? type(uint256).max : 0);
   }
 }
 

@@ -40,12 +40,12 @@ contract OrderPartiesTest is AuthenticatorBase {
   }
 
   function _routerWeth() private view returns (uint256) {
-    return IERC20(WETH).balanceOf(address(router));
+    return IERC20(token18).balanceOf(address(router));
   }
 
   /// ORD-02b — the delegated execution rail refuses a submitter the order did not name
   function test_ORD_02b_delegatedExecutionHonoursTheNamedRelayer() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC721Transfer[] memory noNfts = new ERC721Transfer[](0);
     GenericCall[] memory noCalls = new GenericCall[](0);
     uint256 deadline = block.timestamp + 1 hours;
@@ -103,16 +103,16 @@ contract OrderPartiesTest is AuthenticatorBase {
    */
   function test_ORD_04_delegatedExecutionDrawsOnTheNamedOwner() public {
     address other = makeAddr('other owner');
-    deal(WETH, other, 100 ether);
+    deal(token18, other, 100 ether);
     vm.prank(other);
-    IERC20(WETH).approve(address(hub), type(uint256).max);
+    IERC20(token18).approve(address(hub), type(uint256).max);
     vm.prank(other);
     hub.updateDelegation(
       other, address(authenticator), true, _encodeKey(key), 0, block.timestamp + 1 days, ''
     );
 
     ExecutionOrder memory order = _openExecutionOrder(
-      _erc20s(_wethTransfer(AMOUNT)), new GenericCall[](0), 75, block.timestamp + 1 hours
+      _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 75, block.timestamp + 1 hours
     );
     bytes memory authData = _executionAuthData(order, key, masterKeyPk);
 
@@ -125,16 +125,16 @@ contract OrderPartiesTest is AuthenticatorBase {
 
     order.owner = owner;
     uint256 before = _routerWeth();
-    uint256 otherBefore = IERC20(WETH).balanceOf(other);
+    uint256 otherBefore = IERC20(token18).balanceOf(other);
     vm.prank(relayer);
     hub.executeOrderWithDelegatedAuthentication(order, address(authenticator), authData, false);
     assertEq(_routerWeth() - before, AMOUNT, 'the named account paid');
-    assertEq(IERC20(WETH).balanceOf(other), otherBefore, 'and the other one did not');
+    assertEq(IERC20(token18).balanceOf(other), otherBefore, 'and the other one did not');
   }
 
   /// ORD-03b — the delegated fulfillment rail refuses a submitter the order did not name
   function test_ORD_03b_delegatedFulfillmentHonoursTheNamedSolver() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC721Transfer[] memory noNfts = new ERC721Transfer[](0);
     ValidationParams[] memory noValidators = new ValidationParams[](0);
     GenericCall[] memory noOwnerCalls = new GenericCall[](0);

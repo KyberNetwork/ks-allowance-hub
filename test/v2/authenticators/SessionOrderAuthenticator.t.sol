@@ -66,11 +66,11 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
     uint256 nonce = 7;
     uint256 deadline = block.timestamp + 1 hours;
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
 
     _executeViaAuthenticator(key, masterKeyPk, nonce, deadline, true);
 
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'tokens moved');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'tokens moved');
     assertEq(
       authenticator.nonces(_keyHash(key), nonce >> 8),
       1 << (nonce & 0xff),
@@ -408,7 +408,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     uint256 nonce = 13;
     uint256 deadline = block.timestamp + 1 hours;
 
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     FulfillmentOrder memory fulfillOrder = _openFulfillmentOrder(
       erc20s, new ValidationParams[](0), new GenericCall[](0), nonce, deadline
     );
@@ -435,11 +435,11 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     uint256 nonce = 14;
     uint256 deadline = block.timestamp + 1 hours;
 
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     FulfillmentOrder memory fulfillOrder = _openFulfillmentOrder(
       erc20s, new ValidationParams[](0), new GenericCall[](0), nonce, deadline
     );
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
 
     vm.prank(relayer);
     hub.fulfillOrderWithDelegatedAuthentication(
@@ -451,7 +451,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
       false
     );
 
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT);
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT);
   }
 
   /**
@@ -468,10 +468,10 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     vm.expectRevert(_masterKeyNotApproved(stranger));
     _fulfillViaAuthenticator(stranger, masterKeyPk, 60, block.timestamp + 1 hours);
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
     _fulfillViaAuthenticator(key, masterKeyPk, 61, block.timestamp + 1 hours);
     assertEq(
-      IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the approved key still settles'
+      IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the approved key still settles'
     );
   }
 
@@ -488,10 +488,12 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(expiring);
 
     vm.warp(t);
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
     _fulfillViaAuthenticator(expiring, masterKeyPk, 62, t + 1 hours);
     assertEq(
-      IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the expiry second itself settles'
+      IERC20(token18).balanceOf(address(router)) - before,
+      AMOUNT,
+      'the expiry second itself settles'
     );
 
     vm.warp(t + 1);
@@ -529,9 +531,9 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     });
     _delegateKeyThroughHub(walletKey);
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
     _executeViaAuthenticator(walletKey, _walletSignerKey, 16, block.timestamp + 1 hours, true);
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT);
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT);
   }
 
   /// SV-KEY-P256-01 / -02 — a canonical signature is accepted, its malleable twin is not
@@ -550,9 +552,9 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory signature = KeyFixtures.p256Sign(digest);
     assertLe(KeyFixtures.sOf(signature), KeyFixtures.P256_HALF_N, 'fixture is canonical');
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
     _submitExecution(p256, signature, nonce, deadline);
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'P256 accepted');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'P256 accepted');
 
     // the same signature with s replaced by N - s must not verify
     bytes32 digest2 = _executionDigest(_standardOrder(18, deadline));
@@ -577,9 +579,9 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
     // -01 a user-verified assertion is accepted
     bytes32 digest = _executionDigest(_standardOrder(19, deadline));
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
     _submitExecution(wa, KeyFixtures.webAuthnAssertion(digest, true), 19, deadline);
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'webauthn accepted');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'webauthn accepted');
 
     // -02 the authenticator requires user verification, so a UP-only assertion fails.
     // The assertion is built BEFORE the cheatcodes: it makes external calls of its own, and a
@@ -709,10 +711,10 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
       _secpKey(masterSigner, block.timestamp + bound(f.expirationOffset, 0, 365 days));
     _delegateKeyThroughHub(fuzzKey);
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
     _executeViaAuthenticator(fuzzKey, masterKeyPk, nonce, deadline, true);
 
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT);
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT);
     assertEq(
       authenticator.nonces(_keyHash(fuzzKey), nonce >> 8), 1 << (nonce & 0xff), 'exact nonce bit'
     );
@@ -744,9 +746,11 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
       authenticator.masterKeys(owner, _keyHash(sessionKey)), 'and not as a master key itself'
     );
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
     _executeViaAuthenticator(sessionKey, sessionKeyPk, 2, block.timestamp + 1 hours, true);
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the session key settled it');
+    assertEq(
+      IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the session key settled it'
+    );
   }
 
   /// SV-TIER-01b — and on the fulfillment rail, which reaches the same check from the other side
@@ -757,9 +761,9 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     vm.prank(relayer);
     _approveSessionKey(key, sessionKey, 1, block.timestamp + 1 days, masterKeyPk);
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
     _fulfillViaAuthenticator(sessionKey, sessionKeyPk, 3, block.timestamp + 1 hours);
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the fulfillment settled');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the fulfillment settled');
   }
 
   /**
@@ -796,7 +800,6 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
 
     (address strangerSigner, uint256 strangerPk) = makeAddrAndKey('stranger key');
-    _asEoa(strangerSigner);
     AuthKey memory stranger = _secpKey(strangerSigner, block.timestamp + 30 days);
     AuthKey memory sessionKey = _secpKey(sessionSigner, block.timestamp + 1 days);
 
@@ -1076,7 +1079,6 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     if (_walletAddr == address(0)) {
       address signer;
       (signer, _walletSignerKey) = makeAddrAndKey('wallet key');
-      _asEoa(signer);
       _walletAddr = address(new ERC1271WalletLocal(signer));
     }
     return _walletAddr;
@@ -1112,7 +1114,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
   {
     return _executionOrder(
       ANY,
-      _erc20s(_wethTransfer(AMOUNT)),
+      _erc20s(_tokenTransfer(AMOUNT)),
       new ERC721Transfer[](0),
       _calls(_routerCall(0, hex'01')),
       nonce,
@@ -1144,7 +1146,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     uint256 deadline
   ) private {
     FulfillmentOrder memory order = _openFulfillmentOrder(
-      _erc20s(_wethTransfer(AMOUNT)),
+      _erc20s(_tokenTransfer(AMOUNT)),
       new ValidationParams[](0),
       new GenericCall[](0),
       nonce,

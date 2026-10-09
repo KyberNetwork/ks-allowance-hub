@@ -778,3 +778,44 @@ holder to read `sessionKeyMaster` for it. Both are pinned, not merely raised: sw
 reverts fails 18 cases on the payload, and naming the session key's own hash in place of its
 master's fails `SV-TIER-04` and `SV-TIER-10`. A master key's revocation of its own session key clears the grant, so that key
 then reads as `MasterKeyNotApproved` — it has no standing of any kind left.
+
+## Run `20261009T100830Z`
+
+Scope: the V2 fixture stops forking mainnet. Permit2 is deployed from its checked-in creation code
+and the four mainnet tokens give way to mocks, so the suite makes no network call. No case was
+added or removed beyond the two that guard the artifact.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261009T100830Z/ART-01` | The checked-in Permit2 creation code is the canonical deployment's: Permit2 was created by the deterministic deployer, so recomputing CREATE2 over the deployer, the salt and the artifact reproduces `0x0000...22D473`. Deploying it locally yields a working contract that scopes its own EIP-712 domain | `ART-01`, `ART-02`; `test/base/Permit2Artifact.t.sol` | `forge test --match-path 'test/base/Permit2Artifact.t.sol'` |
+| - [x] | - [ ] | `20261009T100830Z/FIX-01` | Every V2 batch runs on a local chain: `_deployPermit2` replaces `_forkMainnet`, `token18` and `token6` replace WETH and USDC, and a DAI-flavoured mock replaces the real DAI that `PF-02` relayed a permit to. `_asEoa` is gone with the fork that needed it | no case ID changes; all 195 V2 cases | `forge test --no-match-path 'test/v1/*'` |
+
+### Notes for this run
+
+**Permit2 is still the real contract.** `cast artifact` reconstructs creation code rather than
+runtime code, so `vm.deployCode` runs the constructor and Permit2 computes its cached domain
+separator and chain id for the local deployment — which `vm.etch` of mainnet's runtime code would
+not have done. Generating the artifact with `cast artifact` needs an RPC tier that serves
+`trace_transaction`, because Permit2 was CREATE2-deployed and its creation code sits in an
+internal call; the deterministic deployer's transaction input is the salt followed by that code, so
+`cast tx <hash> input` reaches it without tracing. `test/artifacts/README.md` records the recipe.
+
+**The artifact needs no CI guard, because the suite proves it offline.** Permit2's address is a
+CREATE2 of the deterministic deployer, a known salt and the creation code, so `ART-01` recomputing
+that address from the checked-in bytes is a proof that they are the deployed code. A regeneration
+job diffing against mainnet could not do better and would put the network back in CI.
+
+**What the mocks cost.** The tokens were real WETH, USDC and DAI; they are now two
+`ERC20Mock`s of 18 and 6 decimals and an `ERC20DaiPermitMock`. The rails never used any of them
+as more than an ERC20, so nothing in the hub is less exercised — but `PF-02` and `MC-01` now
+relay a permit to the suite's own transcription of the DAI and EIP-2612 flavours rather than to the
+reference implementations. The signature still has to verify; what is lost is that the verifier is
+somebody else's code. `PF-03` and `PF-04` already made this trade for both ERC-721 flavours.
+
+**One ERC20 mock, not two.** A permit token behaves like a plain one, so `ERC20Mock` carries
+EIP-2612 and a width of its own and serves every ERC20 the suite needs, the forwarder's permit
+tokens included. `PermitTokenMocks` keeps only the flavours that are not plain EIP-2612: the DAI
+permit, both ERC-721 drafts, the reentrant permit and the ERC-1155 seed.
+
+**V1 is unchanged and still forks.** It keeps its own addresses and its own
+`vm.createSelectFork`, so `RPC_1` remains a CI requirement for that batch alone.

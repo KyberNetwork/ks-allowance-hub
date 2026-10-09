@@ -53,23 +53,23 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
   /// AUTH-01 — the owner submits their own Permit2 order, so nothing is witnessed
   function test_AUTH_01_permit2SelfSubmitted() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     uint256 deadline = block.timestamp + 1 hours;
 
     ExecutionOrder memory order = _openExecutionOrder(erc20s, new GenericCall[](0), 0, deadline);
     bytes memory signature = _signPlainPermit(erc20s, 0, deadline);
 
-    uint256 balanceBefore = IERC20(WETH).balanceOf(address(router));
+    uint256 balanceBefore = IERC20(token18).balanceOf(address(router));
 
     vm.prank(owner);
     hub.executeOrderWithPermit2Signature(order, signature);
 
-    assertEq(IERC20(WETH).balanceOf(address(router)) - balanceBefore, AMOUNT);
+    assertEq(IERC20(token18).balanceOf(address(router)) - balanceBefore, AMOUNT);
   }
 
   /// AUTH-02 — a relayer submits, and the witness carries everything the permit does not
   function test_AUTH_02_permit2RelayedWithWitness() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC721Transfer[] memory nfts = _erc721s(_nftTransfer(address(router)));
     GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
     uint256 deadline = block.timestamp + 1 hours;
@@ -77,12 +77,12 @@ contract ExecuteOrderTest is AuthenticatorBase {
     ExecutionOrder memory order = _executionOrder(ANY, erc20s, nfts, calls, 1, deadline);
     bytes memory signature = _signExecutionWitness(order);
 
-    uint256 balanceBefore = IERC20(WETH).balanceOf(address(router));
+    uint256 balanceBefore = IERC20(token18).balanceOf(address(router));
 
     vm.prank(relayer);
     bytes[] memory results = hub.executeOrderWithPermit2Signature(order, signature);
 
-    assertEq(IERC20(WETH).balanceOf(address(router)) - balanceBefore, AMOUNT, 'erc20 leg');
+    assertEq(IERC20(token18).balanceOf(address(router)) - balanceBefore, AMOUNT, 'erc20 leg');
     assertEq(nft.ownerOf(NFT_ID), address(router), 'erc721 leg');
     assertEq(router.callCount(), 1, 'router called once');
     assertEq(results.length, 1, 'one result');
@@ -91,7 +91,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
   /// AUTH-03 — mutating a byte of the signed call list invalidates the order
   function test_AUTH_03_witnessPinsTheCallList() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     uint256 deadline = block.timestamp + 1 hours;
 
     ExecutionOrder memory signed =
@@ -115,18 +115,20 @@ contract ExecuteOrderTest is AuthenticatorBase {
    * never going to be accepted — the two orders differ in that one field alone.
    */
   function test_AUTH_04_witnessPinsTheNamedRelayer() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     uint256 deadline = block.timestamp + 1 hours;
 
     ExecutionOrder memory pinned =
       _executionOrder(relayer, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 3, deadline);
     bytes memory matching = _signExecutionWitness(pinned);
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
 
     vm.prank(relayer);
     hub.executeOrderWithPermit2Signature(pinned, matching);
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the matching order settled');
+    assertEq(
+      IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the matching order settled'
+    );
 
     // the owner signed a witness naming the relayer; the order submitted names nobody, so the hub
     // rebuilds a different witness from it
@@ -146,7 +148,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
    * submitter: the same stranger settles an order that names nobody.
    */
   function test_ORD_02_relayerPinningAndTheOpenSentinel() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC721Transfer[] memory noNfts = new ERC721Transfer[](0);
     GenericCall[] memory noCalls = new GenericCall[](0);
     uint256 deadline = block.timestamp + 1 hours;
@@ -154,11 +156,11 @@ contract ExecuteOrderTest is AuthenticatorBase {
     ExecutionOrder memory pinned = _executionOrder(relayer, erc20s, noNfts, noCalls, 50, deadline);
     bytes memory pinnedSig = _signExecutionWitness(pinned);
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
     vm.prank(relayer);
     hub.executeOrderWithPermit2Signature(pinned, pinnedSig);
     assertEq(
-      IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the named relayer may submit'
+      IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the named relayer may submit'
     );
 
     ExecutionOrder memory pinnedAgain =
@@ -180,11 +182,11 @@ contract ExecuteOrderTest is AuthenticatorBase {
     ExecutionOrder memory openOrder = _executionOrder(ANY, erc20s, noNfts, noCalls, 52, deadline);
     bytes memory openSig = _signExecutionWitness(openOrder);
 
-    before = IERC20(WETH).balanceOf(address(router));
+    before = IERC20(token18).balanceOf(address(router));
     vm.prank(solver);
     hub.executeOrderWithPermit2Signature(openOrder, openSig);
     assertEq(
-      IERC20(WETH).balanceOf(address(router)) - before,
+      IERC20(token18).balanceOf(address(router)) - before,
       AMOUNT,
       'the sentinel opened submission to the very same stranger'
     );
@@ -196,8 +198,8 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
   /// AUTH-06 — an owner acting for themselves needs no authenticator at all
   function test_AUTH_06_ownerCallerNeedsNoAuthentication() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
-    uint256 balanceBefore = IERC20(WETH).balanceOf(address(router));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
+    uint256 balanceBefore = IERC20(token18).balanceOf(address(router));
 
     ExecutionOrder memory order =
       _openExecutionOrder(erc20s, new GenericCall[](0), 0, block.timestamp);
@@ -205,16 +207,16 @@ contract ExecuteOrderTest is AuthenticatorBase {
     vm.prank(owner);
     hub.executeOrderWithDelegatedAuthentication(order, address(0), '', false);
 
-    assertEq(IERC20(WETH).balanceOf(address(router)) - balanceBefore, AMOUNT);
+    assertEq(IERC20(token18).balanceOf(address(router)) - balanceBefore, AMOUNT);
   }
 
   /// AUTH-06b — the same, pulled through the owner's Permit2 allowance instead
   function test_AUTH_06b_ownerCallerViaPermit2Allowance() public {
-    _grantPermit2Allowance(WETH, 100 ether);
+    _grantPermit2Allowance(token18, 100 ether);
 
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
-    uint256 balanceBefore = IERC20(WETH).balanceOf(address(router));
-    uint160 allowanceBefore = _permit2Allowance(WETH);
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
+    uint256 balanceBefore = IERC20(token18).balanceOf(address(router));
+    uint160 allowanceBefore = _permit2Allowance(token18);
 
     ExecutionOrder memory order = _executionOrder(
       ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 0, block.timestamp
@@ -223,8 +225,8 @@ contract ExecuteOrderTest is AuthenticatorBase {
     vm.prank(owner);
     hub.executeOrderWithDelegatedAuthentication(order, address(0), '', true);
 
-    assertEq(IERC20(WETH).balanceOf(address(router)) - balanceBefore, AMOUNT);
-    assertEq(allowanceBefore - _permit2Allowance(WETH), AMOUNT, 'drawn on the Permit2 allowance');
+    assertEq(IERC20(token18).balanceOf(address(router)) - balanceBefore, AMOUNT);
+    assertEq(allowanceBefore - _permit2Allowance(token18), AMOUNT, 'drawn on the Permit2 allowance');
   }
 
   // -------------------------------------------------------------------------------------------
@@ -233,8 +235,9 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
   /// AUTH-08 — an authenticator the owner never delegated is refused before it is ever called
   function test_AUTH_08_undelegatedAuthenticatorRefused() public {
-    ExecutionOrder memory order =
-      _openExecutionOrder(_erc20s(_wethTransfer(AMOUNT)), new GenericCall[](0), 0, block.timestamp);
+    ExecutionOrder memory order = _openExecutionOrder(
+      _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 0, block.timestamp
+    );
     bytes memory authData = _authData(key, hex'00');
 
     vm.prank(relayer);
@@ -256,37 +259,37 @@ contract ExecuteOrderTest is AuthenticatorBase {
    */
   function test_ORD_01_theAssetSourceIsTheSubmittersArgument() public {
     _delegateKeyThroughHub(key);
-    _grantPermit2Allowance(WETH, 100 ether);
+    _grantPermit2Allowance(token18, 100 ether);
 
     uint256 deadline = block.timestamp + 1 hours;
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
 
     ExecutionOrder memory plainRail =
       _executionOrder(ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 40, deadline);
     bytes memory plainAuth = _executionAuthData(plainRail, key, masterKeyPk);
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
-    uint160 allowanceBefore = _permit2Allowance(WETH);
+    uint256 before = IERC20(token18).balanceOf(address(router));
+    uint160 allowanceBefore = _permit2Allowance(token18);
 
     vm.prank(relayer);
     hub.executeOrderWithDelegatedAuthentication(plainRail, address(authenticator), plainAuth, false);
 
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'plain allowance rail');
-    assertEq(_permit2Allowance(WETH), allowanceBefore, 'and it left the Permit2 allowance alone');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'plain allowance rail');
+    assertEq(_permit2Allowance(token18), allowanceBefore, 'and it left the Permit2 allowance alone');
 
     ExecutionOrder memory permit2Rail =
       _executionOrder(ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 41, deadline);
     bytes memory permit2Auth = _executionAuthData(permit2Rail, key, masterKeyPk);
 
-    before = IERC20(WETH).balanceOf(address(router));
+    before = IERC20(token18).balanceOf(address(router));
 
     vm.prank(relayer);
     hub.executeOrderWithDelegatedAuthentication(
       permit2Rail, address(authenticator), permit2Auth, true
     );
 
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'permit2 allowance rail');
-    assertEq(allowanceBefore - _permit2Allowance(WETH), AMOUNT, 'and that rail did claim it');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'permit2 allowance rail');
+    assertEq(allowanceBefore - _permit2Allowance(token18), AMOUNT, 'and that rail did claim it');
   }
 
   /**
@@ -299,27 +302,31 @@ contract ExecuteOrderTest is AuthenticatorBase {
    * prove nothing — revoking it is what gives this force.
    */
   function test_ORD_01b_thePermit2SignatureRailConsultsNoAllowance() public {
-    _grantPermit2Allowance(WETH, 100 ether);
+    _grantPermit2Allowance(token18, 100 ether);
 
     // the one allowance this rail could have leant on, taken away
     vm.prank(owner);
-    IERC20(WETH).approve(address(hub), 0);
+    IERC20(token18).approve(address(hub), 0);
 
     uint256 deadline = block.timestamp + 1 hours;
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ExecutionOrder memory order =
       _executionOrder(ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 44, deadline);
     bytes memory witness = _signExecutionWitness(order);
 
-    uint160 permit2Before = _permit2Allowance(WETH);
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint160 permit2Before = _permit2Allowance(token18);
+    uint256 before = IERC20(token18).balanceOf(address(router));
 
     vm.prank(relayer);
     hub.executeOrderWithPermit2Signature(order, witness);
 
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the signature transfer ran');
-    assertEq(IERC20(WETH).allowance(owner, address(hub)), 0, 'with no plain allowance to draw on');
-    assertEq(_permit2Allowance(WETH), permit2Before, 'and the Permit2 allowance went untouched');
+    assertEq(
+      IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the signature transfer ran'
+    );
+    assertEq(
+      IERC20(token18).allowance(owner, address(hub)), 0, 'with no plain allowance to draw on'
+    );
+    assertEq(_permit2Allowance(token18), permit2Before, 'and the Permit2 allowance went untouched');
   }
 
   /**
@@ -332,7 +339,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
   function test_AUTH_11_authenticatorReceivesTheWholeOrder() public {
     _delegateKeyThroughHub(key);
 
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
     uint256 deadline = block.timestamp + 1 hours;
 
@@ -343,22 +350,23 @@ contract ExecuteOrderTest is AuthenticatorBase {
     bytes memory expectedCall =
       abi.encodeCall(IOrderAuthenticator.authenticateExecution, (order, authData));
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
 
     vm.expectCall(address(authenticator), expectedCall, 1);
 
     vm.prank(relayer);
     hub.executeOrderWithDelegatedAuthentication(order, address(authenticator), authData, false);
 
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'and the order settled');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'and the order settled');
   }
 
   /// AUTH-13 — authentication data too short to hold a signature is rejected by the decoder
   function test_AUTH_13_malformedAuthenticationDataRejected() public {
     _delegateKeyThroughHub(key);
 
-    ExecutionOrder memory order =
-      _openExecutionOrder(_erc20s(_wethTransfer(AMOUNT)), new GenericCall[](0), 0, block.timestamp);
+    ExecutionOrder memory order = _openExecutionOrder(
+      _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 0, block.timestamp
+    );
 
     // the key alone: word 0 reaches it, word 1 is read as the signature's offset and runs off
     vm.prank(relayer);
@@ -397,7 +405,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     f.callCount = uint8(bound(f.callCount, 0, 3));
     f.deadlineOffset = bound(f.deadlineOffset, 0, 30 days);
     f.msgValue = uint96(bound(f.msgValue, 0, 5 ether));
-    if (f.usePermit2Allowances) _grantPermit2Allowance(WETH, uint160(100 ether));
+    if (f.usePermit2Allowances) _grantPermit2Allowance(token18, uint160(100 ether));
 
     // the whole value goes to the first call, so the guard sees an exactly-spent batch
     GenericCall[] memory calls = new GenericCall[](f.callCount);
@@ -408,7 +416,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
     ExecutionOrder memory order = _executionOrder(
       f.pinSubmitter ? relayer : ANY,
-      _erc20s(_wethTransfer(f.amount)),
+      _erc20s(_tokenTransfer(f.amount)),
       f.moveNft ? _erc721s(_nftTransfer(address(router2))) : new ERC721Transfer[](0),
       calls,
       f.nonce,
@@ -416,9 +424,9 @@ contract ExecuteOrderTest is AuthenticatorBase {
     );
     bytes memory authData = _executionAuthData(order, key, masterKeyPk);
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
     uint256 routerNative = address(router).balance;
-    uint256 untouched = IERC20(WETH).balanceOf(recipient);
+    uint256 untouched = IERC20(token18).balanceOf(recipient);
     vm.deal(relayer, value);
 
     vm.recordLogs();
@@ -428,11 +436,11 @@ contract ExecuteOrderTest is AuthenticatorBase {
       order, address(authenticator), authData, false
     );
 
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, f.amount, 'exact amount moved');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, f.amount, 'exact amount moved');
     assertEq(address(router).balance - routerNative, value, 'native forwarded, none stranded');
     assertEq(results.length, f.callCount, 'one result per call');
     assertEq(router.callCount(), f.callCount, 'router called once per entry');
-    assertEq(IERC20(WETH).balanceOf(recipient), untouched, 'unnamed account untouched');
+    assertEq(IERC20(token18).balanceOf(recipient), untouched, 'unnamed account untouched');
     if (f.moveNft) assertEq(nft.ownerOf(NFT_ID), address(router2), 'nft leg');
 
     assertEq(
@@ -466,7 +474,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
     ExecutionOrder memory order = _executionOrder(
       f.pinSubmitter ? relayer : ANY,
-      _erc20s(_wethTransfer(f.amount)),
+      _erc20s(_tokenTransfer(f.amount)),
       f.moveNft ? _erc721s(_nftTransfer(address(router2))) : new ERC721Transfer[](0),
       calls,
       f.nonce,
@@ -474,7 +482,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     );
     bytes memory signature = _signExecutionWitness(order);
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
     uint256 routerNative = address(router).balance;
     uint256 bitmapBefore = _permit2NonceBitmap(owner, f.nonce >> 8);
     vm.deal(relayer, value);
@@ -484,7 +492,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     vm.prank(relayer);
     bytes[] memory results = hub.executeOrderWithPermit2Signature{value: value}(order, signature);
 
-    assertEq(IERC20(WETH).balanceOf(address(router)) - before, f.amount, 'exact amount moved');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, f.amount, 'exact amount moved');
     assertEq(address(router).balance - routerNative, value, 'native forwarded, none stranded');
     assertEq(results.length, f.callCount, 'one result per call');
     if (f.moveNft) assertEq(nft.ownerOf(NFT_ID), address(router2), 'nft leg');

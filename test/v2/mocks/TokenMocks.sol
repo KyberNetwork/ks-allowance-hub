@@ -3,8 +3,35 @@ pragma solidity 0.8.36;
 
 import {IERC1271} from 'openzeppelin-contracts/contracts/interfaces/IERC1271.sol';
 import {ERC1155} from 'openzeppelin-contracts/contracts/token/ERC1155/ERC1155.sol';
+import {ERC20} from 'openzeppelin-contracts/contracts/token/ERC20/ERC20.sol';
+import {ERC20Permit} from 'openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Permit.sol';
 import {ERC721} from 'openzeppelin-contracts/contracts/token/ERC721/ERC721.sol';
 import {ECDSA} from 'openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol';
+
+/**
+ * @notice The suite's ERC20, carrying EIP-2612 so the forwarder has a real permit to relay
+ * @dev The width is a constructor argument because the rails are indifferent to it while two of
+ * the cases are not: the rescue case moves two tokens of different widths, and a 6-decimal amount
+ * reads differently from an 18-decimal one in an event payload.
+ */
+contract ERC20Mock is ERC20, ERC20Permit {
+  uint8 private immutable DECIMALS;
+
+  constructor(string memory name, string memory symbol, uint8 width)
+    ERC20(name, symbol)
+    ERC20Permit(name)
+  {
+    DECIMALS = width;
+  }
+
+  function decimals() public view override returns (uint8) {
+    return DECIMALS;
+  }
+
+  function mint(address to, uint256 amount) external {
+    _mint(to, amount);
+  }
+}
 
 contract ERC721Mock is ERC721('Mock NFT', 'MNFT') {
   function mint(address to, uint256 tokenId) external {

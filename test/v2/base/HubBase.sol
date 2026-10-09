@@ -6,7 +6,7 @@ import {Vm} from 'forge-std/Vm.sol';
 import {V2TestBase} from 'test/base/V2TestBase.sol';
 
 import {RouterMock} from 'test/v2/mocks/RouterMock.sol';
-import {ERC721Mock} from 'test/v2/mocks/TokenMocks.sol';
+import {ERC20Mock, ERC721Mock} from 'test/v2/mocks/TokenMocks.sol';
 import {ValidatorMock} from 'test/v2/mocks/ValidatorMock.sol';
 
 import {DeadlineChecker} from 'src/base/DeadlineChecker.sol';
@@ -51,12 +51,11 @@ abstract contract HubBase is V2TestBase {
   );
 
   function setUp() public virtual {
-    _forkMainnet();
+    permit2 = _deployPermit2();
+    token18 = address(new ERC20Mock('Token Eighteen', 'T18', 18));
+    token6 = address(new ERC20Mock('Token Six', 'T6', 6));
 
     (owner, ownerKey) = makeAddrAndKey('owner');
-    _asEoa(owner);
-    _asEoa(relayer);
-    _asEoa(solver);
 
     router = new RouterMock();
     router2 = new RouterMock();
@@ -72,27 +71,27 @@ abstract contract HubBase is V2TestBase {
     routers[0] = address(router);
     routers[1] = address(router2);
 
-    hub = new KSAllowanceHubV2(admin, guardians, rescuers, routers, PERMIT2);
+    hub = new KSAllowanceHubV2(admin, guardians, rescuers, routers, permit2);
 
     _fundOwner();
 
     vm.label(address(hub), 'hub');
     vm.label(address(router), 'router');
-    vm.label(PERMIT2, 'permit2');
-    vm.label(WETH, 'WETH');
-    vm.label(USDC, 'USDC');
+    vm.label(permit2, 'permit2');
+    vm.label(token18, 'token18');
+    vm.label(token6, 'token6');
   }
 
   function _fundOwner() internal {
-    deal(WETH, owner, 1000 ether);
-    deal(USDC, owner, 1_000_000e6);
+    ERC20Mock(token18).mint(owner, 1000 ether);
+    ERC20Mock(token6).mint(owner, 1_000_000e6);
     nft.mint(owner, NFT_ID);
 
     vm.startPrank(owner);
-    IERC20(WETH).approve(PERMIT2, type(uint256).max);
-    IERC20(USDC).approve(PERMIT2, type(uint256).max);
-    IERC20(WETH).approve(address(hub), type(uint256).max);
-    IERC20(USDC).approve(address(hub), type(uint256).max);
+    IERC20(token18).approve(permit2, type(uint256).max);
+    IERC20(token6).approve(permit2, type(uint256).max);
+    IERC20(token18).approve(address(hub), type(uint256).max);
+    IERC20(token6).approve(address(hub), type(uint256).max);
     nft.setApprovalForAll(address(hub), true);
     vm.stopPrank();
   }
@@ -104,7 +103,7 @@ abstract contract HubBase is V2TestBase {
    */
   function _grantPermit2Allowance(address token, uint160 amount) internal {
     vm.prank(owner);
-    (bool ok,) = PERMIT2.call(
+    (bool ok,) = permit2.call(
       abi.encodeWithSignature(
         'approve(address,address,uint160,uint48)',
         token,
@@ -118,7 +117,7 @@ abstract contract HubBase is V2TestBase {
 
   /// @dev How much of `token` the hub may still pull over the owner's Permit2 allowance
   function _permit2Allowance(address token) internal view returns (uint160 allowed) {
-    (bool ok, bytes memory data) = PERMIT2.staticcall(
+    (bool ok, bytes memory data) = permit2.staticcall(
       abi.encodeWithSignature('allowance(address,address,address)', owner, token, address(hub))
     );
     require(ok, 'permit2 allowance');
@@ -159,8 +158,8 @@ abstract contract HubBase is V2TestBase {
   // Order pieces
   // ---------------------------------------------------------------------------------------------
 
-  function _wethTransfer(uint160 amount) internal view returns (ERC20Transfer memory) {
-    return ERC20Transfer({token: WETH, target: address(router), amount: amount});
+  function _tokenTransfer(uint160 amount) internal view returns (ERC20Transfer memory) {
+    return ERC20Transfer({token: token18, target: address(router), amount: amount});
   }
 
   function _nftTransfer(address target) internal view returns (ERC721Transfer memory) {
@@ -389,7 +388,7 @@ abstract contract HubBase is V2TestBase {
   }
 
   /**
-   * @dev Submits `callData` with the top 96 bits of the word holding `WETH` set, then submits it
+   * @dev Submits `callData` with the top 96 bits of the word holding the token set, then submits it
    * as given. The order hash reads those words directly from calldata without masking them, so the
    * dirty payload must be refused by the field reads that settle the order. Dirty first and clean
    * second, so the clean leg settling proves the payload was refused for the dirtying and not for
@@ -402,7 +401,7 @@ abstract contract HubBase is V2TestBase {
       assembly {
         w := mload(add(add(callData, 0x20), i))
       }
-      if (uint256(w) == uint256(uint160(WETH))) word = i;
+      if (uint256(w) == uint256(uint160(token18))) word = i;
     }
     assertTrue(word != type(uint256).max, 'the token word is in the payload');
 

@@ -118,7 +118,6 @@ contract DelegationTest is AuthenticatorBase {
   /// DEL-04 — a contract owner authorises through ERC-1271
   function test_DEL_04_erc1271Owner() public {
     (address walletSigner, uint256 walletSignerKey) = makeAddrAndKey('wallet signer');
-    _asEoa(walletSigner);
     ERC1271WalletMock wallet = new ERC1271WalletMock(walletSigner);
 
     uint256 deadline = block.timestamp + 1 days;

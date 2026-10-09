@@ -4,11 +4,13 @@ pragma solidity 0.8.36;
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
 import {
-  ERC20PermitMock,
+  ERC20DaiPermitMock,
   ERC721PermitV3Mock,
   ERC721PermitV4Mock,
   ReentrantPermitMock
 } from 'test/v2/mocks/PermitTokenMocks.sol';
+
+import {ERC20Mock} from 'test/v2/mocks/TokenMocks.sol';
 
 import {
   ISessionOrderAuthenticator
@@ -81,13 +83,11 @@ contract ForwarderTest is AuthenticatorBase {
   string internal constant S_PERMIT2_SINGLE_PERMIT =
     'permit(address,((address,uint160,uint48,uint48),address,uint256),bytes)';
 
-  /// @dev The canonical DAI, which is the reference implementation of the seven-word permit
-  address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
-
   uint256 internal constant PERMIT_NFT_ID = 7;
 
-  ERC20PermitMock internal permitToken;
-  ERC20PermitMock internal permitToken2;
+  ERC20DaiPermitMock internal daiToken;
+  ERC20Mock internal permitToken;
+  ERC20Mock internal permitToken2;
   ERC721PermitV3Mock internal nftV3;
   ERC721PermitV4Mock internal nftV4;
 
@@ -101,8 +101,9 @@ contract ForwarderTest is AuthenticatorBase {
   function setUp() public override {
     super.setUp();
 
-    permitToken = new ERC20PermitMock('Permit Token');
-    permitToken2 = new ERC20PermitMock('Permit Token Two');
+    daiToken = new ERC20DaiPermitMock('Dai Flavoured Token');
+    permitToken = new ERC20Mock('Permit Token', 'PT', 18);
+    permitToken2 = new ERC20Mock('Permit Token Two', 'PT2', 18);
     permitToken.mint(owner, 1000 ether);
     permitToken2.mint(owner, 1000 ether);
 
@@ -135,7 +136,7 @@ contract ForwarderTest is AuthenticatorBase {
     assertEq(results[0].length, 0, 'an EIP-2612 permit returns nothing');
   }
 
-  /// PF-02 — the DAI-flavoured permit, against the real DAI on the fork
+  /// PF-02 — the DAI-flavoured permit, whose `allowed` flag is a direction not an amount
   function test_PF_02_daiStylePermitForwarded() public {
     uint256 nonce = _daiNonce(owner);
     uint256 expiry = block.timestamp + 1 hours;
@@ -151,7 +152,7 @@ contract ForwarderTest is AuthenticatorBase {
       abi.encodeWithSignature(S_DAI_PERMIT, owner, address(hub), nonce, expiry, true, v, r, s);
 
     vm.prank(relayer);
-    hub.forwardCalls(_one(DAI), data, _bits(0));
+    hub.forwardCalls(_one(address(daiToken)), data, _bits(0));
 
     // DAI reads `allowed` as all-or-nothing rather than as an amount
     assertEq(_daiAllowance(owner, address(hub)), type(uint256).max, 'allowance');
@@ -204,17 +205,17 @@ contract ForwarderTest is AuthenticatorBase {
     uint256 sigDeadline = block.timestamp + 1 hours;
 
     IAllowanceTransfer.PermitBatch memory batch =
-      _permit2Batch(WETH, amount, expiration, 0, address(hub), sigDeadline);
+      _permit2Batch(token18, amount, expiration, 0, address(hub), sigDeadline);
     bytes memory signature = _sign(ownerKey, _permit2BatchDigest(batch));
 
     bytes[] memory data = new bytes[](1);
     data[0] = abi.encodeWithSignature(S_PERMIT2_BATCH_PERMIT, owner, batch, signature);
 
     vm.prank(relayer);
-    hub.forwardCalls(_one(PERMIT2), data, _bits(0));
+    hub.forwardCalls(_one(permit2), data, _bits(0));
 
     (uint160 allowed, uint48 storedExpiration, uint48 storedNonce) =
-      IAllowanceTransfer(PERMIT2).allowance(owner, WETH, address(hub));
+      IAllowanceTransfer(permit2).allowance(owner, token18, address(hub));
 
     assertEq(allowed, amount, 'allowance');
     assertEq(storedExpiration, expiration, 'expiration');
@@ -687,7 +688,7 @@ contract ForwarderTest is AuthenticatorBase {
 
     IAllowanceTransfer.PermitSingle memory single = IAllowanceTransfer.PermitSingle({
       details: IAllowanceTransfer.PermitDetails({
-        token: USDC, amount: amount, expiration: expiration, nonce: 0
+        token: token6, amount: amount, expiration: expiration, nonce: 0
       }),
       spender: address(hub),
       sigDeadline: sigDeadline
@@ -699,10 +700,10 @@ contract ForwarderTest is AuthenticatorBase {
     data[0] = abi.encodeWithSignature(S_PERMIT2_SINGLE_PERMIT, owner, single, signature);
 
     vm.prank(relayer);
-    hub.forwardCalls(_one(PERMIT2), data, _bits(0));
+    hub.forwardCalls(_one(permit2), data, _bits(0));
 
     (uint160 allowed, uint48 storedExpiration, uint48 storedNonce) =
-      IAllowanceTransfer(PERMIT2).allowance(owner, USDC, address(hub));
+      IAllowanceTransfer(permit2).allowance(owner, token6, address(hub));
 
     assertEq(allowed, amount, 'allowance');
     assertEq(storedExpiration, expiration, 'expiration');
@@ -795,7 +796,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.expectRevert(Pausable.EnforcedPause.selector);
     hub.executeOrderWithDelegatedAuthentication(
       _openExecutionOrder(
-        _erc20s(_wethTransfer(1 ether)), new GenericCall[](0), 0, block.timestamp
+        _erc20s(_tokenTransfer(1 ether)), new GenericCall[](0), 0, block.timestamp
       ),
       address(0),
       '',
@@ -844,7 +845,7 @@ contract ForwarderTest is AuthenticatorBase {
     uint256 nonce = 310;
     uint256 deadline = block.timestamp + 1 hours;
 
-    ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(amount));
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(amount));
     GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
 
     ExecutionOrder memory order = _openExecutionOrder(erc20s, calls, nonce, deadline);
@@ -861,14 +862,14 @@ contract ForwarderTest is AuthenticatorBase {
       S_EIP2612_PERMIT, owner, address(hub), uint256(1), deadline, uint8(27), bytes32(0), bytes32(0)
     );
 
-    uint256 before = IERC20(WETH).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(router));
 
     vm.prank(relayer);
     hub.forwardCalls(_one(address(reentrant)), data, _bits(0));
 
     assertEq(reentrant.permitCount(), 1, 'the forwarder did relay the permit');
     assertEq(
-      IERC20(WETH).balanceOf(address(router)) - before, amount, 'the reentrant order settled'
+      IERC20(token18).balanceOf(address(router)) - before, amount, 'the reentrant order settled'
     );
     assertEq(router.callCount(), 1, 'and its router leg ran');
     assertEq(router.seenMsgSender(), owner, 'holding the lock for the owner while it did');
@@ -1033,21 +1034,22 @@ contract ForwarderTest is AuthenticatorBase {
   }
 
   function _daiDomainSeparator() internal view returns (bytes32) {
-    (bool ok, bytes memory data) = DAI.staticcall(abi.encodeWithSignature('DOMAIN_SEPARATOR()'));
+    (bool ok, bytes memory data) =
+      address(daiToken).staticcall(abi.encodeWithSignature('DOMAIN_SEPARATOR()'));
     require(ok, 'dai domain');
     return abi.decode(data, (bytes32));
   }
 
   function _daiNonce(address holder) internal view returns (uint256) {
     (bool ok, bytes memory data) =
-      DAI.staticcall(abi.encodeWithSignature('nonces(address)', holder));
+      address(daiToken).staticcall(abi.encodeWithSignature('nonces(address)', holder));
     require(ok, 'dai nonce');
     return abi.decode(data, (uint256));
   }
 
   function _daiAllowance(address holder, address spender) internal view returns (uint256) {
-    (bool ok, bytes memory data) =
-      DAI.staticcall(abi.encodeWithSignature('allowance(address,address)', holder, spender));
+    (bool ok, bytes memory data) = address(daiToken)
+      .staticcall(abi.encodeWithSignature('allowance(address,address)', holder, spender));
     require(ok, 'dai allowance');
     return abi.decode(data, (uint256));
   }
