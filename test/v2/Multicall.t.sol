@@ -279,7 +279,9 @@ contract MulticallTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(ISessionOrderAuthenticator.MasterKeyNotApproved.selector, owner, key)
+      abi.encodeWithSelector(
+        ISessionOrderAuthenticator.MasterKeyNotApproved.selector, owner, keyHash
+      )
     );
     hub.multicall(orderOnly);
 
@@ -338,7 +340,7 @@ contract MulticallTest is AuthenticatorBase {
     );
     bytes memory grantSig =
       _signSessionKeyApproval(masterKey, ephemeral, true, grantNonce, deadline, masterKeyPk);
-    bytes memory orderAuth = _executionAuthData(order, ephemeral, sessionKeyPk);
+    bytes memory orderAuth = _executionAuthData(order, ephemeral, sessionKeyPk, true);
 
     address[] memory targets = new address[](1);
     targets[0] = address(authenticator);
@@ -363,7 +365,7 @@ contract MulticallTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ISessionOrderAuthenticator.MasterKeyNotApproved.selector, owner, ephemeral
+        ISessionOrderAuthenticator.SessionKeyNotApproved.selector, owner, _keyHash(ephemeral)
       )
     );
     hub.multicall(orderOnly);

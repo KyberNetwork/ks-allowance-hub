@@ -64,10 +64,8 @@ contract SessionOrderAuthenticator is
    * @dev `data` is `abi.encode(AuthKey masterKey)`; approval is the only direction on this path
    */
   function initAuthentication(address owner, bytes calldata data) external onlyAllowanceHub {
-    AuthKey calldata masterKey;
-    assembly ('memory-safe') {
-      masterKey := add(data.offset, calldataload(data.offset))
-    }
+    AuthKey calldata masterKey = _decodeKey(data, 0);
+    _checkNotExpired(masterKey);
 
     masterKeys[owner][masterKey.hash()] = true;
   }
@@ -87,11 +85,7 @@ contract SessionOrderAuthenticator is
     bytes calldata signature
   ) external checkDeadline(deadline) {
     if (data.decodeUint256(0) <= 0x40) {
-      AuthKey calldata masterKey;
-      assembly ('memory-safe') {
-        masterKey := add(data.offset, calldataload(data.offset))
-      }
-
+      AuthKey calldata masterKey = _decodeKey(data, 0);
       bytes32 masterKeyHash = masterKey.hash();
       // Read as a word and narrowed here, so the direction does not depend on the caller having
       // written a canonical bool, nor on the compiler cleaning one that assembly produced
@@ -109,19 +103,20 @@ contract SessionOrderAuthenticator is
         }
       }
 
+      // Only on the way in: a key that has expired must still be clearable
+      if (approved) {
+        _checkNotExpired(masterKey);
+      }
+
       masterKeys[owner][masterKeyHash] = approved;
     } else {
-      AuthKey calldata sessionKey;
-      AuthKey calldata masterKey;
-      assembly ('memory-safe') {
-        sessionKey := add(data.offset, calldataload(data.offset))
-        masterKey := add(data.offset, calldataload(add(data.offset, 0x20)))
-      }
+      AuthKey calldata sessionKey = _decodeKey(data, 0);
+      AuthKey calldata masterKey = _decodeKey(data, 1);
 
       bytes32 masterKeyHash = masterKey.hash();
       // A session key may only be granted by a key the owner approved themselves
       if (!masterKeys[owner][masterKeyHash]) {
-        revert MasterKeyNotApproved(owner, masterKey);
+        revert MasterKeyNotApproved(owner, masterKeyHash);
       }
       // Applied in both directions, so a master key may only address keys it could have approved
       if (sessionKey.expiration > masterKey.expiration) {
@@ -130,6 +125,11 @@ contract SessionOrderAuthenticator is
 
       bytes32 sessionKeyHash = sessionKey.hash();
       bool approved = data.decodeUint256(2) != 0;
+      // With the bound above this proves the master key is live as well, so it needs no check of
+      // its own. Only on the way in, as on the owner's rail
+      if (approved) {
+        _checkNotExpired(sessionKey);
+      }
 
       _useUnorderedNonce(masterKeyHash, nonce);
 
@@ -160,38 +160,59 @@ contract SessionOrderAuthenticator is
     _authenticate(order.owner, order.nonce, order.hash(), data);
   }
 
-  /// @dev Verifies that the key in `abi.encode(AuthKey key, bytes signature)` may still sign for
-  /// `owner` and did sign `orderHash`, and spends `nonce` in that key's namespace
+  /**
+   * @dev Verifies that the key in `abi.encode(AuthKey key, bool isSessionKey, bytes signature)` may
+   * still sign for `owner` and did sign `orderHash`, and spends `nonce` in that key's namespace.
+   * `isSessionKey` says which tier the key is presented as, so a master key is settled by its own
+   * approval alone. It is read as a hint and trusted for nothing: a key presented as the tier it
+   * does not hold finds no approval under that tier and is refused.
+   */
   function _authenticate(address owner, uint256 nonce, bytes32 orderHash, bytes calldata data)
     private
   {
-    AuthKey calldata key;
-    assembly ('memory-safe') {
-      key := add(data.offset, calldataload(data.offset))
-    }
-
-    if (block.timestamp > key.expiration) {
-      revert AuthKeyExpired(block.timestamp, key.expiration);
-    }
+    AuthKey calldata key = _decodeKey(data, 0);
+    _checkNotExpired(key);
 
     bytes32 keyHash = key.hash();
-    // A key with no master key recorded is judged on its own approval; a session key is judged on
-    // the master key it names, so revoking that key withdraws every session key it approved
-    bytes32 masterKeyHash = sessionKeyMaster[owner][keyHash];
-    if (masterKeyHash == bytes32(0)) {
-      if (!masterKeys[owner][keyHash]) {
-        revert MasterKeyNotApproved(owner, key);
+    if (data.decodeUint256(1) != 0) {
+      // A session key is judged on the master key it names, so revoking that key withdraws every
+      // session key it approved — and the refusal names that master, not this key
+      bytes32 masterKeyHash = sessionKeyMaster[owner][keyHash];
+      if (masterKeyHash == bytes32(0)) {
+        revert SessionKeyNotApproved(owner, keyHash);
       }
-    } else if (!masterKeys[owner][masterKeyHash]) {
-      revert SessionKeyNotApproved(owner, key, masterKeyHash);
+      if (!masterKeys[owner][masterKeyHash]) {
+        revert MasterKeyNotApproved(owner, masterKeyHash);
+      }
+    } else if (!masterKeys[owner][keyHash]) {
+      revert MasterKeyNotApproved(owner, keyHash);
     }
 
     _useUnorderedNonce(keyHash, nonce);
 
     bytes32 digest = _hashTypedDataV4(orderHash);
-    bytes calldata signature = data.decodeBytes(1);
+    bytes calldata signature = data.decodeBytes(2);
     if (!key.verify(digest, signature)) {
       revert InvalidAuthenticationSignature();
+    }
+  }
+
+  /// @dev The key the word at `index` of `data` points at
+  function _decodeKey(bytes calldata data, uint256 index)
+    private
+    pure
+    returns (AuthKey calldata key)
+  {
+    assembly ('memory-safe') {
+      key := add(data.offset, calldataload(add(data.offset, shl(5, index))))
+    }
+  }
+
+  /// @dev Refuses a key whose expiry has passed, so neither an approval nor an order can rest on
+  /// one that could never sign
+  function _checkNotExpired(AuthKey calldata key) private view {
+    if (block.timestamp > key.expiration) {
+      revert AuthKeyExpired(block.timestamp, key.expiration);
     }
   }
 }

@@ -819,3 +819,51 @@ permit, both ERC-721 drafts, the reentrant permit and the ERC-1155 seed.
 
 **V1 is unchanged and still forks.** It keeps its own addresses and its own
 `vm.createSelectFork`, so `RPC_1` remains a CI requirement for that batch alone.
+
+## Run `20261009T103550Z`
+
+Scope: the authentication payload gains a tier hint, and the two refusals carry a key hash rather
+than a key. Behaviour changes on one point — a key holding both grants — so the case that pinned the
+old precedence is reshaped rather than extended.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261009T103550Z/HINT-01` | `isSessionKey` in the authentication payload picks which mapping settles the key, so a master key costs one look-up instead of two. The hint is trusted for nothing: a key offered as the tier it does not hold finds no approval there and is refused, and both legs then settle under the tier they do hold | `SV-TIER-11`; `test/v2/authenticators/SessionOrderAuthenticator.t.sol` | `forge test --match-test test_SV_TIER_11` |
+| - [x] | - [ ] | `20261009T103550Z/HINT-02` | Each grant stands on its own tier: a key holding both is settled by whichever it is presented as, so revoking one route leaves the other, and the key dies only when both are gone. A master key granting itself resolves to its own approval on either tier | `SV-TIER-10`, `SV-TIER-10b`; same file | `forge test --match-test 'test_SV_TIER_10'` |
+| - [x] | - [ ] | `20261009T103550Z/HINT-03` | The refusals say which key is at fault and carry its hash: `SessionKeyNotApproved` when nothing stands behind the presented key, and `MasterKeyNotApproved` naming the master when that master is the thing revoked | `SV-TIER-04`, `SV-TIER-09`, `MC-08` reshaped | `forge test` |
+| - [x] | - [ ] | `20261009T103550Z/EXP-01` | An approval will not record a key whose expiry has already passed, on any of the three ways in — the hub's delegation path, the owner's rail and a master key's. Revocation of an expired key still lands, so stale state stays clearable. An expired master key can grant nothing: a session key inside its bound is expired with it, and one outside it breaks the bound | `SV-TIER-12`, `SV-TIER-12b`; `test/v2/authenticators/SessionOrderAuthenticator.t.sol` | `forge test --match-test 'test_SV_TIER_12'` |
+| - [x] | - [ ] | `20261009T103550Z/EXP-02` | A short authentication payload is refused on whichever gate it reaches: the key alone lands on the session tier and finds no master, the key with a tier reads a zero-length signature out of the key's own body, and only a whole payload truncated reaches the decoder's bounds check | `AUTH-13` reshaped; `test/v2/ExecuteOrder.t.sol` | `forge test --match-test test_AUTH_13` |
+
+### Notes for this run
+
+**What the hint saves, measured.** A master key authenticating an order went from 391,285 to
+389,063 gas — one cold `SLOAD` and change. A session key pays 22 more for reading the flag. The
+contract shrank 303 bytes to 12,451, because the two refusals now carry a `bytes32` rather than an
+`AuthKey`, so neither revert path ABI-encodes a dynamic struct.
+
+**The hint changes one behaviour, and improves it.** The caller names the tier, so a key holding
+both the owner's grant and a master key's is settled by whichever it is presented as. Each grant
+therefore stands on its own, where before the session grant took precedence and a master key could
+mask a key the owner had approved directly. `SV-TIER-10` pinned the old precedence and now pins
+the new independence.
+
+**A revoked session key reads correctly now.** Earlier runs record that a session key whose master
+had cleared its grant reported `MasterKeyNotApproved`, which was accurate but not the error a
+holder would guess. With the tier named, that key reports `SessionKeyNotApproved` and a key whose
+master was revoked reports `MasterKeyNotApproved` for that master.
+
+**Mutation check.** Dropping the master look-up from the session branch — trusting the hint —
+fails `SV-TIER-04` and `SV-TIER-10`, the two cases that cover a revoked master. The zero-grant
+legs are unaffected by that mutation and are covered separately by `SV-TIER-11` and `MC-08`.
+
+**Approving a key now checks its expiry, which it did not.** The call used to succeed and write a
+key no order could ever present, so the holder learned of it only when a settlement was refused.
+`_checkNotExpired` guards all four paths — the two approval rails, `initAuthentication`, and the
+authentication path that already held the check inline. It sits behind the direction on both
+approval rails, because an expired key must stay clearable. The master key needs no check of its
+own: the bound on a session key's expiry, with this check, proves the master is live too.
+
+**The tier flag sits between the key and the signature**, so the payload is
+`abi.encode(AuthKey key, bool isSessionKey, bytes signature)`. That moved what word 1 means, which
+`AUTH-13` had been reading as the signature's offset — see `EXP-02` for the three distinct ways a
+short payload now fails.

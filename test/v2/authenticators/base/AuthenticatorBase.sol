@@ -160,15 +160,25 @@ abstract contract AuthenticatorBase is HubBase {
   // ---------------------------------------------------------------------------------------------
 
   /**
-   * @dev The `authenticationData` the authenticator reads: word 0 points at the key, word 1 at the
-   * signature. The hub passes these bytes through untouched.
+   * @dev The `authenticationData` the authenticator reads: word 0 points at the key, word 1 says
+   * which tier it is presented as, and word 2 points at the signature. The hub passes these bytes
+   * through untouched.
    */
+  function _authData(AuthKey memory key, bytes memory signature, bool isSessionKey)
+    internal
+    pure
+    returns (bytes memory)
+  {
+    return abi.encode(key, isSessionKey, signature);
+  }
+
+  /// @dev As {_authData}, for a key presented as a master key
   function _authData(AuthKey memory key, bytes memory signature)
     internal
     pure
     returns (bytes memory)
   {
-    return abi.encode(key, signature);
+    return _authData(key, signature, false);
   }
 
   /// @dev The digest a key signs for an execution: the order, under the authenticator domain
@@ -180,12 +190,22 @@ abstract contract AuthenticatorBase is HubBase {
     return lTypedDataHash(_authenticatorDomain(), lFulfillmentOrderHash(order));
   }
 
-  /// @dev `authenticationData` whose signature is `signerKey`'s over `order`
+  /// @dev `authenticationData` whose signature is `signerKey`'s over `order`, for a master key
   function _executionAuthData(ExecutionOrder memory order, AuthKey memory key, uint256 signerKey)
     internal
     returns (bytes memory)
   {
-    return _authData(key, _sign(signerKey, _executionDigest(order)));
+    return _authData(key, _sign(signerKey, _executionDigest(order)), false);
+  }
+
+  /// @dev As {_executionAuthData}, naming the tier the key is presented as
+  function _executionAuthData(
+    ExecutionOrder memory order,
+    AuthKey memory key,
+    uint256 signerKey,
+    bool isSessionKey
+  ) internal returns (bytes memory) {
+    return _authData(key, _sign(signerKey, _executionDigest(order)), isSessionKey);
   }
 
   function _fulfillmentAuthData(
@@ -193,6 +213,16 @@ abstract contract AuthenticatorBase is HubBase {
     AuthKey memory key,
     uint256 signerKey
   ) internal returns (bytes memory) {
-    return _authData(key, _sign(signerKey, _fulfillmentDigest(order)));
+    return _authData(key, _sign(signerKey, _fulfillmentDigest(order)), false);
+  }
+
+  /// @dev As {_fulfillmentAuthData}, naming the tier the key is presented as
+  function _fulfillmentAuthData(
+    FulfillmentOrder memory order,
+    AuthKey memory key,
+    uint256 signerKey,
+    bool isSessionKey
+  ) internal returns (bytes memory) {
+    return _authData(key, _sign(signerKey, _fulfillmentDigest(order)), isSessionKey);
   }
 }

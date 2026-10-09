@@ -360,7 +360,14 @@ contract ExecuteOrderTest is AuthenticatorBase {
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'and the order settled');
   }
 
-  /// AUTH-13 — authentication data too short to hold a signature is rejected by the decoder
+  /**
+   * AUTH-13 — authentication data too short to settle is rejected, on whichever gate it reaches
+   * @dev Word 1 is the tier and word 2 the signature, so a short payload fails at a different
+   * point depending on how short it is. The key alone reads the key's own first body word as the
+   * tier, lands on the session tier and finds no master key behind it. The key and a tier read a
+   * zero-length signature out of the key's body, which verifies against nothing. Only a payload
+   * whose signature length outruns what follows it reaches the decoder's bounds check.
+   */
   function test_AUTH_13_malformedAuthenticationDataRejected() public {
     _delegateKeyThroughHub(key);
 
@@ -368,12 +375,31 @@ contract ExecuteOrderTest is AuthenticatorBase {
       _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 0, block.timestamp
     );
 
-    // the key alone: word 0 reaches it, word 1 is read as the signature's offset and runs off
     vm.prank(relayer);
-    vm.expectRevert(SLICE_OUT_OF_BOUNDS);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        ISessionOrderAuthenticator.SessionKeyNotApproved.selector, owner, _keyHash(key)
+      )
+    );
     hub.executeOrderWithDelegatedAuthentication(
       order, address(authenticator), _encodeKey(key), false
     );
+
+    vm.prank(relayer);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidAuthenticationSignature.selector);
+    hub.executeOrderWithDelegatedAuthentication(
+      order, address(authenticator), abi.encode(key, false), false
+    );
+
+    bytes memory whole = _executionAuthData(order, key, masterKeyPk);
+    bytes memory truncated = new bytes(whole.length - 32);
+    for (uint256 i = 0; i < truncated.length; i++) {
+      truncated[i] = whole[i];
+    }
+
+    vm.prank(relayer);
+    vm.expectRevert(SLICE_OUT_OF_BOUNDS);
+    hub.executeOrderWithDelegatedAuthentication(order, address(authenticator), truncated, false);
   }
 
   // -------------------------------------------------------------------------------------------

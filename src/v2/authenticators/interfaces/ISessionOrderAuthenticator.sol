@@ -12,11 +12,11 @@ interface ISessionOrderAuthenticator {
   /// @notice The key's signature does not authenticate the order it was presented with
   error InvalidAuthenticationSignature();
 
-  /// @notice The key presented as a master key has not been approved by the owner
-  error MasterKeyNotApproved(address owner, AuthKey masterKey);
+  /// @notice The owner has not approved this master key, or has revoked it
+  error MasterKeyNotApproved(address owner, bytes32 masterKeyHash);
 
-  /// @notice The session key's own grant remains, but the master key it names does not
-  error SessionKeyNotApproved(address owner, AuthKey sessionKey, bytes32 masterKeyHash);
+  /// @notice No master key stands behind this session key
+  error SessionKeyNotApproved(address owner, bytes32 sessionKeyHash);
 
   /// @notice The key's expiry is in the past
   error AuthKeyExpired(uint256 currentTime, uint256 expiration);
