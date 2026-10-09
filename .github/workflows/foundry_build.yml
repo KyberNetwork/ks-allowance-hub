@@ -1,0 +1,45 @@
+name: Run Foundry Build
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Run Foundry Build
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: true
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Install Foundry
+        uses: KyberNetwork/foundry-toolchain@master
+        with:
+          version: v1.8.3
+          cache: false
+
+      - name: Run Forge Build
+        id: build
+        run: |
+          forge --version
+          forge build src --sizes
+
+      # The bound types all live under `src`, which the step above has just compiled
+      - name: Check the EIP-712 bindings are current
+        run: |
+          forge bind-json
+          git diff --exit-code utils/JsonBindings.sol

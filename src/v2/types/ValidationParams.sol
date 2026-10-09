@@ -1,0 +1,109 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import {IKSActionValidator} from 'ks-action-validator-sc/src/interfaces/IKSActionValidator.sol';
+
+import {DynamicArrayLibExt} from '../../base/libraries/DynamicArrayLibExt.sol';
+import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
+
+/**
+ * @notice A validator to run around an order, and the inputs it needs
+ * @dev In a fulfillment the solver chooses the route, so these are what bound the outcome.
+ * `validator` is arbitrary and not whitelisted.
+ */
+struct ValidationParams {
+  address validator;
+  bytes32 action;
+  bytes beforeExecutionInput;
+  bytes afterExecutionInput;
+}
+
+using ValidationParamsLib for ValidationParams global;
+
+library ValidationParamsLib {
+  bytes32 internal constant VALIDATION_PARAMS_TYPEHASH = keccak256(
+    'ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)'
+  );
+
+  /// @dev EIP-712 hash of one validator's parameters
+  function hash(ValidationParams calldata self) internal pure returns (bytes32) {
+    return keccak256(
+      abi.encode(
+        VALIDATION_PARAMS_TYPEHASH,
+        self.validator,
+        self.action,
+        keccak256(self.beforeExecutionInput),
+        keccak256(self.afterExecutionInput)
+      )
+    );
+  }
+
+  /// @dev As {hash}, for parameters already in memory
+  function hashMemory(ValidationParams memory self) internal pure returns (bytes32) {
+    return keccak256(
+      abi.encode(
+        VALIDATION_PARAMS_TYPEHASH,
+        self.validator,
+        self.action,
+        keccak256(self.beforeExecutionInput),
+        keccak256(self.afterExecutionInput)
+      )
+    );
+  }
+
+  /**
+   * @dev EIP-712 hash of the array: its member hashes, concatenated and hashed. Word-sized members
+   * are already laid out in memory exactly as `abi.encodePacked` would place them, so the digest is
+   * taken over the array's own data and nothing is copied.
+   */
+  function hash(ValidationParams[] calldata params) internal pure returns (bytes32) {
+    bytes32[] memory paramsHashes = EfficientHashLib.malloc(params.length);
+    for (uint256 i = 0; i < params.length; i++) {
+      paramsHashes[i] = hash(params[i]);
+    }
+
+    return EfficientHashLib.hash(paramsHashes);
+  }
+
+  /// @dev As {hash}, for an array already in memory
+  function hashMemory(ValidationParams[] memory params) internal pure returns (bytes32) {
+    bytes32[] memory paramsHashes = EfficientHashLib.malloc(params.length);
+    for (uint256 i = 0; i < params.length; i++) {
+      paramsHashes[i] = hashMemory(params[i]);
+    }
+
+    return EfficientHashLib.hash(paramsHashes);
+  }
+
+  /**
+   * @dev Runs every validator's pre-hook and keeps each snapshot.
+   * Called before anything moves, so a validator measures the whole order rather than its tail.
+   */
+  function beforeExecution(ValidationParams[] calldata params)
+    internal
+    returns (bytes[] memory beforeExecutionOutputs)
+  {
+    beforeExecutionOutputs = DynamicArrayLibExt.malloc(params.length);
+    for (uint256 i = 0; i < params.length; i++) {
+      ValidationParams calldata _params = params[i];
+      beforeExecutionOutputs[i] = IKSActionValidator(_params.validator)
+        .beforeExecution(_params.action, _params.beforeExecutionInput);
+    }
+  }
+
+  /// @dev Each validator receives its own snapshot, paired by index
+  function afterExecution(ValidationParams[] calldata params, bytes[] memory beforeExecutionOutputs)
+    internal
+  {
+    for (uint256 i = 0; i < params.length; i++) {
+      ValidationParams calldata _params = params[i];
+      IKSActionValidator(_params.validator)
+        .afterExecution(
+          _params.action,
+          _params.beforeExecutionInput,
+          beforeExecutionOutputs[i],
+          _params.afterExecutionInput
+        );
+    }
+  }
+}
