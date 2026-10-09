@@ -13,7 +13,7 @@ interface ICallsForwarder {
    * @notice Relays a batch of calls that carry their own authorisation
    * @param targets Contract to call for each entry
    * @param data The call to make against the matching target
-   * @param allowFailure One bit per entry: set to carry on when that call reverts
+   * @param allowFailure One bit per entry: set to continue when that call reverts
    * @return results Each call's return data, in order
    */
   function forwardCalls(address[] calldata targets, bytes[] calldata data, PackedBits allowFailure)

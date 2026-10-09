@@ -28,7 +28,7 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  * @notice Contract base for the {KSAllowanceHubV2} batches: deploys the hub against the real
  * Permit2 on a mainnet fork, wires the mocks, and builds and signs orders.
  * @dev Every signature here is produced from the literals in {V2TestBase}. Nothing in this file may
- * reach for a production type string, typehash or hashing library, or the suite would only prove
+ * use a production type string, typehash or hashing library, or the suite would only prove
  * that the hub agrees with itself.
  */
 abstract contract HubBase is V2TestBase {
@@ -44,8 +44,7 @@ abstract contract HubBase is V2TestBase {
 
   /**
    * @dev Transcribed from {IKSAllowanceHubV2-TransferTokens}, never imported: an expected topic
-   * taken from the contract under test would agree with a wrong one. `orderHash` joined the
-   * indexed fields in the restructure, so the signature gained a `bytes32`.
+   * taken from the contract under test would agree with a wrong one.
    */
   bytes32 internal constant TRANSFER_TOKENS_TOPIC = keccak256(
     'TransferTokens(address,address,bytes32,(address,address,uint160)[],(address,uint256,address)[],(address,uint256)[])'
@@ -100,8 +99,8 @@ abstract contract HubBase is V2TestBase {
 
   /**
    * @dev The owner's Permit2 allowance to the hub, which `usePermit2Allowances` draws on. The
-   * amount is finite on purpose: Permit2 leaves `type(uint160).max` alone rather than decrementing
-   * it, so an unlimited allowance could not tell the two pull rails apart.
+   * amount is finite because Permit2 does not decrement `type(uint160).max`, so an unlimited
+   * allowance could not distinguish the two pull rails.
    */
   function _grantPermit2Allowance(address token, uint160 amount) internal {
     vm.prank(owner);
@@ -135,7 +134,7 @@ abstract contract HubBase is V2TestBase {
       abi.encodeWithSelector(DeadlineChecker.DeadlinePassed.selector, block.timestamp, deadline);
   }
 
-  /// @dev Picks the single `TransferTokens` the hub emitted out of the whole fork's log stream
+  /// @dev Selects the single `TransferTokens` the hub emitted from the fork's log stream
   function _settlementLog() internal returns (Vm.Log memory entry) {
     Vm.Log[] memory entries = vm.getRecordedLogs();
 
@@ -266,7 +265,7 @@ abstract contract HubBase is V2TestBase {
   /// @dev Where {_route}'s auto-assigned nonces begin, clear of the nonces cases choose by hand
   uint256 internal constant ROUTE_NONCE_BASE = 10_000;
 
-  /// @dev How many routes {_route} has handed out, so each one gets its own nonce
+  /// @dev How many routes {_route} has issued, so each receives its own nonce
   uint256 private _routesBuilt;
 
   function _solution(GenericCall[] memory solverCalls, uint256 nonce, uint256 deadline)
@@ -279,7 +278,7 @@ abstract contract HubBase is V2TestBase {
 
   /**
    * @dev The route a solver supplies when the owner pinned nothing about it. The hub burns
-   * `solution.nonce` and checks `solution.deadline`, so each call hands back a nonce no other route
+   * `solution.nonce` and checks `solution.deadline`, so each call returns a nonce no other route
    * in the test has used and a deadline an hour out. Route nonces start high enough not to collide
    * with the order nonces cases pick by hand, and they share the hub's bitmap with nothing else.
    */
@@ -288,7 +287,7 @@ abstract contract HubBase is V2TestBase {
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Signatures, built from the literal type strings only
+  // Signatures, built from the independent oracle only
   // ---------------------------------------------------------------------------------------------
 
   function _hubDomain() internal view returns (bytes32) {
@@ -391,10 +390,10 @@ abstract contract HubBase is V2TestBase {
 
   /**
    * @dev Submits `callData` with the top 96 bits of the word holding `WETH` set, then submits it
-   * as given. The order hash reads those words straight from calldata without masking them, so the
+   * as given. The order hash reads those words directly from calldata without masking them, so the
    * dirty payload must be refused by the field reads that settle the order. Dirty first and clean
-   * second on purpose: the clean leg settling proves the payload was refused for the dirtying and
-   * not for anything else it carried.
+   * second, so the clean leg settling proves the payload was refused for the dirtying and not for
+   * anything else it carried.
    */
   function _assertDirtyTokenWordIsRefused(address submitter, bytes memory callData) internal {
     uint256 word = type(uint256).max;

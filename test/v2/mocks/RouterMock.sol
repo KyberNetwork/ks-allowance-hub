@@ -7,7 +7,7 @@ import {IMsgSender} from 'src/base/interfaces/IMsgSender.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 import {ERC721Holder} from 'openzeppelin-contracts/contracts/token/ERC721/utils/ERC721Holder.sol';
 
-/// @notice Router that records what the hub showed it, so tests can assert identity and ordering.
+/// @notice Router that records what the hub passed it, so tests can assert identity and ordering.
 contract RouterMock is IKSGenericRouter, ERC721Holder {
   /// @dev Read inside `ksExecute`, which is the only point where the hub's lock is still held
   address public seenMsgSender;
@@ -15,7 +15,7 @@ contract RouterMock is IKSGenericRouter, ERC721Holder {
   uint256 public lastValue;
   bytes public lastData;
 
-  /// @dev Set by a test to have the router pay a token out, proving the funds actually arrived
+  /// @dev Set by a test to have the router pay a token out, proving the funds arrived
   address public payoutToken;
   address public payoutTo;
   uint256 public payoutAmount;
@@ -75,7 +75,8 @@ contract NativeRejectorRouterMock is IKSGenericRouter {
   }
 }
 
-/// @notice Router that hands back who it is and what it was given, so results pin call order.
+/// @notice Router that returns its own identity and the data it was given, so results pin call
+/// order.
 /// @dev {RouterMock} returns a per-router counter, which cannot distinguish two routers
 /// interleaved in one order; this one can.
 contract EchoRouterMock is IKSGenericRouter {
@@ -88,8 +89,8 @@ contract EchoRouterMock is IKSGenericRouter {
  * @notice Router whose calls can see each other's work, so a test can pin the order they ran in.
  * @dev A call built by {produce} stores its payload; one built by {observe} appends the payload as
  * it stood at that moment to {observations} and returns it. An observer that ran before a producer
- * therefore records empty bytes, which is what separates "both lists ran" from "they ran in this
- * order".
+ * therefore records empty bytes, which separates the fact that both lists ran from the order in
+ * which they ran.
  */
 contract ObservingRouterMock is IKSGenericRouter, ERC721Holder {
   bytes1 private constant PRODUCE = 0x01;

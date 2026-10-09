@@ -186,7 +186,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     authenticator.updateAuthentication(owner, _revokeKey(fresh), 33, deadline, approval);
     assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'a refused update burns nothing');
 
-    // the same signature, submitted as what the owner actually signed
+    // the same signature, submitted as what the owner signed
     vm.prank(relayer);
     authenticator.updateAuthentication(owner, _approveKey(fresh), 33, deadline, approval);
     assertTrue(authenticator.masterKeys(owner, _keyHash(fresh)), 'approved on its own direction');
@@ -258,12 +258,12 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
    * authentication on this branch, exactly as it is on the hub's `updateDelegation`, so
    * `updateAuthentication` never looks at `signature` and never burns `nonce`. Two consequences
    * follow, and both are asserted below so that a future reader meets them here instead of
-   * discovering them in production. A signature on this path proves nothing — an obviously bogus one
-   * is accepted as readily as a real one, because neither is examined. And the call carries no replay
-   * protection of its own: identical calldata settles again, with effect, as many times as it is
-   * submitted. Neither is exploitable, because no one but the owner can be `msg.sender` here and an
-   * owner replaying their own instruction is just the owner repeating themselves. What would be a
-   * finding is the reverse reading — treating a signature accepted on this path as having been
+   * discovering them in production. A signature on this path proves nothing — an obviously bogus
+   * one is accepted as readily as a real one, because neither is examined. And the call carries no
+   * replay protection of its own: identical calldata settles again, with effect, as many times as
+   * it is submitted. Neither is exploitable, because no one but the owner can be `msg.sender` here
+   * and an owner replaying their own instruction is just the owner repeating themselves. What would
+   * be a finding is the reverse reading — treating a signature accepted on this path as having been
    * checked, or expecting the named nonce to have been spent.
    */
   function test_SV_UPD_01_ownerBranchIgnoresTheSignatureAndTheNonce() public {
@@ -601,7 +601,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
    * SV-KEY-RSA-01 / -02 — a 2048-bit modulus verifies, a short one is refused
    * @dev Exercised at the library level against a checked-in vector. The signature must be made
    * with the private exponent, which is far too expensive to compute on-chain; verification uses
-   * the public exponent and is what the contract actually performs.
+   * the public exponent and is what the contract performs.
    */
   function test_SV_KEY_Rsa() public {
     AuthKeyHarness harness = new AuthKeyHarness();
@@ -688,7 +688,8 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
       authenticator.nonces(lNonceKey(owner), f.nonce >> 8), 1 << (f.nonce & 0xff), 'nonce spent'
     );
 
-    // the approval binds the whole key, so a different scheme over the same bytes is a different key
+    // the approval binds the whole key, so a different scheme over the same bytes is a different
+    // key
     AuthKey memory other = AuthKey({
       publicKey: abi.encode(recipient),
       keyType: KeyType((uint8(keyType) + 1) % 4),
@@ -724,7 +725,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
   /**
    * SV-TIER-01 — a master key grants a session key, which then signs an order
    * @dev The flow a passkey exists for: the owner's wallet approves the passkey once, and the
-   * passkey hands out local keys with no wallet prompt. The grant lands in `sessionKeyMaster`
+   * passkey issues local keys with no wallet prompt. The grant lands in `sessionKeyMaster`
    * under the master key's hash, and leaves `masterKeys` alone.
    */
   function test_SV_TIER_01_masterKeyGrantsASessionKeyThatSignsAnOrder() public {

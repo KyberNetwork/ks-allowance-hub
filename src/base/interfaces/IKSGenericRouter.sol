@@ -7,7 +7,7 @@ interface IKSGenericRouter {
   /**
    * @notice Runs one router action on behalf of the hub's current `msgSender()`
    * @param data Router-specific payload
-   * @return The router's own return data, handed back to the hub's caller
+   * @return The router's own return data, returned to the hub's caller
    */
   function ksExecute(bytes calldata data) external payable returns (bytes memory);
 }

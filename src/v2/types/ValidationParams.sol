@@ -8,7 +8,7 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
  * @notice A validator to run around an order, and the inputs it needs
- * @dev In a fulfillment the solver picks the route, so these are what actually bound the outcome.
+ * @dev In a fulfillment the solver chooses the route, so these are what bound the outcome.
  * `validator` is arbitrary and not whitelisted.
  */
 struct ValidationParams {
@@ -53,8 +53,8 @@ library ValidationParamsLib {
 
   /**
    * @dev EIP-712 hash of the array: its member hashes, concatenated and hashed. Word-sized members
-   * already sit in memory exactly as `abi.encodePacked` would lay them out, so the digest is taken
-   * over the array's own data and nothing is copied to reach it.
+   * are already laid out in memory exactly as `abi.encodePacked` would place them, so the digest is
+   * taken over the array's own data and nothing is copied.
    */
   function hash(ValidationParams[] calldata params) internal pure returns (bytes32) {
     bytes32[] memory paramsHashes = EfficientHashLib.malloc(params.length);
@@ -91,7 +91,7 @@ library ValidationParamsLib {
     }
   }
 
-  /// @dev Each validator gets its own snapshot back, paired by index
+  /// @dev Each validator receives its own snapshot, paired by index
   function afterExecution(ValidationParams[] calldata params, bytes[] memory beforeExecutionOutputs)
     internal
   {

@@ -26,16 +26,17 @@ import {
 
 /**
  * @title SessionOrderAuthenticator
- * @notice Lets an owner approve a key once and then authenticate allowance-hub orders with that key
- * instead of their main wallet. Keys carry their own expiry and may be Secp256k1, P256, WebAuthn or
- * RSA, so a passkey or a hot key can sign orders the wallet never touches.
- * @dev The owner approves master keys, which are the only tier that may approve anything; a
- * master key approves session keys of its own, so a passkey hands out short-lived local keys with
- * no wallet prompt. Both tiers sign orders, and a session key may neither outlive the master key
- * behind it nor survive its revocation.
+ * @notice Authenticates allowance-hub orders against keys an owner has approved, in place of their
+ * main wallet. Each key carries its own expiry and may be Secp256k1, P256, WebAuthn or RSA, so a
+ * passkey or a local key may sign orders without involving the wallet.
+ * @dev Keys form two tiers. The owner approves master keys, the only tier permitted to approve
+ * further keys; a master key approves session keys beneath it, which allows a passkey to issue
+ * short-lived local keys without a wallet prompt. Both tiers may sign orders. A session key may
+ * not outlive the master key it names, and does not survive its revocation.
  *
- * Replay protection lives here rather than in the hub: every verification burns a nonce in the
- * namespace of whatever signed it, and the nonce and deadline are bound into the digest.
+ * Replay protection belongs to this contract rather than the hub: every verification spends a
+ * nonce in the namespace of the key or account that signed, and the nonce and deadline are bound
+ * into the digest.
  */
 contract SessionOrderAuthenticator is
   ISessionOrderAuthenticator,
@@ -60,7 +61,7 @@ contract SessionOrderAuthenticator is
 
   /**
    * @inheritdoc IOrderAuthenticator
-   * @dev `data` is `abi.encode(AuthKey masterKey)`; approving is the only direction on this path
+   * @dev `data` is `abi.encode(AuthKey masterKey)`; approval is the only direction on this path
    */
   function initAuthentication(address owner, bytes calldata data) external onlyAllowanceHub {
     AuthKey calldata masterKey;
@@ -74,8 +75,9 @@ contract SessionOrderAuthenticator is
   /**
    * @inheritdoc IOrderAuthenticator
    * @dev `data` is `abi.encode(AuthKey masterKey, bool approved)` for the owner's own decision, or
-   * `abi.encode(AuthKey sessionKey, AuthKey masterKey, bool approved)` for a master key's, told
-   * apart by the first key's offset. Only the owner's rail makes a key a master key.
+   * `abi.encode(AuthKey sessionKey, AuthKey masterKey, bool approved)` for a master key's,
+   * distinguished by the offset of the first key. Only the owner's rail may approve a master key,
+   * and a master key's reaches no further than a session key beneath it.
    */
   function updateAuthentication(
     address owner,
@@ -95,7 +97,7 @@ contract SessionOrderAuthenticator is
       // written a canonical bool, nor on the compiler cleaning one that assembly produced
       bool approved = data.decodeUint256(1) != 0;
 
-      // Only the owner authenticates themselves by calling; anyone else, the hub included, has to
+      // Only the owner authenticates themselves by calling; anyone else, the hub included, must
       // present a signature, because `forwardCalls` relays this from any caller
       if (msg.sender != owner) {
         _useUnorderedNonce(owner, nonce);
@@ -121,7 +123,7 @@ contract SessionOrderAuthenticator is
       if (!masterKeys[owner][masterKeyHash]) {
         revert MasterKeyNotApproved(owner, masterKey);
       }
-      // Checked in both directions, so a master key only decides keys it could have minted
+      // Applied in both directions, so a master key may only address keys it could have approved
       if (sessionKey.expiration > masterKey.expiration) {
         revert SessionKeyOutlivesMasterKey(sessionKey.expiration, masterKey.expiration);
       }
@@ -158,8 +160,8 @@ contract SessionOrderAuthenticator is
     _authenticate(order.owner, order.nonce, order.hash(), data);
   }
 
-  /// @dev Checks that the key in `abi.encode(AuthKey key, bytes signature)` may still sign for
-  /// `owner` and did sign `orderHash`, spending `nonce` in that key's namespace
+  /// @dev Verifies that the key in `abi.encode(AuthKey key, bytes signature)` may still sign for
+  /// `owner` and did sign `orderHash`, and spends `nonce` in that key's namespace
   function _authenticate(address owner, uint256 nonce, bytes32 orderHash, bytes calldata data)
     private
   {
@@ -173,8 +175,8 @@ contract SessionOrderAuthenticator is
     }
 
     bytes32 keyHash = key.hash();
-    // A key with no master key behind it stands on its own approval; a session key stands on that
-    // master key, so revoking it takes every session key it minted
+    // A key with no master key recorded is judged on its own approval; a session key is judged on
+    // the master key it names, so revoking that key withdraws every session key it approved
     bytes32 masterKeyHash = sessionKeyMaster[owner][keyHash];
     if (masterKeyHash == bytes32(0)) {
       if (!masterKeys[owner][keyHash]) {

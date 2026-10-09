@@ -5,8 +5,8 @@ import {GenericCall, GenericCallLib} from './GenericCall.sol';
 
 /**
  * @notice The route a solver chose for a {FulfillmentOrder}, approved separately from the order
- * @dev Signed by the `solutionApprover` the order names, not by the owner, which is what lets the
- * route be picked after the owner signed.
+ * @dev Signed by the `solutionApprover` the order names, not by the owner, so the route may be
+ * chosen after the owner has signed.
  */
 struct FulfillmentSolution {
   GenericCall[] solverCalls;

@@ -27,12 +27,12 @@ import {ValidationParamsLib} from 'src/v2/types/ValidationParams.sol';
  * @notice T712-SCHEMA — every typehash against the `encodeType` its own struct declares
  * @dev The struct is the source of truth, and a production type string that drifts from it passes
  * every other case in the suite: the hub is self-consistent, and Permit2 derives its witness
- * typehash from the string the hub hands it, so the fork checks the hub against itself. These
+ * typehash from the string the hub supplies, so the fork checks the hub against itself. These
  * schemas come from `forge bind-json`, which reads the struct declarations, so nothing here is a
  * transcription. Regenerate with `forge bind-json`; `foundry.toml` pins the file set under
- * `[bind_json]`, without which the output is not reproducible. The command is a fixed point, not a
- * one-shot: the generated file is itself compiled, and imports the types it binds, so a type added
- * to the set appears only on the following run.
+ * `[bind_json]`, without which the output is not reproducible. The command is a fixed point, not
+ * a single pass: the generated file is itself compiled, and imports the types it binds, so a type
+ * added to the set appears only on the following run.
  */
 contract SchemaAuditTest is Test {
   function test_T712_SCHEMA_typehashesMatchTheirStructs() public pure {
@@ -105,7 +105,8 @@ contract SchemaAuditTest is Test {
   }
 
   /**
-   * @dev T712-SCHEMA-PERMIT2 — the witness type strings the hub hands Permit2. Permit2 closes its
+   * @dev T712-SCHEMA-PERMIT2 — the witness type strings the hub supplies Permit2. Permit2
+   * completes its
    * own stub with the string it is given and hashes the concatenation, so the two together must
    * reproduce the schema `bind-json` derived from the struct. This also pins which colliding
    * schema {SchemaHash} reads for which rail: the suffixes follow discovery order, and a swap

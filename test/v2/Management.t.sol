@@ -49,10 +49,10 @@ contract ManagementTest is AuthenticatorBase {
   /**
    * MGMT-12 / DOM-01 — both signing domains publish a separator, each its own and each chain-scoped
    * @dev The two contracts now inherit the same {EIP712Base}, so one statement covers both. Each
-   * separator must match the domain written out from its own name, version and address; the two must
-   * differ from each other, since the hub and the authenticator scope their signatures separately;
-   * and each must be rebuilt once the chain id has moved, which is what stops a signature being
-   * replayed onto another chain. The third leg is what makes the first bite rather than mirror.
+   * separator must match the domain written out from its own name, version and address; the two
+   * must differ from each other, since the hub and the authenticator scope their signatures
+   * separately; and each must be rebuilt once the chain id has moved, so a signature cannot be
+   * replayed onto another chain. Without the third leg the first would only mirror the contract.
    */
   function test_DOM_01_bothDomainSeparators() public {
     bytes32 expectedHub = lDomainSeparator('KyberSwap Allowance Hub', '2.0.0', address(hub));

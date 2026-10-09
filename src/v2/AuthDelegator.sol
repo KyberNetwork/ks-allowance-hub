@@ -16,10 +16,11 @@ import {
 
 /**
  * @title AuthDelegator
- * @notice Lets an owner nominate an {IOrderAuthenticator} once and afterwards authenticate orders
- * whatever credential that authenticator understands, instead of signing each order here.
- * @dev The authenticator is trusted by the owner, not by this contract: all that is checked is
- * the owner delegated it.
+ * @notice Allows an owner to nominate an {IOrderAuthenticator} once and thereafter authenticate
+ * orders with whatever credential that authenticator understands, instead of signing each order
+ * here.
+ * @dev The authenticator is trusted by the owner, not by this contract: the only check is that the
+ * owner delegated it.
  */
 abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNonce, EIP712Base {
   /// @inheritdoc IAuthDelegator
@@ -36,7 +37,7 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
     _;
   }
 
-  /// @dev The check itself, held in one place rather than inlined at every modifier use
+  /// @dev Held in one place rather than inlined at every use of the modifier
   function _checkDelegation(address owner, address authenticator) internal view {
     if (authenticator != address(0) && !authDelegated[owner][authenticator]) {
       revert NotDelegatedAuthenticator(owner, authenticator);
@@ -64,7 +65,7 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
     }
 
     // Forwarded only when delegating, so an authenticator that reverts cannot trap the owner in
-    // delegation. It takes no signature, so the owner must have been authenticated by here
+    // delegation. It takes no signature, so the owner must already have been authenticated here
     if (delegated && data.length > 0) {
       IOrderAuthenticator(authenticator).initAuthentication(owner, data);
     }

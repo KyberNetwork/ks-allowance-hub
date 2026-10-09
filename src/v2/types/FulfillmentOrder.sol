@@ -8,18 +8,19 @@ import {ValidationParams, ValidationParamsLib} from './ValidationParams.sol';
 
 /**
  * @notice An owner's signed order to move assets and leave the route to a solver
- * @dev Does not pin that route, leaving it to a {FulfillmentSolution}: the owner names an approver
- * for it and relies on the validators instead.
+ * @dev Does not fix that route, which is left to a {FulfillmentSolution}: the owner names an
+ * approver for it and relies on the validators instead.
  * @param owner Account the assets come from
- * @param solver Who may submit this order; the dead-address sentinel leaves it open to anyone
+ * @param solver The account that may submit this order; the dead-address sentinel permits any
+ * caller
  * @param erc20Transfers ERC20 legs, moved from the owner to their targets
  * @param erc721Transfers ERC721 legs, moved from the owner to their targets
- * @param validationParams Validators run before and after the solver's route, and are what the
- * owner relies on in place of signing that route
+ * @param validationParams Validators run before and after the solver's route, on which the owner
+ * relies in place of signing that route
  * @param ownerCalls The tail the owner fixes exactly, run after the validators, for effects no
  * validator can check
- * @param solutionApprover Who may approve the solver's route; the dead-address sentinel accepts
- * any route
+ * @param solutionApprover The account that may approve the solver's route; the dead-address
+ * sentinel accepts any route
  * @param nonce Burned against the owner, so one order settles at most once
  * @param deadline Last timestamp at which the order may settle
  */

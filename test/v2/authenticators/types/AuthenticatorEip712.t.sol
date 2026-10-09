@@ -58,7 +58,7 @@ contract AuthenticatorEip712Test is V2TestBase {
   // T712-11 — SessionKeyApproval
   // -------------------------------------------------------------------------------------------
 
-  /// @dev The two keys and the account are all distinct members, so each has to move the digest
+  /// @dev The two keys and the account are all distinct members, so each must move the digest
   function test_T712_11_sessionKeyApprovalStructHash() public pure {
     bytes32 masterKeyHash = keccak256('an arbitrary master key hash');
     bytes32 sessionKeyHash = keccak256('an arbitrary session key hash');

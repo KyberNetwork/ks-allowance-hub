@@ -14,15 +14,15 @@ interface IAuthDelegator {
    * @notice Whether `owner` has authorised `authenticator` to approve orders on their behalf
    * @param owner Account whose assets the authenticator may authorise
    * @param authenticator Contract that authenticates the owner's orders
-   * @return Whether the delegation stands
+   * @return Whether the delegation is in place
    */
   function authDelegated(address owner, address authenticator) external view returns (bool);
 
   /**
    * @notice Delegates authentication to `authenticator`, or withdraws it
-   * @dev `data` reaches the authenticator only when delegating, so withdrawing cannot be blocked by
-   * one that reverts. Withdrawing leaves the authenticator's own state alone; drop that through
-   * {ICallsForwarder-forwardCalls} first when both should go.
+   * @dev `data` reaches the authenticator only when delegating, so withdrawing cannot be blocked
+   * by one that reverts. Withdrawing leaves the authenticator's own state untouched; withdraw that
+   * separately through {ICallsForwarder-forwardCalls} when both are to be removed.
    * @param owner Account whose orders the authenticator may approve
    * @param authenticator Contract that will authenticate future orders
    * @param delegated True to delegate the authenticator, false to withdraw it

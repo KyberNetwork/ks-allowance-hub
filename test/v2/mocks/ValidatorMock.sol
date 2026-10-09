@@ -5,7 +5,8 @@ import {IKSActionValidator} from 'ks-action-validator-sc/src/interfaces/IKSActio
 
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
-/// @notice Validator spy: records call order and proves each snapshot comes back to its own validator.
+/// @notice Validator spy: records call order and proves each snapshot is returned to its own
+/// validator.
 contract ValidatorMock is IKSActionValidator {
   /// @dev Appended to by every hook, so a test can assert the whole sequence in one place
   string[] public sequence;
@@ -19,7 +20,7 @@ contract ValidatorMock is IKSActionValidator {
   bool public revertOnBefore;
   bool public revertOnAfter;
 
-  /// @dev Lets a test prove WHEN each hook ran, by having the spy read a balance at the time
+  /// @dev Records when each hook ran, by reading a balance at the time
   address public observedToken;
   address public observedAccount;
   uint256 public balanceAtBefore;
@@ -32,7 +33,7 @@ contract ValidatorMock is IKSActionValidator {
     observing = true;
   }
 
-  /// @dev Lets a test give two validators distinguishable outputs
+  /// @dev Gives two validators distinguishable outputs
   function setSnapshot(bytes calldata value) external {
     snapshot = value;
   }

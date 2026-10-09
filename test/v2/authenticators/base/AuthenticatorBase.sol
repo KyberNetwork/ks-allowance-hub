@@ -39,7 +39,7 @@ abstract contract AuthenticatorBase is HubBase {
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Session keys
+  // Keys
   // ---------------------------------------------------------------------------------------------
 
   /// @dev A Secp256k1 key is an ABI-encoded address, so the whole word is the public key
@@ -57,7 +57,7 @@ abstract contract AuthenticatorBase is HubBase {
     return abi.encode(key);
   }
 
-  /// @dev The `data` argument of `updateAuthentication`: the key, plus the direction for it
+  /// @dev The `data` argument of the owner's rail: the master key, plus the direction for it
   function _updateData(AuthKey memory key, bool approved) internal pure returns (bytes memory) {
     return abi.encode(key, approved);
   }
@@ -95,7 +95,7 @@ abstract contract AuthenticatorBase is HubBase {
     return abi.encode(sessionKey, masterKey, approved);
   }
 
-  /// @dev As {_signSessionKeyApproval}, for the owner this base's `owner` is
+  /// @dev As {_signSessionKeyApproval}, for this base's own `owner`
   function _signSessionKeyApproval(
     AuthKey memory masterKey,
     AuthKey memory sessionKey,
@@ -128,7 +128,7 @@ abstract contract AuthenticatorBase is HubBase {
     return _sign(signerPk, digest);
   }
 
-  /// @dev Puts `sessionKey` under `masterKey` for `owner`, the way a passkey mints a local key
+  /// @dev Approves `sessionKey` under `masterKey` for `owner`, as a passkey approves a local key
   function _approveSessionKey(
     AuthKey memory masterKey,
     AuthKey memory sessionKey,
@@ -173,7 +173,7 @@ abstract contract AuthenticatorBase is HubBase {
     return abi.encode(key, signature);
   }
 
-  /// @dev The digest a session key signs for an execution: the order, under the authenticator domain
+  /// @dev The digest a key signs for an execution: the order, under the authenticator domain
   function _executionDigest(ExecutionOrder memory order) internal view returns (bytes32) {
     return lTypedDataHash(_authenticatorDomain(), lExecutionOrderHash(order));
   }

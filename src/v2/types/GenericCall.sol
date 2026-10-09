@@ -10,8 +10,8 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
  * @notice One router call in an order
- * @dev `value` is paid out of the native the hub was sent, and `router` must hold the whitelisted
- * router role at the time the call runs.
+ * @dev `value` is paid out of the native value the hub was sent, and `router` must hold the
+ * whitelisted router role at the time the call runs.
  */
 struct GenericCall {
   address router;
@@ -39,8 +39,8 @@ library GenericCallLib {
 
   /**
    * @dev EIP-712 hash of the array: its member hashes, concatenated and hashed. Word-sized members
-   * already sit in memory exactly as `abi.encodePacked` would lay them out, so the digest is taken
-   * over the array's own data and nothing is copied to reach it.
+   * are already laid out in memory exactly as `abi.encodePacked` would place them, so the digest is
+   * taken over the array's own data and nothing is copied.
    */
   function hash(GenericCall[] calldata calls) internal pure returns (bytes32) {
     bytes32[] memory callsHashes = EfficientHashLib.malloc(calls.length);
@@ -61,13 +61,13 @@ library GenericCallLib {
     return EfficientHashLib.hash(callsHashes);
   }
 
-  /// @dev Calls the router, forwarding the call's share of the native sent to the hub
+  /// @dev Calls the router, forwarding the call's share of the native value sent to the hub
   function execute(GenericCall calldata self) internal returns (bytes memory) {
     return IKSGenericRouter(self.router).ksExecute{value: self.value}(self.data);
   }
 
   /**
-   * @dev The calls that carry value, for the event. Calls with no value are dropped and the array
+   * @dev The calls that carry value, for the event. Calls with no value are omitted and the array
    * is truncated in place, so an order with none emits an empty array rather than a run of zeros.
    */
   function toNativeTransfers(GenericCall[] calldata genericCalls)
@@ -92,7 +92,7 @@ library GenericCallLib {
 
   /**
    * @dev The calls that carry value, solver's route first then the owner's tail, for the event.
-   * Calls with no value are dropped and the array is truncated in place, so an order with none
+   * Calls with no value are omitted and the array is truncated in place, so an order with none
    * emits an empty array rather than a run of zero entries.
    */
   function toNativeTransfers(GenericCall[] calldata solverCalls, GenericCall[] calldata ownerCalls)
@@ -124,7 +124,7 @@ library GenericCallLib {
   /**
    * @dev Pointer slots and nothing else: assigning a struct to a memory array element writes a
    * pointer to a freshly built struct, so the bodies `new` allocates and zeroes are discarded
-   * unread. The callers write a pointer to every slot they then keep, truncating the rest away.
+   * unread. The callers write a pointer to every slot they keep, truncating the remainder.
    */
   function _mallocNativeTransfers(uint256 length)
     private

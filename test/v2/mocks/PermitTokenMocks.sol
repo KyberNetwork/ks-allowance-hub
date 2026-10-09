@@ -16,7 +16,7 @@ import {
  * @title PermitTokenMocks
  * @notice Tokens for the permits {CallsForwarder} relays. Each `permit` here recovers a real
  * EIP-712 signature over its arguments in a fixed order, so a call assembled with its arguments
- * in the wrong order would recover a different signer and fail rather than quietly pass.
+ * in the wrong order would recover a different signer and fail rather than pass undetected.
  * @dev The type strings below are transcribed from EIP-2612 and the ERC-721 permit drafts; the
  * tests sign against their own copies, never against these.
  */
@@ -30,7 +30,7 @@ contract ERC20PermitMock is ERC20, ERC20Permit {
   }
 }
 
-/// @notice ERC-721 permit as Uniswap v3 shipped it: `(spender, tokenId, deadline, v, r, s)`
+/// @notice ERC-721 permit as Uniswap v3 defines it: `(spender, tokenId, deadline, v, r, s)`
 contract ERC721PermitV3Mock is ERC721, EIP712 {
   error PermitExpired();
   error InvalidPermitSignature();
@@ -64,7 +64,8 @@ contract ERC721PermitV3Mock is ERC721, EIP712 {
   }
 }
 
-/// @notice ERC-721 permit as Uniswap v4 shipped it: `(spender, tokenId, deadline, nonce, signature)`
+/// @notice ERC-721 permit as Uniswap v4 defines it: `(spender, tokenId, deadline, nonce,
+/// signature)`
 contract ERC721PermitV4Mock is ERC721, EIP712 {
   error PermitExpired();
   error NonceAlreadyUsed();
@@ -108,11 +109,11 @@ contract ERC721PermitV4Mock is ERC721, EIP712 {
 
 /**
  * @notice A "token" whose EIP-2612 `permit` calls back into the hub before it returns
- * @dev {CallsForwarder-forwardCalls} takes no reentrancy lock, so a relayed permit is free to start an
- * order while the batch that relayed it is still running. That is deliberate — the forwarder moves
- * no assets of its own and every payload it relays authorises itself — and this mock is what makes
- * it observable. The permit arguments are ignored on purpose: the subject is the callback, not a
- * signature check, and a real token doing this would be the hostile case anyway.
+ * @dev {CallsForwarder-forwardCalls} takes no reentrancy lock, so a relayed permit may start an
+ * order while the batch that relayed it is still running. That is by design: the forwarder moves
+ * no assets of its own and every payload it relays authorises itself. This mock makes it
+ * observable. The permit arguments are ignored, since the subject is the callback rather than a
+ * signature check.
  */
 contract ReentrantPermitMock {
   address public immutable HUB;
@@ -142,9 +143,9 @@ contract ReentrantPermitMock {
 
 /**
  * @notice ERC-1155 that can be seeded onto a contract holding no receiver hook
- * @dev {ERC1155-_mint} runs the acceptance check and would revert against the hub, so the only way
- * balance can end up stranded there — and the only way a rescue path can be reached — is an update
- * that skips the check, which is exactly what a non-standard token or a direct storage write does.
+ * @dev {ERC1155-_mint} runs the acceptance check and would revert against the hub, so the only
+ * way a balance can become stranded there, and so the only way a rescue path can be reached, is an
+ * update that skips the check, as a non-standard token or a direct storage write would.
  */
 contract ERC1155SeedMock is ERC1155Mock {
   function mintUnchecked(address to, uint256 id, uint256 amount) external {

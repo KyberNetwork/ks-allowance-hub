@@ -28,8 +28,8 @@ import {IKSGenericRouter} from 'src/base/interfaces/IKSGenericRouter.sol';
  * @notice `SET-01..04`, `OWN-07`, `ROUTER-01..03` and `LOCK-01..04` — the settlement tail shared by
  * all four entry points.
  * @dev The role constant, the `TransferTokens` topic and the router's own function signature are
- * written out rather than imported: an expected value taken from the contract under test would agree
- * with a wrong one. The topic lives in {HubBase}, which is where the log picker needs it.
+ * written out rather than imported: an expected value taken from the contract under test would
+ * agree with a wrong one. The topic lives in {HubBase}, which is where the log picker needs it.
  */
 contract SettlementTest is HubBase {
   uint160 internal constant AMOUNT = 5 ether;
@@ -43,8 +43,8 @@ contract SettlementTest is HubBase {
 
   /**
    * SET-01 — the whole `TransferTokens` payload of a relayed order, byte for byte
-   * @dev `orderHash` joined the indexed fields in the restructure, so there are four topics now and
-   * the third is compared against the order hash rebuilt from the hand-written literals.
+   * @dev `orderHash` is indexed, so there are four topics, and the third is compared against the
+   * order hash rebuilt from the independent oracle.
    */
   function test_SET_01_transferTokensPayload() public {
     ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
@@ -195,7 +195,7 @@ contract SettlementTest is HubBase {
       'solver leg then owner leg, zero-value calls dropped'
     );
 
-    // the listed amounts are what actually moved, so the event is not a claim about nothing
+    // the listed amounts are what moved, so the event is not a claim about nothing
     assertEq(address(router).balance - routerBefore, 1, "the solver call's wei landed");
     assertEq(address(router2).balance - router2Before, 2, "the owner call's wei landed");
     assertEq(address(hub).balance, 0, 'nothing stranded in the hub');

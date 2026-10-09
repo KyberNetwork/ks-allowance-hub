@@ -9,9 +9,10 @@ import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer
 
 /**
  * @notice An owner's signed order to move assets and run an exact list of router calls
- * @dev Pins the calls themselves, so the owner signs what will run.
+ * @dev Fixes the calls themselves, so the owner signs what will run.
  * @param owner Account the assets come from
- * @param relayer Who may submit this order; the dead-address sentinel leaves it open to anyone
+ * @param relayer The account that may submit this order; the dead-address sentinel permits any
+ * caller
  * @param erc20Transfers ERC20 legs, moved from the owner to their targets
  * @param erc721Transfers ERC721 legs, moved from the owner to their targets
  * @param genericCalls Router calls to run once the assets have moved

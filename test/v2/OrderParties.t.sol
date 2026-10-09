@@ -22,13 +22,11 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  * @notice ORD-02b..04 — the delegated rails honour the parties the order names
  * @dev `relayer` and `solver` say who may submit an order on every rail, not only the Permit2 ones
  * that `ORD-02` and `ORD-03` cover. A credential authenticates the owner; it does not say who may
- * carry the order, so an authenticator that checked nothing of the sort would leave the field
- * unenforced. The last leg of each case is what keeps the carve-out honest: the owner is still not
- * subject to a field that exists to bound everybody else. `ORD-04` covers the remaining party,
+ * submit the order, so an authenticator that checked nothing of the sort would leave the field
+ * unenforced. The last leg of each case shows the exemption still holds: the owner is not subject
+ * to a field that exists to bound everybody else. `ORD-04` covers the remaining party,
  * the account the order draws on.
  *
- * These live in a file of their own because `FulfillOrderTest` produces a solc internal compiler
- * error under `via_ir` when another case joins it.
  */
 contract OrderPartiesTest is AuthenticatorBase {
   uint160 internal constant AMOUNT = 1 ether;

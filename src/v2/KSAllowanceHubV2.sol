@@ -36,12 +36,12 @@ import {
 
 /**
  * @title KSAllowanceHubV2
- * @notice Single approval target for KyberSwap: pulls a user's ERC20s and ERC721s and hands them
+ * @notice Single approval target for KyberSwap: pulls a user's ERC20s and ERC721s and passes them
  * to whitelisted routers in one transaction, so users approve this hub instead of every router.
- * @dev The owner signs one order struct — {ExecutionOrder} or {FulfillmentOrder} — which pins what
- * may move, where to, and the `relayer` or `solver` who may submit it. Only the ERC20 pull rail is
- * the submitter's: the delegated entry points take it as an argument, and the Permit2-signature ones
- * have no choice to make.
+ * @dev The owner signs one order struct — {ExecutionOrder} or {FulfillmentOrder} — which fixes
+ * what may move, to where, and the `relayer` or `solver` who may submit it. Only the ERC20 pull
+ * rail is the submitter's: the delegated entry points take it as an argument, and the
+ * Permit2-signature ones have no choice to make.
  *
  * An order is authenticated either by the owner's own Permit2 signature, which carries the order
  * as its witness, or by an {IOrderAuthenticator} the owner delegated through {AuthDelegator}. An
@@ -71,7 +71,7 @@ contract KSAllowanceHubV2 is
   bytes32 internal constant WHITELISTED_ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
 
   /**
-   * @notice Stands in for "the owner named nobody": any caller may submit the order, and on
+   * @notice Sentinel for an order that names no counterparty: any caller may submit it, and on
    * `solutionApprover` any route is accepted without an approval signature
    */
   address internal constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
@@ -98,7 +98,7 @@ contract KSAllowanceHubV2 is
     AuthDelegator('KyberSwap Allowance Hub', '2.0.0')
   {
     _batchGrantRole(WHITELISTED_ROUTER_ROLE, initialWhitelistedRouters);
-    // Guardians can drop a compromised router without waiting on the admin
+    // Guardians may revoke a compromised router without waiting for the admin
     _setRoleRevoker(WHITELISTED_ROUTER_ROLE, KSRoles.GUARDIAN_ROLE);
 
     PERMIT2 = permit2;
@@ -161,8 +161,8 @@ contract KSAllowanceHubV2 is
       order.genericCalls.toNativeTransfers()
     );
 
-    // Self-submitted: nothing to bind, since the order.owner is already the caller. Relayed: the order
-    // goes in as the witness, which is what stops a relayer altering it
+    // Self-submitted: nothing to bind, since the order.owner is already the caller. Relayed: the
+    // order is bound in as the witness, so a relayer cannot alter it
     if (msg.sender == order.owner) {
       _permitTransferFrom(
         order.owner, order.erc20Transfers, order.nonce, order.deadline, permit2Signature
@@ -272,8 +272,8 @@ contract KSAllowanceHubV2 is
       solution.solverCalls.toNativeTransfers(order.ownerCalls)
     );
 
-    // Self-submitted: nothing to bind, since the order.owner is already the caller. Relayed: the order
-    // goes in as the witness, which is what stops a solver altering it
+    // Self-submitted: nothing to bind, since the order.owner is already the caller. Relayed: the
+    // order is bound in as the witness, so a solver cannot alter it
     if (msg.sender == order.owner) {
       _permitTransferFrom(
         order.owner, order.erc20Transfers, order.nonce, order.deadline, permit2Signature
@@ -384,7 +384,7 @@ contract KSAllowanceHubV2 is
 
   /**
    * @dev Shared tail of both execution rails: the NFT leg, then the order's calls. The ERC20s
-   * have already moved by here, which is the only thing the two rails do differently.
+   * have already moved by this point, and that is the only difference between the two rails.
    */
   function _settleExecution(ExecutionOrder calldata order)
     internal
@@ -404,14 +404,15 @@ contract KSAllowanceHubV2 is
   ) internal returns (bytes[] memory results) {
     order.erc721Transfers.execute(order.owner);
 
-    // The validators bound what the solver did, so they run before the order.owner's tail acts on it
+    // The validators bound what the solver did, so they run before the owner's own tail acts on
+    // it
     results = DynamicArrayLibExt.malloc(solution.solverCalls.length + order.ownerCalls.length);
     _executeCalls(solution.solverCalls, results, 0);
     order.validationParams.afterExecution(beforeExecutionOutputs);
     _executeCalls(order.ownerCalls, results, solution.solverCalls.length);
   }
 
-  /// @dev Runs one call list into `results` from `offset`, checking each router role as it goes
+  /// @dev Runs one call list into `results` from `offset`, checking each router role in turn
   function _executeCalls(GenericCall[] calldata calls, bytes[] memory results, uint256 offset)
     internal
   {

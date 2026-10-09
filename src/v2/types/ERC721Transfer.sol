@@ -36,8 +36,8 @@ library ERC721TransferLib {
 
   /**
    * @dev EIP-712 hash of the array: its member hashes, concatenated and hashed. Word-sized members
-   * already sit in memory exactly as `abi.encodePacked` would lay them out, so the digest is taken
-   * over the array's own data and nothing is copied to reach it.
+   * are already laid out in memory exactly as `abi.encodePacked` would place them, so the digest is
+   * taken over the array's own data and nothing is copied.
    */
   function hash(ERC721Transfer[] calldata transfers) internal pure returns (bytes32) {
     bytes32[] memory hashes = EfficientHashLib.malloc(transfers.length);

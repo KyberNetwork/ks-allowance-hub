@@ -66,7 +66,8 @@ contract DelegationTest is AuthenticatorBase {
   // DEL — delegating an authenticator
   // -------------------------------------------------------------------------------------------
 
-  /// DEL-01 — the owner delegates for themselves: no nonce is spent and the authenticator is trusted
+  /// DEL-01 — the owner delegates for themselves: no nonce is spent and the authenticator is
+  /// trusted
   function test_DEL_01_selfDelegationSpendsNoNonce() public {
     uint256 word = 0;
 
@@ -174,10 +175,11 @@ contract DelegationTest is AuthenticatorBase {
   }
 
   /**
-   * DEL-08 — a withdrawal never reaches the authenticator, so one that reverts cannot trap the owner
-   * @dev The safety valve has to work unconditionally; an authenticator the owner can no longer get
-   * out of would keep authenticating orders forever. Every leg carries the same non-empty `data`,
-   * which is what makes the authenticator reachable at all: with an empty payload
+   * DEL-08 — a withdrawal never reaches the authenticator, so one that reverts cannot trap the
+   * owner
+   * @dev Withdrawal must work unconditionally; an authenticator the owner could not
+   * withdraw would keep authenticating orders forever. Every leg carries the same non-empty
+   * `data`, without which the authenticator is not reached at all: with an empty payload
    * `initAuthentication` is skipped on both directions and the contrast would be between two calls
    * that never happened.
    */
@@ -192,8 +194,8 @@ contract DelegationTest is AuthenticatorBase {
 
     bad.setReverting(true);
 
-    // the control: the same payload on the delegate direction now fails at the authenticator, so the
-    // withdrawal below is evidence about the direction rather than about the payload
+    // the control: the same payload on the delegate direction now fails at the authenticator, so
+    // the withdrawal below is evidence about the direction rather than about the payload
     vm.prank(owner);
     vm.expectRevert(RevertingAuthenticator.Nope.selector);
     hub.updateDelegation(owner, address(bad), true, hex'1234', 0, deadline, '');
@@ -216,7 +218,7 @@ contract DelegationTest is AuthenticatorBase {
     vm.expectRevert(IAuthDelegator.InvalidDelegationSignature.selector);
     hub.updateDelegation(owner, address(authenticator), false, '', 5, deadline, delegateSig);
 
-    // the same signature under its own direction is accepted, which is what makes that evidence
+    // the same signature under its own direction is accepted, so the refusal is evidence
     vm.prank(relayer);
     hub.updateDelegation(owner, address(authenticator), true, '', 5, deadline, delegateSig);
     assertTrue(hub.authDelegated(owner, address(authenticator)), 'delegated on its own direction');
@@ -240,8 +242,8 @@ contract DelegationTest is AuthenticatorBase {
    * DEL-10 — `initAuthentication` ignores the direction word, so a "revoke" payload still approves
    * @dev The two authenticator entry points read the same bytes differently:
    * `updateAuthentication` takes word 1 as the direction, while `initAuthentication` follows word 0
-   * to the key and stops. Delegating therefore has one direction only — the payload cannot ask it to
-   * revoke — and the second half here is what makes that a statement about `initAuthentication`
+   * to the key and stops. Delegating therefore has one direction only — the payload cannot ask it
+   * to revoke — and the second half here is what makes that a statement about `initAuthentication`
    * rather than about the payload, since the very same bytes through `updateAuthentication` do the
    * opposite.
    */
@@ -264,10 +266,10 @@ contract DelegationTest is AuthenticatorBase {
 
   /**
    * DEL-11 — both payload shapes name the same key
-   * @dev `initAuthentication` follows a relative offset out of word 0 rather than assuming the struct
-   * starts at a fixed place, so `abi.encode(key)` and `abi.encode(key, anything)` land on the same
-   * bytes and hash to the same key. The revocation between the two legs is what stops the second one
-   * being a no-op against a key that was already approved.
+   * @dev `initAuthentication` follows a relative offset out of word 0 rather than assuming the
+   * struct starts at a fixed place, so `abi.encode(key)` and `abi.encode(key, anything)` land on
+   * the same bytes and hash to the same key. The revocation between the two legs is what stops the
+   * second one being a no-op against a key that was already approved.
    */
   function test_DEL_11_bothPayloadShapesNameTheSameKey() public {
     uint256 deadline = block.timestamp + 1 days;
@@ -318,10 +320,10 @@ contract DelegationTest is AuthenticatorBase {
 
   /**
    * DEL-13 — an empty payload skips the authenticator, even on the delegate direction
-   * @dev The authenticator is set to revert, so merely not reverting is already suggestive — but only
-   * suggestive: one that had been called and answered would satisfy that just as well. The
-   * expectation of zero calls with the exact calldata is the oracle, and the calldata is built from a
-   * signature string written out in this file rather than from the production interface.
+   * @dev The authenticator is set to revert, so merely not reverting is already suggestive — but
+   * only suggestive: one that had been called and answered would satisfy that just as well. The
+   * expectation of zero calls with the exact calldata is the oracle, and the calldata is built from
+   * a signature string written out in this file rather than from the production interface.
    */
   function test_DEL_13_emptyPayloadNeverCallsInitAuthentication() public {
     RevertingAuthenticator bad = new RevertingAuthenticator();
@@ -344,10 +346,10 @@ contract DelegationTest is AuthenticatorBase {
 
   /**
    * DEL-14 — the guard reads the payload's length, not the direction alone
-   * @dev One byte apart from DEL-13, same direction, same authenticator. A single zero byte is enough
-   * to cross the guard, which isolates `data.length > 0` from any notion of the payload being
-   * meaningful. The first leg also fixes the exact calldata the hub forwards, which is what the
-   * zero-call expectations in DEL-13 and DEL-15 are asserting the absence of: a signature string
+   * @dev One byte apart from DEL-13, same direction, same authenticator. A single zero byte is
+   * enough to cross the guard, which isolates `data.length > 0` from any notion of the payload
+   * being meaningful. The first leg also fixes the exact calldata the hub forwards, whose absence
+   * is what the zero-call expectations in DEL-13 and DEL-15 assert: a signature string
    * that named nothing would make those two pass vacuously, and would fail here.
    */
   function test_DEL_14_nonEmptyPayloadDoesCallInitAuthentication() public {
@@ -384,8 +386,8 @@ contract DelegationTest is AuthenticatorBase {
   /**
    * DEL-15 — a withdrawal skips the authenticator whatever the payload says
    * @dev DEL-13 held the direction and emptied the payload; this holds a payload DEL-14 has just
-   * shown does reach an authenticator and flips the direction instead. Between the three the guard is
-   * pinned as the conjunction it is written as. Nothing is delegated here beforehand, so the
+   * shown does reach an authenticator and flips the direction instead. Between the three the guard
+   * is pinned as the conjunction it is written as. Nothing is delegated here beforehand, so the
    * withdrawal is not even undoing anything — and still must not call out, because the escape hatch
    * has to work against an authenticator that has started refusing every call.
    */

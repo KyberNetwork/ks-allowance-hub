@@ -36,8 +36,8 @@ import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
 /**
  * @title ForwarderTest
  * @notice `PF-01..09`, `PF-FUZZ` and `FWD-13..19` plus `FWD-PAUSE/VALUE/REENTRY`: the
- * self-authorising calls {ICallsForwarder-forwardCalls} relays, its selector allowlist, its per-entry
- * failure bits and the things it deliberately does not guard.
+ * self-authorising calls {ICallsForwarder-forwardCalls} relays, its selector allowlist, its
+ * per-entry failure bits and the things it deliberately does not guard.
  * @dev `forwardCalls` makes a plain `call` per entry, so the observable oracle is never the return
  * value: it is the allowance, approval or nonce the target holds afterwards. Every digest here is
  * built from a type string written out in this file from EIP-2612, the DAI permit and the ERC-721
@@ -158,7 +158,7 @@ contract ForwarderTest is AuthenticatorBase {
     assertEq(_daiNonce(owner), nonce + 1, 'nonce consumed');
   }
 
-  /// PF-03 — the ERC-721 permit as Uniswap v3 shipped it, with the signature split into v/r/s
+  /// PF-03 — the ERC-721 permit as Uniswap v3 defines it, with the signature split into v/r/s
   function test_PF_03_erc721V3PermitForwarded() public {
     uint256 deadline = block.timestamp + 1 hours;
 
@@ -182,7 +182,7 @@ contract ForwarderTest is AuthenticatorBase {
     assertEq(nftV3.nonces(PERMIT_NFT_ID), 1, 'nonce consumed');
   }
 
-  /// PF-04 — and as v4 shipped it, with an unordered nonce and a packed signature
+  /// PF-04 — and as v4 defines it, with an unordered nonce and a packed signature
   function test_PF_04_erc721V4PermitForwarded() public {
     uint256 deadline = block.timestamp + 1 hours;
     uint256 nonce = 99;
@@ -427,10 +427,11 @@ contract ForwarderTest is AuthenticatorBase {
 
   /**
    * FWD-13 — a relayed `updateAuthentication` approves a session key, on the authenticator's nonce
-   * @dev The seventh selector is not a token permit at all: it is the owner telling an authenticator
-   * which credential may sign for them, relayed so the approval and the order that uses it fit in
-   * one transaction. The authenticator owns the replay protection for it, so its bitmap moves and the
-   * hub's does not — the hub is only the postman here and burns nothing of its own.
+   * @dev The seventh selector is not a token permit at all: it is the owner telling an
+   * authenticator which credential may sign for them, relayed so the approval and the order that
+   * uses it fit in one transaction. The authenticator owns the replay protection for it, so its
+   * bitmap moves and the hub's does not: the hub only relays the call and spends nothing of its
+   * own.
    */
   function test_FWD_13_updateAuthenticationIsRelayedAndApprovesTheKey() public {
     AuthKey memory fresh = _secpKey(masterSigner, block.timestamp + 30 days);
@@ -501,8 +502,8 @@ contract ForwarderTest is AuthenticatorBase {
 
   /**
    * FWD-14 — the same call with an empty signature is refused even when the owner sends it
-   * @dev `forwardCalls` does `targets[i].call(...)`, so the `msg.sender` the authenticator sees is the
-   * hub, never the account that submitted the transaction. The authenticator's owner branch is
+   * @dev `forwardCalls` does `targets[i].call(...)`, so the `msg.sender` the authenticator sees is
+   * the hub, never the account that submitted the transaction. The authenticator's owner branch is
    * therefore out of reach from here, and the empty signature that branch would have accepted is
    * checked instead — and fails. This is the line that stops the hub being a trusted authenticator
    * for anybody: if the authenticator took the hub's word for who the owner was, this call would
@@ -529,9 +530,9 @@ contract ForwarderTest is AuthenticatorBase {
 
     assertFalse(authenticator.masterKeys(owner, freshHash), 'nothing was approved');
 
-    // the same instruction, from the same account, straight at the authenticator: there the owner IS
-    // `msg.sender` and the empty signature is accepted, which is what makes the refusal above
-    // evidence about the hop through the hub rather than about the payload
+    // the same instruction, from the same account, directly at the authenticator: there the owner
+    // is `msg.sender` and the empty signature is accepted, so the refusal above is evidence about
+    // the hop through the hub rather than about the payload
     vm.prank(owner);
     authenticator.updateAuthentication(owner, _approveKey(fresh), nonce, deadline, noSignature);
     assertTrue(authenticator.masterKeys(owner, freshHash), 'accepted when the owner calls directly');
@@ -569,14 +570,14 @@ contract ForwarderTest is AuthenticatorBase {
 
   /**
    * FWD-16 — `initAuthentication` and the two `authenticate*` entry points are not forwardable
-   * @dev The security-critical half of the allowlist. `initAuthentication` takes no signature, nonce
-   * or deadline: it trusts its caller absolutely, and the hub is the caller every forwarded call
-   * arrives as. Were its selector relayable, anyone could hand an authenticator an arbitrary key for
-   * an arbitrary owner and then sign that owner's orders with it. `authenticateExecution` and
-   * `authenticateFulfillment` are the same shape of hazard pointed at the order rails, and there are
-   * two of them now where there was one `verifyAuth`. All three selectors are rebuilt here from
-   * signature strings written out by hand, because deriving them from the production interface would
-   * let a wrong signature there agree with a wrong expectation here.
+   * @dev The security-critical half of the allowlist. `initAuthentication` takes no signature,
+   * nonce or deadline: it trusts its caller absolutely, and the hub is the caller every forwarded
+   * call arrives as. Were its selector relayable, anyone could hand an authenticator an arbitrary
+   * key for an arbitrary owner and then sign that owner's orders with it. `authenticateExecution`
+   * and `authenticateFulfillment` are the same shape of hazard pointed at the order rails, and
+   * there are two of them now where there was one `verifyAuth`. All three selectors are rebuilt
+   * here from signature strings written out by hand, because deriving them from the production
+   * interface would let a wrong signature there agree with a wrong expectation here.
    */
   function test_FWD_16_initAndAuthenticateAreNotForwardable() public {
     AuthKey memory victimKey = _secpKey(relayer, block.timestamp + 30 days);
@@ -769,8 +770,9 @@ contract ForwarderTest is AuthenticatorBase {
    * FWD-PAUSE-01 — a pause does not close the forwarder
    * @dev Intended: relaying a permit moves nobody's assets, it only records an allowance, and an
    * allowance granted during a pause cannot be spent while the pause holds — the order entry points
-   * are shut, which the second half of this case shows on the same paused hub. Keeping `forwardCalls`
-   * open means a user mid-flow can still land the approval half of their transaction.
+   * are shut, which the second half of this case shows on the same paused hub. Keeping
+   * `forwardCalls` open means a user mid-flow can still land the approval half of their
+   * transaction.
    */
   function test_FWD_PAUSE_01_forwardStillWorksWhilePaused() public {
     uint256 value = 5 ether;
@@ -803,10 +805,10 @@ contract ForwarderTest is AuthenticatorBase {
 
   /**
    * FWD-VALUE-01 — value sent with `forwardCalls` is stranded in the hub
-   * @dev `forwardCalls` is payable and carries no native-spend guard, because none of the seven calls
-   * it relays takes value: it forwards `data` only, never `msg.value`. So anything attached simply
-   * stays, with no `receive` and no refund to send it back. Not a loss of user funds — a rescuer
-   * sweeps it — but it is the contract's behaviour and a caller should not expect change.
+   * @dev `forwardCalls` is payable and carries no native-spend guard, because none of the seven
+   * calls it relays takes value: it forwards `data` only, never `msg.value`. So anything attached
+   * simply stays, with no `receive` and no refund to send it back. Not a loss of user funds — a
+   * rescuer sweeps it — but it is the contract's behaviour and a caller should not expect change.
    */
   function test_FWD_VALUE_01_valueSentWithForwardIsStranded() public {
     uint256 value = 5 ether;
@@ -828,12 +830,12 @@ contract ForwarderTest is AuthenticatorBase {
 
   /**
    * FWD-REENTRY-01 — a relayed permit may reenter the hub and start an order
-   * @dev Confirmed-intended behaviour, pinned rather than fixed. `forwardCalls` takes no lock: it moves
-   * no assets of its own, and the lock that matters is the one an order entry point takes for the
-   * duration of an order. So a target called from inside a batch is free to open one, and the order
-   * it opens is authorised on its own merits — here the owner's Permit2 signature over an
-   * open-relayer witness, which is what lets the token contract submit it at all. The assertion is
-   * that the reentrant order actually settled, not merely that nothing reverted.
+   * @dev Confirmed-intended behaviour, pinned rather than fixed. `forwardCalls` takes no lock: it
+   * moves no assets of its own, and the lock that matters is the one an order entry point takes for
+   * the duration of an order, so a target called from inside a batch may open one, and the
+   * order it opens is authorised on its own merits — here the owner's Permit2 signature over an
+   * open-relayer witness, without which the token contract could not submit it at all. The
+   * assertion is that the reentrant order settled, not merely that nothing reverted.
    */
   function test_FWD_REENTRY_01_relayedPermitMayReenterTheHub() public {
     ReentrantPermitMock reentrant = new ReentrantPermitMock(address(hub));

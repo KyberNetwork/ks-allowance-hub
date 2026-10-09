@@ -7,8 +7,8 @@ import {TransientSlot} from 'openzeppelin-contracts/contracts/utils/TransientSlo
 
 /**
  * @title MsgSender
- * @notice Publishes whose behalf the contract is acting on, so a callee that sees this contract as
- * its `msg.sender` can still identify the user, and doubles as the reentrancy guard.
+ * @notice Publishes the account the contract is acting for, so a callee that sees this contract as
+ * its `msg.sender` can still identify the user, and also serves as the reentrancy guard.
  */
 abstract contract MsgSender is IMsgSender {
   using TransientSlot for *;

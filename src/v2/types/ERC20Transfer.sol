@@ -10,7 +10,7 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
  * @notice One ERC20 leg of an order: how much of `token` leaves the owner for `target`
- * @dev `amount` is `uint160` to match Permit2's allowance width, so the same struct feeds both the
+ * @dev `amount` is `uint160` to match Permit2's allowance width, so the same struct serves both the
  * Permit2 rails and a plain approval to the hub.
  */
 struct ERC20Transfer {
@@ -45,8 +45,8 @@ library ERC20TransferLib {
 
   /**
    * @dev EIP-712 hash of the array: its member hashes, concatenated and hashed. Word-sized members
-   * already sit in memory exactly as `abi.encodePacked` would lay them out, so the digest is taken
-   * over the array's own data and nothing is copied to reach it.
+   * are already laid out in memory exactly as `abi.encodePacked` would place them, so the digest is
+   * taken over the array's own data and nothing is copied.
    */
   function hash(ERC20Transfer[] calldata transfers) internal pure returns (bytes32) {
     bytes32[] memory hashes = EfficientHashLib.malloc(transfers.length);
@@ -67,7 +67,7 @@ library ERC20TransferLib {
     return EfficientHashLib.hash(hashes);
   }
 
-  /// @dev Pulls each transfer from `owner` straight to its target
+  /// @dev Pulls each transfer from `owner` directly to its target
   function execute(ERC20Transfer[] calldata transfers, address owner) internal {
     for (uint256 i = 0; i < transfers.length; i++) {
       ERC20Transfer calldata transfer = transfers[i];
@@ -75,7 +75,7 @@ library ERC20TransferLib {
     }
   }
 
-  /// @dev Shapes the transfers as a Permit2 batch permit
+  /// @dev Converts the transfers into a Permit2 batch permit
   function toPermitBatchTransferFrom(
     ERC20Transfer[] calldata transfers,
     uint256 nonce,
@@ -109,7 +109,7 @@ library ERC20TransferLib {
     }
   }
 
-  /// @dev Shapes the transfers as Permit2 signature-transfer details
+  /// @dev Converts the transfers into Permit2 signature-transfer details
   function toSignatureTransferDetails(ERC20Transfer[] calldata transfers)
     internal
     pure
@@ -139,7 +139,7 @@ library ERC20TransferLib {
     }
   }
 
-  /// @dev The target of each transfer, in order; this is what a witness binds
+  /// @dev The target of each transfer, in order, as a witness binds them
   function extractTargets(ERC20Transfer[] calldata transfers)
     internal
     pure
@@ -163,7 +163,7 @@ library ERC20TransferLib {
     }
   }
 
-  /// @dev Shapes the transfers as Permit2 allowance-transfer details, all drawn from `owner`
+  /// @dev Converts the transfers into Permit2 allowance-transfer details, all drawn from `owner`
   function toAllowanceTransferDetails(ERC20Transfer[] calldata transfers, address owner)
     internal
     pure
@@ -194,7 +194,7 @@ library ERC20TransferLib {
   }
 
   /**
-   * @dev The three allocators below hand back pointer slots and nothing else. Assigning a struct
+   * @dev The three allocators below return pointer slots and nothing else. Assigning a struct
    * to a memory array element writes a pointer to a freshly built struct, so the bodies `new`
    * allocates and zeroes are discarded unread; every slot is written before anything reads one.
    */

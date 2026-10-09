@@ -12,14 +12,14 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 /**
  * @notice Attached to the owner's Permit2 signature on a relayed
  * {KSAllowanceHubV2-fulfillOrderWithPermit2Signature}
- * @dev Deliberately does not pin the solver's route; it names who may choose it and the
- * validators that bound the result instead.
- * @param solver Who may submit; the dead-address sentinel leaves it open to anyone
- * @param erc20Targets Where each ERC20 leg lands, in order
+ * @dev Does not fix the solver's route; it names who may choose it and the validators that bound
+ * the result instead.
+ * @param solver The account that may submit; the dead-address sentinel permits any caller
+ * @param erc20Targets The destination of each ERC20 leg, in order
  * @param erc721Transfers The NFT leg
  * @param ownerCalls The tail the owner fixes exactly, for effects no validator can check
  * @param validationParams The validators that bound the solver's route
- * @param callsSigner Who may approve that route
+ * @param callsSigner The account that may approve that route
  */
 struct FulfillmentWitness {
   address solver;
@@ -35,7 +35,7 @@ struct FulfillmentWitness {
  * @dev The fulfillment counterpart of the declaration beside {ExecutionWitness}, which says why
  * both exist and why they cannot share a file.
  * @param permitted Tokens and amounts the permit covers
- * @param spender Who may pull them
+ * @param spender The account that may transfer them
  * @param nonce Permit2's own nonce
  * @param deadline Last timestamp at which the permit may be used
  * @param witness The order, bound to the signature

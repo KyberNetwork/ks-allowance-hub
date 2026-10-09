@@ -39,7 +39,7 @@ contract MulticallTest is AuthenticatorBase {
 
   bytes32 internal constant ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
 
-  /// @dev The float the hub holds before a call, so `msg.value + 1` is actually payable
+  /// @dev The float the hub holds before a call, so `msg.value + 1` is payable
   uint256 internal constant PREFUND = 1 ether;
   uint256 internal constant VALUE = 1 ether;
 
@@ -229,12 +229,12 @@ contract MulticallTest is AuthenticatorBase {
   /**
    * MC-06 — one batch approves a session key at an authenticator and then spends on it
    * @dev The capability the refactor exists for, end to end. The relayer submits both halves and
-   * signs neither: `forwardCalls` relays the owner's `updateAuthentication` — the authenticator sees the
-   * hub as `msg.sender`, so the owner's own approval signature is what authorises it — and the order
-   * in the next slot settles on the key that call has just approved, over the delegated rail, with
-   * the session key signing rather than the wallet. Nothing outside the batch approves the key,
-   * which the pre-state assertion fixes; the delegation put in place beforehand carries no key of
-   * its own, so the hub's gate is open while the authenticator still knows nothing.
+   * signs neither: `forwardCalls` relays the owner's `updateAuthentication` — the authenticator
+   * sees the hub as `msg.sender`, so the owner's own approval signature is what authorises it — and
+   * the order in the next slot settles on the key that call has just approved, over the delegated
+   * rail, with the session key signing rather than the wallet. Nothing outside the batch approves
+   * the key, which the pre-state assertion fixes; the delegation put in place beforehand carries no
+   * key of its own, so the hub's gate is open while the authenticator still knows nothing.
    */
   function test_MC_06_approveAMasterKeyAndSpendOnItInOneBatch() public {
     AuthKey memory key = _secpKey(masterSigner, block.timestamp + 30 days);
@@ -314,7 +314,7 @@ contract MulticallTest is AuthenticatorBase {
    * MC-08 — one batch mints an ephemeral key from a master key and spends on it
    * @dev MC-06 with the wallet out of the loop. The only signatures are the master key's, over the
    * grant, and the ephemeral key's, over the order; the owner signs nothing and submits nothing,
-   * which is what the second tier exists for. The order on its own is refused first, so the batch
+   * which is the purpose of the second tier. The order on its own is refused first, so the batch
    * is evidence that slot 0 is what let it through.
    */
   function test_MC_08_masterKeyMintsAnEphemeralKeyAndSpendsOnItInOneBatch() public {
@@ -421,7 +421,7 @@ contract MulticallTest is AuthenticatorBase {
     vm.deal(owner, value);
 
     if (value > 0 && !allPayable) {
-      // The non-payable guard reverts with no data and `multicall` bubbles what it was handed, so
+      // The non-payable guard reverts with no data and `multicall` bubbles what it received, so
       // the batch surfaces an empty revert. `bytes('')` matches that and nothing carrying data
       vm.prank(owner);
       vm.expectRevert(bytes(''));

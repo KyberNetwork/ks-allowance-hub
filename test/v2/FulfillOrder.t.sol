@@ -24,8 +24,8 @@ import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessCon
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 /**
- * @notice `AUTH-01b`, `AUTH-07..07b`, `SOL-01..04`, `OWN-01..06` and `VAL-01..04` — both fulfillment
- * rails, the solution approval and the validator bracket.
+ * @notice `AUTH-01b`, `AUTH-07..07b`, `SOL-01..04`, `OWN-01..06` and `VAL-01..04` — both
+ * fulfillment rails, the solution approval and the validator bracket.
  * @dev A fulfillment splits in two: the owner fixes `ownerCalls` and the validators, a solver
  * supplies the {FulfillmentSolution}, and the `solutionApprover` the order names is who may approve
  * that route. The validators run between the two call lists.
@@ -366,9 +366,9 @@ contract FulfillOrderTest is AuthenticatorBase {
   /**
    * SOL-06 — a named approver's route is spent once, and the sentinel's is not spent at all
    * @dev The hub burns `solution.nonce` inside the approval path, so the burn happens only when the
-   * order names an approver. The third leg records that asymmetry rather than assuming it: under the
-   * sentinel the very same nonce settles twice, so a route approved for nobody in particular carries
-   * no replay bound of its own.
+   * order names an approver. The third leg records that asymmetry rather than assuming it: under
+   * the sentinel the very same nonce settles twice, so a route approved for nobody in particular
+   * carries no replay bound of its own.
    */
   function test_SOL_06_theRouteNonceIsSpentOnlyUnderANamedApprover() public {
     uint256 deadline = block.timestamp + 1 hours;
@@ -415,7 +415,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
   /**
    * SOL-02 — the sentinel approver accepts any route, with no signature to present
-   * @dev Two different routes settle under the very same order, which is what "any route" means, and
+   * @dev Two different routes settle under the same order, which is the meaning of "any route", and
    * neither carries an approval. The last leg is the contrast: a named approver on the otherwise
    * identical order does demand one.
    */
@@ -537,8 +537,8 @@ contract FulfillOrderTest is AuthenticatorBase {
   /**
    * OWN-01 — the tail runs after the solver's route, not merely alongside it
    * @dev Both observers are the same router, so this is about when they ran and not about who was
-   * called. The one at the head of the solver list finds nothing, which is what "ran before the
-   * producers" looks like here and is what stops the second assertion being satisfiable by an
+   * called. The one at the head of the solver list finds nothing, the signature of having run
+   * before the producers, and that is what stops the second assertion being satisfiable by an
    * implementation that ran the tail first. The owner's observer finds the LAST of the two
    * products, so it ran after every solver call rather than merely after the first.
    */
@@ -619,9 +619,9 @@ contract FulfillOrderTest is AuthenticatorBase {
   }
 
   /**
-   * OWN-03 — the same binding on the delegated rail, through the order the authenticator is handed
-   * @dev Carries validators as well as a tail, so both of the members the restructure moved into the
-   * signed order are exercised. As in OWN-02 the first leg is the control.
+   * OWN-03 — the same binding on the delegated rail, through the order the authenticator receives
+   * @dev Carries validators as well as a tail, so both of those signed members are exercised. As in
+   * OWN-02 the first leg is the control.
    */
   function test_OWN_03_authenticationBindsOwnerCalls() public {
     _delegateKeyThroughHub(key);
@@ -779,8 +779,8 @@ contract FulfillOrderTest is AuthenticatorBase {
 
   /**
    * VAL-01 — the hooks bracket the whole order on the delegated rail, each snapshot to its owner
-   * @dev The spy reads the router's balance inside each hook, which is what actually orders the
-   * hooks against the transfer and the router call: `beforeExecution` must see the pre-pull
+   * @dev The spy reads the router's balance inside each hook, which is what orders the hooks
+   * against the transfer and the router call: `beforeExecution` must see the pre-pull
    * balance and `afterExecution` the balance after both the pull and the router leg.
    */
   function test_VAL_01_hookOrderingAndSnapshotPairing() public {

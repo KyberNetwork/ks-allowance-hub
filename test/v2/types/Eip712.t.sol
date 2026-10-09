@@ -51,7 +51,7 @@ contract Eip712Test is V2TestBase {
   }
 
   // -------------------------------------------------------------------------------------------
-  // T712-13..16 — the four types the restructure introduced
+  // T712-13..16 — four further signed types
   // -------------------------------------------------------------------------------------------
 
   /**
@@ -60,7 +60,7 @@ contract Eip712Test is V2TestBase {
    * production string only while the literal they are compared against is itself right. This says
    * the ordering property directly and against production: the hand-written names are first shown
    * to sort ascending, then each is shown to occur later in the production string than the one
-   * before it. The two halves together are what make either of them evidence.
+   * before it. Neither half is evidence without the other.
    */
   function test_T712_17_permit2TypeStringsSortTheirReferencedTypes() public pure {
     string[] memory executionNames = new string[](4);
@@ -100,7 +100,7 @@ contract Eip712Test is V2TestBase {
     );
   }
 
-  /// @dev The owner's tail is non-empty here, so the new member is actually encoded
+  /// @dev The owner's tail is non-empty here, so that member is encoded
   function test_T712_fulfillmentWitnessStructHash() public pure {
     (address[] memory targets, ERC721Transfer[] memory nfts, GenericCall[] memory ownerCalls) =
       _sample();
@@ -114,7 +114,7 @@ contract Eip712Test is V2TestBase {
 
   /**
    * @dev Both hashers against the same literal, and the `usePermit2Allowances` bit shown to move
-   * the hash — which is what makes it a signed switch rather than a submitter's choice
+   * the hash, so it is a signed switch rather than a submitter's choice
    */
   function test_T712_executionOrderStructHash() public view {
     ExecutionOrder memory order = _sampleExecutionOrder();
@@ -140,7 +140,7 @@ contract Eip712Test is V2TestBase {
     assertEq(this.extHashSolution(solution), expected, 'calldata hasher');
   }
 
-  /// @dev `orderHash` is a member, which is what ties one approval to one order
+  /// @dev `orderHash` is a member, so one approval ties to one order
   function test_T712_solutionApprovalStructHash() public view {
     FulfillmentSolution memory solution = _sampleSolution();
     bytes32 orderHash = keccak256('an arbitrary order hash');

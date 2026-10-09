@@ -3,8 +3,7 @@ pragma solidity ^0.8.0;
 
 /**
  * @notice A bitfield carried in one word, read by position
- * @dev Only the low 256 positions exist; anything above reads as false. Kept as `bytes32` rather
- * than `uint256`: the hub sits on the IR stack limit, and the numeric type tips it over.
+ * @dev Only the low 256 positions exist; anything above reads as false.
  */
 type PackedBits is bytes32;
 

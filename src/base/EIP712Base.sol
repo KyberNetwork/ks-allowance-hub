@@ -8,9 +8,9 @@ import {EIP712} from 'openzeppelin-contracts/contracts/utils/cryptography/EIP712
 /**
  * @title EIP712Base
  * @notice OpenZeppelin's {EIP712} with the domain separator exposed under the name signing tools
- * look for
+ * expect
  * @dev ERC-5267's `eip712Domain()` already describes the domain, but `DOMAIN_SEPARATOR()` is what
- * ERC-2612 tooling reaches for, and it is not on {EIP712}. Inherit this rather than {EIP712} so
+ * ERC-2612 tooling expects, and {EIP712} does not declare it. Inherit this rather than {EIP712} so
  * every signing domain in the codebase publishes its separator the same way.
  */
 abstract contract EIP712Base is IEIP712Base, EIP712 {

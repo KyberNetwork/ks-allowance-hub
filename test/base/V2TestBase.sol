@@ -35,9 +35,9 @@ import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
  * @dev Every typehash and struct hash below is derived from the Solidity struct definitions, by
  * {SchemaHash} over the `forge bind-json` schemas. Nothing here may import a production constant or
  * hashing library: Permit2 derives its typehash from the string the hub passes it, so a test that
- * signs with the same production constant agrees with a wrong type string just as happily as with a
- * right one. The schemas are the independent oracle, and `test/v2/types/SchemaAudit.t.sol` compares
- * the production constants against them.
+ * signs with the same production constant would agree with a wrong type string as readily as with
+ * a right one. The schemas are the independent oracle, and `test/v2/types/SchemaAudit.t.sol`
+ * compares the production constants against them.
  *
  * The struct types are imported for their ABI shape only. Each one carries a `using ... global`
  * attachment, so the production hashers are reachable from any file that imports them — they are
@@ -51,12 +51,9 @@ abstract contract V2TestBase is Test {
 
   uint256 internal constant FORK_BLOCK = 23_932_050;
 
-  /// @dev Sentinel the hub uses for "the owner named nobody"; written out, never imported
+  /// @dev Sentinel the hub uses for an order that names no counterparty; written out, never
+  /// imported
   address internal constant ANY = 0x000000000000000000000000000000000000dEaD;
-
-  // ---------------------------------------------------------------------------------------------
-  // Literal type strings, transcribed from the structs in src/**/types
-  // ---------------------------------------------------------------------------------------------
 
   // ---------------------------------------------------------------------------------------------
   // Actors
@@ -76,7 +73,7 @@ abstract contract V2TestBase is Test {
    * @dev Strips any code at `account` so it behaves as a plain EOA.
    * Well-known test keys have EIP-7702 delegations on mainnet, so at a post-Pectra fork block an
    * address from `makeAddrAndKey` can arrive carrying an `0xef0100..` indicator. Permit2 and
-   * `SignatureChecker` then take the ERC-1271 branch and a perfectly good ECDSA signature fails.
+   * `SignatureChecker` then take the ERC-1271 branch and a valid ECDSA signature fails.
    */
   function _asEoa(address account) internal {
     vm.etch(account, '');
@@ -87,11 +84,7 @@ abstract contract V2TestBase is Test {
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Hand-written member and array hashing
-  // ---------------------------------------------------------------------------------------------
-
-  // ---------------------------------------------------------------------------------------------
-  // Hand-written struct hashes
+  // Struct hashes, derived from the bind-json schemas
   // ---------------------------------------------------------------------------------------------
 
   function lExecutionOrderHash(ExecutionOrder memory order) internal pure returns (bytes32) {
@@ -305,7 +298,8 @@ abstract contract V2TestBase is Test {
     return keccak256(abi.encodePacked('\x19\x01', _permit2DomainSeparator(), structHash));
   }
 
-  /// @dev Read from the deployed Permit2, which is an external dependency rather than code under test
+  /// @dev Read from the deployed Permit2, which is an external dependency rather than code under
+  /// test
   function _permit2DomainSeparator() internal view returns (bytes32 separator) {
     (bool ok, bytes memory data) = PERMIT2.staticcall(abi.encodeWithSignature('DOMAIN_SEPARATOR()'));
     require(ok, 'permit2 domain');

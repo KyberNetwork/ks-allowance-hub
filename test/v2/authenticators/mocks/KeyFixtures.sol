@@ -11,7 +11,7 @@ import {Vm} from 'forge-std/Vm.sol';
  * byte by byte from the W3C layout, with a base64url encoder written out below rather than
  * borrowed; the RSA signature is raised from a checked-in 2048-bit private key with the modexp
  * precompile and a hand-written PKCS#1 v1.5 padding. A fixture that reused the authenticator's own
- * decoding would agree with a broken decoder exactly as happily as with a correct one — which is
+ * decoding would agree with a broken decoder as readily as with a correct one — which is
  * how the `decodeBytes32` word-index bug survived until now.
  */
 library KeyFixtures {
@@ -177,7 +177,7 @@ library KeyFixtures {
    * Signing on-chain would need a modexp with the 2048-bit private exponent, which is far too
    * expensive to run inside a test, so the vector below was produced outside the repository and
    * verified against the modulus. Verification itself uses the public exponent and stays cheap,
-   * which is what the contract under test actually does.
+   * as the contract under test does.
    */
   bytes32 internal constant RSA_FIXED_DIGEST =
     0xa1b2c3d4e5f60718293a4b5c6d7e8f9011223344556677889900112233445566;

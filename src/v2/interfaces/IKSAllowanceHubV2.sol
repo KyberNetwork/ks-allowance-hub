@@ -40,10 +40,10 @@ interface IKSAllowanceHubV2 {
    * @dev The hub checks that `owner` delegated `authenticator` and that the caller is the
    * `order.relayer`, the owner themselves, or anyone when the order leaves the field open; the
    * authenticator must revert when `authenticationData` does not authenticate the order, and owns
-   * its own replay protection. A credential says the owner authorised the order, not who may carry
-   * it, so the hub reads the pin itself rather than leaving it to the authenticator.
+   * its own replay protection. A credential states that the owner authorised the order, not who
+   * may submit it, so the hub enforces that itself rather than leaving it to the authenticator.
    * @param order What the owner signed, including who may submit it
-   * @param authenticator The delegated authenticator to ask
+   * @param authenticator The delegated authenticator to consult
    * @param authenticationData Credential and signature, in whatever shape that authenticator reads
    * @param usePermit2Allowances Draw the ERC20 legs on the owner's Permit2 allowance rather than on
    * a plain allowance to this hub
@@ -73,11 +73,12 @@ interface IKSAllowanceHubV2 {
    * @notice Settles a fulfillment authenticated by a delegated {IOrderAuthenticator}: a solver
    * supplies the route, the owner's validators bound it, and the owner's own tail runs after
    * @dev The validators run between the two call lists, so they measure the solver's work before
-   * `order.ownerCalls` acts on it. The owner's tail is deliberately not validated. As on the
+   * `order.ownerCalls` acts on it. The owner's tail is not validated, by design. As on the
    * execution rail, the caller must be the `order.solver`, the owner themselves, or anyone when the
    * order leaves the field open.
-   * @param order What the owner signed, including the validators, their own tail and who may solve
-   * @param authenticator The delegated authenticator to ask
+   * @param order What the owner signed, including the validators, their own tail and which
+   * account may solve it
+   * @param authenticator The delegated authenticator to consult
    * @param authenticationData Credential and signature, in whatever shape that authenticator reads
    * @param solution The route the solver chose
    * @param solutionSignature Approval of `solution` by the `solutionApprover` the order names

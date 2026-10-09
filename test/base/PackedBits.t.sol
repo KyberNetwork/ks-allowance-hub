@@ -9,9 +9,9 @@ import {PackedBits} from 'src/base/types/PackedBits.sol';
  * @title PackedBitsTest
  * @notice PB-01..02 — the one-word bitfield that carries `allowFailure` and `authFlags`.
  * @dev The oracle is arithmetic written out here, not a second copy of the shift: a position is
- * read by dividing the word down and taking the remainder, which is the same value by a different
- * route. The words under test are held in storage so the optimiser cannot fold the call away and
- * answer from the source text instead of from the compiled library.
+ * read by dividing the word and taking the remainder, the same value reached another way. The words
+ * under test are held in storage so the optimiser cannot fold the call away and answer from the
+ * source text instead of from the compiled library.
  */
 contract PackedBitsTest is Test {
   bytes32 internal allSetWord;
@@ -32,8 +32,8 @@ contract PackedBitsTest is Test {
    * PB-01 — every position below 256 exists, and nothing at or above it does
    * @dev The shift is unmasked, so the EVM's own `SHR` is what answers for an out-of-range index:
    * it yields zero for any shift of 256 or more. A caller that walks a batch longer than 256
-   * entries therefore sees `false` from entry 256 onwards rather than wrapping back to bit 0 —
-   * which is the safe direction, since a cleared failure bit bubbles the revert.
+   * entries therefore sees `false` from entry 256 onwards rather than wrapping back to bit 0, the
+   * safe direction, since a cleared failure bit bubbles the revert.
    */
   function test_PB_01_positionsThatExistAndPositionsThatDoNot() public view {
     PackedBits allSet = PackedBits.wrap(allSetWord);
@@ -78,10 +78,10 @@ contract PackedBitsTest is Test {
    * cleans the value: the `and(..., 0x1)` is the only thing that does. Both halves matter. The
    * first fails outright if the mask is dropped — a `bool` carrying `~1` is truthy, and
    * `assertFalse` rejects it. The second reads the raw stack slot, which is what a caller storing
-   * the answer into a `bool` field or comparing it against another `bool` would actually keep.
+   * the answer into a `bool` field or comparing it against another `bool` would keep.
    */
   function test_PB_02_resultIsACanonicalBool() public view {
-    // every bit set except bit 0: an unmasked shift would hand back a very loud non-zero word
+    // every bit set except bit 0: an unmasked shift would return a non-zero word
     PackedBits allButZero = PackedBits.wrap(allButZeroWord);
     assertFalse(allButZero.pos(0), 'bit 0 is clear however loud its neighbours are');
     assertTrue(allButZero.pos(1), 'and those neighbours really are set');

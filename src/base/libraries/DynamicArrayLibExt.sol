@@ -5,10 +5,10 @@ import {DynamicArrayLib} from 'solady/utils/DynamicArrayLib.sol';
 
 /**
  * @title DynamicArrayLibExt
- * @notice What {DynamicArrayLib} does not cover: allocating a `bytes[]` without the zeroing `new`
- * performs
- * @dev Only for an array whose every slot is written before anything reads one, since a slot left
- * alone holds whatever the allocator handed over. {DynamicArrayLib} has casts for the word-sized
+ * @notice Allocation of a `bytes[]` without the zeroing that `new` performs, which
+ * {DynamicArrayLib} does not provide
+ * @dev Only for an array whose every slot is written before anything reads one, since an unwritten
+ * slot holds whatever the allocator returned. {DynamicArrayLib} has casts for the word-sized
  * element types but none for `bytes[]`, whose elements are pointers.
  */
 library DynamicArrayLibExt {

@@ -13,16 +13,6 @@ import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
-/**
- * @title NonceNamespaceTest
- * @notice NONCE-06..07 — a nonce belongs to whoever signed the data it guards
- * @dev One contract holds signed data of more than one kind, verified against more than one
- * signer, and each kind carries a number its signer chose. While every kind shared the account the
- * data acted upon, those numbers collided: spending one blocked an unrelated signature that
- * happened to pick the same number. Each case here spends a number in the owner's namespace and
- * then settles data signed by somebody else carrying that same number, which does not compile into
- * anything meaningful unless the namespaces are separate.
- */
 import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
 
 /**
@@ -30,8 +20,9 @@ import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
  * @notice NONCE-01..07 and NONCE-FUZZ — the unordered bitmap
  * @dev A nonce is a word index in its top bits and a bit position in its low byte, spent in any
  * order, and a namespace belongs to whoever signed the data the nonce guards. The boundary cases
- * pin the split between word and bit; the namespace cases pin that two kinds of signed data in one
- * contract cannot collide on a number.
+ * pin the split between word and bit. The namespace cases spend a number in the owner's namespace
+ * and then settle data signed by somebody else carrying that same number, which cannot succeed
+ * unless the namespaces are separate.
  */
 contract NoncesTest is AuthenticatorBase {
   uint160 internal constant AMOUNT = 1 ether;

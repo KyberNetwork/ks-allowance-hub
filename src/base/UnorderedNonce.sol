@@ -8,7 +8,7 @@ import {IUnorderedNonce} from './interfaces/IUnorderedNonce.sol';
  * @notice Permit2-style nonce bitmap: signatures can be consumed in any order, and each contract
  * inheriting this keeps its own namespace, so the same number is independent across contracts.
  * @dev A namespace belongs to whoever signed the data the nonce guards, not to the account the
- * data acts upon: a session key signing orders for an owner gets one of its own.
+ * data acts upon: a session key signing orders for an owner receives a namespace of its own.
  */
 abstract contract UnorderedNonce is IUnorderedNonce {
   /// @inheritdoc IUnorderedNonce
@@ -25,7 +25,7 @@ abstract contract UnorderedNonce is IUnorderedNonce {
     uint256 bitPos = uint8(nonce);
 
     uint256 bit = 1 << bitPos;
-    // Flipping turns the bit off again when it was already spent, which is how reuse is caught
+    // Flipping clears a bit that was already spent, so reuse is detected
     uint256 flipped = nonces[signer][wordPos] ^= bit;
     if (flipped & bit == 0) revert NonceAlreadyUsed();
   }

@@ -11,9 +11,9 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 /**
  * @notice Attached to the owner's Permit2 signature on a relayed
  * {KSAllowanceHubV2-executeOrderWithPermit2Signature}
- * @dev Pins everything the permit itself does not. The permit covers only tokens and amounts.
- * @param relayer Who may submit; the dead-address sentinel leaves it open to anyone
- * @param erc20Targets Where each ERC20 leg lands, in order
+ * @dev Fixes everything the permit itself does not: the permit covers only tokens and amounts.
+ * @param relayer The account that may submit; the dead-address sentinel permits any caller
+ * @param erc20Targets The destination of each ERC20 leg, in order
  * @param erc721Transfers The NFT leg
  * @param genericCalls The exact router calls the owner agreed to
  */
@@ -26,12 +26,13 @@ struct ExecutionWitness {
 
 /**
  * @notice The type Permit2 hashes on the relayed execution rail
- * @dev Permit2 closes its own stub with the witness type string the hub hands it, and this is the
- * result. Declaring it keeps that string checkable against a struct rather than a transcription.
- * Permit2 names both witness variants alike, so the fulfillment one is declared beside
+ * @dev Permit2 completes its own stub with the witness type string the hub supplies, and this is
+ * the result. Declaring it keeps that string checkable against a struct rather than a
+ * transcription. Permit2 names both witness variants alike, so the fulfillment one is declared
+ * beside
  * {FulfillmentWitness} and the two never share a file.
  * @param permitted Tokens and amounts the permit covers
- * @param spender Who may pull them
+ * @param spender The account that may transfer them
  * @param nonce Permit2's own nonce
  * @param deadline Last timestamp at which the permit may be used
  * @param witness The order, bound to the signature

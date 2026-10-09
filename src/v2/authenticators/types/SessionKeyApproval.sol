@@ -4,10 +4,10 @@ pragma solidity ^0.8.0;
 import {AuthKey} from './AuthKey.sol';
 
 /**
- * @notice A master key's decision about one session key, for one account
- * @dev `approved` carries the direction: true approves the key, false revokes it. `owner` is in
- * the decision because one credential can be a master key for several accounts, and a signature
- * must not speak for all of them.
+ * @notice A master key's decision about one session key, for a single account
+ * @dev `approved` carries the direction: true approves the key, false revokes it. `owner` is a
+ * member because one credential may be a master key for several accounts, and a single
+ * signature must not authorise the decision for all of them.
  */
 struct SessionKeyApproval {
   address owner;

@@ -252,7 +252,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
    * of the order, so one signed order settles on either pull rail and the submitter chooses. What
    * bounds the submitter is the rest of the order, which is signed — the two legs here
    * are the same order shape and the same amount, and each leg asserts that the source it did *not*
-   * name went untouched, which is what makes this about the argument and not about the transfer.
+   * name went untouched, so this is about the argument and not about the transfer.
    */
   function test_ORD_01_theAssetSourceIsTheSubmittersArgument() public {
     _delegateKeyThroughHub(key);
@@ -323,7 +323,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
   }
 
   /**
-   * AUTH-11 — the authenticator is handed the whole order, unaltered, with the data it was given
+   * AUTH-11 — the authenticator receives the whole order, unaltered, with the data it was given
    * @dev The hub forwards the struct rather than repackaging it into a payload of its own.
    * The expected calldata is assembled from a function signature written out in this file, so a
    * mistyped signature would produce a selector the hub never sends and the expectation would fail

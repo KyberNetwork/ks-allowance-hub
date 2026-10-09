@@ -26,8 +26,7 @@ import {SolutionApproval} from 'src/v2/types/SolutionApproval.sol';
  * @notice Hashes a signed type against the `encodeType` its own struct declares, and exposes the
  * schemas that are needed as strings
  * @dev The schemas come from `forge bind-json`, so the expected side of a signature assertion is
- * read off the struct rather than transcribed. Kept out of `V2TestBase` because referencing the
- * generated schemas from that contract does not compile: it sits on the IR stack limit.
+ * read off the struct rather than transcribed.
  */
 library SchemaHash {
   /// @dev `address(uint160(uint256(keccak256('hevm cheat code'))))`, written out so a library can
@@ -67,7 +66,7 @@ library SchemaHash {
   }
 
   /// @dev The approvals are hashed from a typehash rather than a struct because production takes
-  /// their keys already hashed, which lets a case pin the encoding with hashes of its own choosing
+  /// their keys already hashed, so a case may pin the encoding with hashes of its own choosing
   function masterKeyApprovalTypehash() internal pure returns (bytes32) {
     return keccak256(bytes(JsonBindings.schema_MasterKeyApproval));
   }

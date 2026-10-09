@@ -26,11 +26,12 @@ import {DynamicArrayLibExt} from '../base/libraries/DynamicArrayLibExt.sol';
  * @notice Relays calls that authorise themselves — token permits and authenticator updates — so
  * approval and the spend that follows fit in one transaction.
  * @dev Anyone may relay anyone's call: the signature inside each payload is the authorisation.
- * The selector allowlist is what keeps that safe, since this contract is the `msg.sender` every
- * target sees.
+ * Safety rests on the selector allowlist, since this contract is the `msg.sender` every target
+ * sees.
  */
 abstract contract CallsForwarder is ICallsForwarder, NativeSpendGuard, Common {
-  /// @dev Permit2's two `permit` overloads, written out because `.selector` cannot pick between them
+  /// @dev Permit2's two `permit` overloads, written out because `.selector` cannot distinguish
+  /// them
   bytes4 internal constant PERMIT2_PERMIT_SINGLE_SELECTOR =
     bytes4(keccak256('permit(address,((address,uint160,uint48,uint48),address,uint256),bytes)'));
 

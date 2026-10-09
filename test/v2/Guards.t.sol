@@ -58,7 +58,7 @@ contract OrderAuthenticatorMock is IOrderAuthenticator {
  * @notice `GUARD-01..06`, `GATE-01`, `MC-01..06` and `MC-FUZZ` — pause, deadline, native spend, the
  * reentrancy lock and the batching surface.
  * @dev Role identifiers are written out rather than imported, so a changed production constant
- * cannot quietly agree with the expectation.
+ * cannot agree with the expectation undetected.
  *
  * The native-spend boundary is derived from {NativeSpendGuard}: the modifier compares
  * `balance + msg.value` against a `balanceBefore` that already contains `msg.value`, which
@@ -77,7 +77,7 @@ contract GuardsTest is AuthenticatorBase {
   bytes32 internal constant DEFAULT_ADMIN = bytes32(0);
   bytes32 internal constant ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
 
-  /// @dev The float the hub holds before a call, so `msg.value + 1` is actually payable
+  /// @dev The float the hub holds before a call, so `msg.value + 1` is payable
   uint256 internal constant PREFUND = 1 ether;
   uint256 internal constant VALUE = 1 ether;
 
@@ -253,8 +253,8 @@ contract GuardsTest is AuthenticatorBase {
 
   /**
    * GATE-01 — the fulfillment Permit2 rail is pausable, deadline-checked, locked and native-guarded
-   * @dev Four modifiers, one leg each, on the entry point they were added to. The control at the top
-   * is what makes the four refusals evidence: the same shape of order settles when none of them
+   * @dev Four modifiers, one leg each, on the entry point they were added to. The control at the
+   * top is what makes the four refusals evidence: the same shape of order settles when none of them
    * fires, so each leg differs from a settling order in exactly the one thing its modifier reads.
    */
   function test_GATE_01_fulfillPermit2CarriesTheFourModifiers() public {
