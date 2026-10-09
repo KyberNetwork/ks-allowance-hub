@@ -9,8 +9,8 @@ import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
 import {
   ISessionOrderAuthenticator
 } from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
+import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 import {KeyType} from 'src/v2/authenticators/types/KeyType.sol';
-import {SessionKey} from 'src/v2/authenticators/types/SessionKey.sol';
 import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
@@ -39,13 +39,22 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     uint256 expirationOffset;
   }
 
+  /// @dev The master key rail's domain: two expiries, since one bounds the other
+  struct TierFuzz {
+    uint256 nonce;
+    uint256 deadlineOffset;
+    uint256 masterExpirationOffset;
+    uint256 sessionExpirationOffset;
+    bool approved;
+  }
+
   uint160 internal constant AMOUNT = 3 ether;
 
-  SessionKey internal key;
+  AuthKey internal key;
 
   function setUp() public override {
     super.setUp();
-    key = _secpKey(sessionSigner, block.timestamp + 30 days);
+    key = _secpKey(masterSigner, block.timestamp + 30 days);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -59,7 +68,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     uint256 deadline = block.timestamp + 1 hours;
     uint256 before = IERC20(WETH).balanceOf(address(router));
 
-    _executeViaAuthenticator(key, sessionKeyPk, nonce, deadline, true);
+    _executeViaAuthenticator(key, masterKeyPk, nonce, deadline, true);
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'tokens moved');
     assertEq(
@@ -80,18 +89,18 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
    * `updateDelegation`. No nonce is spent, because no signature was presented to replay.
    */
   function test_SV_02_ownerApprovesDirectlyWithoutSignature() public {
-    SessionKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
+    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
 
     vm.prank(owner);
     authenticator.updateAuthentication(owner, _approveKey(fresh), 0, block.timestamp + 1 days, '');
 
-    assertTrue(authenticator.approvedKeys(owner, _keyHash(fresh)), 'approved');
+    assertTrue(authenticator.masterKeys(owner, _keyHash(fresh)), 'approved');
     assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'no nonce spent without a signature');
   }
 
   /// SV-02b — but not on someone else's behalf
   function test_SV_02b_strangerCannotApproveWithoutSignature() public {
-    SessionKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
+    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
 
     vm.prank(relayer);
     vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
@@ -100,12 +109,13 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
   /// SV-03 — a signature from anyone but the owner is rejected
   function test_SV_03_directApprovalWrongSigner() public {
-    SessionKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
+    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
     uint256 deadline = block.timestamp + 1 days;
 
-    bytes32 digest =
-      lTypedDataHash(_authenticatorDomain(), lSessionApproval(_keyHash(fresh), true, 4, deadline));
-    bytes memory sig = _sign(sessionKeyPk, digest); // the session key, not the owner
+    bytes32 digest = lTypedDataHash(
+      _authenticatorDomain(), lMasterKeyApproval(_keyHash(fresh), true, 4, deadline)
+    );
+    bytes memory sig = _sign(masterKeyPk, digest); // the session key, not the owner
 
     vm.prank(relayer);
     vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
@@ -114,9 +124,9 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
   /// SV-04 — the approval deadline is enforced by the authenticator itself
   function test_SV_04_directApprovalExpired() public {
-    SessionKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
+    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
     uint256 deadline = block.timestamp - 1;
-    bytes memory sig = _signSessionApproval(fresh, true, 5, deadline);
+    bytes memory sig = _signMasterKeyApproval(fresh, true, 5, deadline);
 
     vm.prank(relayer);
     vm.expectRevert(_deadlinePassed(deadline));
@@ -130,16 +140,16 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
   /// SV-REV-01 — the owner revokes directly, and a key that had been authenticating orders stops
   function test_SV_REV_01_ownerRevokesDirectly() public {
     _delegateKeyThroughHub(key);
-    _executeViaAuthenticator(key, sessionKeyPk, 30, block.timestamp + 1 hours, true);
+    _executeViaAuthenticator(key, masterKeyPk, 30, block.timestamp + 1 hours, true);
 
     vm.prank(owner);
     authenticator.updateAuthentication(owner, _revokeKey(key), 0, block.timestamp + 1 days, '');
 
-    assertFalse(authenticator.approvedKeys(owner, _keyHash(key)), 'revoked');
+    assertFalse(authenticator.masterKeys(owner, _keyHash(key)), 'revoked');
     assertTrue(hub.authDelegated(owner, address(authenticator)), 'the delegation itself survives');
 
     vm.expectRevert(_notApproved(key));
-    _executeViaAuthenticator(key, sessionKeyPk, 31, block.timestamp + 1 hours, false);
+    _executeViaAuthenticator(key, masterKeyPk, 31, block.timestamp + 1 hours, false);
   }
 
   /// SV-REV-02 — a relayed revocation carrying the owner's signature spends an authenticator nonce
@@ -147,12 +157,12 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
 
     uint256 deadline = block.timestamp + 1 days;
-    bytes memory sig = _signSessionApproval(key, false, 32, deadline);
+    bytes memory sig = _signMasterKeyApproval(key, false, 32, deadline);
 
     vm.prank(relayer);
     authenticator.updateAuthentication(owner, _revokeKey(key), 32, deadline, sig);
 
-    assertFalse(authenticator.approvedKeys(owner, _keyHash(key)), 'revoked');
+    assertFalse(authenticator.masterKeys(owner, _keyHash(key)), 'revoked');
     assertEq(authenticator.nonces(lNonceKey(owner), 0), 1 << 32, 'nonce spent');
   }
 
@@ -167,10 +177,10 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
 
     uint256 deadline = block.timestamp + 1 days;
-    SessionKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
+    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
 
     // an approval, submitted as a revocation
-    bytes memory approval = _signSessionApproval(fresh, true, 33, deadline);
+    bytes memory approval = _signMasterKeyApproval(fresh, true, 33, deadline);
     vm.prank(relayer);
     vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
     authenticator.updateAuthentication(owner, _revokeKey(fresh), 33, deadline, approval);
@@ -179,18 +189,18 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     // the same signature, submitted as what the owner actually signed
     vm.prank(relayer);
     authenticator.updateAuthentication(owner, _approveKey(fresh), 33, deadline, approval);
-    assertTrue(authenticator.approvedKeys(owner, _keyHash(fresh)), 'approved on its own direction');
+    assertTrue(authenticator.masterKeys(owner, _keyHash(fresh)), 'approved on its own direction');
 
     // and the mirror: a revocation, submitted as an approval
-    bytes memory revocation = _signSessionApproval(key, false, 34, deadline);
+    bytes memory revocation = _signMasterKeyApproval(key, false, 34, deadline);
     vm.prank(relayer);
     vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
     authenticator.updateAuthentication(owner, _approveKey(key), 34, deadline, revocation);
-    assertTrue(authenticator.approvedKeys(owner, _keyHash(key)), 'still approved after the refusal');
+    assertTrue(authenticator.masterKeys(owner, _keyHash(key)), 'still approved after the refusal');
 
     vm.prank(relayer);
     authenticator.updateAuthentication(owner, _revokeKey(key), 34, deadline, revocation);
-    assertFalse(authenticator.approvedKeys(owner, _keyHash(key)), 'revoked on its own direction');
+    assertFalse(authenticator.masterKeys(owner, _keyHash(key)), 'revoked on its own direction');
 
     assertEq(
       authenticator.nonces(lNonceKey(owner), 0),
@@ -205,13 +215,13 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
     vm.prank(owner);
     authenticator.updateAuthentication(owner, _revokeKey(key), 0, block.timestamp + 1 days, '');
-    assertFalse(authenticator.approvedKeys(owner, _keyHash(key)), 'revoked');
+    assertFalse(authenticator.masterKeys(owner, _keyHash(key)), 'revoked');
 
     vm.prank(owner);
     authenticator.updateAuthentication(owner, _approveKey(key), 0, block.timestamp + 1 days, '');
-    assertTrue(authenticator.approvedKeys(owner, _keyHash(key)), 'approved again');
+    assertTrue(authenticator.masterKeys(owner, _keyHash(key)), 'approved again');
 
-    _executeViaAuthenticator(key, sessionKeyPk, 35, block.timestamp + 1 hours, true);
+    _executeViaAuthenticator(key, masterKeyPk, 35, block.timestamp + 1 hours, true);
   }
 
   /**
@@ -221,7 +231,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
    * into the digest instead would not match.
    */
   function test_SV_REV_05_nonCanonicalDirectionIsNarrowed() public {
-    SessionKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
+    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
     uint256 deadline = block.timestamp + 1 days;
 
     bytes memory data = _approveKey(fresh);
@@ -230,12 +240,12 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
       mstore(add(data, 0x40), 2)
     }
 
-    bytes memory sig = _signSessionApproval(fresh, true, 36, deadline);
+    bytes memory sig = _signMasterKeyApproval(fresh, true, 36, deadline);
 
     vm.prank(relayer);
     authenticator.updateAuthentication(owner, data, 36, deadline, sig);
 
-    assertTrue(authenticator.approvedKeys(owner, _keyHash(fresh)), 'narrowed to true');
+    assertTrue(authenticator.masterKeys(owner, _keyHash(fresh)), 'narrowed to true');
   }
 
   // -------------------------------------------------------------------------------------------
@@ -257,7 +267,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
    * checked, or expecting the named nonce to have been spent.
    */
   function test_SV_UPD_01_ownerBranchIgnoresTheSignatureAndTheNonce() public {
-    SessionKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
+    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
     bytes32 freshHash = _keyHash(fresh);
     uint256 nonce = 40;
     uint256 deadline = block.timestamp + 1 days;
@@ -269,7 +279,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     vm.prank(owner);
     authenticator.updateAuthentication(owner, approve, nonce, deadline, garbage);
 
-    assertTrue(authenticator.approvedKeys(owner, freshHash), 'approved on a signature over nothing');
+    assertTrue(authenticator.masterKeys(owner, freshHash), 'approved on a signature over nothing');
     assertEq(
       authenticator.nonces(lNonceKey(owner), nonce >> 8),
       0,
@@ -280,19 +290,19 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     // untouched bitmap implies
     vm.prank(owner);
     authenticator.updateAuthentication(owner, approve, nonce, deadline, garbage);
-    assertTrue(authenticator.approvedKeys(owner, freshHash), 'still approved');
+    assertTrue(authenticator.masterKeys(owner, freshHash), 'still approved');
     assertEq(authenticator.nonces(lNonceKey(owner), nonce >> 8), 0, 'still nothing burned');
 
     // and with an effect the third time, so "it settles again" is more than an idempotent write:
     // the state is moved away in between and the identical call moves it back
     vm.prank(owner);
     authenticator.updateAuthentication(owner, _revokeKey(fresh), nonce, deadline, garbage);
-    assertFalse(authenticator.approvedKeys(owner, freshHash), 'revoked, on the same dead signature');
+    assertFalse(authenticator.masterKeys(owner, freshHash), 'revoked, on the same dead signature');
 
     vm.prank(owner);
     authenticator.updateAuthentication(owner, approve, nonce, deadline, garbage);
     assertTrue(
-      authenticator.approvedKeys(owner, freshHash), 'and the very same call approves it again'
+      authenticator.masterKeys(owner, freshHash), 'and the very same call approves it again'
     );
     assertEq(
       authenticator.nonces(lNonceKey(owner), nonce >> 8),
@@ -336,29 +346,27 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
   function test_SV_06_unapprovedKeyRejected() public {
     _delegateKeyThroughHub(key);
 
-    SessionKey memory stranger = _secpKey(relayer, block.timestamp + 30 days);
+    AuthKey memory stranger = _secpKey(relayer, block.timestamp + 30 days);
 
     vm.expectRevert(_notApproved(stranger));
-    _executeViaAuthenticator(stranger, sessionKeyPk, 8, block.timestamp + 1 hours, false);
+    _executeViaAuthenticator(stranger, masterKeyPk, 8, block.timestamp + 1 hours, false);
   }
 
   /// SV-07 — expiry is inclusive: the expiry second itself still works, the one after it does not
   function test_SV_07_expiryBoundary() public {
     uint256 t = block.timestamp + 1 days;
 
-    SessionKey memory expiring = _secpKey(sessionSigner, t);
+    AuthKey memory expiring = _secpKey(masterSigner, t);
     _delegateKeyThroughHub(expiring);
 
     vm.warp(t);
-    _executeViaAuthenticator(expiring, sessionKeyPk, 9, t + 1 hours, true);
+    _executeViaAuthenticator(expiring, masterKeyPk, 9, t + 1 hours, true);
 
     vm.warp(t + 1);
     vm.expectRevert(
-      abi.encodeWithSelector(
-        ISessionOrderAuthenticator.SessionKeyExpired.selector, block.timestamp, t
-      )
+      abi.encodeWithSelector(ISessionOrderAuthenticator.AuthKeyExpired.selector, block.timestamp, t)
     );
-    _executeViaAuthenticator(expiring, sessionKeyPk, 10, t + 1 hours, false);
+    _executeViaAuthenticator(expiring, masterKeyPk, 10, t + 1 hours, false);
   }
 
   /// SV-08 — an approved key still has to have signed this particular order
@@ -378,10 +386,10 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     uint256 nonce = 12;
     uint256 deadline = block.timestamp + 1 hours;
 
-    _executeViaAuthenticator(key, sessionKeyPk, nonce, deadline, true);
+    _executeViaAuthenticator(key, masterKeyPk, nonce, deadline, true);
 
     vm.expectRevert(IUnorderedNonce.NonceAlreadyUsed.selector);
-    _executeViaAuthenticator(key, sessionKeyPk, nonce, deadline, false);
+    _executeViaAuthenticator(key, masterKeyPk, nonce, deadline, false);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -406,7 +414,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     );
 
     // signed as an execution, then submitted through the fulfillment entry point
-    bytes memory sig = _sign(sessionKeyPk, _executionDigest(_standardOrder(nonce, deadline)));
+    bytes memory sig = _sign(masterKeyPk, _executionDigest(_standardOrder(nonce, deadline)));
 
     vm.prank(relayer);
     vm.expectRevert(ISessionOrderAuthenticator.InvalidAuthenticationSignature.selector);
@@ -437,7 +445,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     hub.fulfillOrderWithDelegatedAuthentication(
       fulfillOrder,
       address(authenticator),
-      _fulfillmentAuthData(fulfillOrder, key, sessionKeyPk),
+      _fulfillmentAuthData(fulfillOrder, key, masterKeyPk),
       _route(_calls(_routerCall(0, hex'01'))),
       '',
       false
@@ -448,20 +456,20 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
   /**
    * SV-06b — the approval gate guards the fulfillment path too, not just the execution one
-   * @dev `authenticateFulfillment` duplicates `authenticateExecution` rather than sharing it, so
-   * `SV-06` constrains only the execution copy and this path needs its own case. The second leg is
-   * the control — the same order shape under the approved key settles.
+   * @dev Both entry points share one `_authenticate`, so what this constrains beyond `SV-06` is the
+   * hub-side wiring: that the fulfillment path reaches it at all, over the fulfillment shape. The
+   * second leg is the control — the same order shape under the approved key settles.
    */
   function test_SV_06b_unapprovedKeyRejectedOnTheFulfillmentPath() public {
     _delegateKeyThroughHub(key);
 
-    SessionKey memory stranger = _secpKey(relayer, block.timestamp + 30 days);
+    AuthKey memory stranger = _secpKey(relayer, block.timestamp + 30 days);
 
     vm.expectRevert(_notApproved(stranger));
-    _fulfillViaAuthenticator(stranger, sessionKeyPk, 60, block.timestamp + 1 hours);
+    _fulfillViaAuthenticator(stranger, masterKeyPk, 60, block.timestamp + 1 hours);
 
     uint256 before = IERC20(WETH).balanceOf(address(router));
-    _fulfillViaAuthenticator(key, sessionKeyPk, 61, block.timestamp + 1 hours);
+    _fulfillViaAuthenticator(key, masterKeyPk, 61, block.timestamp + 1 hours);
     assertEq(
       IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the approved key still settles'
     );
@@ -476,23 +484,21 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
   function test_SV_07b_expiryBoundaryOnTheFulfillmentPath() public {
     uint256 t = block.timestamp + 1 days;
 
-    SessionKey memory expiring = _secpKey(sessionSigner, t);
+    AuthKey memory expiring = _secpKey(masterSigner, t);
     _delegateKeyThroughHub(expiring);
 
     vm.warp(t);
     uint256 before = IERC20(WETH).balanceOf(address(router));
-    _fulfillViaAuthenticator(expiring, sessionKeyPk, 62, t + 1 hours);
+    _fulfillViaAuthenticator(expiring, masterKeyPk, 62, t + 1 hours);
     assertEq(
       IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the expiry second itself settles'
     );
 
     vm.warp(t + 1);
     vm.expectRevert(
-      abi.encodeWithSelector(
-        ISessionOrderAuthenticator.SessionKeyExpired.selector, block.timestamp, t
-      )
+      abi.encodeWithSelector(ISessionOrderAuthenticator.AuthKeyExpired.selector, block.timestamp, t)
     );
-    _fulfillViaAuthenticator(expiring, sessionKeyPk, 63, t + 1 hours);
+    _fulfillViaAuthenticator(expiring, masterKeyPk, 63, t + 1 hours);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -503,10 +509,10 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
 
     // same signer, later expiry: a different key as far as the approval is concerned
-    SessionKey memory stretched = _secpKey(sessionSigner, key.expiration + 1);
+    AuthKey memory stretched = _secpKey(masterSigner, key.expiration + 1);
 
     vm.expectRevert(_notApproved(stretched));
-    _executeViaAuthenticator(stretched, sessionKeyPk, 15, block.timestamp + 1 hours, false);
+    _executeViaAuthenticator(stretched, masterKeyPk, 15, block.timestamp + 1 hours, false);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -516,7 +522,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
   /// SV-KEY-SECP-01 is covered by SV-01; this is the ERC-1271 half
   function test_SV_KEY_SECP_02_contractSigner() public {
     // a session key naming a contract: SignatureChecker falls through to ERC-1271
-    SessionKey memory walletKey = SessionKey({
+    AuthKey memory walletKey = AuthKey({
       publicKey: abi.encode(address(_wallet())),
       keyType: KeyType.Secp256k1,
       expiration: block.timestamp + 30 days
@@ -530,7 +536,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
   /// SV-KEY-P256-01 / -02 — a canonical signature is accepted, its malleable twin is not
   function test_SV_KEY_P256() public {
-    SessionKey memory p256 = SessionKey({
+    AuthKey memory p256 = AuthKey({
       publicKey: KeyFixtures.p256PublicKey(),
       keyType: KeyType.P256,
       expiration: block.timestamp + 30 days
@@ -560,7 +566,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
   /// SV-KEY-WEBAUTHN-01..03
   function test_SV_KEY_WebAuthn() public {
-    SessionKey memory wa = SessionKey({
+    AuthKey memory wa = AuthKey({
       publicKey: KeyFixtures.p256PublicKey(),
       keyType: KeyType.WebAuthn,
       expiration: block.timestamp + 30 days
@@ -598,9 +604,9 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
    * the public exponent and is what the contract actually performs.
    */
   function test_SV_KEY_Rsa() public {
-    SessionKeyHarness harness = new SessionKeyHarness();
+    AuthKeyHarness harness = new AuthKeyHarness();
 
-    SessionKey memory rsa = SessionKey({
+    AuthKey memory rsa = AuthKey({
       publicKey: KeyFixtures.rsaPublicKey(),
       keyType: KeyType.RSA,
       expiration: block.timestamp + 30 days
@@ -618,7 +624,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     );
 
     // OZ refuses a modulus below the 2048-bit floor, whatever the signature says
-    SessionKey memory shortRsa = SessionKey({
+    AuthKey memory shortRsa = AuthKey({
       publicKey: KeyFixtures.rsaPublicKeyWithShortModulus(),
       keyType: KeyType.RSA,
       expiration: block.timestamp + 30 days
@@ -661,35 +667,35 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     uint256 expiration = block.timestamp + bound(f.expirationOffset, 0, 365 days);
     uint256 deadline = block.timestamp + bound(f.deadlineOffset, 0, 30 days);
 
-    SessionKey memory fresh =
-      SessionKey({publicKey: abi.encode(recipient), keyType: keyType, expiration: expiration});
+    AuthKey memory fresh =
+      AuthKey({publicKey: abi.encode(recipient), keyType: keyType, expiration: expiration});
 
     // SV-02's route, used here to establish the opposite pre-state without spending a nonce
     vm.prank(owner);
     authenticator.updateAuthentication(owner, _updateData(fresh, !f.approved), 0, deadline, '');
-    assertEq(authenticator.approvedKeys(owner, _keyHash(fresh)), !f.approved, 'pre-state');
+    assertEq(authenticator.masterKeys(owner, _keyHash(fresh)), !f.approved, 'pre-state');
     assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'no nonce spent without a signature');
 
-    bytes memory sig = _signSessionApproval(fresh, f.approved, f.nonce, deadline);
+    bytes memory sig = _signMasterKeyApproval(fresh, f.approved, f.nonce, deadline);
 
     vm.prank(relayer);
     authenticator.updateAuthentication(
       owner, _updateData(fresh, f.approved), f.nonce, deadline, sig
     );
 
-    assertEq(authenticator.approvedKeys(owner, _keyHash(fresh)), f.approved, 'direction applied');
+    assertEq(authenticator.masterKeys(owner, _keyHash(fresh)), f.approved, 'direction applied');
     assertEq(
       authenticator.nonces(lNonceKey(owner), f.nonce >> 8), 1 << (f.nonce & 0xff), 'nonce spent'
     );
 
     // the approval binds the whole key, so a different scheme over the same bytes is a different key
-    SessionKey memory other = SessionKey({
+    AuthKey memory other = AuthKey({
       publicKey: abi.encode(recipient),
       keyType: KeyType((uint8(keyType) + 1) % 4),
       expiration: expiration
     });
     assertFalse(
-      authenticator.approvedKeys(owner, _keyHash(other)), 'key type is part of the identity'
+      authenticator.masterKeys(owner, _keyHash(other)), 'key type is part of the identity'
     );
   }
 
@@ -698,17 +704,364 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     uint256 deadline = block.timestamp + bound(f.deadlineOffset, 0, 30 days);
 
     // the key's own expiry is a live dimension: it must outlast the order for it to settle
-    SessionKey memory fuzzKey =
-      _secpKey(sessionSigner, block.timestamp + bound(f.expirationOffset, 0, 365 days));
+    AuthKey memory fuzzKey =
+      _secpKey(masterSigner, block.timestamp + bound(f.expirationOffset, 0, 365 days));
     _delegateKeyThroughHub(fuzzKey);
 
     uint256 before = IERC20(WETH).balanceOf(address(router));
-    _executeViaAuthenticator(fuzzKey, sessionKeyPk, nonce, deadline, true);
+    _executeViaAuthenticator(fuzzKey, masterKeyPk, nonce, deadline, true);
 
     assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT);
     assertEq(
       authenticator.nonces(_keyHash(fuzzKey), nonce >> 8), 1 << (nonce & 0xff), 'exact nonce bit'
     );
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // SV-TIER-01..10 — the second tier: a master key granting session keys of its own
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * SV-TIER-01 — a master key grants a session key, which then signs an order
+   * @dev The flow a passkey exists for: the owner's wallet approves the passkey once, and the
+   * passkey hands out local keys with no wallet prompt. The grant lands in `sessionKeyMaster`
+   * under the master key's hash, and leaves `masterKeys` alone.
+   */
+  function test_SV_TIER_01_masterKeyGrantsASessionKeyThatSignsAnOrder() public {
+    _delegateKeyThroughHub(key);
+    AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
+
+    vm.prank(relayer);
+    _approveSessionKey(key, sessionKey, 1, block.timestamp + 1 days, masterKeyPk);
+
+    assertEq(
+      authenticator.sessionKeyMaster(owner, _keyHash(sessionKey)),
+      _keyHash(key),
+      'granted under the master key'
+    );
+    assertFalse(
+      authenticator.masterKeys(owner, _keyHash(sessionKey)), 'and not as a master key itself'
+    );
+
+    uint256 before = IERC20(WETH).balanceOf(address(router));
+    _executeViaAuthenticator(sessionKey, sessionKeyPk, 2, block.timestamp + 1 hours, true);
+    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the session key settled it');
+  }
+
+  /// SV-TIER-01b — and on the fulfillment rail, which reaches the same check from the other side
+  function test_SV_TIER_01b_sessionKeySignsAFulfillment() public {
+    _delegateKeyThroughHub(key);
+    AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
+
+    vm.prank(relayer);
+    _approveSessionKey(key, sessionKey, 1, block.timestamp + 1 days, masterKeyPk);
+
+    uint256 before = IERC20(WETH).balanceOf(address(router));
+    _fulfillViaAuthenticator(sessionKey, sessionKeyPk, 3, block.timestamp + 1 hours);
+    assertEq(IERC20(WETH).balanceOf(address(router)) - before, AMOUNT, 'the fulfillment settled');
+  }
+
+  /**
+   * SV-TIER-02 — a session key cannot grant another, so the chain is two deep and no more
+   * @dev One read enforces this: the rail asks whether the key presented as the approver is one
+   * the owner approved themselves, and a session key never is.
+   */
+  function test_SV_TIER_02_aSessionKeyCannotGrantAnother() public {
+    _delegateKeyThroughHub(key);
+    AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
+
+    uint256 deadline = block.timestamp + 1 days;
+    vm.prank(relayer);
+    _approveSessionKey(key, sessionKey, 1, deadline, masterKeyPk);
+
+    AuthKey memory grandchild = _secpKey(recipient, key.expiration);
+    bytes memory sig =
+      _signSessionKeyApproval(sessionKey, grandchild, true, 4, deadline, sessionKeyPk);
+
+    vm.prank(relayer);
+    vm.expectRevert(_notApproved(sessionKey));
+    authenticator.updateAuthentication(
+      owner, _sessionKeyData(grandchild, sessionKey, true), 4, deadline, sig
+    );
+
+    assertEq(
+      authenticator.sessionKeyMaster(owner, _keyHash(grandchild)), bytes32(0), 'nothing granted'
+    );
+    assertFalse(authenticator.masterKeys(owner, _keyHash(grandchild)), 'and nothing promoted');
+  }
+
+  /// SV-TIER-03 — nor can a key the owner never approved at all
+  function test_SV_TIER_03_anUnapprovedKeyCannotGrant() public {
+    _delegateKeyThroughHub(key);
+
+    (address strangerSigner, uint256 strangerPk) = makeAddrAndKey('stranger key');
+    _asEoa(strangerSigner);
+    AuthKey memory stranger = _secpKey(strangerSigner, block.timestamp + 30 days);
+    AuthKey memory sessionKey = _secpKey(sessionSigner, block.timestamp + 1 days);
+
+    uint256 deadline = block.timestamp + 1 days;
+    bytes memory sig = _signSessionKeyApproval(stranger, sessionKey, true, 5, deadline, strangerPk);
+
+    vm.prank(relayer);
+    vm.expectRevert(_notApproved(stranger));
+    authenticator.updateAuthentication(
+      owner, _sessionKeyData(sessionKey, stranger, true), 5, deadline, sig
+    );
+  }
+
+  /**
+   * SV-TIER-04 — revoking a master key takes every session key under it
+   * @dev The grant row itself is left standing, which is what makes the cascade reversible: the
+   * owner re-approving the identical credential revives the keys it had minted.
+   */
+  function test_SV_TIER_04_revokingTheMasterKeyTakesItsSessionKeys() public {
+    _delegateKeyThroughHub(key);
+    AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
+
+    uint256 deadline = block.timestamp + 1 days;
+    vm.prank(relayer);
+    _approveSessionKey(key, sessionKey, 1, deadline, masterKeyPk);
+    _executeViaAuthenticator(sessionKey, sessionKeyPk, 10, block.timestamp + 1 hours, true);
+
+    vm.prank(owner);
+    authenticator.updateAuthentication(owner, _revokeKey(key), 0, deadline, '');
+
+    assertFalse(authenticator.masterKeys(owner, _keyHash(key)), 'the master key is gone');
+    assertEq(
+      authenticator.sessionKeyMaster(owner, _keyHash(sessionKey)),
+      _keyHash(key),
+      'the grant itself is untouched'
+    );
+
+    vm.expectRevert(_notApproved(sessionKey));
+    _executeViaAuthenticator(sessionKey, sessionKeyPk, 11, block.timestamp + 1 hours, false);
+
+    vm.prank(owner);
+    authenticator.updateAuthentication(owner, _approveKey(key), 0, deadline, '');
+    _executeViaAuthenticator(sessionKey, sessionKeyPk, 12, block.timestamp + 1 hours, true);
+  }
+
+  /**
+   * SV-TIER-05 — a session key may not outlive the master key granting it
+   * @dev Both legs run on nonce 20: the refusal happens before the burn, so the same number is
+   * still there for the leg that succeeds, which is what shows the first one spent nothing.
+   */
+  function test_SV_TIER_05_aSessionKeyMayNotOutliveItsMaster() public {
+    _delegateKeyThroughHub(key);
+    uint256 deadline = block.timestamp + 1 days;
+
+    AuthKey memory tooLong = _secpKey(sessionSigner, key.expiration + 1);
+    bytes memory sig = _signSessionKeyApproval(key, tooLong, true, 20, deadline, masterKeyPk);
+
+    vm.prank(relayer);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        ISessionOrderAuthenticator.SessionKeyOutlivesMasterKey.selector,
+        key.expiration + 1,
+        key.expiration
+      )
+    );
+    authenticator.updateAuthentication(
+      owner, _sessionKeyData(tooLong, key, true), 20, deadline, sig
+    );
+
+    AuthKey memory equal = _secpKey(sessionSigner, key.expiration);
+    vm.prank(relayer);
+    _approveSessionKey(key, equal, 20, deadline, masterKeyPk);
+
+    assertEq(
+      authenticator.sessionKeyMaster(owner, _keyHash(equal)),
+      _keyHash(key),
+      'the same second as its master is allowed'
+    );
+  }
+
+  /// SV-TIER-06 — the signature has to be the granting key's, not the granted key's
+  function test_SV_TIER_06_theMasterKeyMustHaveSignedIt() public {
+    _delegateKeyThroughHub(key);
+    AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
+
+    uint256 deadline = block.timestamp + 1 days;
+    bytes memory sig = _signSessionKeyApproval(key, sessionKey, true, 21, deadline, sessionKeyPk);
+
+    vm.prank(relayer);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
+    authenticator.updateAuthentication(
+      owner, _sessionKeyData(sessionKey, key, true), 21, deadline, sig
+    );
+  }
+
+  /**
+   * SV-TIER-07 — the approval names the account it is for
+   * @dev The same credential can be a master key for two accounts, so the decision carries the
+   * owner. The second leg submits the very same signature for the account it does name, which is
+   * what makes the refusal evidence about `owner` rather than about a bad signature.
+   */
+  function test_SV_TIER_07_theApprovalNamesTheAccountItIsFor() public {
+    _delegateKeyThroughHub(key);
+    AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
+
+    uint256 deadline = block.timestamp + 1 days;
+    vm.prank(recipient);
+    authenticator.updateAuthentication(recipient, _approveKey(key), 0, deadline, '');
+
+    bytes memory sig =
+      _signSessionKeyApproval(recipient, key, sessionKey, true, 22, deadline, masterKeyPk);
+
+    vm.prank(relayer);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
+    authenticator.updateAuthentication(
+      owner, _sessionKeyData(sessionKey, key, true), 22, deadline, sig
+    );
+
+    vm.prank(relayer);
+    authenticator.updateAuthentication(
+      recipient, _sessionKeyData(sessionKey, key, true), 22, deadline, sig
+    );
+
+    assertEq(
+      authenticator.sessionKeyMaster(recipient, _keyHash(sessionKey)),
+      _keyHash(key),
+      'granted for the account it names'
+    );
+    assertEq(
+      authenticator.sessionKeyMaster(owner, _keyHash(sessionKey)), bytes32(0), 'and for no other'
+    );
+  }
+
+  /**
+   * SV-TIER-08 — the nonce burns in the master key's namespace, because the master key signed
+   * @dev Three namespaces are in play for one number: the owner's, the master key's and the
+   * session key's. Spending it as the master key must leave the other two alone, or an owner
+   * approving at nonce 9 would silently block their passkey's ninth grant.
+   */
+  function test_SV_TIER_08_theNonceBurnsInTheMasterKeysNamespace() public {
+    _delegateKeyThroughHub(key);
+    AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
+
+    uint256 deadline = block.timestamp + 1 days;
+    uint256 nonce = 9;
+
+    vm.prank(relayer);
+    _approveSessionKey(key, sessionKey, nonce, deadline, masterKeyPk);
+
+    assertEq(authenticator.nonces(_keyHash(key), 0), 1 << nonce, 'the master key spent it');
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, "the owner's namespace is untouched");
+    assertEq(authenticator.nonces(_keyHash(sessionKey), 0), 0, "and so is the session key's");
+
+    AuthKey memory other = _secpKey(recipient, key.expiration);
+    bytes memory replay = _signSessionKeyApproval(key, other, true, nonce, deadline, masterKeyPk);
+    vm.prank(relayer);
+    vm.expectRevert(IUnorderedNonce.NonceAlreadyUsed.selector);
+    authenticator.updateAuthentication(
+      owner, _sessionKeyData(other, key, true), nonce, deadline, replay
+    );
+
+    bytes memory ownerSig = _signMasterKeyApproval(other, true, nonce, deadline);
+    vm.prank(relayer);
+    authenticator.updateAuthentication(owner, _approveKey(other), nonce, deadline, ownerSig);
+    assertTrue(authenticator.masterKeys(owner, _keyHash(other)), 'the owner still has that number');
+
+    _executeViaAuthenticator(sessionKey, sessionKeyPk, nonce, block.timestamp + 1 hours, true);
+  }
+
+  /// SV-TIER-09 — a master key revokes a session key it granted, and the key stops signing
+  function test_SV_TIER_09_aMasterKeyRevokesItsSessionKey() public {
+    _delegateKeyThroughHub(key);
+    AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
+
+    uint256 deadline = block.timestamp + 1 days;
+    vm.prank(relayer);
+    _approveSessionKey(key, sessionKey, 40, deadline, masterKeyPk);
+    _executeViaAuthenticator(sessionKey, sessionKeyPk, 41, block.timestamp + 1 hours, true);
+
+    bytes memory sig = _signSessionKeyApproval(key, sessionKey, false, 42, deadline, masterKeyPk);
+    vm.prank(relayer);
+    authenticator.updateAuthentication(
+      owner, _sessionKeyData(sessionKey, key, false), 42, deadline, sig
+    );
+
+    assertEq(
+      authenticator.sessionKeyMaster(owner, _keyHash(sessionKey)),
+      bytes32(0),
+      'the grant is cleared'
+    );
+    vm.expectRevert(_notApproved(sessionKey));
+    _executeViaAuthenticator(sessionKey, sessionKeyPk, 43, block.timestamp + 1 hours, false);
+  }
+
+  /**
+   * SV-TIER-10 — a key is judged on the master key behind it, whatever else it holds
+   * @dev Nothing stops one credential from holding both grants, and authentication reads the
+   * session grant first, so the master key behind it decides even where the owner approved the key
+   * directly as well. A master key granting itself resolves to its own approval, which is that
+   * same rule rather than an exception to it.
+   */
+  function test_SV_TIER_10_theMasterKeyBehindAKeyDecides() public {
+    _delegateKeyThroughHub(key);
+    AuthKey memory both = _secpKey(sessionSigner, key.expiration);
+    uint256 deadline = block.timestamp + 1 days;
+
+    vm.prank(relayer);
+    _approveSessionKey(key, both, 50, deadline, masterKeyPk);
+    vm.prank(owner);
+    authenticator.updateAuthentication(owner, _approveKey(both), 0, deadline, '');
+
+    assertTrue(authenticator.masterKeys(owner, _keyHash(both)), 'the owner approved it too');
+    _executeViaAuthenticator(both, sessionKeyPk, 51, block.timestamp + 1 hours, true);
+
+    vm.prank(owner);
+    authenticator.updateAuthentication(owner, _revokeKey(key), 0, deadline, '');
+
+    assertTrue(authenticator.masterKeys(owner, _keyHash(both)), 'its own approval still stands');
+    vm.expectRevert(_notApproved(both));
+    _executeViaAuthenticator(both, sessionKeyPk, 52, block.timestamp + 1 hours, false);
+
+    vm.prank(owner);
+    authenticator.updateAuthentication(owner, _approveKey(key), 0, deadline, '');
+    bytes memory selfSig = _signSessionKeyApproval(key, key, true, 53, deadline, masterKeyPk);
+    vm.prank(relayer);
+    authenticator.updateAuthentication(
+      owner, _sessionKeyData(key, key, true), 53, deadline, selfSig
+    );
+
+    assertEq(
+      authenticator.sessionKeyMaster(owner, _keyHash(key)), _keyHash(key), 'granted to itself'
+    );
+    _executeViaAuthenticator(key, masterKeyPk, 54, block.timestamp + 1 hours, true);
+  }
+
+  /// SV-FUZZ-TIER — the master key rail over its whole domain
+  function testFuzz_SV_FUZZ_TIER_masterKeyRail(TierFuzz memory f) public {
+    uint256 masterExpiration = block.timestamp + bound(f.masterExpirationOffset, 1 hours, 365 days);
+    uint256 sessionExpiration =
+      block.timestamp + bound(f.sessionExpirationOffset, 1, masterExpiration - block.timestamp);
+    uint256 deadline = block.timestamp + bound(f.deadlineOffset, 1, 365 days);
+    uint256 nonce = bound(f.nonce, 0, type(uint64).max);
+
+    AuthKey memory masterKey = _secpKey(masterSigner, masterExpiration);
+    AuthKey memory sessionKey = _secpKey(sessionSigner, sessionExpiration);
+    _delegateKeyThroughHub(masterKey);
+
+    bytes memory sig =
+      _signSessionKeyApproval(masterKey, sessionKey, f.approved, nonce, deadline, masterKeyPk);
+
+    vm.prank(relayer);
+    authenticator.updateAuthentication(
+      owner, _sessionKeyData(sessionKey, masterKey, f.approved), nonce, deadline, sig
+    );
+
+    assertEq(
+      authenticator.sessionKeyMaster(owner, _keyHash(sessionKey)),
+      f.approved ? _keyHash(masterKey) : bytes32(0),
+      'the direction decides the grant'
+    );
+    assertEq(
+      authenticator.nonces(_keyHash(masterKey), nonce >> 8),
+      1 << (nonce & 0xff),
+      'the master key spends the nonce'
+    );
+    assertEq(authenticator.nonces(lNonceKey(owner), nonce >> 8), 0, 'and the owner does not');
   }
 
   // -------------------------------------------------------------------------------------------
@@ -729,9 +1082,9 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   /// @dev The error the authenticator raises for a key the owner never approved, payload and all
-  function _notApproved(SessionKey memory sessionKey) private view returns (bytes memory) {
+  function _notApproved(AuthKey memory sessionKey) private view returns (bytes memory) {
     return abi.encodeWithSelector(
-      ISessionOrderAuthenticator.SessionKeyNotApproved.selector, owner, sessionKey
+      ISessionOrderAuthenticator.AuthKeyNotApproved.selector, owner, sessionKey
     );
   }
 
@@ -752,7 +1105,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   function _executeViaAuthenticator(
-    SessionKey memory sessionKey,
+    AuthKey memory sessionKey,
     uint256 signerKey,
     uint256 nonce,
     uint256 deadline,
@@ -769,7 +1122,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
   /// @dev The fulfillment counterpart of {_executeViaAuthenticator}, open route and no approver
   function _fulfillViaAuthenticator(
-    SessionKey memory sessionKey,
+    AuthKey memory sessionKey,
     uint256 signerKey,
     uint256 nonce,
     uint256 deadline
@@ -790,7 +1143,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   function _submitExecution(
-    SessionKey memory sessionKey,
+    AuthKey memory sessionKey,
     bytes memory signature,
     uint256 nonce,
     uint256 deadline
@@ -800,7 +1153,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   function _submitExecutionRaw(
-    SessionKey memory sessionKey,
+    AuthKey memory sessionKey,
     bytes memory signature,
     uint256 nonce,
     uint256 deadline
@@ -815,8 +1168,8 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 }
 
 /// @dev Exposes the library's calldata `verify` so a key scheme can be checked without the hub
-contract SessionKeyHarness {
-  function verify(SessionKey calldata key, bytes32 digest, bytes calldata signature)
+contract AuthKeyHarness {
+  function verify(AuthKey calldata key, bytes32 digest, bytes calldata signature)
     external
     view
     returns (bool)

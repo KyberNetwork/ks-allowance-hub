@@ -7,8 +7,9 @@ import {JsonBindings} from 'utils/JsonBindings.sol';
 
 import {PermitHash} from 'test/libraries/PermitHash.sol';
 
-import {SessionApprovalLib} from 'src/v2/authenticators/types/SessionApproval.sol';
-import {SessionKeyLib} from 'src/v2/authenticators/types/SessionKey.sol';
+import {AuthKeyLib} from 'src/v2/authenticators/types/AuthKey.sol';
+import {MasterKeyApprovalLib} from 'src/v2/authenticators/types/MasterKeyApproval.sol';
+import {SessionKeyApprovalLib} from 'src/v2/authenticators/types/SessionKeyApproval.sol';
 import {AuthDelegationLib} from 'src/v2/types/AuthDelegation.sol';
 import {ERC20TransferLib} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721TransferLib} from 'src/v2/types/ERC721Transfer.sol';
@@ -90,15 +91,16 @@ contract SchemaAuditTest is Test {
       keccak256(bytes(JsonBindings.schema_AuthDelegation)),
       'AuthDelegation'
     );
+    assertEq(AuthKeyLib.AUTH_KEY_TYPEHASH, keccak256(bytes(JsonBindings.schema_AuthKey)), 'AuthKey');
     assertEq(
-      SessionKeyLib.SESSION_KEY_TYPEHASH,
-      keccak256(bytes(JsonBindings.schema_SessionKey)),
-      'SessionKey'
+      MasterKeyApprovalLib.MASTER_KEY_APPROVAL_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_MasterKeyApproval)),
+      'MasterKeyApproval'
     );
     assertEq(
-      SessionApprovalLib.SESSION_APPROVAL_TYPEHASH,
-      keccak256(bytes(JsonBindings.schema_SessionApproval)),
-      'SessionApproval'
+      SessionKeyApprovalLib.SESSION_KEY_APPROVAL_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_SessionKeyApproval)),
+      'SessionKeyApproval'
     );
   }
 

@@ -6,7 +6,7 @@ import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.s
 import {
   ISessionOrderAuthenticator
 } from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
-import {SessionKey} from 'src/v2/authenticators/types/SessionKey.sol';
+import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
@@ -33,11 +33,11 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 contract OrderPartiesTest is AuthenticatorBase {
   uint160 internal constant AMOUNT = 1 ether;
 
-  SessionKey internal key;
+  AuthKey internal key;
 
   function setUp() public override {
     super.setUp();
-    key = _secpKey(sessionSigner, block.timestamp + 30 days);
+    key = _secpKey(masterSigner, block.timestamp + 30 days);
     _delegateKeyThroughHub(key);
   }
 
@@ -56,7 +56,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     uint256 before = _routerWeth();
     vm.prank(relayer);
     hub.executeOrderWithDelegatedAuthentication(
-      pinned, address(authenticator), _executionAuthData(pinned, key, sessionKeyPk), false
+      pinned, address(authenticator), _executionAuthData(pinned, key, masterKeyPk), false
     );
     assertEq(_routerWeth() - before, AMOUNT, 'the named relayer may submit');
 
@@ -66,7 +66,7 @@ contract OrderPartiesTest is AuthenticatorBase {
       abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedRelayer.selector, solver, relayer)
     );
     hub.executeOrderWithDelegatedAuthentication(
-      again, address(authenticator), _executionAuthData(again, key, sessionKeyPk), false
+      again, address(authenticator), _executionAuthData(again, key, masterKeyPk), false
     );
 
     // The pin is read before the credential, so an unnamed submitter is refused as such even when
@@ -85,7 +85,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     before = _routerWeth();
     vm.prank(solver);
     hub.executeOrderWithDelegatedAuthentication(
-      open, address(authenticator), _executionAuthData(open, key, sessionKeyPk), false
+      open, address(authenticator), _executionAuthData(open, key, masterKeyPk), false
     );
     assertEq(_routerWeth() - before, AMOUNT, 'the sentinel leaves it open to anyone');
 
@@ -116,7 +116,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     ExecutionOrder memory order = _openExecutionOrder(
       _erc20s(_wethTransfer(AMOUNT)), new GenericCall[](0), 75, block.timestamp + 1 hours
     );
-    bytes memory authData = _executionAuthData(order, key, sessionKeyPk);
+    bytes memory authData = _executionAuthData(order, key, masterKeyPk);
 
     // Repointed first, because the refusal rolls back the nonce the authenticator burns ahead of
     // the signature check, leaving the second leg the same number to spend
@@ -149,7 +149,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     hub.fulfillOrderWithDelegatedAuthentication(
       pinned,
       address(authenticator),
-      _fulfillmentAuthData(pinned, key, sessionKeyPk),
+      _fulfillmentAuthData(pinned, key, masterKeyPk),
       _route(_calls(_routerCall(0, hex'01'))),
       '',
       false
@@ -165,7 +165,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     hub.fulfillOrderWithDelegatedAuthentication(
       again,
       address(authenticator),
-      _fulfillmentAuthData(again, key, sessionKeyPk),
+      _fulfillmentAuthData(again, key, masterKeyPk),
       _route(_calls(_routerCall(0, hex'01'))),
       '',
       false
@@ -194,7 +194,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     hub.fulfillOrderWithDelegatedAuthentication(
       open,
       address(authenticator),
-      _fulfillmentAuthData(open, key, sessionKeyPk),
+      _fulfillmentAuthData(open, key, masterKeyPk),
       _route(_calls(_routerCall(0, hex'01'))),
       '',
       false

@@ -6,7 +6,7 @@ import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.s
 import {ERC1271WalletMock} from 'test/v2/mocks/TokenMocks.sol';
 
 import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
-import {SessionKey} from 'src/v2/authenticators/types/SessionKey.sol';
+import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 import {IAuthDelegator} from 'src/v2/interfaces/IAuthDelegator.sol';
 import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
@@ -55,11 +55,11 @@ contract DelegationTest is AuthenticatorBase {
     uint256 deadlineOffset;
   }
 
-  SessionKey internal key;
+  AuthKey internal key;
 
   function setUp() public override {
     super.setUp();
-    key = _secpKey(sessionSigner, block.timestamp + 30 days);
+    key = _secpKey(masterSigner, block.timestamp + 30 days);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -76,7 +76,7 @@ contract DelegationTest is AuthenticatorBase {
     );
 
     assertTrue(hub.authDelegated(owner, address(authenticator)), 'delegated');
-    assertTrue(authenticator.approvedKeys(owner, _keyHash(key)), 'key approved without a signature');
+    assertTrue(authenticator.masterKeys(owner, _keyHash(key)), 'key approved without a signature');
     assertEq(hub.nonces(lNonceKey(owner), word), 0, 'no hub nonce consumed');
   }
 
@@ -105,7 +105,7 @@ contract DelegationTest is AuthenticatorBase {
     bytes memory sig =
       _signAuthDelegation(ownerKey, address(authenticator), true, _encodeKey(key), 1, deadline);
 
-    SessionKey memory otherKey = _secpKey(relayer, block.timestamp + 30 days);
+    AuthKey memory otherKey = _secpKey(relayer, block.timestamp + 30 days);
 
     vm.prank(relayer);
     vm.expectRevert(IAuthDelegator.InvalidDelegationSignature.selector);
@@ -170,7 +170,7 @@ contract DelegationTest is AuthenticatorBase {
 
     // the authenticator still holds the approval, which is why re-delegating re-arms it; dropping
     // the key itself is a separate instruction to the authenticator, covered by SV-REV-01
-    assertTrue(authenticator.approvedKeys(owner, _keyHash(key)));
+    assertTrue(authenticator.masterKeys(owner, _keyHash(key)));
   }
 
   /**
@@ -253,13 +253,12 @@ contract DelegationTest is AuthenticatorBase {
     vm.prank(owner);
     hub.updateDelegation(owner, address(authenticator), true, revokeShaped, 0, deadline, '');
 
-    assertTrue(authenticator.approvedKeys(owner, keyHash), 'approved despite the false direction');
+    assertTrue(authenticator.masterKeys(owner, keyHash), 'approved despite the false direction');
 
     vm.prank(owner);
     authenticator.updateAuthentication(owner, revokeShaped, 0, deadline, '');
     assertFalse(
-      authenticator.approvedKeys(owner, keyHash),
-      'and updateAuthentication reads it as a revocation'
+      authenticator.masterKeys(owner, keyHash), 'and updateAuthentication reads it as a revocation'
     );
   }
 
@@ -278,16 +277,16 @@ contract DelegationTest is AuthenticatorBase {
 
     vm.prank(owner);
     hub.updateDelegation(owner, address(authenticator), true, keyOnly, 0, deadline, '');
-    assertTrue(authenticator.approvedKeys(owner, keyHash), 'the bare key shape approves it');
+    assertTrue(authenticator.masterKeys(owner, keyHash), 'the bare key shape approves it');
 
     vm.prank(owner);
     authenticator.updateAuthentication(owner, _revokeKey(key), 0, deadline, '');
-    assertFalse(authenticator.approvedKeys(owner, keyHash), 'cleared again');
+    assertFalse(authenticator.masterKeys(owner, keyHash), 'cleared again');
 
     vm.prank(owner);
     hub.updateDelegation(owner, address(authenticator), true, keyPlusNoise, 0, deadline, '');
     assertTrue(
-      authenticator.approvedKeys(owner, keyHash), 'and so does the same key with a word after'
+      authenticator.masterKeys(owner, keyHash), 'and so does the same key with a word after'
     );
   }
 
@@ -310,7 +309,7 @@ contract DelegationTest is AuthenticatorBase {
     vm.expectRevert(IOrderAuthenticator.NotAllowanceHub.selector);
     authenticator.initAuthentication(owner, payload);
 
-    assertFalse(authenticator.approvedKeys(owner, keyHash), 'nothing was approved either time');
+    assertFalse(authenticator.masterKeys(owner, keyHash), 'nothing was approved either time');
   }
 
   // -------------------------------------------------------------------------------------------

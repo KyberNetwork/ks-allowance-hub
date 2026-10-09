@@ -3,7 +3,7 @@ pragma solidity 0.8.36;
 
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
-import {SessionKey} from 'src/v2/authenticators/types/SessionKey.sol';
+import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
@@ -22,11 +22,11 @@ import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 contract CalldataHygieneTest is AuthenticatorBase {
   uint160 internal constant AMOUNT = 5 ether;
 
-  SessionKey internal key;
+  AuthKey internal key;
 
   function setUp() public override {
     super.setUp();
-    key = _secpKey(sessionSigner, block.timestamp + 30 days);
+    key = _secpKey(masterSigner, block.timestamp + 30 days);
   }
 
   /// DIRTY-01 — the delegated execution rail
@@ -80,7 +80,7 @@ contract CalldataHygieneTest is AuthenticatorBase {
         (
           order,
           address(authenticator),
-          _fulfillmentAuthData(order, key, sessionKeyPk),
+          _fulfillmentAuthData(order, key, masterKeyPk),
           _solution(_calls(_routerCall(0, hex'01')), 1, deadline),
           '',
           false

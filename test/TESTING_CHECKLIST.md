@@ -728,3 +728,44 @@ in memory, they are `internal` and uncalled so they carry no bytecode, and they 
 covered: a test over code no production path reaches would raise the percentage without testing
 anything. They are why `ERC20Transfer.sol` reads 56%.
 
+
+## Run `20261009T042147Z`
+
+Scope: the two-tier key rails in `SessionOrderAuthenticator`. The owner's rail keeps its payload and
+every existing case, so this run is additive: it covers the new master-key rail of
+`updateAuthentication` and session-key resolution in `authenticate*`.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261009T042147Z/TIER-01` | A master key approves a session key, which then authenticates on both order rails; the grant lands in `sessionKeyMaster` and not in `masterKeys`, and a master's revocation of its own session key clears it | `SV-TIER-01`, `SV-TIER-01b`, `SV-TIER-09`, `SV-FUZZ-TIER`; `test/v2/authenticators/SessionOrderAuthenticator.t.sol` |`forge test --match-path 'test/v2/authenticators/SessionOrderAuthenticator.t.sol'` |
+| - [x] | - [ ] | `20261009T042147Z/TIER-02` | Who may grant a session key, and how far: a session key and an unapproved key are both refused `AuthKeyNotApproved`, and `SessionKeyOutlivesMasterKey` holds at the expiry boundary — equal passes, one second longer does not | `SV-TIER-02`, `SV-TIER-03`, `SV-TIER-05`; same file |`forge test --match-path 'test/v2/authenticators/SessionOrderAuthenticator.t.sol'` |
+| - [x] | - [ ] | `20261009T042147Z/TIER-03` | The cascade: revoking a master refuses every session key under it and re-approving the identical credential revives them; a key holding both grants resolves through its master | `SV-TIER-04`, `SV-TIER-10`; same file |`forge test --match-path 'test/v2/authenticators/SessionOrderAuthenticator.t.sol'` |
+| - [x] | - [ ] | `20261009T042147Z/TIER-04` | What the master's signature covers and where its nonce lands: a wrong signer and an approval bound to another owner are both refused, and the nonce burns in the master key's namespace rather than the owner's or the session key's | `SV-TIER-06`, `SV-TIER-07`, `SV-TIER-08`; same file |`forge test --match-path 'test/v2/authenticators/SessionOrderAuthenticator.t.sol'` |
+| - [x] | - [ ] | `20261009T042147Z/OBS-01` | `SessionKeyApproval`, the type a master key signs, against the `encodeType` its own struct declares | `T712-11`; `test/v2/authenticators/types/AuthenticatorEip712.t.sol`, `test/v2/types/SchemaAudit.t.sol` |`forge test --match-path 'test/v2/authenticators/types/AuthenticatorEip712.t.sol'` |
+| - [x] | - [ ] | `20261009T042147Z/FLOW-01` | The no-signing flow end to end: a relayed master-rail approval through `forwardCalls`, and one `multicall` batch that mints a fresh ephemeral key and spends on it in the same transaction | `FWD-20`, `MC-08`; `test/v2/Forwarder.t.sol`, `test/v2/Multicall.t.sol` |`forge test --match-test 'test_MC_08|test_FWD_20'` |
+
+### Notes for this run
+
+**The owner's rail did not move, which is why every earlier case still stands.** Its payload is
+still `abi.encode(key, approved)`; the master key's rail adds a third member and is told apart by
+the first key's offset, so the 191 cases from earlier runs pass unchanged against the new source.
+No task-start assertion or input domain was altered.
+
+**`SV-06b`'s rationale was corrected, not its assertions.** It used to say the two `authenticate*`
+entry points duplicate each other; they now share one private `_authenticate`, so what the
+fulfillment case constrains beyond `SV-06` is the hub-side wiring. The case and its oracles are
+unchanged.
+
+**Coverage reports two misses on the authenticator, and both are attribution artifacts.**
+`--ir-minimum` gives 90% branches (9/10) and 83% functions (5/6), naming the `verify` arm at
+`SessionOrderAuthenticator.sol:136` and the constructor. Deleting that arm's body makes `SV-TIER-06`
+and `SV-TIER-07` fail, so it executes; `SV-DOMAIN` asserts the EIP-712 name and version that only
+the constructor writes, so the constructor runs. The 65% line figure for this file is the same
+mis-attribution the `20261007T183815Z/COV-01` notes record for the hub — the assembly key decode at
+lines 65 and 114, `_useUnorderedNonce(owner, nonce)` at line 100, and `data.decodeBytes(1)` at line
+184 are all reported uncovered though every case in the batch runs them.
+
+**Each new case was mutation-checked against the production line it is there for.** Writing the
+grant into `masterKeys` instead of `sessionKeyMaster` fails `SV-TIER-01` and `SV-TIER-02`; dropping
+the expiry bound fails `SV-TIER-05`; ignoring `sessionKeyMaster` in `_authenticate` fails
+`SV-TIER-01` and `SV-TIER-01b`; burning the nonce against the owner fails `SV-TIER-08`.

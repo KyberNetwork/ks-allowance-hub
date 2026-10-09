@@ -11,8 +11,9 @@ import {DeadlineChecker} from '../../base/DeadlineChecker.sol';
 import {EIP712Base} from '../../base/EIP712Base.sol';
 import {UnorderedNonce} from '../../base/UnorderedNonce.sol';
 
-import {SessionApprovalLib} from './types/SessionApproval.sol';
-import {SessionKey} from './types/SessionKey.sol';
+import {AuthKey} from './types/AuthKey.sol';
+import {MasterKeyApprovalLib} from './types/MasterKeyApproval.sol';
+import {SessionKeyApprovalLib} from './types/SessionKeyApproval.sol';
 
 import {ExecutionOrder} from '../types/ExecutionOrder.sol';
 import {FulfillmentOrder} from '../types/FulfillmentOrder.sol';
@@ -25,11 +26,15 @@ import {
 
 /**
  * @title SessionOrderAuthenticator
- * @notice Lets an owner approve a session key once and then authenticate allowance-hub orders with
- * that key instead of their main wallet. Keys carry their own expiry and may be Secp256k1, P256,
- * WebAuthn or RSA, so a passkey or a hot key can sign orders the wallet never touches.
- * @dev Replay protection lives here rather than in the hub: every verification burns one of the
- * owner's nonces, and the nonce and deadline are bound into the digest the key signs.
+ * @notice Lets an owner approve a key once and then authenticate allowance-hub orders with that key
+ * instead of their main wallet. Keys carry their own expiry and may be Secp256k1, P256, WebAuthn or
+ * RSA, so a passkey or a hot key can sign orders the wallet never touches.
+ * @dev A master key is the owner's own decision and the only tier that may approve anything; a
+ * session key is a master key's, so a passkey hands out short-lived local keys with no wallet
+ * prompt. Both tiers sign orders, and a session key may neither outlive its master nor survive it.
+ *
+ * Replay protection lives here rather than in the hub: every verification burns a nonce in the
+ * namespace of whatever signed it, and the nonce and deadline are bound into the digest.
  */
 contract SessionOrderAuthenticator is
   ISessionOrderAuthenticator,
@@ -41,7 +46,10 @@ contract SessionOrderAuthenticator is
   using CalldataDecoder for bytes;
 
   /// @inheritdoc ISessionOrderAuthenticator
-  mapping(address => mapping(bytes32 keyHash => bool)) public approvedKeys;
+  mapping(address owner => mapping(bytes32 keyHash => bool)) public masterKeys;
+
+  /// @inheritdoc ISessionOrderAuthenticator
+  mapping(address owner => mapping(bytes32 keyHash => bytes32)) public sessionKeyMaster;
 
   /// @param allowanceHub The only hub whose authentication requests this one answers
   constructor(address allowanceHub)
@@ -51,21 +59,22 @@ contract SessionOrderAuthenticator is
 
   /**
    * @inheritdoc IOrderAuthenticator
-   * @dev `data` is `abi.encode(SessionKey key)`; approving is the only direction on this path
+   * @dev `data` is `abi.encode(AuthKey masterKey)`; approving is the only direction on this path
    */
   function initAuthentication(address owner, bytes calldata data) external onlyAllowanceHub {
-    SessionKey calldata key;
+    AuthKey calldata masterKey;
     assembly ('memory-safe') {
-      key := add(data.offset, calldataload(data.offset))
+      masterKey := add(data.offset, calldataload(data.offset))
     }
 
-    approvedKeys[owner][key.hash()] = true;
+    masterKeys[owner][masterKey.hash()] = true;
   }
 
   /**
    * @inheritdoc IOrderAuthenticator
-   * @dev `data` is `abi.encode(SessionKey key, bool approved)`: word 0 points at the key, word 1
-   * says whether to approve or revoke it
+   * @dev `data` is `abi.encode(AuthKey masterKey, bool approved)` for the owner's own decision, or
+   * `abi.encode(AuthKey sessionKey, AuthKey masterKey, bool approved)` for a master key's, told
+   * apart by the first key's offset. Only the owner's rail makes a key a master key.
    */
   function updateAuthentication(
     address owner,
@@ -74,28 +83,62 @@ contract SessionOrderAuthenticator is
     uint256 deadline,
     bytes calldata signature
   ) external checkDeadline(deadline) {
-    SessionKey calldata key;
-    assembly ('memory-safe') {
-      key := add(data.offset, calldataload(data.offset))
-    }
+    if (data.decodeUint256(0) <= 0x40) {
+      AuthKey calldata masterKey;
+      assembly ('memory-safe') {
+        masterKey := add(data.offset, calldataload(data.offset))
+      }
 
-    bytes32 keyHash = key.hash();
-    // Read as a word and narrowed here, so the direction does not depend on the caller having
-    // written a canonical bool, nor on the compiler cleaning one that assembly produced
-    bool approved = data.decodeUint256(1) != 0;
+      bytes32 masterKeyHash = masterKey.hash();
+      // Read as a word and narrowed here, so the direction does not depend on the caller having
+      // written a canonical bool, nor on the compiler cleaning one that assembly produced
+      bool approved = data.decodeUint256(1) != 0;
 
-    // Only the owner authenticates themselves by calling; anyone else, the hub included, has to
-    // present a signature, because `forwardCalls` relays this from any caller
-    if (msg.sender != owner) {
-      _useUnorderedNonce(owner, nonce);
+      // Only the owner authenticates themselves by calling; anyone else, the hub included, has to
+      // present a signature, because `forwardCalls` relays this from any caller
+      if (msg.sender != owner) {
+        _useUnorderedNonce(owner, nonce);
 
-      bytes32 digest = _hashTypedDataV4(SessionApprovalLib.hash(keyHash, approved, nonce, deadline));
-      if (!SignatureChecker.isValidSignatureNow(owner, digest, signature)) {
+        bytes32 digest =
+          _hashTypedDataV4(MasterKeyApprovalLib.hash(masterKeyHash, approved, nonce, deadline));
+        if (!SignatureChecker.isValidSignatureNow(owner, digest, signature)) {
+          revert InvalidApprovalSignature();
+        }
+      }
+
+      masterKeys[owner][masterKeyHash] = approved;
+    } else {
+      AuthKey calldata sessionKey;
+      AuthKey calldata masterKey;
+      assembly ('memory-safe') {
+        sessionKey := add(data.offset, calldataload(data.offset))
+        masterKey := add(data.offset, calldataload(add(data.offset, 0x20)))
+      }
+
+      bytes32 masterKeyHash = masterKey.hash();
+      // A session key may only be granted by a key the owner approved themselves
+      if (!masterKeys[owner][masterKeyHash]) {
+        revert AuthKeyNotApproved(owner, masterKey);
+      }
+      // Enforced either direction, so a master key only speaks about keys it could have minted
+      if (sessionKey.expiration > masterKey.expiration) {
+        revert SessionKeyOutlivesMasterKey(sessionKey.expiration, masterKey.expiration);
+      }
+
+      bytes32 sessionKeyHash = sessionKey.hash();
+      bool approved = data.decodeUint256(2) != 0;
+
+      _useUnorderedNonce(masterKeyHash, nonce);
+
+      bytes32 digest = _hashTypedDataV4(
+        SessionKeyApprovalLib.hash(owner, masterKeyHash, sessionKeyHash, approved, nonce, deadline)
+      );
+      if (!masterKey.verify(digest, signature)) {
         revert InvalidApprovalSignature();
       }
-    }
 
-    approvedKeys[owner][keyHash] = approved;
+      sessionKeyMaster[owner][sessionKeyHash] = approved ? masterKeyHash : bytes32(0);
+    }
   }
 
   /// @inheritdoc IOrderAuthenticator
@@ -103,26 +146,7 @@ contract SessionOrderAuthenticator is
     external
     onlyAllowanceHub
   {
-    SessionKey calldata key;
-    assembly ('memory-safe') {
-      key := add(data.offset, calldataload(data.offset))
-    }
-
-    if (block.timestamp > key.expiration) {
-      revert SessionKeyExpired(block.timestamp, key.expiration);
-    }
-    bytes32 keyHash = key.hash();
-    if (!approvedKeys[order.owner][keyHash]) {
-      revert SessionKeyNotApproved(order.owner, key);
-    }
-
-    _useUnorderedNonce(keyHash, order.nonce);
-
-    bytes32 digest = _hashTypedDataV4(order.hash());
-    bytes calldata signature = data.decodeBytes(1);
-    if (!key.verify(digest, signature)) {
-      revert InvalidAuthenticationSignature();
-    }
+    _authenticate(order.owner, order.nonce, order.hash(), data);
   }
 
   /// @inheritdoc IOrderAuthenticator
@@ -130,22 +154,33 @@ contract SessionOrderAuthenticator is
     external
     onlyAllowanceHub
   {
-    SessionKey calldata key;
+    _authenticate(order.owner, order.nonce, order.hash(), data);
+  }
+
+  /// @dev Checks that the key in `abi.encode(AuthKey key, bytes signature)` may still sign for
+  /// `owner` and did sign `orderHash`, spending `nonce` in that key's namespace
+  function _authenticate(address owner, uint256 nonce, bytes32 orderHash, bytes calldata data)
+    private
+  {
+    AuthKey calldata key;
     assembly ('memory-safe') {
       key := add(data.offset, calldataload(data.offset))
     }
 
     if (block.timestamp > key.expiration) {
-      revert SessionKeyExpired(block.timestamp, key.expiration);
+      revert AuthKeyExpired(block.timestamp, key.expiration);
     }
+
     bytes32 keyHash = key.hash();
-    if (!approvedKeys[order.owner][keyHash]) {
-      revert SessionKeyNotApproved(order.owner, key);
+    // A session key stands on its master, re-read here, so revoking one takes every key it minted
+    bytes32 masterKeyHash = sessionKeyMaster[owner][keyHash];
+    if (!masterKeys[owner][masterKeyHash == bytes32(0) ? keyHash : masterKeyHash]) {
+      revert AuthKeyNotApproved(owner, key);
     }
 
-    _useUnorderedNonce(keyHash, order.nonce);
+    _useUnorderedNonce(keyHash, nonce);
 
-    bytes32 digest = _hashTypedDataV4(order.hash());
+    bytes32 digest = _hashTypedDataV4(orderHash);
     bytes calldata signature = data.decodeBytes(1);
     if (!key.verify(digest, signature)) {
       revert InvalidAuthenticationSignature();

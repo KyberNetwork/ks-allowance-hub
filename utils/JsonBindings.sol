@@ -3,8 +3,9 @@
 pragma solidity >=0.6.2 <0.9.0;
 pragma experimental ABIEncoderV2;
 
-import {SessionApproval} from "src/v2/authenticators/types/SessionApproval.sol";
-import {SessionKey} from "src/v2/authenticators/types/SessionKey.sol";
+import {AuthKey} from "src/v2/authenticators/types/AuthKey.sol";
+import {MasterKeyApproval} from "src/v2/authenticators/types/MasterKeyApproval.sol";
+import {SessionKeyApproval} from "src/v2/authenticators/types/SessionKeyApproval.sol";
 import {AuthDelegation} from "src/v2/types/AuthDelegation.sol";
 import {ERC20Transfer} from "src/v2/types/ERC20Transfer.sol";
 import {ERC721Transfer} from "src/v2/types/ERC721Transfer.sol";
@@ -29,8 +30,9 @@ interface Vm {
 library JsonBindings {
     Vm constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
-    string constant schema_SessionKey = "SessionKey(bytes publicKey,uint8 keyType,uint256 expiration)";
-    string constant schema_SessionApproval = "SessionApproval(SessionKey sessionKey,bool approved,uint256 nonce,uint256 deadline)SessionKey(bytes publicKey,uint8 keyType,uint256 expiration)";
+    string constant schema_AuthKey = "AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)";
+    string constant schema_MasterKeyApproval = "MasterKeyApproval(AuthKey masterKey,bool approved,uint256 nonce,uint256 deadline)AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)";
+    string constant schema_SessionKeyApproval = "SessionKeyApproval(address owner,AuthKey masterKey,AuthKey sessionKey,bool approved,uint256 nonce,uint256 deadline)AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)";
     string constant schema_AuthDelegation = "AuthDelegation(address authenticator,bool delegated,bytes data,uint256 nonce,uint256 deadline)";
     string constant schema_ERC20Transfer = "ERC20Transfer(address token,address target,uint160 amount)";
     string constant schema_ERC721Transfer = "ERC721Transfer(address token,uint256 tokenId,address target)";
@@ -46,44 +48,64 @@ library JsonBindings {
     string constant schema_PermitBatchWitnessTransferFrom_1 = "PermitBatchWitnessTransferFrom(TokenPermissions[] permitted,address spender,uint256 nonce,uint256 deadline,FulfillmentWitness witness)ERC721Transfer(address token,uint256 tokenId,address target)FulfillmentWitness(address solver,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner)GenericCall(address router,uint256 value,bytes data)TokenPermissions(address token,uint256 amount)ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)";
     string constant schema_SolutionApproval = "SolutionApproval(bytes32 orderHash,FulfillmentSolution solution)FulfillmentSolution(GenericCall[] solverCalls,uint256 nonce,uint256 deadline)GenericCall(address router,uint256 value,bytes data)";
 
-    function serialize(SessionKey memory value) internal pure returns (string memory) {
-        return vm.serializeJsonType(schema_SessionKey, abi.encode(value));
+    function serialize(AuthKey memory value) internal pure returns (string memory) {
+        return vm.serializeJsonType(schema_AuthKey, abi.encode(value));
     }
 
-    function serialize(SessionKey memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
-        return vm.serializeJsonType(objectKey, valueKey, schema_SessionKey, abi.encode(value));
+    function serialize(AuthKey memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
+        return vm.serializeJsonType(objectKey, valueKey, schema_AuthKey, abi.encode(value));
     }
 
-    function deserializeSessionKey(string memory json) public pure returns (SessionKey memory) {
-        return abi.decode(vm.parseJsonType(json, schema_SessionKey), (SessionKey));
+    function deserializeAuthKey(string memory json) public pure returns (AuthKey memory) {
+        return abi.decode(vm.parseJsonType(json, schema_AuthKey), (AuthKey));
     }
 
-    function deserializeSessionKey(string memory json, string memory path) public pure returns (SessionKey memory) {
-        return abi.decode(vm.parseJsonType(json, path, schema_SessionKey), (SessionKey));
+    function deserializeAuthKey(string memory json, string memory path) public pure returns (AuthKey memory) {
+        return abi.decode(vm.parseJsonType(json, path, schema_AuthKey), (AuthKey));
     }
 
-    function deserializeSessionKeyArray(string memory json, string memory path) public pure returns (SessionKey[] memory) {
-        return abi.decode(vm.parseJsonTypeArray(json, path, schema_SessionKey), (SessionKey[]));
+    function deserializeAuthKeyArray(string memory json, string memory path) public pure returns (AuthKey[] memory) {
+        return abi.decode(vm.parseJsonTypeArray(json, path, schema_AuthKey), (AuthKey[]));
     }
 
-    function serialize(SessionApproval memory value) internal pure returns (string memory) {
-        return vm.serializeJsonType(schema_SessionApproval, abi.encode(value));
+    function serialize(MasterKeyApproval memory value) internal pure returns (string memory) {
+        return vm.serializeJsonType(schema_MasterKeyApproval, abi.encode(value));
     }
 
-    function serialize(SessionApproval memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
-        return vm.serializeJsonType(objectKey, valueKey, schema_SessionApproval, abi.encode(value));
+    function serialize(MasterKeyApproval memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
+        return vm.serializeJsonType(objectKey, valueKey, schema_MasterKeyApproval, abi.encode(value));
     }
 
-    function deserializeSessionApproval(string memory json) public pure returns (SessionApproval memory) {
-        return abi.decode(vm.parseJsonType(json, schema_SessionApproval), (SessionApproval));
+    function deserializeMasterKeyApproval(string memory json) public pure returns (MasterKeyApproval memory) {
+        return abi.decode(vm.parseJsonType(json, schema_MasterKeyApproval), (MasterKeyApproval));
     }
 
-    function deserializeSessionApproval(string memory json, string memory path) public pure returns (SessionApproval memory) {
-        return abi.decode(vm.parseJsonType(json, path, schema_SessionApproval), (SessionApproval));
+    function deserializeMasterKeyApproval(string memory json, string memory path) public pure returns (MasterKeyApproval memory) {
+        return abi.decode(vm.parseJsonType(json, path, schema_MasterKeyApproval), (MasterKeyApproval));
     }
 
-    function deserializeSessionApprovalArray(string memory json, string memory path) public pure returns (SessionApproval[] memory) {
-        return abi.decode(vm.parseJsonTypeArray(json, path, schema_SessionApproval), (SessionApproval[]));
+    function deserializeMasterKeyApprovalArray(string memory json, string memory path) public pure returns (MasterKeyApproval[] memory) {
+        return abi.decode(vm.parseJsonTypeArray(json, path, schema_MasterKeyApproval), (MasterKeyApproval[]));
+    }
+
+    function serialize(SessionKeyApproval memory value) internal pure returns (string memory) {
+        return vm.serializeJsonType(schema_SessionKeyApproval, abi.encode(value));
+    }
+
+    function serialize(SessionKeyApproval memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
+        return vm.serializeJsonType(objectKey, valueKey, schema_SessionKeyApproval, abi.encode(value));
+    }
+
+    function deserializeSessionKeyApproval(string memory json) public pure returns (SessionKeyApproval memory) {
+        return abi.decode(vm.parseJsonType(json, schema_SessionKeyApproval), (SessionKeyApproval));
+    }
+
+    function deserializeSessionKeyApproval(string memory json, string memory path) public pure returns (SessionKeyApproval memory) {
+        return abi.decode(vm.parseJsonType(json, path, schema_SessionKeyApproval), (SessionKeyApproval));
+    }
+
+    function deserializeSessionKeyApprovalArray(string memory json, string memory path) public pure returns (SessionKeyApproval[] memory) {
+        return abi.decode(vm.parseJsonTypeArray(json, path, schema_SessionKeyApproval), (SessionKeyApproval[]));
     }
 
     function serialize(AuthDelegation memory value) internal pure returns (string memory) {

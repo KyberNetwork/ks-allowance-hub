@@ -3,7 +3,7 @@ pragma solidity 0.8.36;
 
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
-import {SessionKey} from 'src/v2/authenticators/types/SessionKey.sol';
+import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
@@ -36,14 +36,14 @@ import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
 contract NoncesTest is AuthenticatorBase {
   uint160 internal constant AMOUNT = 1 ether;
 
-  SessionKey internal key;
+  AuthKey internal key;
 
   address internal approver;
   uint256 internal approverKey;
 
   function setUp() public override {
     super.setUp();
-    key = _secpKey(sessionSigner, block.timestamp + 30 days);
+    key = _secpKey(masterSigner, block.timestamp + 30 days);
     (approver, approverKey) = makeAddrAndKey('solution approver');
   }
 
@@ -62,7 +62,7 @@ contract NoncesTest is AuthenticatorBase {
     uint256 before = IERC20(WETH).balanceOf(address(router));
     vm.prank(relayer);
     hub.executeOrderWithDelegatedAuthentication(
-      order, address(authenticator), _executionAuthData(order, key, sessionKeyPk), false
+      order, address(authenticator), _executionAuthData(order, key, masterKeyPk), false
     );
 
     assertEq(

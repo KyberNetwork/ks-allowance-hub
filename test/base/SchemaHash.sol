@@ -12,7 +12,7 @@ import {
   PermitBatchWitnessTransferFrom as Permit2FulfillmentWitness
 } from 'src/v2/types/FulfillmentWitness.sol';
 
-import {SessionKey} from 'src/v2/authenticators/types/SessionKey.sol';
+import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 import {AuthDelegation} from 'src/v2/types/AuthDelegation.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {ExecutionWitness} from 'src/v2/types/ExecutionWitness.sol';
@@ -62,14 +62,19 @@ library SchemaHash {
     return VM.eip712HashStruct(JsonBindings.schema_AuthDelegation, abi.encode(d));
   }
 
-  function sessionKey(SessionKey memory k) internal pure returns (bytes32) {
-    return VM.eip712HashStruct(JsonBindings.schema_SessionKey, abi.encode(k));
+  function authKey(AuthKey memory k) internal pure returns (bytes32) {
+    return VM.eip712HashStruct(JsonBindings.schema_AuthKey, abi.encode(k));
   }
 
-  /// @dev `SessionApproval` is hashed from a typehash rather than a struct because production takes
-  /// the key already hashed, which lets a case pin the encoding with a key hash of its own choosing
-  function sessionApprovalTypehash() internal pure returns (bytes32) {
-    return keccak256(bytes(JsonBindings.schema_SessionApproval));
+  /// @dev The approvals are hashed from a typehash rather than a struct because production takes
+  /// their keys already hashed, which lets a case pin the encoding with hashes of its own choosing
+  function masterKeyApprovalTypehash() internal pure returns (bytes32) {
+    return keccak256(bytes(JsonBindings.schema_MasterKeyApproval));
+  }
+
+  /// @dev As {masterKeyApprovalTypehash}, for the type a master key signs
+  function sessionKeyApprovalTypehash() internal pure returns (bytes32) {
+    return keccak256(bytes(JsonBindings.schema_SessionKeyApproval));
   }
 
   /**

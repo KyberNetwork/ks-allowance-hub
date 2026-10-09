@@ -5,7 +5,7 @@ import {Vm} from 'forge-std/Vm.sol';
 
 /**
  * @title KeyFixtures
- * @notice Session-key material for the P256, WebAuthn and RSA branches of `SessionKeyLib`.
+ * @notice Session-key material for the P256, WebAuthn and RSA branches of `AuthKeyLib`.
  * @dev Every vector here is produced without reading the contract under test. P256 points and
  * signatures come from Foundry's own secp256r1 cheatcodes; the WebAuthn assertion is assembled
  * byte by byte from the W3C layout, with a base64url encoder written out below rather than
@@ -32,7 +32,7 @@ library KeyFixtures {
   uint256 internal constant P256_PRIVATE_KEY =
     0x6c4b9a1f3d8e27b5a0c1d2e3f4051627384950a1b2c3d4e5f60718293a4b5c6d;
 
-  /// @dev `abi.encodePacked(qx, qy)`, the layout {SessionKey} documents for P256 and WebAuthn
+  /// @dev `abi.encodePacked(qx, qy)`, the layout {AuthKey} documents for P256 and WebAuthn
   function p256PublicKey() internal view returns (bytes memory) {
     (uint256 qx, uint256 qy) = VM.publicKeyP256(P256_PRIVATE_KEY);
     return abi.encodePacked(bytes32(qx), bytes32(qy));
@@ -162,7 +162,7 @@ library KeyFixtures {
 
   uint256 internal constant RSA_MODULUS_BYTES = 0x100;
 
-  /// @dev `abi.encode(bytes e, bytes n)`, the layout {SessionKey} documents for RSA
+  /// @dev `abi.encode(bytes e, bytes n)`, the layout {AuthKey} documents for RSA
   function rsaPublicKey() internal pure returns (bytes memory) {
     return abi.encode(RSA_EXPONENT, RSA_MODULUS);
   }

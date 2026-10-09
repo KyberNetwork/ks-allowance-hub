@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-/// @notice Signature scheme of a session key; decides how {SessionKeyLib-verify} reads its public key
+/// @notice Signature scheme of an {AuthKey}; decides how {AuthKeyLib-verify} reads its public key
 enum KeyType {
   Secp256k1,
   P256,

@@ -15,8 +15,8 @@ import {
   PermitBatchWitnessTransferFrom as Permit2FulfillmentWitness
 } from 'src/v2/types/FulfillmentWitness.sol';
 
+import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 import {KeyType} from 'src/v2/authenticators/types/KeyType.sol';
-import {SessionKey} from 'src/v2/authenticators/types/SessionKey.sol';
 import {AuthDelegation} from 'src/v2/types/AuthDelegation.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
@@ -172,25 +172,45 @@ abstract contract V2TestBase is Test {
     );
   }
 
-  function lSessionKeyHash(bytes memory publicKey, uint8 keyType, uint256 expiration)
+  function lAuthKeyHash(bytes memory publicKey, uint8 keyType, uint256 expiration)
     internal
     pure
     returns (bytes32)
   {
-    return SchemaHash.sessionKey(
-      SessionKey({publicKey: publicKey, keyType: KeyType(keyType), expiration: expiration})
+    return SchemaHash.authKey(
+      AuthKey({publicKey: publicKey, keyType: KeyType(keyType), expiration: expiration})
     );
   }
 
-  function lSessionApproval(bytes32 keyHash, bool approved, uint256 nonce, uint256 deadline)
+  function lMasterKeyApproval(bytes32 keyHash, bool approved, uint256 nonce, uint256 deadline)
     internal
     pure
     returns (bytes32)
   {
-    return
-      keccak256(
-        abi.encode(SchemaHash.sessionApprovalTypehash(), keyHash, approved, nonce, deadline)
-      );
+    return keccak256(
+      abi.encode(SchemaHash.masterKeyApprovalTypehash(), keyHash, approved, nonce, deadline)
+    );
+  }
+
+  function lSessionKeyApproval(
+    address keyOwner,
+    bytes32 masterKeyHash,
+    bytes32 sessionKeyHash,
+    bool approved,
+    uint256 nonce,
+    uint256 deadline
+  ) internal pure returns (bytes32) {
+    return keccak256(
+      abi.encode(
+        SchemaHash.sessionKeyApprovalTypehash(),
+        keyOwner,
+        masterKeyHash,
+        sessionKeyHash,
+        approved,
+        nonce,
+        deadline
+      )
+    );
   }
 
   // ---------------------------------------------------------------------------------------------

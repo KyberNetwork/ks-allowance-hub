@@ -27,12 +27,13 @@ interface IOrderAuthenticator {
    * any caller and leaves the hub as `msg.sender`. An implementation must therefore treat only
    * `msg.sender == owner` as authentication and verify `signature` in every other case; reading
    * "called by the hub" as proof the owner was authenticated would let anyone install material
-   * for anyone. Replay protection belongs to the implementation.
+   * for anyone. Whose signature authorises an update is the implementation's to decide, and need
+   * not be the owner's. Replay protection belongs to the implementation.
    * @param owner Account the material belongs to
    * @param data Verifier-specific payload
    * @param nonce For the implementation to consume, when it checks the signature
    * @param deadline Last timestamp at which the update is valid
-   * @param signature Owner's authentication, needed unless the owner is the caller
+   * @param signature Authorisation for the update, needed unless the owner is the caller
    */
   function updateAuthentication(
     address owner,

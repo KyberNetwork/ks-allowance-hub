@@ -13,7 +13,7 @@ import {
 import {
   ISessionOrderAuthenticator
 } from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
-import {SessionKey} from 'src/v2/authenticators/types/SessionKey.sol';
+import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 
 import {PackedBits} from 'src/base/types/PackedBits.sol';
 
@@ -433,12 +433,12 @@ contract ForwarderTest is AuthenticatorBase {
    * hub's does not — the hub is only the postman here and burns nothing of its own.
    */
   function test_FWD_13_updateAuthenticationIsRelayedAndApprovesTheKey() public {
-    SessionKey memory fresh = _secpKey(sessionSigner, block.timestamp + 30 days);
+    AuthKey memory fresh = _secpKey(masterSigner, block.timestamp + 30 days);
     uint256 nonce = 300;
     uint256 deadline = block.timestamp + 1 hours;
 
     bytes32 freshHash = _keyHash(fresh);
-    bytes memory approvalSig = _signSessionApproval(fresh, true, nonce, deadline);
+    bytes memory approvalSig = _signMasterKeyApproval(fresh, true, nonce, deadline);
 
     bytes[] memory data = new bytes[](1);
     data[0] = abi.encodeCall(
@@ -449,7 +449,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.prank(relayer);
     bytes[] memory results = hub.forwardCalls(_one(address(authenticator)), data, _bits(0));
 
-    assertTrue(authenticator.approvedKeys(owner, freshHash), 'the key is approved');
+    assertTrue(authenticator.masterKeys(owner, freshHash), 'the key is approved');
     assertEq(
       authenticator.nonces(lNonceKey(owner), nonce >> 8),
       1 << (nonce & 0xff),
@@ -462,6 +462,44 @@ contract ForwarderTest is AuthenticatorBase {
   }
 
   /**
+   * FWD-20 — the same relay carries a master key's grant, not only the owner's approval
+   * @dev The allowlist matches on the selector and both rails share one, so the second tier is
+   * relayable without the forwarder learning anything about it. What moves is the master key's
+   * bitmap: the owner neither signed nor submitted, so nothing of theirs is spent.
+   */
+  function test_FWD_20_updateAuthenticationIsRelayedOnTheMasterKeyRail() public {
+    AuthKey memory masterKey = _secpKey(masterSigner, block.timestamp + 30 days);
+    AuthKey memory ephemeral = _secpKey(sessionSigner, block.timestamp + 1 hours);
+    _delegateKeyThroughHub(masterKey);
+
+    uint256 nonce = 310;
+    uint256 deadline = block.timestamp + 1 hours;
+    bytes memory grantSig =
+      _signSessionKeyApproval(masterKey, ephemeral, true, nonce, deadline, masterKeyPk);
+
+    bytes[] memory data = new bytes[](1);
+    data[0] = abi.encodeCall(
+      IOrderAuthenticator.updateAuthentication,
+      (owner, _sessionKeyData(ephemeral, masterKey, true), nonce, deadline, grantSig)
+    );
+
+    vm.prank(relayer);
+    hub.forwardCalls(_one(address(authenticator)), data, _bits(0));
+
+    assertEq(
+      authenticator.sessionKeyMaster(owner, _keyHash(ephemeral)),
+      _keyHash(masterKey),
+      'the grant landed'
+    );
+    assertEq(
+      authenticator.nonces(_keyHash(masterKey), nonce >> 8),
+      1 << (nonce & 0xff),
+      "the master key's nonce burned"
+    );
+    assertEq(authenticator.nonces(lNonceKey(owner), nonce >> 8), 0, "and not the owner's");
+  }
+
+  /**
    * FWD-14 — the same call with an empty signature is refused even when the owner sends it
    * @dev `forwardCalls` does `targets[i].call(...)`, so the `msg.sender` the authenticator sees is the
    * hub, never the account that submitted the transaction. The authenticator's owner branch is
@@ -471,7 +509,7 @@ contract ForwarderTest is AuthenticatorBase {
    * approve a key for `owner` on nothing but the say-so of whoever paid for the gas.
    */
   function test_FWD_14_emptySignatureIsRefusedEvenFromTheOwner() public {
-    SessionKey memory fresh = _secpKey(recipient, block.timestamp + 30 days);
+    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 30 days);
     uint256 nonce = 301;
     uint256 deadline = block.timestamp + 1 hours;
 
@@ -489,16 +527,14 @@ contract ForwarderTest is AuthenticatorBase {
     vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
     hub.forwardCalls(targets, data, _bits(0));
 
-    assertFalse(authenticator.approvedKeys(owner, freshHash), 'nothing was approved');
+    assertFalse(authenticator.masterKeys(owner, freshHash), 'nothing was approved');
 
     // the same instruction, from the same account, straight at the authenticator: there the owner IS
     // `msg.sender` and the empty signature is accepted, which is what makes the refusal above
     // evidence about the hop through the hub rather than about the payload
     vm.prank(owner);
     authenticator.updateAuthentication(owner, _approveKey(fresh), nonce, deadline, noSignature);
-    assertTrue(
-      authenticator.approvedKeys(owner, freshHash), 'accepted when the owner calls directly'
-    );
+    assertTrue(authenticator.masterKeys(owner, freshHash), 'accepted when the owner calls directly');
   }
 
   /**
@@ -509,14 +545,14 @@ contract ForwarderTest is AuthenticatorBase {
    * the owner has not delegated is simply one whose opinion the hub will never ask for.
    */
   function test_FWD_15_forwardReachesAnUndelegatedAuthenticator() public {
-    SessionKey memory fresh = _secpKey(sessionSigner, block.timestamp + 30 days);
+    AuthKey memory fresh = _secpKey(masterSigner, block.timestamp + 30 days);
     uint256 nonce = 302;
     uint256 deadline = block.timestamp + 1 hours;
 
     assertFalse(hub.authDelegated(owner, address(authenticator)), 'the owner never delegated it');
 
     bytes32 freshHash = _keyHash(fresh);
-    bytes memory approvalSig = _signSessionApproval(fresh, true, nonce, deadline);
+    bytes memory approvalSig = _signMasterKeyApproval(fresh, true, nonce, deadline);
 
     bytes[] memory data = new bytes[](1);
     data[0] = abi.encodeCall(
@@ -527,7 +563,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.prank(relayer);
     hub.forwardCalls(_one(address(authenticator)), data, _bits(0));
 
-    assertTrue(authenticator.approvedKeys(owner, freshHash), 'the key was approved anyway');
+    assertTrue(authenticator.masterKeys(owner, freshHash), 'the key was approved anyway');
     assertFalse(hub.authDelegated(owner, address(authenticator)), 'and still nothing is delegated');
   }
 
@@ -543,7 +579,7 @@ contract ForwarderTest is AuthenticatorBase {
    * let a wrong signature there agree with a wrong expectation here.
    */
   function test_FWD_16_initAndAuthenticateAreNotForwardable() public {
-    SessionKey memory victimKey = _secpKey(relayer, block.timestamp + 30 days);
+    AuthKey memory victimKey = _secpKey(relayer, block.timestamp + 30 days);
     bytes32 victimHash = _keyHash(victimKey);
     bytes memory payload = _encodeKey(victimKey);
 
@@ -582,7 +618,7 @@ contract ForwarderTest is AuthenticatorBase {
     );
     hub.forwardCalls(targets, initData, _bits(0));
 
-    assertFalse(authenticator.approvedKeys(owner, victimHash), 'no key was planted on the owner');
+    assertFalse(authenticator.masterKeys(owner, victimHash), 'no key was planted on the owner');
 
     // a set failure bit does not downgrade the refusal into a skipped entry: the check runs
     // before the call, and `allowFailure` only ever covers a call that was made and reverted
@@ -618,7 +654,7 @@ contract ForwarderTest is AuthenticatorBase {
     // through — so the refusals above are about those selectors and not about the authenticator
     uint256 nonce = 303;
     uint256 deadline = block.timestamp + 1 hours;
-    bytes memory approvalSig = _signSessionApproval(victimKey, true, nonce, deadline);
+    bytes memory approvalSig = _signMasterKeyApproval(victimKey, true, nonce, deadline);
 
     bytes[] memory updateData = new bytes[](1);
     updateData[0] = abi.encodeCall(
@@ -629,7 +665,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.prank(relayer);
     hub.forwardCalls(targets, updateData, _bits(0));
     assertTrue(
-      authenticator.approvedKeys(owner, victimHash), 'updateAuthentication is the listed way in'
+      authenticator.masterKeys(owner, victimHash), 'updateAuthentication is the listed way in'
     );
   }
 

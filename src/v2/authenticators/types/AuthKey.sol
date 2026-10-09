@@ -13,24 +13,24 @@ import {
 import {WebAuthn} from 'openzeppelin-contracts/contracts/utils/cryptography/WebAuthn.sol';
 
 /**
- * @notice A credential an owner has approved to sign orders on their behalf until `expiration`
+ * @notice A credential approved to sign for an account until `expiration`
  * @dev `publicKey` is encoded per `keyType`: a 32-byte ABI-encoded address for Secp256k1 (which
  * also accepts an ERC-1271 contract), `abi.encodePacked(qx, qy)` for P256 and WebAuthn, and
  * `abi.encode(bytes e, bytes n)` for RSA.
  */
-struct SessionKey {
+struct AuthKey {
   bytes publicKey;
   KeyType keyType;
   uint256 expiration;
 }
 
-using SessionKeyLib for SessionKey global;
+using AuthKeyLib for AuthKey global;
 
-library SessionKeyLib {
+library AuthKeyLib {
   using CalldataDecoder for bytes;
 
-  bytes32 internal constant SESSION_KEY_TYPEHASH =
-    keccak256('SessionKey(bytes publicKey,uint8 keyType,uint256 expiration)');
+  bytes32 internal constant AUTH_KEY_TYPEHASH =
+    keccak256('AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)');
 
   /**
    * @dev EIP-712 hash identifying the key: its public half, scheme and expiry together. The raw
@@ -38,15 +38,11 @@ library SessionKeyLib {
    * keys here even when they resolve to the same signer — an approval, and a revocation, is per
    * encoding rather than per signer.
    */
-  function hash(SessionKey calldata sessionKey) internal pure returns (bytes32) {
-    return keccak256(
-      abi.encode(
-        SESSION_KEY_TYPEHASH,
-        keccak256(sessionKey.publicKey),
-        sessionKey.keyType,
-        sessionKey.expiration
-      )
-    );
+  function hash(AuthKey calldata key) internal pure returns (bytes32) {
+    return
+      keccak256(
+        abi.encode(AUTH_KEY_TYPEHASH, keccak256(key.publicKey), key.keyType, key.expiration)
+      );
   }
 
   /**
@@ -57,7 +53,7 @@ library SessionKeyLib {
    * read without a length check, so a short signature reads whatever follows it in calldata and
    * fails verification rather than reverting.
    */
-  function verify(SessionKey calldata key, bytes32 digest, bytes calldata signature)
+  function verify(AuthKey calldata key, bytes32 digest, bytes calldata signature)
     internal
     view
     returns (bool)

@@ -8,7 +8,7 @@ import {RouterMock} from 'test/v2/mocks/RouterMock.sol';
 import {
   ISessionOrderAuthenticator
 } from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
-import {SessionKey} from 'src/v2/authenticators/types/SessionKey.sol';
+import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 
 import {NativeSpendGuard} from 'src/base/NativeSpendGuard.sol';
 import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
@@ -236,8 +236,8 @@ contract MulticallTest is AuthenticatorBase {
    * which the pre-state assertion fixes; the delegation put in place beforehand carries no key of
    * its own, so the hub's gate is open while the authenticator still knows nothing.
    */
-  function test_MC_06_approveASessionKeyAndSpendOnItInOneBatch() public {
-    SessionKey memory key = _secpKey(sessionSigner, block.timestamp + 30 days);
+  function test_MC_06_approveAMasterKeyAndSpendOnItInOneBatch() public {
+    AuthKey memory key = _secpKey(masterSigner, block.timestamp + 30 days);
     bytes32 keyHash = _keyHash(key);
 
     uint256 deadline = block.timestamp + 1 hours;
@@ -246,14 +246,14 @@ contract MulticallTest is AuthenticatorBase {
 
     vm.prank(owner);
     hub.updateDelegation(owner, address(authenticator), true, '', 0, deadline, '');
-    assertFalse(authenticator.approvedKeys(owner, keyHash), 'the authenticator holds no key yet');
+    assertFalse(authenticator.masterKeys(owner, keyHash), 'the authenticator holds no key yet');
 
     ERC20Transfer[] memory erc20s = _erc20s(_wethTransfer(AMOUNT));
     GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
 
     ExecutionOrder memory order = _openExecutionOrder(erc20s, calls, orderNonce, deadline);
-    bytes memory approvalSig = _signSessionApproval(key, true, approvalNonce, deadline);
-    bytes memory orderAuth = _executionAuthData(order, key, sessionKeyPk);
+    bytes memory approvalSig = _signMasterKeyApproval(key, true, approvalNonce, deadline);
+    bytes memory orderAuth = _executionAuthData(order, key, masterKeyPk);
 
     address[] memory targets = new address[](1);
     targets[0] = address(authenticator);
@@ -279,7 +279,7 @@ contract MulticallTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(ISessionOrderAuthenticator.SessionKeyNotApproved.selector, owner, key)
+      abi.encodeWithSelector(ISessionOrderAuthenticator.AuthKeyNotApproved.selector, owner, key)
     );
     hub.multicall(orderOnly);
 
@@ -289,7 +289,7 @@ contract MulticallTest is AuthenticatorBase {
     (bytes[] memory results,) = hub.multicall(batch);
 
     assertEq(results.length, 2, 'one result per sub-call');
-    assertTrue(authenticator.approvedKeys(owner, keyHash), 'the batch approved the key');
+    assertTrue(authenticator.masterKeys(owner, keyHash), 'the batch approved the key');
     assertEq(
       IERC20(WETH).balanceOf(address(router)) - routerWethBefore,
       AMOUNT,
@@ -308,6 +308,84 @@ contract MulticallTest is AuthenticatorBase {
       'and the order burned one of the session key, which signed that'
     );
     assertEq(hub.nonces(lNonceKey(owner), 0), 0, 'and the hub burned none of its own');
+  }
+
+  /**
+   * MC-08 — one batch mints an ephemeral key from a master key and spends on it
+   * @dev MC-06 with the wallet out of the loop. The only signatures are the master key's, over the
+   * grant, and the ephemeral key's, over the order; the owner signs nothing and submits nothing,
+   * which is what the second tier exists for. The order on its own is refused first, so the batch
+   * is evidence that slot 0 is what let it through.
+   */
+  function test_MC_08_masterKeyMintsAnEphemeralKeyAndSpendsOnItInOneBatch() public {
+    AuthKey memory masterKey = _secpKey(masterSigner, block.timestamp + 30 days);
+    AuthKey memory ephemeral = _secpKey(sessionSigner, block.timestamp + 10 minutes);
+
+    uint256 deadline = block.timestamp + 1 hours;
+    uint256 grantNonce = 80;
+    uint256 orderNonce = 81;
+
+    vm.prank(owner);
+    hub.updateDelegation(
+      owner, address(authenticator), true, _encodeKey(masterKey), 0, deadline, ''
+    );
+    assertEq(
+      authenticator.sessionKeyMaster(owner, _keyHash(ephemeral)), bytes32(0), 'no ephemeral key yet'
+    );
+
+    ExecutionOrder memory order = _openExecutionOrder(
+      _erc20s(_wethTransfer(AMOUNT)), _calls(_routerCall(0, hex'01')), orderNonce, deadline
+    );
+    bytes memory grantSig =
+      _signSessionKeyApproval(masterKey, ephemeral, true, grantNonce, deadline, masterKeyPk);
+    bytes memory orderAuth = _executionAuthData(order, ephemeral, sessionKeyPk);
+
+    address[] memory targets = new address[](1);
+    targets[0] = address(authenticator);
+
+    bytes[] memory relayed = new bytes[](1);
+    relayed[0] = abi.encodeCall(
+      IOrderAuthenticator.updateAuthentication,
+      (owner, _sessionKeyData(ephemeral, masterKey, true), grantNonce, deadline, grantSig)
+    );
+
+    bytes[] memory batch = new bytes[](2);
+    batch[0] =
+      abi.encodeCall(ICallsForwarder.forwardCalls, (targets, relayed, PackedBits.wrap(bytes32(0))));
+    batch[1] = abi.encodeCall(
+      IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
+      (order, address(authenticator), orderAuth, false)
+    );
+
+    bytes[] memory orderOnly = new bytes[](1);
+    orderOnly[0] = batch[1];
+
+    vm.prank(relayer);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        ISessionOrderAuthenticator.AuthKeyNotApproved.selector, owner, ephemeral
+      )
+    );
+    hub.multicall(orderOnly);
+
+    uint256 routerWethBefore = IERC20(WETH).balanceOf(address(router));
+
+    vm.prank(relayer);
+    hub.multicall(batch);
+
+    assertEq(
+      authenticator.sessionKeyMaster(owner, _keyHash(ephemeral)),
+      _keyHash(masterKey),
+      'the batch minted the ephemeral key'
+    );
+    assertEq(
+      IERC20(WETH).balanceOf(address(router)) - routerWethBefore,
+      AMOUNT,
+      'and it spent on it in the same transaction'
+    );
+    assertEq(
+      authenticator.nonces(lNonceKey(owner), 0), 0, "the owner's namespace is untouched throughout"
+    );
   }
 
   struct BatchFuzz {

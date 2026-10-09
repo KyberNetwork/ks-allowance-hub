@@ -11,7 +11,7 @@ import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
 import {
   ISessionOrderAuthenticator
 } from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
-import {SessionKey} from 'src/v2/authenticators/types/SessionKey.sol';
+import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
@@ -39,14 +39,14 @@ contract FulfillOrderTest is AuthenticatorBase {
   /// @dev Written out rather than imported: a role read from the hub would agree with a wrong one
   bytes32 internal constant ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
 
-  SessionKey internal key;
+  AuthKey internal key;
 
   address internal approver;
   uint256 internal approverKey;
 
   function setUp() public override {
     super.setUp();
-    key = _secpKey(sessionSigner, block.timestamp + 30 days);
+    key = _secpKey(masterSigner, block.timestamp + 30 days);
 
     (approver, approverKey) = makeAddrAndKey('solution approver');
     _asEoa(approver);
@@ -510,7 +510,7 @@ contract FulfillOrderTest is AuthenticatorBase {
       21,
       deadline
     );
-    bytes memory authData = _fulfillmentAuthData(order, key, sessionKeyPk);
+    bytes memory authData = _fulfillmentAuthData(order, key, masterKeyPk);
     FulfillmentSolution memory route = _route(_calls(_routerCall(0, hex'01')));
 
     vm.prank(relayer);
@@ -637,7 +637,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     FulfillmentOrder memory control =
       _fulfillmentOrder(ANY, erc20s, new ERC721Transfer[](0), vs, signedTail, ANY, 72, deadline);
-    bytes memory controlAuth = _fulfillmentAuthData(control, key, sessionKeyPk);
+    bytes memory controlAuth = _fulfillmentAuthData(control, key, masterKeyPk);
 
     vm.prank(relayer);
     hub.fulfillOrderWithDelegatedAuthentication(
@@ -650,7 +650,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     FulfillmentOrder memory signed =
       _fulfillmentOrder(ANY, erc20s, new ERC721Transfer[](0), vs, signedTail, ANY, 73, deadline);
-    bytes memory signedAuth = _fulfillmentAuthData(signed, key, sessionKeyPk);
+    bytes memory signedAuth = _fulfillmentAuthData(signed, key, masterKeyPk);
 
     FulfillmentOrder memory tampered =
       _fulfillmentOrder(ANY, erc20s, new ERC721Transfer[](0), vs, swappedTail, ANY, 73, deadline);
@@ -952,7 +952,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     if (f.usePermit2Allowances) _grantPermit2Allowance(WETH, uint160(100 ether));
 
     (FulfillmentOrder memory order, FulfillmentSolution memory route) = _fuzzOrder(f, relayer);
-    bytes memory authData = _fulfillmentAuthData(order, key, sessionKeyPk);
+    bytes memory authData = _fulfillmentAuthData(order, key, masterKeyPk);
     bytes memory approval = f.approveSolution
       ? _signSolutionApproval(approverKey, lFulfillmentOrderHash(order), route)
       : bytes('');

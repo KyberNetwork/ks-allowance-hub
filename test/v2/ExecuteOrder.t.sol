@@ -8,7 +8,7 @@ import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.s
 import {
   ISessionOrderAuthenticator
 } from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
-import {SessionKey} from 'src/v2/authenticators/types/SessionKey.sol';
+import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 import {IAuthDelegator} from 'src/v2/interfaces/IAuthDelegator.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
@@ -40,11 +40,11 @@ contract ExecuteOrderTest is AuthenticatorBase {
    * @dev Transcribed from {IOrderAuthenticator}, with {ExecutionOrder} expanded to its tuple. A
    * selector taken from the production interface would agree with a wrong signature there.
    */
-  SessionKey internal key;
+  AuthKey internal key;
 
   function setUp() public override {
     super.setUp();
-    key = _secpKey(sessionSigner, block.timestamp + 30 days);
+    key = _secpKey(masterSigner, block.timestamp + 30 days);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -263,7 +263,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
     ExecutionOrder memory plainRail =
       _executionOrder(ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 40, deadline);
-    bytes memory plainAuth = _executionAuthData(plainRail, key, sessionKeyPk);
+    bytes memory plainAuth = _executionAuthData(plainRail, key, masterKeyPk);
 
     uint256 before = IERC20(WETH).balanceOf(address(router));
     uint160 allowanceBefore = _permit2Allowance(WETH);
@@ -276,7 +276,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
     ExecutionOrder memory permit2Rail =
       _executionOrder(ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 41, deadline);
-    bytes memory permit2Auth = _executionAuthData(permit2Rail, key, sessionKeyPk);
+    bytes memory permit2Auth = _executionAuthData(permit2Rail, key, masterKeyPk);
 
     before = IERC20(WETH).balanceOf(address(router));
 
@@ -338,7 +338,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
     ExecutionOrder memory order =
       _executionOrder(ANY, erc20s, new ERC721Transfer[](0), calls, 43, deadline);
-    bytes memory authData = _executionAuthData(order, key, sessionKeyPk);
+    bytes memory authData = _executionAuthData(order, key, masterKeyPk);
 
     bytes memory expectedCall =
       abi.encodeCall(IOrderAuthenticator.authenticateExecution, (order, authData));
@@ -414,7 +414,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
       f.nonce,
       block.timestamp + f.deadlineOffset
     );
-    bytes memory authData = _executionAuthData(order, key, sessionKeyPk);
+    bytes memory authData = _executionAuthData(order, key, masterKeyPk);
 
     uint256 before = IERC20(WETH).balanceOf(address(router));
     uint256 routerNative = address(router).balance;
