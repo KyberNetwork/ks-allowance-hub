@@ -148,7 +148,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     assertFalse(authenticator.masterKeys(owner, _keyHash(key)), 'revoked');
     assertTrue(hub.authDelegated(owner, address(authenticator)), 'the delegation itself survives');
 
-    vm.expectRevert(_notApproved(key));
+    vm.expectRevert(_masterKeyNotApproved(key));
     _executeViaAuthenticator(key, masterKeyPk, 31, block.timestamp + 1 hours, false);
   }
 
@@ -348,7 +348,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
     AuthKey memory stranger = _secpKey(relayer, block.timestamp + 30 days);
 
-    vm.expectRevert(_notApproved(stranger));
+    vm.expectRevert(_masterKeyNotApproved(stranger));
     _executeViaAuthenticator(stranger, masterKeyPk, 8, block.timestamp + 1 hours, false);
   }
 
@@ -465,7 +465,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
     AuthKey memory stranger = _secpKey(relayer, block.timestamp + 30 days);
 
-    vm.expectRevert(_notApproved(stranger));
+    vm.expectRevert(_masterKeyNotApproved(stranger));
     _fulfillViaAuthenticator(stranger, masterKeyPk, 60, block.timestamp + 1 hours);
 
     uint256 before = IERC20(WETH).balanceOf(address(router));
@@ -511,7 +511,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     // same signer, later expiry: a different key as far as the approval is concerned
     AuthKey memory stretched = _secpKey(masterSigner, key.expiration + 1);
 
-    vm.expectRevert(_notApproved(stretched));
+    vm.expectRevert(_masterKeyNotApproved(stretched));
     _executeViaAuthenticator(stretched, masterKeyPk, 15, block.timestamp + 1 hours, false);
   }
 
@@ -779,7 +779,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
       _signSessionKeyApproval(sessionKey, grandchild, true, 4, deadline, sessionKeyPk);
 
     vm.prank(relayer);
-    vm.expectRevert(_notApproved(sessionKey));
+    vm.expectRevert(_masterKeyNotApproved(sessionKey));
     authenticator.updateAuthentication(
       owner, _sessionKeyData(grandchild, sessionKey, true), 4, deadline, sig
     );
@@ -803,7 +803,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory sig = _signSessionKeyApproval(stranger, sessionKey, true, 5, deadline, strangerPk);
 
     vm.prank(relayer);
-    vm.expectRevert(_notApproved(stranger));
+    vm.expectRevert(_masterKeyNotApproved(stranger));
     authenticator.updateAuthentication(
       owner, _sessionKeyData(sessionKey, stranger, true), 5, deadline, sig
     );
@@ -811,8 +811,8 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
   /**
    * SV-TIER-04 — revoking a master key takes every session key under it
-   * @dev The grant row itself is left standing, which is what makes the cascade reversible: the
-   * owner re-approving the identical credential revives the keys it had minted.
+   * @dev The grant row itself is left standing, so the owner re-approving the identical credential
+   * revives the keys that master had minted.
    */
   function test_SV_TIER_04_revokingTheMasterKeyTakesItsSessionKeys() public {
     _delegateKeyThroughHub(key);
@@ -833,7 +833,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
       'the grant itself is untouched'
     );
 
-    vm.expectRevert(_notApproved(sessionKey));
+    vm.expectRevert(_sessionKeyNotApproved(sessionKey, key));
     _executeViaAuthenticator(sessionKey, sessionKeyPk, 11, block.timestamp + 1 hours, false);
 
     vm.prank(owner);
@@ -843,8 +843,8 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
   /**
    * SV-TIER-05 — a session key may not outlive the master key granting it
-   * @dev Both legs run on nonce 20: the refusal happens before the burn, so the same number is
-   * still there for the leg that succeeds, which is what shows the first one spent nothing.
+   * @dev Both legs run on nonce 20: the refusal happens before the burn, so the number is still
+   * there for the leg that succeeds.
    */
   function test_SV_TIER_05_aSessionKeyMayNotOutliveItsMaster() public {
     _delegateKeyThroughHub(key);
@@ -894,8 +894,8 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
   /**
    * SV-TIER-07 — the approval names the account it is for
    * @dev The same credential can be a master key for two accounts, so the decision carries the
-   * owner. The second leg submits the very same signature for the account it does name, which is
-   * what makes the refusal evidence about `owner` rather than about a bad signature.
+   * owner. The second leg submits the very same signature for the account it does name, so the
+   * refusal is evidence about `owner` rather than about a bad signature.
    */
   function test_SV_TIER_07_theApprovalNamesTheAccountItIsFor() public {
     _delegateKeyThroughHub(key);
@@ -986,7 +986,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
       bytes32(0),
       'the grant is cleared'
     );
-    vm.expectRevert(_notApproved(sessionKey));
+    vm.expectRevert(_masterKeyNotApproved(sessionKey));
     _executeViaAuthenticator(sessionKey, sessionKeyPk, 43, block.timestamp + 1 hours, false);
   }
 
@@ -1014,7 +1014,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     authenticator.updateAuthentication(owner, _revokeKey(key), 0, deadline, '');
 
     assertTrue(authenticator.masterKeys(owner, _keyHash(both)), 'its own approval still stands');
-    vm.expectRevert(_notApproved(both));
+    vm.expectRevert(_sessionKeyNotApproved(both, key));
     _executeViaAuthenticator(both, sessionKeyPk, 52, block.timestamp + 1 hours, false);
 
     vm.prank(owner);
@@ -1081,10 +1081,25 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     return _walletAddr;
   }
 
-  /// @dev The error the authenticator raises for a key the owner never approved, payload and all
-  function _notApproved(AuthKey memory sessionKey) private view returns (bytes memory) {
+  /// @dev The error for a key presented as a master key that the owner never approved, payload
+  /// and all
+  function _masterKeyNotApproved(AuthKey memory masterKey) private view returns (bytes memory) {
     return abi.encodeWithSelector(
-      ISessionOrderAuthenticator.AuthKeyNotApproved.selector, owner, sessionKey
+      ISessionOrderAuthenticator.MasterKeyNotApproved.selector, owner, masterKey
+    );
+  }
+
+  /// @dev The error for a session key whose own grant stands but whose master key no longer does
+  function _sessionKeyNotApproved(AuthKey memory sessionKey, AuthKey memory masterKey)
+    private
+    view
+    returns (bytes memory)
+  {
+    return abi.encodeWithSelector(
+      ISessionOrderAuthenticator.SessionKeyNotApproved.selector,
+      owner,
+      sessionKey,
+      _keyHash(masterKey)
     );
   }
 

@@ -86,7 +86,7 @@ abstract contract AuthenticatorBase is HubBase {
   }
 
   /// @dev The `data` argument of the master-key rail: the key being decided, the key deciding, and
-  /// the direction. One member longer than the owner's, which is what tells the rails apart
+  /// the direction
   function _sessionKeyData(AuthKey memory sessionKey, AuthKey memory masterKey, bool approved)
     internal
     pure

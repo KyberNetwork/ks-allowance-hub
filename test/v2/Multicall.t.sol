@@ -279,7 +279,7 @@ contract MulticallTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(ISessionOrderAuthenticator.AuthKeyNotApproved.selector, owner, key)
+      abi.encodeWithSelector(ISessionOrderAuthenticator.MasterKeyNotApproved.selector, owner, key)
     );
     hub.multicall(orderOnly);
 
@@ -363,7 +363,7 @@ contract MulticallTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ISessionOrderAuthenticator.AuthKeyNotApproved.selector, owner, ephemeral
+        ISessionOrderAuthenticator.MasterKeyNotApproved.selector, owner, ephemeral
       )
     );
     hub.multicall(orderOnly);

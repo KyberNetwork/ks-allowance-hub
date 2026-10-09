@@ -29,9 +29,10 @@ import {
  * @notice Lets an owner approve a key once and then authenticate allowance-hub orders with that key
  * instead of their main wallet. Keys carry their own expiry and may be Secp256k1, P256, WebAuthn or
  * RSA, so a passkey or a hot key can sign orders the wallet never touches.
- * @dev A master key is the owner's own decision and the only tier that may approve anything; a
- * session key is a master key's, so a passkey hands out short-lived local keys with no wallet
- * prompt. Both tiers sign orders, and a session key may neither outlive its master nor survive it.
+ * @dev The owner approves master keys, which are the only tier that may approve anything; a
+ * master key approves session keys of its own, so a passkey hands out short-lived local keys with
+ * no wallet prompt. Both tiers sign orders, and a session key may neither outlive the master key
+ * behind it nor survive its revocation.
  *
  * Replay protection lives here rather than in the hub: every verification burns a nonce in the
  * namespace of whatever signed it, and the nonce and deadline are bound into the digest.
@@ -118,9 +119,9 @@ contract SessionOrderAuthenticator is
       bytes32 masterKeyHash = masterKey.hash();
       // A session key may only be granted by a key the owner approved themselves
       if (!masterKeys[owner][masterKeyHash]) {
-        revert AuthKeyNotApproved(owner, masterKey);
+        revert MasterKeyNotApproved(owner, masterKey);
       }
-      // Enforced either direction, so a master key only speaks about keys it could have minted
+      // Checked in both directions, so a master key only decides keys it could have minted
       if (sessionKey.expiration > masterKey.expiration) {
         revert SessionKeyOutlivesMasterKey(sessionKey.expiration, masterKey.expiration);
       }
@@ -172,10 +173,15 @@ contract SessionOrderAuthenticator is
     }
 
     bytes32 keyHash = key.hash();
-    // A session key stands on its master, re-read here, so revoking one takes every key it minted
+    // A key with no master key behind it stands on its own approval; a session key stands on that
+    // master key, so revoking it takes every session key it minted
     bytes32 masterKeyHash = sessionKeyMaster[owner][keyHash];
-    if (!masterKeys[owner][masterKeyHash == bytes32(0) ? keyHash : masterKeyHash]) {
-      revert AuthKeyNotApproved(owner, key);
+    if (masterKeyHash == bytes32(0)) {
+      if (!masterKeys[owner][keyHash]) {
+        revert MasterKeyNotApproved(owner, key);
+      }
+    } else if (!masterKeys[owner][masterKeyHash]) {
+      revert SessionKeyNotApproved(owner, key, masterKeyHash);
     }
 
     _useUnorderedNonce(keyHash, nonce);

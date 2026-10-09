@@ -738,8 +738,8 @@ every existing case, so this run is additive: it covers the new master-key rail 
 | Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
 |---|---|---|---|---|---|
 | - [x] | - [ ] | `20261009T042147Z/TIER-01` | A master key approves a session key, which then authenticates on both order rails; the grant lands in `sessionKeyMaster` and not in `masterKeys`, and a master's revocation of its own session key clears it | `SV-TIER-01`, `SV-TIER-01b`, `SV-TIER-09`, `SV-FUZZ-TIER`; `test/v2/authenticators/SessionOrderAuthenticator.t.sol` |`forge test --match-path 'test/v2/authenticators/SessionOrderAuthenticator.t.sol'` |
-| - [x] | - [ ] | `20261009T042147Z/TIER-02` | Who may grant a session key, and how far: a session key and an unapproved key are both refused `AuthKeyNotApproved`, and `SessionKeyOutlivesMasterKey` holds at the expiry boundary — equal passes, one second longer does not | `SV-TIER-02`, `SV-TIER-03`, `SV-TIER-05`; same file |`forge test --match-path 'test/v2/authenticators/SessionOrderAuthenticator.t.sol'` |
-| - [x] | - [ ] | `20261009T042147Z/TIER-03` | The cascade: revoking a master refuses every session key under it and re-approving the identical credential revives them; a key holding both grants resolves through its master | `SV-TIER-04`, `SV-TIER-10`; same file |`forge test --match-path 'test/v2/authenticators/SessionOrderAuthenticator.t.sol'` |
+| - [x] | - [ ] | `20261009T042147Z/TIER-02` | Who may grant a session key, and how far: a session key and an unapproved key are both refused `MasterKeyNotApproved`, and `SessionKeyOutlivesMasterKey` holds at the expiry boundary — equal passes, one second longer does not | `SV-TIER-02`, `SV-TIER-03`, `SV-TIER-05`; same file |`forge test --match-path 'test/v2/authenticators/SessionOrderAuthenticator.t.sol'` |
+| - [x] | - [ ] | `20261009T042147Z/TIER-03` | The cascade: revoking a master refuses every session key under it with `SessionKeyNotApproved` and re-approving the identical credential revives them; a key holding both grants resolves through its master | `SV-TIER-04`, `SV-TIER-10`; same file |`forge test --match-path 'test/v2/authenticators/SessionOrderAuthenticator.t.sol'` |
 | - [x] | - [ ] | `20261009T042147Z/TIER-04` | What the master's signature covers and where its nonce lands: a wrong signer and an approval bound to another owner are both refused, and the nonce burns in the master key's namespace rather than the owner's or the session key's | `SV-TIER-06`, `SV-TIER-07`, `SV-TIER-08`; same file |`forge test --match-path 'test/v2/authenticators/SessionOrderAuthenticator.t.sol'` |
 | - [x] | - [ ] | `20261009T042147Z/OBS-01` | `SessionKeyApproval`, the type a master key signs, against the `encodeType` its own struct declares | `T712-11`; `test/v2/authenticators/types/AuthenticatorEip712.t.sol`, `test/v2/types/SchemaAudit.t.sol` |`forge test --match-path 'test/v2/authenticators/types/AuthenticatorEip712.t.sol'` |
 | - [x] | - [ ] | `20261009T042147Z/FLOW-01` | The no-signing flow end to end: a relayed master-rail approval through `forwardCalls`, and one `multicall` batch that mints a fresh ephemeral key and spends on it in the same transaction | `FWD-20`, `MC-08`; `test/v2/Forwarder.t.sol`, `test/v2/Multicall.t.sol` |`forge test --match-test 'test_MC_08|test_FWD_20'` |
@@ -769,3 +769,12 @@ lines 65 and 114, `_useUnorderedNonce(owner, nonce)` at line 100, and `data.deco
 grant into `masterKeys` instead of `sessionKeyMaster` fails `SV-TIER-01` and `SV-TIER-02`; dropping
 the expiry bound fails `SV-TIER-05`; ignoring `sessionKeyMaster` in `_authenticate` fails
 `SV-TIER-01` and `SV-TIER-01b`; burning the nonce against the owner fails `SV-TIER-08`.
+
+**The refusal says which tier failed.** `AuthKeyNotApproved` split into `MasterKeyNotApproved`, for
+a key presented as a master key that the owner never approved, and `SessionKeyNotApproved`, for a
+session key whose own grant stands while the master key it names does not. The latter carries that
+master key's hash, so the refusal says which credential to re-approve rather than leaving the
+holder to read `sessionKeyMaster` for it. Both are pinned, not merely raised: swapping the two
+reverts fails 18 cases on the payload, and naming the session key's own hash in place of its
+master's fails `SV-TIER-04` and `SV-TIER-10`. A master key's revocation of its own session key clears the grant, so that key
+then reads as `MasterKeyNotApproved` — it has no standing of any kind left.
