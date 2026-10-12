@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IAuthDelegator} from './interfaces/IAuthDelegator.sol';
-import {IOrderAuthenticator} from './interfaces/IOrderAuthenticator.sol';
-
 import {DeadlineChecker} from '../base/DeadlineChecker.sol';
 import {EIP712Base} from '../base/EIP712Base.sol';
 import {UnorderedNonce} from '../base/UnorderedNonce.sol';
+
+import {IAuthDelegator} from './interfaces/IAuthDelegator.sol';
+import {IOrderAuthenticator} from './interfaces/IOrderAuthenticator.sol';
 
 import {AuthDelegationLib} from './types/AuthDelegation.sol';
 

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import {DynamicArrayLibExt} from '../../base/libraries/DynamicArrayLibExt.sol';
+
 import {IKSActionValidator} from 'ks-action-validator-sc/src/interfaces/IKSActionValidator.sol';
 
-import {DynamicArrayLibExt} from '../../base/libraries/DynamicArrayLibExt.sol';
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**

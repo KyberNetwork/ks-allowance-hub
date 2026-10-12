@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.36;
 
-import {IOrderAuthenticator} from '../interfaces/IOrderAuthenticator.sol';
-
-import {ISessionOrderAuthenticator} from './interfaces/ISessionOrderAuthenticator.sol';
-
-import {OrderAuthenticatorBase} from './OrderAuthenticatorBase.sol';
-
 import {DeadlineChecker} from '../../base/DeadlineChecker.sol';
 import {EIP712Base} from '../../base/EIP712Base.sol';
 import {UnorderedNonce} from '../../base/UnorderedNonce.sol';
 
-import {AuthKey} from './types/AuthKey.sol';
-import {MasterKeyApprovalLib} from './types/MasterKeyApproval.sol';
-import {SessionKeyApprovalLib} from './types/SessionKeyApproval.sol';
+import {IOrderAuthenticator} from '../interfaces/IOrderAuthenticator.sol';
 
 import {ExecutionOrder} from '../types/ExecutionOrder.sol';
 import {FulfillmentOrder} from '../types/FulfillmentOrder.sol';
+
+import {OrderAuthenticatorBase} from './OrderAuthenticatorBase.sol';
+
+import {ISessionOrderAuthenticator} from './interfaces/ISessionOrderAuthenticator.sol';
+
+import {AuthKey} from './types/AuthKey.sol';
+import {MasterKeyApprovalLib} from './types/MasterKeyApproval.sol';
+import {SessionKeyApprovalLib} from './types/SessionKeyApproval.sol';
 
 import {CalldataDecoder} from 'ks-common-sc/src/libraries/calldata/CalldataDecoder.sol';
 
