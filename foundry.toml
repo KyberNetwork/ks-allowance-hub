@@ -6,9 +6,24 @@ verbosity = 3
 via_ir = true
 dynamic_test_linking = true
 ffi = true
+bytecode_hash = "none"
+
+additional_compiler_profiles = [
+  { name = "runs-3000", via_ir = true, optimizer_runs = 3000 }
+]
+
+compilation_restrictions = [
+  { paths = "src/v2/KSAllowanceHubV2.sol", optimizer_runs = 3000 },
+]
+
 
 [fuzz]
 runs = 32
+
+# Local deep-fuzz profile. Inherits everything from `default` and only raises the fuzz budget, so
+# it exercises the same build as CI. Run with `FOUNDRY_PROFILE=deep forge test`.
+[profile.deep.fuzz]
+runs = 10_000
 
 [fmt]
 line_length = 100
@@ -40,3 +55,10 @@ sonic_mainnet = "${RPC_146}"
 monad_mainnet = "${RPC_143}"
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+[bind_json]
+include = [
+  '**/src/v2/types/*.sol',
+  '**/src/v2/authenticators/types/*.sol',
+]
+

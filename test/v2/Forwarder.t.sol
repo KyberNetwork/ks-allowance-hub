@@ -1,0 +1,1061 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.36;
+
+import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
+
+import {
+  ERC20DaiPermitMock,
+  ERC721PermitV3Mock,
+  ERC721PermitV4Mock,
+  ReentrantPermitMock
+} from 'test/v2/mocks/PermitTokenMocks.sol';
+
+import {ERC20Mock} from 'test/v2/mocks/TokenMocks.sol';
+
+import {
+  ISessionOrderAuthenticator
+} from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
+import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
+
+import {PackedBits} from 'src/base/types/PackedBits.sol';
+
+import {ICallsForwarder} from 'src/v2/interfaces/ICallsForwarder.sol';
+import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
+import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
+import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
+import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
+import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
+import {GenericCall} from 'src/v2/types/GenericCall.sol';
+import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
+
+import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
+import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
+
+import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
+import {ERC20Permit} from 'openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Permit.sol';
+import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
+
+/**
+ * @title ForwarderTest
+ * @notice `PF-01..09`, `PF-FUZZ` and `FWD-13..19` plus `FWD-PAUSE/VALUE/REENTRY`: the
+ * self-authorising calls {ICallsForwarder-forwardCalls} relays, its selector allowlist, its
+ * per-entry failure bits and the things it deliberately does not guard.
+ * @dev `forwardCalls` makes a plain `call` per entry, so the observable oracle is never the return
+ * value: it is the allowance, approval or nonce the target holds afterwards. Every digest here is
+ * built from a type string written out in this file from EIP-2612, the DAI permit and the ERC-721
+ * permit drafts, and every relayed call is assembled from a hand-written function signature — no
+ * production constant, and in particular no production selector, appears on the expected side of
+ * any assertion.
+ */
+contract ForwarderTest is AuthenticatorBase {
+  // -----------------------------------------------------------------------------------------------
+  // Literal type strings
+  // -----------------------------------------------------------------------------------------------
+
+  string internal constant L_EIP2612_PERMIT =
+    'Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)';
+  string internal constant L_DAI_PERMIT =
+    'Permit(address holder,address spender,uint256 nonce,uint256 expiry,bool allowed)';
+  string internal constant L_ERC721_PERMIT =
+    'Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)';
+  string internal constant L_PERMIT2_DETAILS =
+    'PermitDetails(address token,uint160 amount,uint48 expiration,uint48 nonce)';
+  string internal constant L_PERMIT2_BATCH_STUB =
+    'PermitBatch(PermitDetails[] details,address spender,uint256 sigDeadline)';
+  /// @dev The batch stub's sibling, for the other Permit2 overload on the allowlist
+  string internal constant L_PERMIT2_SINGLE_STUB =
+    'PermitSingle(PermitDetails details,address spender,uint256 sigDeadline)';
+
+  // -----------------------------------------------------------------------------------------------
+  // Literal `permit` signatures. These six share one name across six interfaces, so a selector
+  // has to be named by its argument list rather than taken from a function
+  // -----------------------------------------------------------------------------------------------
+
+  string internal constant S_EIP2612_PERMIT =
+    'permit(address,address,uint256,uint256,uint8,bytes32,bytes32)';
+  string internal constant S_DAI_PERMIT =
+    'permit(address,address,uint256,uint256,bool,uint8,bytes32,bytes32)';
+  string internal constant S_ERC721_V3_PERMIT =
+    'permit(address,uint256,uint256,uint8,bytes32,bytes32)';
+  string internal constant S_ERC721_V4_PERMIT = 'permit(address,uint256,uint256,uint256,bytes)';
+  string internal constant S_PERMIT2_BATCH_PERMIT =
+    'permit(address,((address,uint160,uint48,uint48)[],address,uint256),bytes)';
+  string internal constant S_PERMIT2_SINGLE_PERMIT =
+    'permit(address,((address,uint160,uint48,uint48),address,uint256),bytes)';
+
+  uint256 internal constant PERMIT_NFT_ID = 7;
+
+  ERC20DaiPermitMock internal daiToken;
+  ERC20Mock internal permitToken;
+  ERC20Mock internal permitToken2;
+  ERC721PermitV3Mock internal nftV3;
+  ERC721PermitV4Mock internal nftV4;
+
+  struct PermitFuzz {
+    uint8 entryCount;
+    uint8 validMask;
+    uint256 allowFailure;
+    uint256 deadlineOffset;
+  }
+
+  function setUp() public override {
+    super.setUp();
+
+    daiToken = new ERC20DaiPermitMock('Dai Flavoured Token');
+    permitToken = new ERC20Mock('Permit Token', 'PT', 18);
+    permitToken2 = new ERC20Mock('Permit Token Two', 'PT2', 18);
+    permitToken.mint(owner, 1000 ether);
+    permitToken2.mint(owner, 1000 ether);
+
+    nftV3 = new ERC721PermitV3Mock();
+    nftV4 = new ERC721PermitV4Mock();
+    nftV3.mint(owner, PERMIT_NFT_ID);
+    nftV4.mint(owner, PERMIT_NFT_ID);
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // PF-01..05 — one case per selector on the allowlist that a token or Permit2 answers
+  // -----------------------------------------------------------------------------------------------
+
+  /// PF-01 — an EIP-2612 permit is relayed to the token and lands as an allowance
+  function test_PF_01_eip2612PermitForwarded() public {
+    uint256 value = 123 ether;
+    uint256 deadline = block.timestamp + 1 hours;
+
+    bytes[] memory data = new bytes[](1);
+    data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
+
+    // anyone may relay someone else's permit: the signature inside is the authorisation, and the
+    // forwarder — not the relayer — is the `msg.sender` the token sees
+    vm.prank(relayer);
+    bytes[] memory results = hub.forwardCalls(_one(address(permitToken)), data, _bits(0));
+
+    assertEq(permitToken.allowance(owner, address(hub)), value, 'allowance');
+    assertEq(permitToken.nonces(owner), 1, 'nonce consumed');
+    assertEq(results.length, 1, 'one result per entry');
+    assertEq(results[0].length, 0, 'an EIP-2612 permit returns nothing');
+  }
+
+  /// PF-02 — the DAI-flavoured permit, whose `allowed` flag is a direction not an amount
+  function test_PF_02_daiStylePermitForwarded() public {
+    uint256 nonce = _daiNonce(owner);
+    uint256 expiry = block.timestamp + 1 hours;
+
+    bytes32 structHash = keccak256(
+      abi.encode(keccak256(bytes(L_DAI_PERMIT)), owner, address(hub), nonce, expiry, true)
+    );
+    (uint8 v, bytes32 r, bytes32 s) =
+      vm.sign(ownerKey, lTypedDataHash(_daiDomainSeparator(), structHash));
+
+    bytes[] memory data = new bytes[](1);
+    data[0] =
+      abi.encodeWithSignature(S_DAI_PERMIT, owner, address(hub), nonce, expiry, true, v, r, s);
+
+    vm.prank(relayer);
+    hub.forwardCalls(_one(address(daiToken)), data, _bits(0));
+
+    // DAI reads `allowed` as all-or-nothing rather than as an amount
+    assertEq(_daiAllowance(owner, address(hub)), type(uint256).max, 'allowance');
+    assertEq(_daiNonce(owner), nonce + 1, 'nonce consumed');
+  }
+
+  /// PF-03 — the ERC-721 permit as Uniswap v3 defines it, with the signature split into v/r/s
+  function test_PF_03_erc721V3PermitForwarded() public {
+    uint256 deadline = block.timestamp + 1 hours;
+
+    bytes32 structHash = keccak256(
+      abi.encode(
+        keccak256(bytes(L_ERC721_PERMIT)), address(hub), PERMIT_NFT_ID, uint256(0), deadline
+      )
+    );
+    (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+      ownerKey, lTypedDataHash(lDomainSeparator('V3 Permit NFT', '1', address(nftV3)), structHash)
+    );
+
+    bytes[] memory data = new bytes[](1);
+    data[0] =
+      abi.encodeWithSignature(S_ERC721_V3_PERMIT, address(hub), PERMIT_NFT_ID, deadline, v, r, s);
+
+    vm.prank(relayer);
+    hub.forwardCalls(_one(address(nftV3)), data, _bits(0));
+
+    assertEq(nftV3.getApproved(PERMIT_NFT_ID), address(hub), 'approval');
+    assertEq(nftV3.nonces(PERMIT_NFT_ID), 1, 'nonce consumed');
+  }
+
+  /// PF-04 — and as v4 defines it, with an unordered nonce and a packed signature
+  function test_PF_04_erc721V4PermitForwarded() public {
+    uint256 deadline = block.timestamp + 1 hours;
+    uint256 nonce = 99;
+
+    bytes[] memory data = new bytes[](1);
+    data[0] = _erc721V4Call(address(hub), deadline, nonce);
+
+    vm.prank(relayer);
+    hub.forwardCalls(_one(address(nftV4)), data, _bits(0));
+
+    assertEq(nftV4.getApproved(PERMIT_NFT_ID), address(hub), 'approval');
+    assertTrue(nftV4.nonceUsed(owner, nonce), 'nonce consumed');
+  }
+
+  /// PF-05 — Permit2's batch `permit`, one of the two overloads written out in the allowlist
+  function test_PF_05_permit2BatchPermitForwarded() public {
+    uint160 amount = 42 ether;
+    uint48 expiration = uint48(block.timestamp + 1 days);
+    uint256 sigDeadline = block.timestamp + 1 hours;
+
+    IAllowanceTransfer.PermitBatch memory batch =
+      _permit2Batch(token18, amount, expiration, 0, address(hub), sigDeadline);
+    bytes memory signature = _sign(ownerKey, _permit2BatchDigest(batch));
+
+    bytes[] memory data = new bytes[](1);
+    data[0] = abi.encodeWithSignature(S_PERMIT2_BATCH_PERMIT, owner, batch, signature);
+
+    vm.prank(relayer);
+    hub.forwardCalls(_one(permit2), data, _bits(0));
+
+    (uint160 allowed, uint48 storedExpiration, uint48 storedNonce) =
+      IAllowanceTransfer(permit2).allowance(owner, token18, address(hub));
+
+    assertEq(allowed, amount, 'allowance');
+    assertEq(storedExpiration, expiration, 'expiration');
+    assertEq(storedNonce, 1, 'nonce bumped');
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // PF-06..07 — the two guards that refuse a batch outright
+  // -----------------------------------------------------------------------------------------------
+
+  /**
+   * PF-06 — a selector outside the allowlist is refused by name, whatever its failure bit says
+   * @dev The allowlist is the whole of the forwarder's safety, because the forwarder is the
+   * `msg.sender` every target sees. So the refusal has to come before the call, and it has to be
+   * unconditional: `allowFailure` only covers a call that was made and reverted.
+   */
+  function test_PF_06_unsupportedSelectorRefused() public {
+    bytes[] memory data = new bytes[](1);
+    data[0] = abi.encodeCall(IERC20.transfer, (relayer, 1));
+
+    vm.prank(relayer);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        ICallsForwarder.NotSupportedSelector.selector, IERC20.transfer.selector
+      )
+    );
+    hub.forwardCalls(_one(address(permitToken)), data, _bits(0));
+
+    // a set failure bit does not turn the refusal into a skipped entry
+    vm.prank(relayer);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        ICallsForwarder.NotSupportedSelector.selector, IERC20.transfer.selector
+      )
+    );
+    hub.forwardCalls(_one(address(permitToken)), data, _bits(type(uint256).max));
+
+    // a payload too short to hold a selector reads as zero, which matches nothing
+    bytes[] memory empty = new bytes[](1);
+    empty[0] = '';
+
+    vm.prank(relayer);
+    vm.expectRevert(
+      abi.encodeWithSelector(ICallsForwarder.NotSupportedSelector.selector, bytes4(0))
+    );
+    hub.forwardCalls(_one(address(permitToken)), empty, _bits(0));
+  }
+
+  /// PF-06b — the refusal unwinds the entries that already ran ahead of it
+  function test_PF_06b_unsupportedSelectorUnwindsTheBatch() public {
+    uint256 value = 11 ether;
+    uint256 deadline = block.timestamp + 1 hours;
+
+    address[] memory targets = new address[](2);
+    targets[0] = address(permitToken);
+    targets[1] = address(permitToken);
+
+    bytes[] memory data = new bytes[](2);
+    data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
+    data[1] = abi.encodeCall(IERC20.transfer, (relayer, 1));
+
+    vm.prank(relayer);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        ICallsForwarder.NotSupportedSelector.selector, IERC20.transfer.selector
+      )
+    );
+    hub.forwardCalls(targets, data, _bits(0));
+
+    assertEq(permitToken.allowance(owner, address(hub)), 0, 'the earlier permit rolled back');
+    assertEq(permitToken.nonces(owner), 0, 'and burned nothing');
+  }
+
+  /// PF-07 — the two arrays are walked in step, so a mismatch is refused before any call
+  function test_PF_07_mismatchedArrayLengths() public {
+    address[] memory twoTargets = new address[](2);
+    twoTargets[0] = address(permitToken);
+    twoTargets[1] = address(permitToken2);
+
+    vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
+    hub.forwardCalls(twoTargets, new bytes[](1), _bits(0));
+
+    vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
+    hub.forwardCalls(_one(address(permitToken)), new bytes[](2), _bits(0));
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // PF-08..09 — the two directions of a failure bit
+  // -----------------------------------------------------------------------------------------------
+
+  /// PF-08 — with its bit clear, a failing call bubbles its own revert and takes the batch with it
+  function test_PF_08_failingCallBubblesWhenNotAllowed() public {
+    uint256 value = 7 ether;
+    uint256 expired = block.timestamp - 1;
+
+    (address[] memory targets, bytes[] memory data) = _goodThenExpired(value, expired);
+
+    vm.prank(relayer);
+    vm.expectRevert(abi.encodeWithSelector(ERC20Permit.ERC2612ExpiredSignature.selector, expired));
+    hub.forwardCalls(targets, data, _bits(0));
+
+    assertEq(permitToken.allowance(owner, address(hub)), 0, 'the good permit rolled back too');
+    assertEq(permitToken.nonces(owner), 0, 'nothing consumed');
+  }
+
+  /// PF-09 — with its bit set, the same failure is recorded as a result and the batch carries on
+  function test_PF_09_failingCallIsCarriedPastWhenAllowed() public {
+    uint256 value = 7 ether;
+    uint256 expired = block.timestamp - 1;
+
+    (address[] memory targets, bytes[] memory data) = _goodThenExpired(value, expired);
+
+    vm.prank(relayer);
+    bytes[] memory results = hub.forwardCalls(targets, data, _bits(1 << 1));
+
+    assertEq(permitToken.allowance(owner, address(hub)), value, 'the good permit landed');
+    assertEq(permitToken.nonces(owner), 1, 'and consumed exactly its own nonce');
+
+    assertEq(results.length, 2, 'one result per entry');
+    assertEq(results[0].length, 0, 'the permit that worked returned nothing');
+    assertEq(
+      results[1],
+      abi.encodeWithSelector(ERC20Permit.ERC2612ExpiredSignature.selector, expired),
+      'the one that failed returned its revert data'
+    );
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // PF-FUZZ
+  // -----------------------------------------------------------------------------------------------
+
+  /**
+   * PF-FUZZ — a batch settles exactly when every entry that fails has its own bit set
+   * @dev Each entry is an EIP-2612 permit against the same token: a valid one carries the next
+   * sequential nonce, an invalid one is past its deadline and so consumes nothing, which keeps
+   * that sequence intact whichever entries are skipped. The token's own allowance and nonce
+   * counter are the oracle, never the call's return.
+   */
+  function testFuzz_PF_FUZZ_allowFailureBits(PermitFuzz memory f) public {
+    uint256 count = bound(f.entryCount, 1, 4);
+    uint256 deadline = block.timestamp + bound(f.deadlineOffset, 1, 30 days);
+    uint256 expired = block.timestamp - 1;
+    PackedBits allowFailure = _bits(f.allowFailure);
+
+    address[] memory targets = new address[](count);
+    bytes[] memory data = new bytes[](count);
+
+    uint256 validCount;
+    uint256 lastValidValue;
+    bool bubbles;
+
+    for (uint256 i = 0; i < count; i++) {
+      targets[i] = address(permitToken);
+      bool valid = (uint256(f.validMask) >> i) & 1 == 1;
+
+      if (valid) {
+        uint256 value = (i + 1) * 1 ether;
+        data[i] = _erc2612Call(
+          'Permit Token', address(permitToken), address(hub), value, validCount, deadline
+        );
+        validCount++;
+        lastValidValue = value;
+      } else {
+        data[i] =
+          _erc2612Call('Permit Token', address(permitToken), address(hub), 1 ether, 0, expired);
+        // the first unallowed failure is what the whole batch reverts with
+        if (!allowFailure.pos(i)) bubbles = true;
+      }
+    }
+
+    if (bubbles) {
+      vm.prank(relayer);
+      vm.expectRevert(abi.encodeWithSelector(ERC20Permit.ERC2612ExpiredSignature.selector, expired));
+      hub.forwardCalls(targets, data, allowFailure);
+
+      assertEq(permitToken.allowance(owner, address(hub)), 0, 'the whole batch rolled back');
+      assertEq(permitToken.nonces(owner), 0, 'and burned no nonce');
+      return;
+    }
+
+    vm.prank(relayer);
+    bytes[] memory results = hub.forwardCalls(targets, data, allowFailure);
+
+    assertEq(results.length, count, 'one result per entry');
+    assertEq(permitToken.nonces(owner), validCount, 'one nonce per permit that worked');
+    assertEq(
+      permitToken.allowance(owner, address(hub)),
+      lastValidValue,
+      'the last permit that worked is the allowance that stands'
+    );
+
+    for (uint256 i = 0; i < count; i++) {
+      bool valid = (uint256(f.validMask) >> i) & 1 == 1;
+      if (valid) {
+        assertEq(results[i].length, 0, 'a permit that worked returns nothing');
+      } else {
+        assertEq(
+          results[i],
+          abi.encodeWithSelector(ERC20Permit.ERC2612ExpiredSignature.selector, expired),
+          'a skipped entry carries its revert data'
+        );
+      }
+    }
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // FWD-13..16 — the `updateAuthentication` arm of the allowlist, and the neighbours it must not
+  // carry
+  // -----------------------------------------------------------------------------------------------
+
+  /**
+   * FWD-13 — a relayed `updateAuthentication` approves a session key, on the authenticator's nonce
+   * @dev The seventh selector is not a token permit at all: it is the owner telling an
+   * authenticator which credential may sign for them, relayed so the approval and the order that
+   * uses it fit in one transaction. The authenticator owns the replay protection for it, so its
+   * bitmap moves and the hub's does not: the hub only relays the call and spends nothing of its
+   * own.
+   */
+  function test_FWD_13_updateAuthenticationIsRelayedAndApprovesTheKey() public {
+    AuthKey memory fresh = _secpKey(masterSigner, block.timestamp + 30 days);
+    uint256 nonce = 300;
+    uint256 deadline = block.timestamp + 1 hours;
+
+    bytes32 freshHash = _keyHash(fresh);
+    bytes memory approvalSig = _signMasterKeyApproval(fresh, true, nonce, deadline);
+
+    bytes[] memory data = new bytes[](1);
+    data[0] = abi.encodeCall(
+      IOrderAuthenticator.updateAuthentication,
+      (owner, _approveKey(fresh), nonce, deadline, approvalSig)
+    );
+
+    vm.prank(relayer);
+    bytes[] memory results = hub.forwardCalls(_one(address(authenticator)), data, _bits(0));
+
+    assertTrue(authenticator.masterKeys(owner, freshHash), 'the key is approved');
+    assertEq(
+      authenticator.nonces(lNonceKey(owner), nonce >> 8),
+      1 << (nonce & 0xff),
+      'the authenticator burned that nonce'
+    );
+    assertEq(
+      hub.nonces(lNonceKey(owner), nonce >> 8), 0, 'and the hub burned nothing on this route'
+    );
+    assertEq(results[0].length, 0, 'updateAuthentication returns nothing');
+  }
+
+  /**
+   * FWD-20 — the same relay carries a master key's grant, not only the owner's approval
+   * @dev The allowlist matches on the selector and both rails share one, so the second tier is
+   * relayable without the forwarder learning anything about it. What moves is the master key's
+   * bitmap: the owner neither signed nor submitted, so nothing of theirs is spent.
+   */
+  function test_FWD_20_updateAuthenticationIsRelayedOnTheMasterKeyRail() public {
+    AuthKey memory masterKey = _secpKey(masterSigner, block.timestamp + 30 days);
+    AuthKey memory ephemeral = _secpKey(sessionSigner, block.timestamp + 1 hours);
+    _delegateKeyThroughHub(masterKey);
+
+    uint256 nonce = 310;
+    uint256 deadline = block.timestamp + 1 hours;
+    bytes memory grantSig =
+      _signSessionKeyApproval(masterKey, ephemeral, true, nonce, deadline, masterKeyPk);
+
+    bytes[] memory data = new bytes[](1);
+    data[0] = abi.encodeCall(
+      IOrderAuthenticator.updateAuthentication,
+      (owner, _sessionKeyData(ephemeral, masterKey, true), nonce, deadline, grantSig)
+    );
+
+    vm.prank(relayer);
+    hub.forwardCalls(_one(address(authenticator)), data, _bits(0));
+
+    assertEq(
+      authenticator.sessionKeyMaster(owner, _keyHash(ephemeral)),
+      _keyHash(masterKey),
+      'the grant landed'
+    );
+    assertEq(
+      authenticator.nonces(_keyHash(masterKey), nonce >> 8),
+      1 << (nonce & 0xff),
+      "the master key's nonce burned"
+    );
+    assertEq(authenticator.nonces(lNonceKey(owner), nonce >> 8), 0, "and not the owner's");
+  }
+
+  /**
+   * FWD-14 — the same call with an empty signature is refused even when the owner sends it
+   * @dev `forwardCalls` does `targets[i].call(...)`, so the `msg.sender` the authenticator sees is
+   * the hub, never the account that submitted the transaction. The authenticator's owner branch is
+   * therefore out of reach from here, and the empty signature that branch would have accepted is
+   * checked instead — and fails. This is the line that stops the hub being a trusted authenticator
+   * for anybody: if the authenticator took the hub's word for who the owner was, this call would
+   * approve a key for `owner` on nothing but the say-so of whoever paid for the gas.
+   */
+  function test_FWD_14_emptySignatureIsRefusedEvenFromTheOwner() public {
+    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 30 days);
+    uint256 nonce = 301;
+    uint256 deadline = block.timestamp + 1 hours;
+
+    bytes32 freshHash = _keyHash(fresh);
+    bytes memory noSignature = '';
+
+    bytes[] memory data = new bytes[](1);
+    data[0] = abi.encodeCall(
+      IOrderAuthenticator.updateAuthentication,
+      (owner, _approveKey(fresh), nonce, deadline, noSignature)
+    );
+    address[] memory targets = _one(address(authenticator));
+
+    vm.prank(owner);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
+    hub.forwardCalls(targets, data, _bits(0));
+
+    assertFalse(authenticator.masterKeys(owner, freshHash), 'nothing was approved');
+
+    // the same instruction, from the same account, directly at the authenticator: there the owner
+    // is `msg.sender` and the empty signature is accepted, so the refusal above is evidence about
+    // the hop through the hub rather than about the payload
+    vm.prank(owner);
+    authenticator.updateAuthentication(owner, _approveKey(fresh), nonce, deadline, noSignature);
+    assertTrue(authenticator.masterKeys(owner, freshHash), 'accepted when the owner calls directly');
+  }
+
+  /**
+   * FWD-15 — `forwardCalls` reaches an authenticator the owner never delegated
+   * @dev Deliberate, and worth pinning because the order rails do gate on the delegation:
+   * `checkDelegation` refuses an undelegated authenticator outright. The forwarder has no such gate
+   * and needs none — `updateAuthentication` carries the owner's own signature, so an authenticator
+   * the owner has not delegated is simply one whose opinion the hub will never ask for.
+   */
+  function test_FWD_15_forwardReachesAnUndelegatedAuthenticator() public {
+    AuthKey memory fresh = _secpKey(masterSigner, block.timestamp + 30 days);
+    uint256 nonce = 302;
+    uint256 deadline = block.timestamp + 1 hours;
+
+    assertFalse(hub.authDelegated(owner, address(authenticator)), 'the owner never delegated it');
+
+    bytes32 freshHash = _keyHash(fresh);
+    bytes memory approvalSig = _signMasterKeyApproval(fresh, true, nonce, deadline);
+
+    bytes[] memory data = new bytes[](1);
+    data[0] = abi.encodeCall(
+      IOrderAuthenticator.updateAuthentication,
+      (owner, _approveKey(fresh), nonce, deadline, approvalSig)
+    );
+
+    vm.prank(relayer);
+    hub.forwardCalls(_one(address(authenticator)), data, _bits(0));
+
+    assertTrue(authenticator.masterKeys(owner, freshHash), 'the key was approved anyway');
+    assertFalse(hub.authDelegated(owner, address(authenticator)), 'and still nothing is delegated');
+  }
+
+  /**
+   * FWD-16 — `initAuthentication` and the two `authenticate*` entry points are not forwardable
+   * @dev The security-critical half of the allowlist. `initAuthentication` takes no signature,
+   * nonce or deadline: it trusts its caller absolutely, and the hub is the caller every forwarded
+   * call arrives as. Were its selector relayable, anyone could hand an authenticator an arbitrary
+   * key for an arbitrary owner and then sign that owner's orders with it. `authenticateExecution`
+   * and `authenticateFulfillment` are the same shape of hazard pointed at the order rails, and
+   * there are two of them now where there was one `verifyAuth`. All three selectors are rebuilt
+   * here from signature strings written out by hand, because deriving them from the production
+   * interface would let a wrong signature there agree with a wrong expectation here.
+   */
+  function test_FWD_16_initAndAuthenticateAreNotForwardable() public {
+    AuthKey memory victimKey = _secpKey(relayer, block.timestamp + 30 days);
+    bytes32 victimHash = _keyHash(victimKey);
+    bytes memory payload = _encodeKey(victimKey);
+
+    address[] memory targets = _one(address(authenticator));
+
+    bytes[] memory initData = new bytes[](1);
+    initData[0] = abi.encodeCall(IOrderAuthenticator.initAuthentication, (owner, payload));
+
+    ExecutionOrder memory execOrder =
+      _openExecutionOrder(new ERC20Transfer[](0), new GenericCall[](0), 0, block.timestamp);
+    FulfillmentOrder memory fulfillOrder = _openFulfillmentOrder(
+      new ERC20Transfer[](0), new ValidationParams[](0), new GenericCall[](0), 0, block.timestamp
+    );
+
+    bytes[] memory executionData = new bytes[](1);
+    executionData[0] =
+      abi.encodeCall(IOrderAuthenticator.authenticateExecution, (execOrder, payload));
+
+    bytes[] memory fulfillmentData = new bytes[](1);
+    fulfillmentData[0] =
+      abi.encodeCall(IOrderAuthenticator.authenticateFulfillment, (fulfillOrder, payload));
+
+    // Sent straight at the authenticator, each of the three reaches its hub-only gate and comes
+    // back with that error, so the refusals below are the forwarder's own and not the authenticator
+    // declining a caller it would have declined anyway.
+    _assertReachesTheHubOnlyGate(initData[0], 'initAuthentication');
+    _assertReachesTheHubOnlyGate(executionData[0], 'authenticateExecution');
+    _assertReachesTheHubOnlyGate(fulfillmentData[0], 'authenticateFulfillment');
+
+    vm.prank(relayer);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        ICallsForwarder.NotSupportedSelector.selector,
+        IOrderAuthenticator.initAuthentication.selector
+      )
+    );
+    hub.forwardCalls(targets, initData, _bits(0));
+
+    assertFalse(authenticator.masterKeys(owner, victimHash), 'no key was planted on the owner');
+
+    // a set failure bit does not downgrade the refusal into a skipped entry: the check runs
+    // before the call, and `allowFailure` only ever covers a call that was made and reverted
+    vm.prank(relayer);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        ICallsForwarder.NotSupportedSelector.selector,
+        IOrderAuthenticator.initAuthentication.selector
+      )
+    );
+    hub.forwardCalls(targets, initData, _bits(type(uint256).max));
+
+    // and both authentication entry points are refused by the same list
+    vm.prank(relayer);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        ICallsForwarder.NotSupportedSelector.selector,
+        IOrderAuthenticator.authenticateExecution.selector
+      )
+    );
+    hub.forwardCalls(targets, executionData, _bits(0));
+
+    vm.prank(relayer);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        ICallsForwarder.NotSupportedSelector.selector,
+        IOrderAuthenticator.authenticateFulfillment.selector
+      )
+    );
+    hub.forwardCalls(targets, fulfillmentData, _bits(0));
+
+    // the control: on the same target, in the same shape, the one selector that IS listed goes
+    // through — so the refusals above are about those selectors and not about the authenticator
+    uint256 nonce = 303;
+    uint256 deadline = block.timestamp + 1 hours;
+    bytes memory approvalSig = _signMasterKeyApproval(victimKey, true, nonce, deadline);
+
+    bytes[] memory updateData = new bytes[](1);
+    updateData[0] = abi.encodeCall(
+      IOrderAuthenticator.updateAuthentication,
+      (owner, _approveKey(victimKey), nonce, deadline, approvalSig)
+    );
+
+    vm.prank(relayer);
+    hub.forwardCalls(targets, updateData, _bits(0));
+    assertTrue(
+      authenticator.masterKeys(owner, victimHash), 'updateAuthentication is the listed way in'
+    );
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // FWD-17..19 — the rest of the allowlist, and the shape of a batch
+  // -----------------------------------------------------------------------------------------------
+
+  /**
+   * FWD-17 — Permit2's single `permit`, the other overload written out in the allowlist
+   * @dev The two overloads differ only in whether `details` is an array, so they hash to different
+   * selectors that no `.selector` expression can tell apart. PF-05 covers the batch; this is the
+   * one that would silently drop out of the list if the two strings were ever transposed.
+   */
+  function test_FWD_17_permit2SinglePermitForwarded() public {
+    uint160 amount = 17 ether;
+    uint48 expiration = uint48(block.timestamp + 2 days);
+    uint256 sigDeadline = block.timestamp + 1 hours;
+
+    IAllowanceTransfer.PermitSingle memory single = IAllowanceTransfer.PermitSingle({
+      details: IAllowanceTransfer.PermitDetails({
+        token: token6, amount: amount, expiration: expiration, nonce: 0
+      }),
+      spender: address(hub),
+      sigDeadline: sigDeadline
+    });
+
+    bytes memory signature = _sign(ownerKey, _permit2SingleDigest(single));
+
+    bytes[] memory data = new bytes[](1);
+    data[0] = abi.encodeWithSignature(S_PERMIT2_SINGLE_PERMIT, owner, single, signature);
+
+    vm.prank(relayer);
+    hub.forwardCalls(_one(permit2), data, _bits(0));
+
+    (uint160 allowed, uint48 storedExpiration, uint48 storedNonce) =
+      IAllowanceTransfer(permit2).allowance(owner, token6, address(hub));
+
+    assertEq(allowed, amount, 'allowance');
+    assertEq(storedExpiration, expiration, 'expiration');
+    assertEq(storedNonce, 1, 'nonce bumped');
+  }
+
+  /// FWD-18 — an empty batch is a legal no-op rather than an error
+  function test_FWD_18_emptyBatchIsANoOp() public {
+    vm.prank(relayer);
+    bytes[] memory results = hub.forwardCalls(new address[](0), new bytes[](0), _bits(0));
+
+    assertEq(results.length, 0, 'no entries, no results');
+
+    // the length check passes on two empties, so the failure bits are never consulted either
+    vm.prank(relayer);
+    bytes[] memory withBits =
+      hub.forwardCalls(new address[](0), new bytes[](0), _bits(type(uint256).max));
+    assertEq(withBits.length, 0, 'and the bits change nothing about that');
+  }
+
+  /**
+   * FWD-19 — a failure bit set on a call that succeeds is inert
+   * @dev The bit is only ever read after the call returns, so setting it on an entry that works
+   * must not skip it, soften it or replace what it returned. The second leg is what gives the
+   * zero-length result its meaning: revert data under the same bit is never empty, so the two
+   * cases are distinguishable and the first assertion is not simply reading an unset array slot.
+   */
+  function test_FWD_19_failureBitOnASucceedingCallIsInert() public {
+    uint256 value = 19 ether;
+    uint256 deadline = block.timestamp + 1 hours;
+
+    bytes[] memory data = new bytes[](1);
+    data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
+
+    vm.prank(relayer);
+    bytes[] memory results =
+      hub.forwardCalls(_one(address(permitToken)), data, _bits(type(uint256).max));
+
+    assertEq(permitToken.allowance(owner, address(hub)), value, 'the state change still landed');
+    assertEq(permitToken.nonces(owner), 1, 'and the nonce was still consumed');
+    assertEq(results[0].length, 0, "results[0] is the permit's own empty return");
+
+    uint256 expired = block.timestamp - 1;
+    bytes[] memory failing = new bytes[](1);
+    failing[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 1, expired);
+
+    vm.prank(relayer);
+    bytes[] memory failedResults =
+      hub.forwardCalls(_one(address(permitToken)), failing, _bits(type(uint256).max));
+
+    assertEq(
+      failedResults[0],
+      abi.encodeWithSelector(ERC20Permit.ERC2612ExpiredSignature.selector, expired),
+      'a skipped entry carries revert data, which is never empty'
+    );
+    assertEq(permitToken.allowance(owner, address(hub)), value, 'and it changed nothing');
+    assertEq(permitToken.nonces(owner), 1, 'nor burned a nonce');
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // FWD-PAUSE / FWD-VALUE / FWD-REENTRY — the guards `forwardCalls` deliberately does without
+  // -----------------------------------------------------------------------------------------------
+
+  /**
+   * FWD-PAUSE-01 — a pause does not close the forwarder
+   * @dev Intended: relaying a permit moves nobody's assets, it only records an allowance, and an
+   * allowance granted during a pause cannot be spent while the pause holds — the order entry points
+   * are shut, which the second half of this case shows on the same paused hub. Keeping
+   * `forwardCalls` open means a user mid-flow can still land the approval half of their
+   * transaction.
+   */
+  function test_FWD_PAUSE_01_forwardStillWorksWhilePaused() public {
+    uint256 value = 5 ether;
+    uint256 deadline = block.timestamp + 1 hours;
+
+    bytes[] memory data = new bytes[](1);
+    data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
+
+    vm.prank(guardian);
+    hub.pause();
+
+    vm.prank(relayer);
+    hub.forwardCalls(_one(address(permitToken)), data, _bits(0));
+
+    assertTrue(hub.paused(), 'the hub is still paused');
+    assertEq(permitToken.allowance(owner, address(hub)), value, 'and the permit was relayed');
+
+    // the allowance it granted is unspendable until the pause lifts
+    vm.prank(owner);
+    vm.expectRevert(Pausable.EnforcedPause.selector);
+    hub.executeOrderWithDelegatedAuthentication(
+      _openExecutionOrder(
+        _erc20s(_tokenTransfer(1 ether)), new GenericCall[](0), 0, block.timestamp
+      ),
+      address(0),
+      '',
+      false
+    );
+  }
+
+  /**
+   * FWD-VALUE-01 — value sent with `forwardCalls` is stranded in the hub
+   * @dev `forwardCalls` is payable and carries no native-spend guard, because none of the seven
+   * calls it relays takes value: it forwards `data` only, never `msg.value`. So anything attached
+   * simply stays, with no `receive` and no refund to send it back. Not a loss of user funds — a
+   * rescuer sweeps it — but it is the contract's behaviour and a caller should not expect change.
+   */
+  function test_FWD_VALUE_01_valueSentWithForwardIsStranded() public {
+    uint256 value = 5 ether;
+    uint256 deadline = block.timestamp + 1 hours;
+
+    bytes[] memory data = new bytes[](1);
+    data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
+
+    vm.deal(relayer, 1 ether);
+    assertEq(address(hub).balance, 0, 'the hub starts empty');
+
+    vm.prank(relayer);
+    hub.forwardCalls{value: 1 ether}(_one(address(permitToken)), data, _bits(0));
+
+    assertEq(address(hub).balance, 1 ether, 'every wei of it stayed behind');
+    assertEq(relayer.balance, 0, 'and none came back to the sender');
+    assertEq(permitToken.allowance(owner, address(hub)), value, 'the permit itself still landed');
+  }
+
+  /**
+   * FWD-REENTRY-01 — a relayed permit may reenter the hub and start an order
+   * @dev Confirmed-intended behaviour, pinned rather than fixed. `forwardCalls` takes no lock: it
+   * moves no assets of its own, and the lock that matters is the one an order entry point takes for
+   * the duration of an order, so a target called from inside a batch may open one, and the
+   * order it opens is authorised on its own merits — here the owner's Permit2 signature over an
+   * open-relayer witness, without which the token contract could not submit it at all. The
+   * assertion is that the reentrant order settled, not merely that nothing reverted.
+   */
+  function test_FWD_REENTRY_01_relayedPermitMayReenterTheHub() public {
+    ReentrantPermitMock reentrant = new ReentrantPermitMock(address(hub));
+
+    uint160 amount = 6 ether;
+    uint256 nonce = 310;
+    uint256 deadline = block.timestamp + 1 hours;
+
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(amount));
+    GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
+
+    ExecutionOrder memory order = _openExecutionOrder(erc20s, calls, nonce, deadline);
+    bytes memory permitSig = _signExecutionWitness(order);
+
+    reentrant.setReentry(
+      abi.encodeCall(IKSAllowanceHubV2.executeOrderWithPermit2Signature, (order, permitSig))
+    );
+
+    // a well-formed EIP-2612 payload, so the allowlist lets it through; the mock ignores the
+    // arguments and calls back instead of checking them
+    bytes[] memory data = new bytes[](1);
+    data[0] = abi.encodeWithSignature(
+      S_EIP2612_PERMIT, owner, address(hub), uint256(1), deadline, uint8(27), bytes32(0), bytes32(0)
+    );
+
+    uint256 before = IERC20(token18).balanceOf(address(router));
+
+    vm.prank(relayer);
+    hub.forwardCalls(_one(address(reentrant)), data, _bits(0));
+
+    assertEq(reentrant.permitCount(), 1, 'the forwarder did relay the permit');
+    assertEq(
+      IERC20(token18).balanceOf(address(router)) - before, amount, 'the reentrant order settled'
+    );
+    assertEq(router.callCount(), 1, 'and its router leg ran');
+    assertEq(router.seenMsgSender(), owner, 'holding the lock for the owner while it did');
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // Helpers
+  // -----------------------------------------------------------------------------------------------
+
+  /// @dev A direct call must reach the authenticator's hub-only gate, proving the selector is real
+  function _assertReachesTheHubOnlyGate(bytes memory callData, string memory what) private {
+    (bool ok, bytes memory ret) = address(authenticator).call(callData);
+    assertFalse(ok, string.concat(what, ' refused the call'));
+    assertEq(
+      ret,
+      abi.encodeWithSelector(IOrderAuthenticator.NotAllowanceHub.selector),
+      string.concat('and refused it at the hub-only gate, so the selector reached the real ', what)
+    );
+  }
+
+  /// @dev Permit2's single-allowance digest, rebuilt from the literals above
+  function _permit2SingleDigest(IAllowanceTransfer.PermitSingle memory single)
+    internal
+    view
+    returns (bytes32)
+  {
+    bytes32 detailsHash = keccak256(
+      abi.encode(
+        keccak256(bytes(L_PERMIT2_DETAILS)),
+        single.details.token,
+        single.details.amount,
+        single.details.expiration,
+        single.details.nonce
+      )
+    );
+
+    bytes32 structHash = keccak256(
+      abi.encode(
+        keccak256(abi.encodePacked(L_PERMIT2_SINGLE_STUB, L_PERMIT2_DETAILS)),
+        detailsHash,
+        single.spender,
+        single.sigDeadline
+      )
+    );
+
+    return lTypedDataHash(_permit2DomainSeparator(), structHash);
+  }
+
+  /// @dev A good permit followed by one that is past its deadline, sharing one target
+  function _goodThenExpired(uint256 value, uint256 expired)
+    internal
+    returns (address[] memory targets, bytes[] memory data)
+  {
+    targets = new address[](2);
+    targets[0] = address(permitToken);
+    targets[1] = address(permitToken);
+
+    data = new bytes[](2);
+    data[0] = _erc2612Call(
+      'Permit Token', address(permitToken), address(hub), value, 0, block.timestamp + 1 hours
+    );
+    data[1] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 1, expired);
+  }
+
+  function _bits(uint256 raw) internal pure returns (PackedBits) {
+    return PackedBits.wrap(bytes32(raw));
+  }
+
+  function _erc2612Digest(
+    string memory name,
+    address token,
+    address tokenOwner,
+    address spender,
+    uint256 value,
+    uint256 nonce,
+    uint256 deadline
+  ) internal view returns (bytes32) {
+    bytes32 structHash = keccak256(
+      abi.encode(keccak256(bytes(L_EIP2612_PERMIT)), tokenOwner, spender, value, nonce, deadline)
+    );
+    // OpenZeppelin's ERC20Permit names its domain after the token and versions it '1'
+    return lTypedDataHash(lDomainSeparator(name, '1', token), structHash);
+  }
+
+  /// @dev A whole EIP-2612 `permit` call, ready for the forwarder to relay
+  function _erc2612Call(
+    string memory name,
+    address token,
+    address spender,
+    uint256 value,
+    uint256 nonce,
+    uint256 deadline
+  ) internal returns (bytes memory) {
+    (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+      ownerKey, _erc2612Digest(name, token, owner, spender, value, nonce, deadline)
+    );
+    return abi.encodeWithSignature(S_EIP2612_PERMIT, owner, spender, value, deadline, v, r, s);
+  }
+
+  function _erc721V4Call(address spender, uint256 deadline, uint256 nonce)
+    internal
+    returns (bytes memory)
+  {
+    bytes32 structHash = keccak256(
+      abi.encode(keccak256(bytes(L_ERC721_PERMIT)), spender, PERMIT_NFT_ID, nonce, deadline)
+    );
+    bytes memory signature = _sign(
+      ownerKey, lTypedDataHash(lDomainSeparator('V4 Permit NFT', '1', address(nftV4)), structHash)
+    );
+    return
+      abi.encodeWithSignature(
+        S_ERC721_V4_PERMIT, spender, PERMIT_NFT_ID, deadline, nonce, signature
+      );
+  }
+
+  /// @dev Permit2's allowance-rail batch digest, rebuilt from the literals above
+  function _permit2BatchDigest(IAllowanceTransfer.PermitBatch memory batch)
+    internal
+    view
+    returns (bytes32)
+  {
+    bytes32[] memory detailHashes = new bytes32[](batch.details.length);
+    for (uint256 i = 0; i < batch.details.length; i++) {
+      detailHashes[i] = keccak256(
+        abi.encode(
+          keccak256(bytes(L_PERMIT2_DETAILS)),
+          batch.details[i].token,
+          batch.details[i].amount,
+          batch.details[i].expiration,
+          batch.details[i].nonce
+        )
+      );
+    }
+
+    bytes32 structHash = keccak256(
+      abi.encode(
+        keccak256(abi.encodePacked(L_PERMIT2_BATCH_STUB, L_PERMIT2_DETAILS)),
+        keccak256(abi.encodePacked(detailHashes)),
+        batch.spender,
+        batch.sigDeadline
+      )
+    );
+
+    return lTypedDataHash(_permit2DomainSeparator(), structHash);
+  }
+
+  function _permit2Batch(
+    address token,
+    uint160 amount,
+    uint48 expiration,
+    uint48 nonce,
+    address spender,
+    uint256 sigDeadline
+  ) internal pure returns (IAllowanceTransfer.PermitBatch memory batch) {
+    IAllowanceTransfer.PermitDetails[] memory details = new IAllowanceTransfer.PermitDetails[](1);
+    details[0] = IAllowanceTransfer.PermitDetails({
+      token: token, amount: amount, expiration: expiration, nonce: nonce
+    });
+    batch = IAllowanceTransfer.PermitBatch({
+      details: details, spender: spender, sigDeadline: sigDeadline
+    });
+  }
+
+  function _daiDomainSeparator() internal view returns (bytes32) {
+    (bool ok, bytes memory data) =
+      address(daiToken).staticcall(abi.encodeWithSignature('DOMAIN_SEPARATOR()'));
+    require(ok, 'dai domain');
+    return abi.decode(data, (bytes32));
+  }
+
+  function _daiNonce(address holder) internal view returns (uint256) {
+    (bool ok, bytes memory data) =
+      address(daiToken).staticcall(abi.encodeWithSignature('nonces(address)', holder));
+    require(ok, 'dai nonce');
+    return abi.decode(data, (uint256));
+  }
+
+  function _daiAllowance(address holder, address spender) internal view returns (uint256) {
+    (bool ok, bytes memory data) = address(daiToken)
+      .staticcall(abi.encodeWithSignature('allowance(address,address)', holder, spender));
+    require(ok, 'dai allowance');
+    return abi.decode(data, (uint256));
+  }
+
+  function _one(address a) internal pure returns (address[] memory out) {
+    out = new address[](1);
+    out[0] = a;
+  }
+}
