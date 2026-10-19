@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.36;
 
+import {SchemaHash} from 'test/base/SchemaHash.sol';
+
 import {HubBase} from 'test/v2/base/HubBase.sol';
 
 import {SessionOrderAuthenticator} from 'src/v2/authenticators/SessionOrderAuthenticator.sol';
@@ -48,6 +50,11 @@ abstract contract AuthenticatorBase is HubBase {
 
   function _keyHash(AuthKey memory key) internal pure returns (bytes32) {
     return lAuthKeyHash(key.publicKey, uint8(key.keyType), key.expiration);
+  }
+
+  /// @dev The namespace a key's nonces are spent in: its scheme and public half, without expiry
+  function _credentialHash(AuthKey memory key) internal pure returns (bytes32) {
+    return keccak256(abi.encodePacked(uint8(key.keyType), key.publicKey));
   }
 
   /// @dev The key alone: the payload `initAuthentication` reads
@@ -193,11 +200,11 @@ abstract contract AuthenticatorBase is HubBase {
 
   /// @dev The digest a key signs for an execution: the order, under the authenticator domain
   function _executionDigest(ExecutionOrder memory order) internal view returns (bytes32) {
-    return lTypedDataHash(_authenticatorDomain(), lExecutionOrderHash(order));
+    return lTypedDataHash(_authenticatorDomain(), SchemaHash.executionOrder(order));
   }
 
   function _fulfillmentDigest(FulfillmentOrder memory order) internal view returns (bytes32) {
-    return lTypedDataHash(_authenticatorDomain(), lFulfillmentOrderHash(order));
+    return lTypedDataHash(_authenticatorDomain(), SchemaHash.fulfillmentOrder(order));
   }
 
   /// @dev `authenticationData` whose signature is `signerKey`'s over `order`, for a master key

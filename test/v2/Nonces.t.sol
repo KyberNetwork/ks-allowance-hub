@@ -54,7 +54,7 @@ contract NoncesTest is AuthenticatorBase {
       'the order settled on a number the owner had already spent'
     );
     assertEq(authenticator.nonces(lNonceKey(owner), 0), 1 << 7, 'the owner spent 7');
-    assertEq(authenticator.nonces(_keyHash(key), 0), 1 << 7, 'and the key spent its own 7');
+    assertEq(authenticator.nonces(_credentialHash(key), 0), 1 << 7, 'and the key spent its own 7');
   }
 
   // -------------------------------------------------------------------------------------------

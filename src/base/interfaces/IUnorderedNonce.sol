@@ -10,7 +10,7 @@ interface IUnorderedNonce {
   /**
    * @notice Spent-nonce bitmap, keyed by signer namespace and by the nonce's word index
    * @param signer Namespace the nonces belong to: whoever signed the data they guard, as an
-   * address widened to a word or as the hash of a signing key
+   * address widened to a word or as the hash of a key credential
    * @param word The nonce's top bits, i.e. `nonce >> 8`
    */
   function nonces(bytes32 signer, uint256 word) external view returns (uint256);

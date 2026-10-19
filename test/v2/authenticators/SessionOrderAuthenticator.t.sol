@@ -72,7 +72,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'tokens moved');
     assertEq(
-      authenticator.nonces(_keyHash(key), nonce >> 8),
+      authenticator.nonces(_credentialHash(key), nonce >> 8),
       1 << (nonce & 0xff),
       'authenticator nonce spent'
     );
@@ -390,7 +390,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     _executeViaAuthenticator(key, masterKeyPk, nonce, deadline, true);
 
     vm.expectRevert(
-      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, _keyHash(key), nonce)
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, _credentialHash(key), nonce)
     );
     _executeViaAuthenticator(key, masterKeyPk, nonce, deadline, false);
   }
@@ -758,6 +758,102 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   // -------------------------------------------------------------------------------------------
+  // SV-CRED-01..04 — a key's nonces are spent under its credential, not one approval of it
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * SV-CRED-01 — an order settled under one approval of a key cannot settle again under another
+   * @dev The owner renews `key` by approving the same credential with a later expiry, and leaves the
+   * first approval in place. The order signature names no key, so both approvals accept it; the
+   * nonce they share refuses the second settlement.
+   */
+  function test_SV_CRED_01_aRenewedKeyCannotReplayAnOrder() public {
+    AuthKey memory renewed = _secpKey(masterSigner, key.expiration + 30 days);
+    _delegateKeyThroughHub(key);
+    vm.prank(owner);
+    authenticator.updateAuthentication(owner, _approveKey(renewed), 0, block.timestamp + 1, '');
+    assertEq(_credentialHash(key), _credentialHash(renewed), 'one credential, two approvals');
+
+    uint256 nonce = 140;
+    uint256 deadline = block.timestamp + 1 hours;
+    bytes memory sig = _sign(masterKeyPk, _executionDigest(_standardOrder(nonce, deadline)));
+
+    _submitExecution(key, sig, nonce, deadline);
+
+    vm.prank(relayer);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IUnorderedNonce.NonceAlreadyUsed.selector, _credentialHash(renewed), nonce
+      )
+    );
+    _submitExecutionRaw(renewed, sig, nonce, deadline);
+  }
+
+  /// SV-CRED-02 — the same holds across tiers: a key settled as a session key is spent as a master
+  function test_SV_CRED_02_theNonceIsSharedAcrossTiers() public {
+    _delegateKeyThroughHub(key);
+    AuthKey memory asSession = _secpKey(sessionSigner, key.expiration);
+    AuthKey memory asMaster = _secpKey(sessionSigner, key.expiration - 1);
+    vm.prank(relayer);
+    _approveSessionKey(key, asSession, 149, block.timestamp + 1 days, masterKeyPk);
+    vm.prank(owner);
+    authenticator.updateAuthentication(owner, _approveKey(asMaster), 0, block.timestamp + 1, '');
+
+    uint256 nonce = 150;
+    uint256 deadline = block.timestamp + 1 hours;
+    _executeViaAuthenticator(asSession, sessionKeyPk, nonce, deadline, true, true);
+
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IUnorderedNonce.NonceAlreadyUsed.selector, _credentialHash(asMaster), nonce
+      )
+    );
+    _executeViaAuthenticator(asMaster, sessionKeyPk, nonce, deadline, false, false);
+  }
+
+  /// SV-CRED-03 — a revocation signed under one approval cancels the nonce under every other
+  function test_SV_CRED_03_aRevocationCoversEveryApproval() public {
+    AuthKey memory renewed = _secpKey(masterSigner, key.expiration + 30 days);
+    _delegateKeyThroughHub(renewed);
+
+    uint256 nonce = 160;
+    uint256 deadline = block.timestamp + 1 hours;
+    authenticator.revokeNonce(
+      key, nonce, deadline, _signNonceRevocation(key, nonce, deadline, masterKeyPk)
+    );
+
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IUnorderedNonce.NonceAlreadyUsed.selector, _credentialHash(renewed), nonce
+      )
+    );
+    _executeViaAuthenticator(renewed, masterKeyPk, nonce, deadline, false);
+  }
+
+  /**
+   * SV-CRED-04 — a Secp256k1 key with any of its top 12 bytes set verifies nothing
+   * @dev Such a key would resolve to the same account as its clean encoding under a separate
+   * credential. An ERC-1271 wallet is the signer here, since its call reads only the low 20 bytes.
+   */
+  function test_SV_CRED_04_aNonCanonicalSecp256k1KeyIsRefused() public {
+    address wallet = _wallet();
+    bytes32 digest = keccak256('a digest');
+    bytes memory sig = _sign(_walletSignerKey, digest);
+
+    AuthKey memory clean = AuthKey({
+      publicKey: abi.encode(wallet), keyType: KeyType.Secp256k1, expiration: block.timestamp + 1
+    });
+    AuthKey memory dirty = AuthKey({
+      publicKey: abi.encode(uint256(uint160(wallet)) | (1 << 200)),
+      keyType: KeyType.Secp256k1,
+      expiration: block.timestamp + 1
+    });
+
+    assertTrue(_verifyWithKeyTail(clean, '', digest, sig), 'the clean encoding verifies');
+    assertFalse(_verifyWithKeyTail(dirty, '', digest, sig), 'the dirty encoding does not');
+  }
+
+  // -------------------------------------------------------------------------------------------
   // SV-DOMAIN / SV-FUZZ
   // -------------------------------------------------------------------------------------------
 
@@ -833,7 +929,9 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT);
     assertEq(
-      authenticator.nonces(_keyHash(fuzzKey), nonce >> 8), 1 << (nonce & 0xff), 'exact nonce bit'
+      authenticator.nonces(_credentialHash(fuzzKey), nonce >> 8),
+      1 << (nonce & 0xff),
+      'exact nonce bit'
     );
   }
 
@@ -1075,15 +1173,15 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     vm.prank(relayer);
     _approveSessionKey(key, sessionKey, nonce, deadline, masterKeyPk);
 
-    assertEq(authenticator.nonces(_keyHash(key), 0), 1 << nonce, 'the master key spent it');
+    assertEq(authenticator.nonces(_credentialHash(key), 0), 1 << nonce, 'the master key spent it');
     assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, "the owner's namespace is untouched");
-    assertEq(authenticator.nonces(_keyHash(sessionKey), 0), 0, "and so is the session key's");
+    assertEq(authenticator.nonces(_credentialHash(sessionKey), 0), 0, "and so is the session key's");
 
     AuthKey memory other = _secpKey(recipient, key.expiration);
     bytes memory replay = _signSessionKeyApproval(key, other, true, nonce, deadline, masterKeyPk);
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, _keyHash(key), nonce)
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, _credentialHash(key), nonce)
     );
     authenticator.updateAuthentication(
       owner, _sessionKeyData(other, key, true), nonce, deadline, replay
@@ -1465,7 +1563,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
       'the direction decides the approval'
     );
     assertEq(
-      authenticator.nonces(_keyHash(masterKey), nonce >> 8),
+      authenticator.nonces(_credentialHash(masterKey), nonce >> 8),
       1 << (nonce & 0xff),
       'the master key spends the nonce'
     );
@@ -1493,12 +1591,12 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
       key, nonce, deadline, _signNonceRevocation(key, nonce, deadline, masterKeyPk)
     );
 
-    assertEq(authenticator.nonces(_keyHash(key), 0), 1 << nonce, 'the key spent it');
+    assertEq(authenticator.nonces(_credentialHash(key), 0), 1 << nonce, 'the key spent it');
     assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, "the owner's namespace is untouched");
 
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, _keyHash(key), nonce)
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, _credentialHash(key), nonce)
     );
     _submitExecutionRaw(key, orderSig, nonce, deadline);
 
@@ -1520,7 +1618,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, _keyHash(key), nonce)
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, _credentialHash(key), nonce)
     );
     authenticator.updateAuthentication(
       owner, _sessionKeyData(sessionKey, key, true), nonce, deadline, approval
@@ -1542,10 +1640,14 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     authenticator.revokeNonce(
       sessionKey, nonce, deadline, _signNonceRevocation(sessionKey, nonce, deadline, sessionKeyPk)
     );
-    assertEq(authenticator.nonces(_keyHash(key), 0), 1 << 79, "the master key's is untouched");
+    assertEq(
+      authenticator.nonces(_credentialHash(key), 0), 1 << 79, "the master key's is untouched"
+    );
 
     vm.expectRevert(
-      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, _keyHash(sessionKey), nonce)
+      abi.encodeWithSelector(
+        IUnorderedNonce.NonceAlreadyUsed.selector, _credentialHash(sessionKey), nonce
+      )
     );
     _executeViaAuthenticator(sessionKey, sessionKeyPk, nonce, deadline, false, true);
 
@@ -1578,7 +1680,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
       key, nonce, deadline, _signNonceRevocation(other, nonce, deadline, masterKeyPk)
     );
 
-    assertEq(authenticator.nonces(_keyHash(key), 0), 0, 'nothing was spent');
+    assertEq(authenticator.nonces(_credentialHash(key), 0), 0, 'nothing was spent');
   }
 
   /// SV-NREV-05 — a revocation spends its nonce, so it cannot be submitted twice
@@ -1589,7 +1691,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     authenticator.revokeNonce(key, nonce, deadline, sig);
 
     vm.expectRevert(
-      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, _keyHash(key), nonce)
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, _credentialHash(key), nonce)
     );
     authenticator.revokeNonce(key, nonce, deadline, sig);
   }
@@ -1606,20 +1708,21 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     authenticator.revokeNonce(
       never, 1, deadline, _signNonceRevocation(never, 1, deadline, sessionKeyPk)
     );
-    assertEq(authenticator.nonces(_keyHash(never), 0), 1 << 1, 'never approved');
+    assertEq(authenticator.nonces(_credentialHash(never), 0), 1 << 1, 'never approved');
 
     _delegateKeyThroughHub(key);
     vm.prank(owner);
     authenticator.updateAuthentication(owner, _revokeKey(key), 0, block.timestamp + 1 days, '');
     authenticator.revokeNonce(key, 2, deadline, _signNonceRevocation(key, 2, deadline, masterKeyPk));
-    assertEq(authenticator.nonces(_keyHash(key), 0), 1 << 2, 'approval withdrawn');
+    assertEq(authenticator.nonces(_credentialHash(key), 0), 1 << 2, 'approval withdrawn');
 
-    AuthKey memory stale = _secpKey(masterSigner, block.timestamp + 1 hours);
+    (address staleSigner, uint256 staleKeyPk) = makeAddrAndKey('stale signer');
+    AuthKey memory stale = _secpKey(staleSigner, block.timestamp + 1 hours);
     vm.warp(stale.expiration + 1);
     authenticator.revokeNonce(
-      stale, 3, deadline, _signNonceRevocation(stale, 3, deadline, masterKeyPk)
+      stale, 3, deadline, _signNonceRevocation(stale, 3, deadline, staleKeyPk)
     );
-    assertEq(authenticator.nonces(_keyHash(stale), 0), 1 << 3, 'expired');
+    assertEq(authenticator.nonces(_credentialHash(stale), 0), 1 << 3, 'expired');
   }
 
   /// SV-NREV-07 — a passkey revokes: the signature is checked by the key's own scheme
@@ -1650,7 +1753,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
         lTypedDataHash(_authenticatorDomain(), lNonceRevocation(p256, nonce, deadline))
       )
     );
-    assertEq(authenticator.nonces(_keyHash(p256), 0), 1 << nonce, 'the passkey spent it');
+    assertEq(authenticator.nonces(_credentialHash(p256), 0), 1 << nonce, 'the passkey spent it');
   }
 
   /**
@@ -1674,7 +1777,9 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory sig2 = _signNonceRevocation(key, nonce2, deadline2, masterKeyPk);
     vm.warp(deadline2);
     authenticator.revokeNonce(key, nonce2, deadline2, sig2);
-    assertEq(authenticator.nonces(_keyHash(key), 0), 3 << nonce, 'spent at the deadline itself');
+    assertEq(
+      authenticator.nonces(_credentialHash(key), 0), 3 << nonce, 'spent at the deadline itself'
+    );
   }
 
   /// SV-FUZZ-NREV — a revocation spends exactly the nonce it names, in the key's namespace
@@ -1684,7 +1789,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
       key, nonce, deadline, _signNonceRevocation(key, nonce, deadline, masterKeyPk)
     );
 
-    assertEq(authenticator.nonces(_keyHash(key), nonce >> 8), 1 << (nonce & 0xff), 'one bit');
+    assertEq(authenticator.nonces(_credentialHash(key), nonce >> 8), 1 << (nonce & 0xff), 'one bit');
     assertEq(authenticator.nonces(lNonceKey(owner), nonce >> 8), 0, 'in the key namespace only');
   }
 

@@ -33,16 +33,31 @@ library AuthKeyLib {
     keccak256('AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)');
 
   /**
-   * @dev EIP-712 hash identifying the key: its public half, scheme and expiry together. The raw
-   * `publicKey` bytes are hashed, so two encodings that differ only in padding are two different
-   * keys here even when they resolve to the same signer — an approval, and a revocation, is per
-   * encoding rather than per signer.
+   * @dev EIP-712 hash identifying one approval of the key: its public half, scheme and expiry
+   * together. Approving the same credential with another expiry gives another hash.
    */
   function hash(AuthKey calldata key) internal pure returns (bytes32) {
     return
       keccak256(
         abi.encode(AUTH_KEY_TYPEHASH, keccak256(key.publicKey), key.keyType, key.expiration)
       );
+  }
+
+  /// @dev As {hash}, for a key already in memory
+  function hashMemory(AuthKey memory key) internal pure returns (bytes32) {
+    return
+      keccak256(
+        abi.encode(AUTH_KEY_TYPEHASH, keccak256(key.publicKey), key.keyType, key.expiration)
+      );
+  }
+
+  /**
+   * @dev Hash of the key's public half and scheme without its expiry, under which the key's nonces
+   * are spent. Every approval of the same credential shares it, so a signature spent under one
+   * approval is spent under all of them.
+   */
+  function credentialHash(AuthKey calldata key) internal pure returns (bytes32) {
+    return keccak256(abi.encodePacked(key.keyType, key.publicKey));
   }
 
   /**
@@ -52,7 +67,9 @@ library AuthKeyLib {
    * `WebAuthn.WebAuthnAuth` for WebAuthn, and a PKCS#1 v1.5 signature for RSA. The P256 words are
    * read without a length check, so a short signature reads whatever follows it in calldata and
    * fails verification rather than reverting. A `publicKey` that is not 32 bytes for Secp256k1 or
-   * 64 bytes for P256 and WebAuthn, or shorter than its two head words for RSA, verifies nothing.
+   * 64 bytes for P256 and WebAuthn, or shorter than its two head words for RSA, verifies nothing,
+   * and neither does a Secp256k1 key with any of its top 12 bytes set, so each Secp256k1 signer has
+   * one encoding and one credential.
    * The words read as a Secp256k1, P256 or WebAuthn key, and the head words locating an RSA key's
    * `e` and `n`, then all lie within the bytes the key's hash covers.
    */
@@ -62,7 +79,7 @@ library AuthKeyLib {
     returns (bool)
   {
     if (key.keyType == KeyType.Secp256k1) {
-      if (key.publicKey.length != 32) {
+      if (key.publicKey.length != 32 || (key.publicKey.decodeUint256()) >> 160 != 0) {
         return false;
       }
 

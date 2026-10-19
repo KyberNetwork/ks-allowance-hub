@@ -3,6 +3,8 @@ pragma solidity 0.8.36;
 
 import {Vm} from 'forge-std/Vm.sol';
 
+import {SchemaHash} from 'test/base/SchemaHash.sol';
+
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
 import {
@@ -468,14 +470,16 @@ contract ExecuteOrderTest is AuthenticatorBase {
     if (f.moveNft) assertEq(nft.ownerOf(NFT_ID), address(router2), 'nft leg');
 
     assertEq(
-      authenticator.nonces(_keyHash(key), f.nonce >> 8),
+      authenticator.nonces(_credentialHash(key), f.nonce >> 8),
       1 << (f.nonce & 0xff),
       'the authenticator burned exactly the order nonce'
     );
     assertEq(hub.nonces(lNonceKey(owner), f.nonce >> 8), 0, 'and the hub burned none of its own');
 
     Vm.Log memory entry = _settlementLog();
-    assertEq(entry.topics[3], lExecutionOrderHash(order), 'the event reports this exact order');
+    assertEq(
+      entry.topics[3], SchemaHash.executionOrder(order), 'the event reports this exact order'
+    );
   }
 
   /**
@@ -528,6 +532,8 @@ contract ExecuteOrderTest is AuthenticatorBase {
     );
 
     Vm.Log memory entry = _settlementLog();
-    assertEq(entry.topics[3], lExecutionOrderHash(order), 'the event reports this exact order');
+    assertEq(
+      entry.topics[3], SchemaHash.executionOrder(order), 'the event reports this exact order'
+    );
   }
 }

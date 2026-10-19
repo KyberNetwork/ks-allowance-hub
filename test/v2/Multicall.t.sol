@@ -305,7 +305,7 @@ contract MulticallTest is AuthenticatorBase {
       'the approval burned a nonce of the owner, who signed it'
     );
     assertEq(
-      authenticator.nonces(keyHash, 0),
+      authenticator.nonces(_credentialHash(key), 0),
       1 << orderNonce,
       'and the order burned one of the session key, which signed that'
     );

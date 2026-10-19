@@ -494,7 +494,7 @@ contract ForwarderTest is AuthenticatorBase {
       'the approval landed'
     );
     assertEq(
-      authenticator.nonces(_keyHash(masterKey), nonce >> 8),
+      authenticator.nonces(_credentialHash(masterKey), nonce >> 8),
       1 << (nonce & 0xff),
       "the master key's nonce burned"
     );

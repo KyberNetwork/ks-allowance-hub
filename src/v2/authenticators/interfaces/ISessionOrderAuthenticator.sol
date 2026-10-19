@@ -49,11 +49,12 @@ interface ISessionOrderAuthenticator {
   function sessionKeyMaster(address owner, bytes32 keyHash) external view returns (bytes32);
 
   /**
-   * @notice Spends one of a key's own nonces, cancelling a signature of that key that has not been used
+   * @notice Spends one of a key's own nonces, cancelling a signature of that key that has not been
+   * used
    * @dev The key's counterpart of {IUnorderedNonce-revokeNonce}, which spends only the caller's
    * address namespace and so cannot reach a key that is not an account. The key signs the
    * revocation instead, and anyone may submit it.
-   * @param key The key whose namespace the nonce belongs to
+   * @param key The key whose credential the nonce is spent under, for every approval of it
    * @param nonce The nonce to spend
    * @param deadline Last timestamp at which the revocation may be submitted
    * @param signature The key's signature over the `NonceRevocation`

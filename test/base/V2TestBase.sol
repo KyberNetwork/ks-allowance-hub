@@ -23,9 +23,7 @@ import {SessionKeyApproval} from 'src/v2/authenticators/types/SessionKeyApproval
 import {AuthDelegation} from 'src/v2/types/AuthDelegation.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
-import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {ExecutionWitness} from 'src/v2/types/ExecutionWitness.sol';
-import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
 import {FulfillmentSolution} from 'src/v2/types/FulfillmentSolution.sol';
 import {FulfillmentWitness} from 'src/v2/types/FulfillmentWitness.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
@@ -82,22 +80,6 @@ abstract contract V2TestBase is Test {
   // ---------------------------------------------------------------------------------------------
   // Struct hashes, derived from the bind-json schemas
   // ---------------------------------------------------------------------------------------------
-
-  function lExecutionOrderHash(ExecutionOrder memory order) internal pure returns (bytes32) {
-    return SchemaHash.executionOrder(order);
-  }
-
-  function lFulfillmentOrderHash(FulfillmentOrder memory order) internal pure returns (bytes32) {
-    return SchemaHash.fulfillmentOrder(order);
-  }
-
-  function lFulfillmentSolutionHash(FulfillmentSolution memory solution)
-    internal
-    pure
-    returns (bytes32)
-  {
-    return SchemaHash.fulfillmentSolution(solution);
-  }
 
   function lSolutionApproval(bytes32 orderHash, FulfillmentSolution memory solution)
     internal

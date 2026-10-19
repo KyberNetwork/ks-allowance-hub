@@ -1025,3 +1025,34 @@ A key whose own head word points outside it would still be read outside it; that
 bytes to be wrong, not short.
 
 The authenticator is 13,012 bytes. 230 tests pass.
+
+## Run `20261019T095620Z`
+
+Scope: a key's nonces are spent under its credential, `keccak256(abi.encodePacked(keyType,
+publicKey))`, rather than under the hash of one approval of it. An order signature names no key, so
+two approvals of the same credential, such as a key renewed with a later expiry while the first
+approval stands, each accepted the same signature in a namespace of its own, and the hub settled
+the order twice. Secp256k1 keys must also be canonical, with their top 12 bytes clear.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261019T095620Z/CRED-01` | An order settled under one approval of a key is refused under a renewal of the same credential with `NonceAlreadyUsed(credentialHash, nonce)` | `SV-CRED-01`; `test/v2/authenticators/SessionOrderAuthenticator.t.sol` | `forge test --match-test test_SV_CRED_01` |
+| - [x] | - [ ] | `20261019T095620Z/CRED-02` | The namespace is shared across tiers: an order settled by a credential as a session key is refused when presented by the same credential as a master key | `SV-CRED-02`; same file | `forge test --match-test test_SV_CRED_02` |
+| - [x] | - [ ] | `20261019T095620Z/CRED-03` | A revocation signed under one approval spends the nonce for every approval of the credential | `SV-CRED-03`; same file | `forge test --match-test test_SV_CRED_03` |
+| - [x] | - [ ] | `20261019T095620Z/CRED-04` | A Secp256k1 key with a top byte set does not verify, while its clean encoding does, with an ERC-1271 wallet as the signer | `SV-CRED-04`; same file | `forge test --match-test test_SV_CRED_04` |
+| - [x] | - [ ] | `20261019T095620Z/CRED-NS` | Every assertion of a key's nonce namespace, in the authenticator and hub batches, reads the credential namespace from the test-side `_credentialHash` | 26 assertions across `SessionOrderAuthenticator.t.sol`, `FulfillOrder.t.sol`, `ExecuteOrder.t.sol`, `Forwarder.t.sol`, `Multicall.t.sol`, `Nonces.t.sol` | `forge test` |
+
+### Notes for this run
+
+**Mutation checks.** Spending an order's nonce under the key hash fails `SV-CRED-01..03`; the
+revocation's alone fails `SV-CRED-03`; the master-key rail's fails `SV-TIER-08`, `SV-NREV-02`,
+`-03`, `FWD-20` and the tier fuzz. Adding the expiry to the credential fails `SV-CRED-01..03`, and
+dropping the canonical Secp256k1 check fails `SV-CRED-04`.
+
+**What stays per approval.** Approvals, and every signed type that names a key, still use the
+key hash with its expiry. Two byte encodings of one RSA key remain two credentials.
+
+**`SV-NREV-06`** gives its expired key a signer of its own, so its nonce does not land in the
+namespace `key` already spent in.
+
+The authenticator is 13,172 bytes. 234 tests pass.

@@ -36,8 +36,9 @@ import {
  * not outlive the master key it names, and does not survive its revocation.
  *
  * Replay protection belongs to this contract rather than the hub: every verification spends a
- * nonce in the namespace of the key or account that signed, and the nonce and deadline are bound
- * into the digest.
+ * nonce in the namespace of the account or the key credential that signed, and the nonce and
+ * deadline are bound into the digest. A credential's namespace is shared by all of its approvals,
+ * whatever their expiry, so a signature settles once however many approvals could accept it.
  */
 contract SessionOrderAuthenticator is
   ISessionOrderAuthenticator,
@@ -136,7 +137,7 @@ contract SessionOrderAuthenticator is
         revert SessionKeyApprovedByAnother(sessionKeyHash, masterKeyHash, approvedBy);
       }
 
-      _useUnorderedNonce(masterKeyHash, nonce);
+      _useUnorderedNonce(masterKey.credentialHash(), nonce);
 
       bytes32 digest = _hashTypedDataV4(
         SessionKeyApprovalLib.hash(owner, masterKeyHash, sessionKeyHash, approved, nonce, deadline)
@@ -176,10 +177,9 @@ contract SessionOrderAuthenticator is
     uint256 deadline,
     bytes calldata signature
   ) external checkDeadline(deadline) {
-    bytes32 keyHash = key.hash();
-    _useUnorderedNonce(keyHash, nonce);
+    _useUnorderedNonce(key.credentialHash(), nonce);
 
-    bytes32 digest = _hashTypedDataV4(NonceRevocationLib.hash(keyHash, nonce, deadline));
+    bytes32 digest = _hashTypedDataV4(NonceRevocationLib.hash(key, nonce, deadline));
     if (!key.verify(digest, signature)) {
       revert InvalidRevocationSignature();
     }
@@ -187,10 +187,10 @@ contract SessionOrderAuthenticator is
 
   /**
    * @dev Verifies that the key in `abi.encode(AuthKey key, bool isSessionKey, bytes signature)` may
-   * still sign for `owner` and did sign `orderHash`, and spends `nonce` in that key's namespace.
-   * `isSessionKey` says which tier the key is presented as, so a master key is settled by its own
-   * approval alone. It is read as a hint and trusted for nothing: a key presented as the tier it
-   * does not hold finds no approval under that tier and is refused.
+   * still sign for `owner` and did sign `orderHash`, and spends `nonce` under that key's
+   * credential. `isSessionKey` says which tier the key is presented as, so a master key is settled
+   * by its own approval alone. It is read as a hint and trusted for nothing: a key presented as the
+   * tier it does not hold finds no approval under that tier and is refused.
    */
   function _authenticate(address owner, uint256 nonce, bytes32 orderHash, bytes calldata data)
     private
@@ -213,7 +213,7 @@ contract SessionOrderAuthenticator is
       revert MasterKeyNotApproved(keyHash);
     }
 
-    _useUnorderedNonce(keyHash, nonce);
+    _useUnorderedNonce(key.credentialHash(), nonce);
 
     bytes32 digest = _hashTypedDataV4(orderHash);
     bytes calldata signature = data.decodeBytes(2);

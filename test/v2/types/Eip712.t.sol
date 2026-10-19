@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.36;
 
+import {SchemaHash} from 'test/base/SchemaHash.sol';
 import {V2TestBase} from 'test/base/V2TestBase.sol';
 
 import {AuthDelegationLib} from 'src/v2/types/AuthDelegation.sol';
@@ -118,7 +119,7 @@ contract Eip712Test is V2TestBase {
    */
   function test_T712_executionOrderStructHash() public view {
     ExecutionOrder memory order = _sampleExecutionOrder();
-    bytes32 expected = lExecutionOrderHash(order);
+    bytes32 expected = SchemaHash.executionOrder(order);
 
     assertEq(order.hashMemory(), expected, 'memory hasher');
     assertEq(this.extHashExecutionOrder(order), expected, 'calldata hasher');
@@ -126,7 +127,7 @@ contract Eip712Test is V2TestBase {
 
   function test_T712_fulfillmentOrderStructHash() public view {
     FulfillmentOrder memory order = _sampleFulfillmentOrder();
-    bytes32 expected = lFulfillmentOrderHash(order);
+    bytes32 expected = SchemaHash.fulfillmentOrder(order);
 
     assertEq(order.hashMemory(), expected, 'memory hasher');
     assertEq(this.extHashFulfillmentOrder(order), expected, 'calldata hasher');
@@ -134,7 +135,7 @@ contract Eip712Test is V2TestBase {
 
   function test_T712_fulfillmentSolutionStructHash() public view {
     FulfillmentSolution memory solution = _sampleSolution();
-    bytes32 expected = lFulfillmentSolutionHash(solution);
+    bytes32 expected = SchemaHash.fulfillmentSolution(solution);
 
     assertEq(solution.hashMemory(), expected, 'memory hasher');
     assertEq(this.extHashSolution(solution), expected, 'calldata hasher');

@@ -3,6 +3,8 @@ pragma solidity 0.8.36;
 
 import {Vm} from 'forge-std/Vm.sol';
 
+import {SchemaHash} from 'test/base/SchemaHash.sol';
+
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
 import {EchoRouterMock, ObservingRouterMock, RouterMock} from 'test/v2/mocks/RouterMock.sol';
@@ -77,7 +79,8 @@ contract FulfillOrderTest is AuthenticatorBase {
     FulfillmentSolution memory route = _solution(_calls(_routerCall(0, hex'01')), deadline);
 
     bytes memory permitSig = _signPlainPermit(erc20s, 61, deadline);
-    bytes memory approval = _signSolutionApproval(approverKey, lFulfillmentOrderHash(order), route);
+    bytes memory approval =
+      _signSolutionApproval(approverKey, SchemaHash.fulfillmentOrder(order), route);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
 
@@ -146,7 +149,8 @@ contract FulfillOrderTest is AuthenticatorBase {
       deadline
     );
     FulfillmentSolution memory route = _solution(solverCalls, deadline);
-    bytes memory approval = _signSolutionApproval(approverKey, lFulfillmentOrderHash(named), route);
+    bytes memory approval =
+      _signSolutionApproval(approverKey, SchemaHash.fulfillmentOrder(named), route);
     bytes memory matchingWitness = _signFulfillmentWitness(named);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
@@ -169,7 +173,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     );
     FulfillmentSolution memory route2 = _solution(solverCalls, deadline);
     bytes memory approval2 =
-      _signSolutionApproval(approverKey, lFulfillmentOrderHash(swapped), route2);
+      _signSolutionApproval(approverKey, SchemaHash.fulfillmentOrder(swapped), route2);
     // the owner signed a witness naming nobody, so the approver in the order is not the one signed
     bytes memory openWitness =
       _signFulfillmentWitness(swapped, swapped.solver, swapped.ownerCalls, ANY);
@@ -269,7 +273,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     FulfillmentSolution memory route = _solution(solverCalls, deadline);
 
     FulfillmentOrder memory withTailA = _orderWithTail(_calls(_routerCall(0, hex'aa')), deadline);
-    bytes32 hashA = lFulfillmentOrderHash(withTailA);
+    bytes32 hashA = SchemaHash.fulfillmentOrder(withTailA);
     bytes memory approvalA = _signSolutionApproval(approverKey, hashA, route);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
@@ -285,7 +289,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     assertEq(results.length, 2, 'route and tail both ran');
 
     FulfillmentOrder memory withTailB = _orderWithTail(_calls(_routerCall(0, hex'bb')), deadline);
-    assertTrue(lFulfillmentOrderHash(withTailB) != hashA, 'the two orders really do differ');
+    assertTrue(SchemaHash.fulfillmentOrder(withTailB) != hashA, 'the two orders really do differ');
 
     vm.prank(owner);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
@@ -295,7 +299,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     // the same order with its own approval does settle, so the refusal was the approval's doing
     bytes memory approvalB =
-      _signSolutionApproval(approverKey, lFulfillmentOrderHash(withTailB), route);
+      _signSolutionApproval(approverKey, SchemaHash.fulfillmentOrder(withTailB), route);
 
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(withTailB, address(0), '', route, approvalB, false);
@@ -376,7 +380,8 @@ contract FulfillOrderTest is AuthenticatorBase {
       80,
       deadline
     );
-    bytes memory approval = _signSolutionApproval(approverKey, lFulfillmentOrderHash(named), route);
+    bytes memory approval =
+      _signSolutionApproval(approverKey, SchemaHash.fulfillmentOrder(named), route);
     bytes memory witness = _signFulfillmentWitness(named);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
@@ -495,12 +500,12 @@ contract FulfillOrderTest is AuthenticatorBase {
       order, address(authenticator), authData, route, '', false
     );
 
-    assertEq(authenticator.nonces(_keyHash(key), 0), 1 << 21, 'the order nonce burned');
+    assertEq(authenticator.nonces(_credentialHash(key), 0), 1 << 21, 'the order nonce burned');
     assertEq(router.callCount(), 1, 'the route ran once');
 
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, _keyHash(key), 21)
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, _credentialHash(key), 21)
     );
     hub.fulfillOrderWithDelegatedAuthentication(
       order, address(authenticator), authData, route, '', false
@@ -933,7 +938,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     (FulfillmentOrder memory order, FulfillmentSolution memory route) = _fuzzOrder(f, relayer);
     bytes memory authData = _fulfillmentAuthData(order, key, masterKeyPk);
     bytes memory approval = f.approveSolution
-      ? _signSolutionApproval(approverKey, lFulfillmentOrderHash(order), route)
+      ? _signSolutionApproval(approverKey, SchemaHash.fulfillmentOrder(order), route)
       : bytes('');
 
     uint256 before = IERC20(token18).balanceOf(address(router));
@@ -947,7 +952,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     _assertFuzzSettled(f, order, results, before);
     assertEq(
-      authenticator.nonces(_keyHash(key), f.nonce >> 8),
+      authenticator.nonces(_credentialHash(key), f.nonce >> 8),
       1 << (f.nonce & 0xff),
       'the authenticator burned exactly the order nonce'
     );
@@ -973,7 +978,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     (FulfillmentOrder memory order, FulfillmentSolution memory route) = _fuzzOrder(f, solver);
     bytes memory signature = _signFulfillmentWitness(order);
     bytes memory approval = f.approveSolution
-      ? _signSolutionApproval(approverKey, lFulfillmentOrderHash(order), route)
+      ? _signSolutionApproval(approverKey, SchemaHash.fulfillmentOrder(order), route)
       : bytes('');
 
     uint256 before = IERC20(token18).balanceOf(address(router));
@@ -1077,6 +1082,8 @@ contract FulfillOrderTest is AuthenticatorBase {
     if (f.moveNft) assertEq(nft.ownerOf(NFT_ID), address(router2), 'nft leg');
 
     Vm.Log memory entry = _settlementLog();
-    assertEq(entry.topics[3], lFulfillmentOrderHash(order), 'the event reports this exact order');
+    assertEq(
+      entry.topics[3], SchemaHash.fulfillmentOrder(order), 'the event reports this exact order'
+    );
   }
 }

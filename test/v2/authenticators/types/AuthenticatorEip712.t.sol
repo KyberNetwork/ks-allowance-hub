@@ -24,20 +24,18 @@ contract AuthenticatorEip712Test is V2TestBase {
   function test_T712_09_authKeyStructHash() public view {
     AuthKey memory key = _sampleKey();
 
-    assertEq(
-      this.extHashAuthKey(key),
-      lAuthKeyHash(key.publicKey, uint8(key.keyType), key.expiration),
-      'struct hash'
-    );
+    bytes32 expected = lAuthKeyHash(key.publicKey, uint8(key.keyType), key.expiration);
+    assertEq(this.extHashAuthKey(key), expected, 'calldata hasher');
+    assertEq(key.hashMemory(), expected, 'memory hasher');
   }
 
   // -------------------------------------------------------------------------------------------
   // T712-10 — MasterKeyApproval
   // -------------------------------------------------------------------------------------------
 
-  function test_T712_10_masterKeyApprovalStructHash() public view {
+  function test_T712_10_masterKeyApprovalStructHash() public pure {
     AuthKey memory key = _sampleKey();
-    bytes32 keyHash = this.extHashAuthKey(key);
+    bytes32 keyHash = key.hashMemory();
 
     assertEq(
       MasterKeyApprovalLib.hash(keyHash, true, 7, 99),
@@ -61,11 +59,11 @@ contract AuthenticatorEip712Test is V2TestBase {
   // -------------------------------------------------------------------------------------------
 
   /// @dev The two keys and the account are all distinct members, so each must move the digest
-  function test_T712_11_sessionKeyApprovalStructHash() public view {
+  function test_T712_11_sessionKeyApprovalStructHash() public pure {
     AuthKey memory masterKey = _sampleKey();
     AuthKey memory sessionKey = _otherKey();
-    bytes32 masterKeyHash = this.extHashAuthKey(masterKey);
-    bytes32 sessionKeyHash = this.extHashAuthKey(sessionKey);
+    bytes32 masterKeyHash = masterKey.hashMemory();
+    bytes32 sessionKeyHash = sessionKey.hashMemory();
     address keyOwner = address(uint160(uint256(keccak256('an arbitrary owner'))));
     address otherOwner = address(uint160(uint256(keccak256('a different owner'))));
 
@@ -100,23 +98,19 @@ contract AuthenticatorEip712Test is V2TestBase {
   // T712-12 — NonceRevocation
   // -------------------------------------------------------------------------------------------
 
-  function test_T712_12_nonceRevocationStructHash() public view {
+  function test_T712_12_nonceRevocationStructHash() public pure {
     AuthKey memory key = _sampleKey();
-    bytes32 keyHash = this.extHashAuthKey(key);
-    bytes32 otherKeyHash = this.extHashAuthKey(_otherKey());
+    bytes32 revocation = NonceRevocationLib.hashMemory(key, 7, 99);
 
-    assertEq(NonceRevocationLib.hash(keyHash, 7, 99), lNonceRevocation(key, 7, 99), 'struct hash');
+    assertEq(revocation, lNonceRevocation(key, 7, 99), 'struct hash');
     assertTrue(
-      NonceRevocationLib.hash(keyHash, 7, 99) != NonceRevocationLib.hash(otherKeyHash, 7, 99),
-      'the key changes the digest'
+      revocation != NonceRevocationLib.hashMemory(_otherKey(), 7, 99), 'the key changes the digest'
     );
     assertTrue(
-      NonceRevocationLib.hash(keyHash, 7, 99) != NonceRevocationLib.hash(keyHash, 8, 99),
-      'the nonce changes the digest'
+      revocation != NonceRevocationLib.hashMemory(key, 8, 99), 'the nonce changes the digest'
     );
     assertTrue(
-      NonceRevocationLib.hash(keyHash, 7, 99) != NonceRevocationLib.hash(keyHash, 7, 100),
-      'the deadline changes the digest'
+      revocation != NonceRevocationLib.hashMemory(key, 7, 100), 'the deadline changes the digest'
     );
   }
 

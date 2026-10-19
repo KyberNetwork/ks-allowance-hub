@@ -3,6 +3,8 @@ pragma solidity 0.8.36;
 
 import {Vm} from 'forge-std/Vm.sol';
 
+import {SchemaHash} from 'test/base/SchemaHash.sol';
+
 import {HubBase} from 'test/v2/base/HubBase.sol';
 
 import {EchoRouterMock, ReentrantRouterMock, RouterMock} from 'test/v2/mocks/RouterMock.sol';
@@ -65,7 +67,7 @@ contract SettlementTest is HubBase {
     assertEq(entry.topics.length, 4, 'caller, owner and the order hash are indexed');
     assertEq(_topicAddress(entry.topics[1]), relayer, 'caller is the submitter, not the owner');
     assertEq(_topicAddress(entry.topics[2]), owner, 'owner is the account the assets came from');
-    assertEq(entry.topics[3], lExecutionOrderHash(order), 'the order hash the owner signed');
+    assertEq(entry.topics[3], SchemaHash.executionOrder(order), 'the order hash the owner signed');
     // No call carries value, so the native leg is empty
     assertEq(entry.data, abi.encode(erc20s, nfts, new NativeTransfer[](0)), 'payload');
   }
@@ -188,7 +190,7 @@ contract SettlementTest is HubBase {
 
     Vm.Log memory entry = _settlementLog();
 
-    assertEq(entry.topics[3], lFulfillmentOrderHash(order), 'the fulfillment order hash');
+    assertEq(entry.topics[3], SchemaHash.fulfillmentOrder(order), 'the fulfillment order hash');
     assertEq(
       entry.data,
       abi.encode(new ERC20Transfer[](0), new ERC721Transfer[](0), expected),
