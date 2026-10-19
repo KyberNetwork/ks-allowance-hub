@@ -9,6 +9,7 @@ import {PermitHash} from 'test/libraries/PermitHash.sol';
 
 import {AuthKeyLib} from 'src/v2/authenticators/types/AuthKey.sol';
 import {MasterKeyApprovalLib} from 'src/v2/authenticators/types/MasterKeyApproval.sol';
+import {NonceRevocationLib} from 'src/v2/authenticators/types/NonceRevocation.sol';
 import {SessionKeyApprovalLib} from 'src/v2/authenticators/types/SessionKeyApproval.sol';
 import {AuthDelegationLib} from 'src/v2/types/AuthDelegation.sol';
 import {ERC20TransferLib} from 'src/v2/types/ERC20Transfer.sol';
@@ -101,6 +102,11 @@ contract SchemaAuditTest is Test {
       SessionKeyApprovalLib.SESSION_KEY_APPROVAL_TYPEHASH,
       keccak256(bytes(JsonBindings.schema_SessionKeyApproval)),
       'SessionKeyApproval'
+    );
+    assertEq(
+      NonceRevocationLib.NONCE_REVOCATION_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_NonceRevocation)),
+      'NonceRevocation'
     );
   }
 

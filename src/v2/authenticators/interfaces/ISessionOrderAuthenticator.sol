@@ -12,6 +12,9 @@ interface ISessionOrderAuthenticator {
   /// @notice The key's signature does not authenticate the order it was presented with
   error InvalidAuthenticationSignature();
 
+  /// @notice The signature does not authorise this key's revocation of the nonce
+  error InvalidRevocationSignature();
+
   /// @notice The owner has not approved this master key, or has revoked it
   error MasterKeyNotApproved(bytes32 masterKeyHash);
 
@@ -44,4 +47,21 @@ interface ISessionOrderAuthenticator {
    * @return Hash of the master key that approved it, or zero when none did
    */
   function sessionKeyMaster(address owner, bytes32 keyHash) external view returns (bytes32);
+
+  /**
+   * @notice Spends one of a key's own nonces, cancelling a signature of that key that has not been used
+   * @dev The key's counterpart of {IUnorderedNonce-revokeNonce}, which spends only the caller's
+   * address namespace and so cannot reach a key that is not an account. The key signs the
+   * revocation instead, and anyone may submit it.
+   * @param key The key whose namespace the nonce belongs to
+   * @param nonce The nonce to spend
+   * @param deadline Last timestamp at which the revocation may be submitted
+   * @param signature The key's signature over the `NonceRevocation`
+   */
+  function revokeNonce(
+    AuthKey calldata key,
+    uint256 nonce,
+    uint256 deadline,
+    bytes calldata signature
+  ) external;
 }

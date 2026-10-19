@@ -927,3 +927,44 @@ already past its deadline. The cheatcode is an external call the compiler cannot
 other reads of `block.timestamp` after a warp, in `SOL-05`, `SV-07`, `SV-07b`, `SV-TIER-12`,
 `SV-TIER-12b` and `SV-ORD-01..03`, passed only because those expressions happened not to be folded,
 and now go through the cheatcode too.
+
+## Run `20261019T073557Z`
+
+Scope: `revokeNonce(AuthKey, uint256, uint256, bytes)` on the authenticator, through which a key spends one
+of its own nonces by signing a `NonceRevocation`. The base `revokeNonce(uint256)` spends only the
+caller's address namespace, which a key that is not an account cannot be.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261019T073557Z/NREV-01` | A key's signed revocation, submitted by anyone, spends the nonce in that key's namespace only. An order the key signed at that nonce is refused `NonceAlreadyUsed(keyHash, nonce)`; the owner's namespace is untouched and the key's next nonce still settles | `SV-NREV-01`; `test/v2/authenticators/SessionOrderAuthenticator.t.sol` | `forge test --match-test test_SV_NREV_01` |
+| - [x] | - [ ] | `20261019T073557Z/NREV-02` | A master key cancels a session key approval it signed and has not seen used, and the session key is never approved. A session key revokes in its own namespace, cancelling an order it signed, and leaves its master key's namespace alone | `SV-NREV-02`, `SV-NREV-03`; same file | `forge test --match-test 'test_SV_NREV_0[23]'` |
+| - [x] | - [ ] | `20261019T073557Z/NREV-03` | The revocation must be signed by the key it names, for the nonce and deadline it names: another signer, a signature for another nonce, for another deadline, and a signature naming another key are each refused `InvalidRevocationSignature`, spending nothing. A submitted revocation cannot be submitted again | `SV-NREV-04`, `SV-NREV-05`; same file | `forge test --match-test 'test_SV_NREV_0[45]'` |
+| - [x] | - [ ] | `20261019T073557Z/NREV-04` | A key revokes whether it was never approved, has had its approval withdrawn or has expired. A P256 key revokes through its own scheme, and a P256 signature for another nonce is refused | `SV-NREV-06`, `SV-NREV-07`; same file | `forge test --match-test 'test_SV_NREV_0[67]'` |
+| - [x] | - [ ] | `20261019T073557Z/NREV-05` | Over the whole nonce domain, a revocation sets exactly the bit it names, in the key's namespace and not the owner's | `SV-FUZZ-NREV`; same file | `forge test --match-test testFuzz_SV_FUZZ_NREV` |
+| - [x] | - [ ] | `20261019T073557Z/NREV-06` | The deadline is inclusive: a revocation submitted at its deadline spends the nonce, and one submitted a second later is refused `DeadlinePassed(deadline, currentTime)` and leaves the nonce free, so an order the key signs at that nonce afterwards settles | `SV-NREV-08`; same file | `forge test --match-test test_SV_NREV_08` |
+| - [x] | - [ ] | `20261019T073557Z/T712-12` | `NonceRevocationLib.hash` matches the struct hash built from the bound schema, and the key, the nonce and the deadline each move the digest. `SchemaAudit` pins the typehash to `schema_NonceRevocation` | `T712-12` in `test/v2/authenticators/types/AuthenticatorEip712.t.sol`; `T712-SCHEMA` in `test/v2/types/SchemaAudit.t.sol` | `forge test --match-test 'T712_12\|T712_SCHEMA'` |
+
+### Notes for this run
+
+**Mutation checks.** Each mutant fails at least one case and was reverted: skipping the signature
+check fails `SV-NREV-04` and `-07`; spending the caller's namespace instead of the key's fails
+every `SV-NREV-*` case but `-04`; hashing a constant in place of the nonce, or in place of the key
+hash, fails every case that submits a valid revocation. Dropping the deadline check fails `SV-NREV-08`, and
+hashing a constant in place of the deadline fails every case that submits a valid revocation.
+
+**The deadline bounds when a signed revocation may be submitted.** Without one, a revocation the key
+signed but never submitted would stay usable, and anyone holding it could cancel a later signature
+of the key at the same nonce. A second use is prevented by the nonce, as for every other signature.
+
+**No expiry or approval check.** A key that has expired or lost its approval can still revoke, which
+`SV-NREV-06` pins.
+
+**The authenticator types are hashed as structs on the expected side.** `SchemaHash` hashes
+`MasterKeyApproval`, `SessionKeyApproval` and `NonceRevocation` through `vm.eip712HashStruct`
+from their bound schemas, as it does every hub type, so the `l*` helpers take whole keys and the
+nested `AuthKey` encoding is checked with the outer one. T712-10..12 feed production the key hash
+it computes itself. Reordering the `MasterKeyApproval` type string, swapping the nonce and the
+deadline in `NonceRevocationLib.hash`, and dropping `owner` from `SessionKeyApprovalLib.hash`
+each fail their T712 row.
+
+The authenticator is 12,943 bytes; the hub is unchanged at 24,076. 226 tests pass.

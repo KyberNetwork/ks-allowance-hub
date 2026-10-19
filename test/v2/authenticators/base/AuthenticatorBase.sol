@@ -119,9 +119,7 @@ abstract contract AuthenticatorBase is HubBase {
   ) internal returns (bytes memory) {
     bytes32 digest = lTypedDataHash(
       _authenticatorDomain(),
-      lSessionKeyApproval(
-        keyOwner, _keyHash(masterKey), _keyHash(sessionKey), approved, nonce, deadline
-      )
+      lSessionKeyApproval(keyOwner, masterKey, sessionKey, approved, nonce, deadline)
     );
     return _sign(signerPk, digest);
   }
@@ -143,6 +141,18 @@ abstract contract AuthenticatorBase is HubBase {
     );
   }
 
+  /// @dev A key's revocation of one of its nonces, signed by `signerPk`
+  function _signNonceRevocation(
+    AuthKey memory key,
+    uint256 nonce,
+    uint256 deadline,
+    uint256 signerPk
+  ) internal returns (bytes memory) {
+    return _sign(
+      signerPk, lTypedDataHash(_authenticatorDomain(), lNonceRevocation(key, nonce, deadline))
+    );
+  }
+
   function _signMasterKeyApproval(
     AuthKey memory key,
     bool approved,
@@ -150,7 +160,7 @@ abstract contract AuthenticatorBase is HubBase {
     uint256 deadline
   ) internal returns (bytes memory) {
     bytes32 digest = lTypedDataHash(
-      _authenticatorDomain(), lMasterKeyApproval(_keyHash(key), approved, nonce, deadline)
+      _authenticatorDomain(), lMasterKeyApproval(key, approved, nonce, deadline)
     );
     return _sign(ownerKey, digest);
   }

@@ -5,6 +5,7 @@ pragma experimental ABIEncoderV2;
 
 import {AuthKey} from "src/v2/authenticators/types/AuthKey.sol";
 import {MasterKeyApproval} from "src/v2/authenticators/types/MasterKeyApproval.sol";
+import {NonceRevocation} from "src/v2/authenticators/types/NonceRevocation.sol";
 import {SessionKeyApproval} from "src/v2/authenticators/types/SessionKeyApproval.sol";
 import {AuthDelegation} from "src/v2/types/AuthDelegation.sol";
 import {ERC20Transfer} from "src/v2/types/ERC20Transfer.sol";
@@ -32,6 +33,7 @@ library JsonBindings {
 
     string constant schema_AuthKey = "AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)";
     string constant schema_MasterKeyApproval = "MasterKeyApproval(AuthKey masterKey,bool approved,uint256 nonce,uint256 deadline)AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)";
+    string constant schema_NonceRevocation = "NonceRevocation(AuthKey key,uint256 nonce,uint256 deadline)AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)";
     string constant schema_SessionKeyApproval = "SessionKeyApproval(address owner,AuthKey masterKey,AuthKey sessionKey,bool approved,uint256 nonce,uint256 deadline)AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)";
     string constant schema_AuthDelegation = "AuthDelegation(address authenticator,bool delegated,bytes data,uint256 nonce,uint256 deadline)";
     string constant schema_ERC20Transfer = "ERC20Transfer(address token,address target,uint160 amount)";
@@ -86,6 +88,26 @@ library JsonBindings {
 
     function deserializeMasterKeyApprovalArray(string memory json, string memory path) public pure returns (MasterKeyApproval[] memory) {
         return abi.decode(vm.parseJsonTypeArray(json, path, schema_MasterKeyApproval), (MasterKeyApproval[]));
+    }
+
+    function serialize(NonceRevocation memory value) internal pure returns (string memory) {
+        return vm.serializeJsonType(schema_NonceRevocation, abi.encode(value));
+    }
+
+    function serialize(NonceRevocation memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
+        return vm.serializeJsonType(objectKey, valueKey, schema_NonceRevocation, abi.encode(value));
+    }
+
+    function deserializeNonceRevocation(string memory json) public pure returns (NonceRevocation memory) {
+        return abi.decode(vm.parseJsonType(json, schema_NonceRevocation), (NonceRevocation));
+    }
+
+    function deserializeNonceRevocation(string memory json, string memory path) public pure returns (NonceRevocation memory) {
+        return abi.decode(vm.parseJsonType(json, path, schema_NonceRevocation), (NonceRevocation));
+    }
+
+    function deserializeNonceRevocationArray(string memory json, string memory path) public pure returns (NonceRevocation[] memory) {
+        return abi.decode(vm.parseJsonTypeArray(json, path, schema_NonceRevocation), (NonceRevocation[]));
     }
 
     function serialize(SessionKeyApproval memory value) internal pure returns (string memory) {

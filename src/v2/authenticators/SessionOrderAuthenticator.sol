@@ -16,6 +16,7 @@ import {ISessionOrderAuthenticator} from './interfaces/ISessionOrderAuthenticato
 
 import {AuthKey} from './types/AuthKey.sol';
 import {MasterKeyApprovalLib} from './types/MasterKeyApproval.sol';
+import {NonceRevocationLib} from './types/NonceRevocation.sol';
 import {SessionKeyApprovalLib} from './types/SessionKeyApproval.sol';
 
 import {CalldataDecoder} from 'ks-common-sc/src/libraries/calldata/CalldataDecoder.sol';
@@ -162,6 +163,26 @@ contract SessionOrderAuthenticator is
     onlyAllowanceHub
   {
     _authenticate(order.owner, order.nonce, order.hash(), data);
+  }
+
+  /**
+   * @inheritdoc ISessionOrderAuthenticator
+   * @dev Neither the key's expiry nor its approval is checked: its nonces are its own, and a key
+   * that has expired or been revoked must still be able to cancel what it signed
+   */
+  function revokeNonce(
+    AuthKey calldata key,
+    uint256 nonce,
+    uint256 deadline,
+    bytes calldata signature
+  ) external checkDeadline(deadline) {
+    bytes32 keyHash = key.hash();
+    _useUnorderedNonce(keyHash, nonce);
+
+    bytes32 digest = _hashTypedDataV4(NonceRevocationLib.hash(keyHash, nonce, deadline));
+    if (!key.verify(digest, signature)) {
+      revert InvalidRevocationSignature();
+    }
   }
 
   /**

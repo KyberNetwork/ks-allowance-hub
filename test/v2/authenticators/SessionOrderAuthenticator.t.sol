@@ -112,9 +112,8 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
     uint256 deadline = block.timestamp + 1 days;
 
-    bytes32 digest = lTypedDataHash(
-      _authenticatorDomain(), lMasterKeyApproval(_keyHash(fresh), true, 4, deadline)
-    );
+    bytes32 digest =
+      lTypedDataHash(_authenticatorDomain(), lMasterKeyApproval(fresh, true, 4, deadline));
     bytes memory sig = _sign(masterKeyPk, digest); // the session key, not the owner
 
     vm.prank(relayer);
@@ -1359,6 +1358,222 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
       'the master key spends the nonce'
     );
     assertEq(authenticator.nonces(lNonceKey(owner), nonce >> 8), 0, 'and the owner does not');
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // SV-NREV-01..08 — a key spends one of its own nonces with a signature
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * SV-NREV-01 — a key revokes a nonce, and an order it signed at that nonce is refused
+   * @dev Anyone may submit the revocation. Only the key's namespace is touched: the owner's own
+   * nonce of the same number stays free, and the next nonce of the key still settles an order.
+   */
+  function test_SV_NREV_01_aKeyRevokesANonceOfItsOwn() public {
+    _delegateKeyThroughHub(key);
+    uint256 nonce = 60;
+    uint256 deadline = block.timestamp + 1 hours;
+
+    bytes memory orderSig = _sign(masterKeyPk, _executionDigest(_standardOrder(nonce, deadline)));
+
+    vm.prank(makeAddr('anyone'));
+    authenticator.revokeNonce(
+      key, nonce, deadline, _signNonceRevocation(key, nonce, deadline, masterKeyPk)
+    );
+
+    assertEq(authenticator.nonces(_keyHash(key), 0), 1 << nonce, 'the key spent it');
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, "the owner's namespace is untouched");
+
+    vm.prank(relayer);
+    vm.expectRevert(
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, _keyHash(key), nonce)
+    );
+    _submitExecutionRaw(key, orderSig, nonce, deadline);
+
+    _executeViaAuthenticator(key, masterKeyPk, nonce + 1, deadline, true);
+  }
+
+  /// SV-NREV-02 — a master key cancels a session key approval it signed and has not seen used
+  function test_SV_NREV_02_aMasterKeyCancelsAPendingApproval() public {
+    _delegateKeyThroughHub(key);
+    AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
+    uint256 nonce = 70;
+    uint256 deadline = block.timestamp + 1 days;
+
+    bytes memory approval =
+      _signSessionKeyApproval(key, sessionKey, true, nonce, deadline, masterKeyPk);
+    authenticator.revokeNonce(
+      key, nonce, deadline, _signNonceRevocation(key, nonce, deadline, masterKeyPk)
+    );
+
+    vm.prank(relayer);
+    vm.expectRevert(
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, _keyHash(key), nonce)
+    );
+    authenticator.updateAuthentication(
+      owner, _sessionKeyData(sessionKey, key, true), nonce, deadline, approval
+    );
+    assertEq(
+      authenticator.sessionKeyMaster(owner, _keyHash(sessionKey)), bytes32(0), 'never approved'
+    );
+  }
+
+  /// SV-NREV-03 — a session key revokes in its own namespace, not its master key's
+  function test_SV_NREV_03_aSessionKeyRevokesANonceOfItsOwn() public {
+    _delegateKeyThroughHub(key);
+    AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
+    vm.prank(relayer);
+    _approveSessionKey(key, sessionKey, 79, block.timestamp + 1 days, masterKeyPk);
+
+    uint256 nonce = 80;
+    uint256 deadline = block.timestamp + 1 hours;
+    authenticator.revokeNonce(
+      sessionKey, nonce, deadline, _signNonceRevocation(sessionKey, nonce, deadline, sessionKeyPk)
+    );
+    assertEq(authenticator.nonces(_keyHash(key), 0), 1 << 79, "the master key's is untouched");
+
+    vm.expectRevert(
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, _keyHash(sessionKey), nonce)
+    );
+    _executeViaAuthenticator(sessionKey, sessionKeyPk, nonce, deadline, false, true);
+
+    _executeViaAuthenticator(key, masterKeyPk, nonce, deadline, true);
+  }
+
+  /// SV-NREV-04 — the revocation must be signed by the key, for the nonce and deadline it names
+  function test_SV_NREV_04_theKeyMustHaveSignedThisNonce() public {
+    uint256 nonce = 90;
+    uint256 deadline = block.timestamp + 1 hours;
+
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidRevocationSignature.selector);
+    authenticator.revokeNonce(
+      key, nonce, deadline, _signNonceRevocation(key, nonce, deadline, sessionKeyPk)
+    );
+
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidRevocationSignature.selector);
+    authenticator.revokeNonce(
+      key, nonce, deadline, _signNonceRevocation(key, nonce + 1, deadline, masterKeyPk)
+    );
+
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidRevocationSignature.selector);
+    authenticator.revokeNonce(
+      key, nonce, deadline, _signNonceRevocation(key, nonce, deadline + 1, masterKeyPk)
+    );
+
+    AuthKey memory other = _secpKey(masterSigner, key.expiration + 1);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidRevocationSignature.selector);
+    authenticator.revokeNonce(
+      key, nonce, deadline, _signNonceRevocation(other, nonce, deadline, masterKeyPk)
+    );
+
+    assertEq(authenticator.nonces(_keyHash(key), 0), 0, 'nothing was spent');
+  }
+
+  /// SV-NREV-05 — a revocation spends its nonce, so it cannot be submitted twice
+  function test_SV_NREV_05_aRevocationCannotBeReplayed() public {
+    uint256 nonce = 100;
+    uint256 deadline = block.timestamp + 1 hours;
+    bytes memory sig = _signNonceRevocation(key, nonce, deadline, masterKeyPk);
+    authenticator.revokeNonce(key, nonce, deadline, sig);
+
+    vm.expectRevert(
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, _keyHash(key), nonce)
+    );
+    authenticator.revokeNonce(key, nonce, deadline, sig);
+  }
+
+  /**
+   * SV-NREV-06 — a key revokes regardless of its approval or expiry
+   * @dev A key that was never approved, one whose approval was withdrawn, and one that has expired
+   * all keep the means to cancel what they signed.
+   */
+  function test_SV_NREV_06_neitherApprovalNorExpiryIsRequired() public {
+    uint256 deadline = block.timestamp + 365 days;
+
+    AuthKey memory never = _secpKey(sessionSigner, block.timestamp + 30 days);
+    authenticator.revokeNonce(
+      never, 1, deadline, _signNonceRevocation(never, 1, deadline, sessionKeyPk)
+    );
+    assertEq(authenticator.nonces(_keyHash(never), 0), 1 << 1, 'never approved');
+
+    _delegateKeyThroughHub(key);
+    vm.prank(owner);
+    authenticator.updateAuthentication(owner, _revokeKey(key), 0, block.timestamp + 1 days, '');
+    authenticator.revokeNonce(key, 2, deadline, _signNonceRevocation(key, 2, deadline, masterKeyPk));
+    assertEq(authenticator.nonces(_keyHash(key), 0), 1 << 2, 'approval withdrawn');
+
+    AuthKey memory stale = _secpKey(masterSigner, block.timestamp + 1 hours);
+    vm.warp(stale.expiration + 1);
+    authenticator.revokeNonce(
+      stale, 3, deadline, _signNonceRevocation(stale, 3, deadline, masterKeyPk)
+    );
+    assertEq(authenticator.nonces(_keyHash(stale), 0), 1 << 3, 'expired');
+  }
+
+  /// SV-NREV-07 — a passkey revokes: the signature is checked by the key's own scheme
+  function test_SV_NREV_07_aP256KeyRevokes() public {
+    AuthKey memory p256 = AuthKey({
+      publicKey: KeyFixtures.p256PublicKey(),
+      keyType: KeyType.P256,
+      expiration: block.timestamp + 30 days
+    });
+    uint256 nonce = 110;
+    uint256 deadline = block.timestamp + 1 hours;
+
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidRevocationSignature.selector);
+    authenticator.revokeNonce(
+      p256,
+      nonce,
+      deadline,
+      KeyFixtures.p256Sign(
+        lTypedDataHash(_authenticatorDomain(), lNonceRevocation(p256, nonce + 1, deadline))
+      )
+    );
+
+    authenticator.revokeNonce(
+      p256,
+      nonce,
+      deadline,
+      KeyFixtures.p256Sign(
+        lTypedDataHash(_authenticatorDomain(), lNonceRevocation(p256, nonce, deadline))
+      )
+    );
+    assertEq(authenticator.nonces(_keyHash(p256), 0), 1 << nonce, 'the passkey spent it');
+  }
+
+  /**
+   * SV-NREV-08 — the deadline is inclusive, and a revocation submitted after it is refused
+   * @dev The refused revocation leaves the nonce free, so a signature the key later makes at that
+   * nonce is not cancelled by it.
+   */
+  function test_SV_NREV_08_deadlineBoundary() public {
+    _delegateKeyThroughHub(key);
+    uint256 nonce = 120;
+    uint256 deadline = block.timestamp + 1 hours;
+    bytes memory sig = _signNonceRevocation(key, nonce, deadline, masterKeyPk);
+
+    vm.warp(deadline + 1);
+    vm.expectRevert(_deadlinePassed(deadline));
+    authenticator.revokeNonce(key, nonce, deadline, sig);
+    _executeViaAuthenticator(key, masterKeyPk, nonce, vm.getBlockTimestamp() + 1 hours, true);
+
+    uint256 nonce2 = nonce + 1;
+    uint256 deadline2 = vm.getBlockTimestamp() + 1 hours;
+    bytes memory sig2 = _signNonceRevocation(key, nonce2, deadline2, masterKeyPk);
+    vm.warp(deadline2);
+    authenticator.revokeNonce(key, nonce2, deadline2, sig2);
+    assertEq(authenticator.nonces(_keyHash(key), 0), 3 << nonce, 'spent at the deadline itself');
+  }
+
+  /// SV-FUZZ-NREV — a revocation spends exactly the nonce it names, in the key's namespace
+  function testFuzz_SV_FUZZ_NREV_revokeNonce(uint256 nonce, uint256 deadlineOffset) public {
+    uint256 deadline = block.timestamp + bound(deadlineOffset, 0, 365 days);
+    authenticator.revokeNonce(
+      key, nonce, deadline, _signNonceRevocation(key, nonce, deadline, masterKeyPk)
+    );
+
+    assertEq(authenticator.nonces(_keyHash(key), nonce >> 8), 1 << (nonce & 0xff), 'one bit');
+    assertEq(authenticator.nonces(lNonceKey(owner), nonce >> 8), 0, 'in the key namespace only');
   }
 
   // -------------------------------------------------------------------------------------------

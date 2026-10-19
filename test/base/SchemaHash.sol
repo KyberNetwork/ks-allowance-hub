@@ -13,6 +13,9 @@ import {
 } from 'src/v2/types/FulfillmentWitness.sol';
 
 import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
+import {MasterKeyApproval} from 'src/v2/authenticators/types/MasterKeyApproval.sol';
+import {NonceRevocation} from 'src/v2/authenticators/types/NonceRevocation.sol';
+import {SessionKeyApproval} from 'src/v2/authenticators/types/SessionKeyApproval.sol';
 import {AuthDelegation} from 'src/v2/types/AuthDelegation.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {ExecutionWitness} from 'src/v2/types/ExecutionWitness.sol';
@@ -65,15 +68,16 @@ library SchemaHash {
     return VM.eip712HashStruct(JsonBindings.schema_AuthKey, abi.encode(k));
   }
 
-  /// @dev The approvals are hashed from a typehash rather than a struct because production takes
-  /// their keys already hashed, so a case may pin the encoding with hashes of its own choosing
-  function masterKeyApprovalTypehash() internal pure returns (bytes32) {
-    return keccak256(bytes(JsonBindings.schema_MasterKeyApproval));
+  function masterKeyApproval(MasterKeyApproval memory a) internal pure returns (bytes32) {
+    return VM.eip712HashStruct(JsonBindings.schema_MasterKeyApproval, abi.encode(a));
   }
 
-  /// @dev As {masterKeyApprovalTypehash}, for the type a master key signs
-  function sessionKeyApprovalTypehash() internal pure returns (bytes32) {
-    return keccak256(bytes(JsonBindings.schema_SessionKeyApproval));
+  function sessionKeyApproval(SessionKeyApproval memory a) internal pure returns (bytes32) {
+    return VM.eip712HashStruct(JsonBindings.schema_SessionKeyApproval, abi.encode(a));
+  }
+
+  function nonceRevocation(NonceRevocation memory r) internal pure returns (bytes32) {
+    return VM.eip712HashStruct(JsonBindings.schema_NonceRevocation, abi.encode(r));
   }
 
   /**

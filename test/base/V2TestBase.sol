@@ -17,6 +17,9 @@ import {
 
 import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 import {KeyType} from 'src/v2/authenticators/types/KeyType.sol';
+import {MasterKeyApproval} from 'src/v2/authenticators/types/MasterKeyApproval.sol';
+import {NonceRevocation} from 'src/v2/authenticators/types/NonceRevocation.sol';
+import {SessionKeyApproval} from 'src/v2/authenticators/types/SessionKeyApproval.sol';
 import {AuthDelegation} from 'src/v2/types/AuthDelegation.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
@@ -168,35 +171,45 @@ abstract contract V2TestBase is Test {
     );
   }
 
-  function lMasterKeyApproval(bytes32 keyHash, bool approved, uint256 nonce, uint256 deadline)
-    internal
-    pure
-    returns (bytes32)
-  {
-    return keccak256(
-      abi.encode(SchemaHash.masterKeyApprovalTypehash(), keyHash, approved, nonce, deadline)
+  function lMasterKeyApproval(
+    AuthKey memory masterKey,
+    bool approved,
+    uint256 nonce,
+    uint256 deadline
+  ) internal pure returns (bytes32) {
+    return SchemaHash.masterKeyApproval(
+      MasterKeyApproval({
+        masterKey: masterKey, approved: approved, nonce: nonce, deadline: deadline
+      })
     );
   }
 
   function lSessionKeyApproval(
     address keyOwner,
-    bytes32 masterKeyHash,
-    bytes32 sessionKeyHash,
+    AuthKey memory masterKey,
+    AuthKey memory sessionKey,
     bool approved,
     uint256 nonce,
     uint256 deadline
   ) internal pure returns (bytes32) {
-    return keccak256(
-      abi.encode(
-        SchemaHash.sessionKeyApprovalTypehash(),
-        keyOwner,
-        masterKeyHash,
-        sessionKeyHash,
-        approved,
-        nonce,
-        deadline
-      )
+    return SchemaHash.sessionKeyApproval(
+      SessionKeyApproval({
+        owner: keyOwner,
+        masterKey: masterKey,
+        sessionKey: sessionKey,
+        approved: approved,
+        nonce: nonce,
+        deadline: deadline
+      })
     );
+  }
+
+  function lNonceRevocation(AuthKey memory key, uint256 nonce, uint256 deadline)
+    internal
+    pure
+    returns (bytes32)
+  {
+    return SchemaHash.nonceRevocation(NonceRevocation({key: key, nonce: nonce, deadline: deadline}));
   }
 
   // ---------------------------------------------------------------------------------------------
