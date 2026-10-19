@@ -996,3 +996,32 @@ settle the same order, with the same approval, more than once. The owner is the 
 assets are their own; the approval cannot reach any other order.
 
 The hub is 24,153 bytes, 77 more than before the change; 225 tests pass.
+
+## Run `20261019T093159Z`
+
+Scope: `AuthKeyLib.verify` refuses a key of the wrong length. The key's hash covers only the bytes
+within its length, while `verify` read fixed words from its start, so the bytes after an empty or
+short key, which the submitter lays out, were read as part of it. A malformed key, once approved,
+verified whatever signer the submitter chose.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261019T093159Z/LEN-01` | An empty Secp256k1 key, approved through the hub, does not authenticate an order signed by the address placed after it in the payload: `InvalidAuthenticationSignature` | `SV-KEY-LEN-01`; `test/v2/authenticators/SessionOrderAuthenticator.t.sol` | `forge test --match-test test_SV_KEY_LEN_01` |
+| - [x] | - [ ] | `20261019T093159Z/LEN-02` | A Secp256k1, P256 or WebAuthn key one byte short is refused even when the byte after it completes the genuine key, and the full key verifies the same signature | `SV-KEY-LEN-02..04`; same file | `forge test --match-test 'test_SV_KEY_LEN_0[234]'` |
+| - [x] | - [ ] | `20261019T093159Z/LEN-03` | An empty RSA key is refused when a genuine `e` and `n` lie before it in calldata and the two words after it, read as head words, wrap back to them; `decodeBytes` checks only where a part ends | `SV-KEY-LEN-05`; same file | `forge test --match-test test_SV_KEY_LEN_05` |
+
+### Notes for this run
+
+**Each check is pinned by its own case.** Removing the Secp256k1 check fails `SV-KEY-LEN-01` and
+`-02` (the first by letting the forged order settle); removing the P256, WebAuthn or RSA check
+fails `-03`, `-04` or `-05` respectively, and nothing else.
+
+**The premise is an approved malformed key.** Only the owner or a master key can approve one; a
+well-formed key is never read beyond its length. The checks turn an encoding mistake in a client
+from a key anyone can sign for into a key nobody can.
+
+**What the RSA check covers.** With at least 64 bytes, the head words are within the hashed bytes.
+A key whose own head word points outside it would still be read outside it; that needs the key's
+bytes to be wrong, not short.
+
+The authenticator is 13,012 bytes. 230 tests pass.

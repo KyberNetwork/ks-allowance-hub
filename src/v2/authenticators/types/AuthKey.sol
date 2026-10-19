@@ -51,7 +51,10 @@ library AuthKeyLib {
    * an ERC-1271 blob for Secp256k1, `abi.encodePacked(r, s)` for P256, an encoded
    * `WebAuthn.WebAuthnAuth` for WebAuthn, and a PKCS#1 v1.5 signature for RSA. The P256 words are
    * read without a length check, so a short signature reads whatever follows it in calldata and
-   * fails verification rather than reverting.
+   * fails verification rather than reverting. A `publicKey` that is not 32 bytes for Secp256k1 or
+   * 64 bytes for P256 and WebAuthn, or shorter than its two head words for RSA, verifies nothing.
+   * The words read as a Secp256k1, P256 or WebAuthn key, and the head words locating an RSA key's
+   * `e` and `n`, then all lie within the bytes the key's hash covers.
    */
   function verify(AuthKey calldata key, bytes32 digest, bytes calldata signature)
     internal
@@ -59,15 +62,27 @@ library AuthKeyLib {
     returns (bool)
   {
     if (key.keyType == KeyType.Secp256k1) {
+      if (key.publicKey.length != 32) {
+        return false;
+      }
+
       address signer = key.publicKey.decodeAddress();
       return SignatureChecker.isValidSignatureNowCalldata(signer, digest, signature);
     } else if (key.keyType == KeyType.P256) {
+      if (key.publicKey.length != 64) {
+        return false;
+      }
+
       bytes32 qx = key.publicKey.decodeBytes32(0);
       bytes32 qy = key.publicKey.decodeBytes32(1);
       bytes32 r = signature.decodeBytes32(0);
       bytes32 s = signature.decodeBytes32(1);
       return P256.verify(digest, r, s, qx, qy);
     } else if (key.keyType == KeyType.WebAuthn) {
+      if (key.publicKey.length != 64) {
+        return false;
+      }
+
       (bool decodeSuccess, WebAuthn.WebAuthnAuth calldata auth) = WebAuthn.tryDecodeAuth(signature);
       if (!decodeSuccess) {
         return false;
@@ -77,6 +92,10 @@ library AuthKeyLib {
       bytes32 qy = key.publicKey.decodeBytes32(1);
       return WebAuthn.verify(abi.encodePacked(digest), auth, qx, qy);
     } else {
+      if (key.publicKey.length < 0x40) {
+        return false;
+      }
+
       bytes calldata e = key.publicKey.decodeBytes(0);
       bytes calldata n = key.publicKey.decodeBytes(1);
       return RSA.pkcs1Sha256(digest, signature, e, n);

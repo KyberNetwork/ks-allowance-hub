@@ -646,6 +646,118 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   // -------------------------------------------------------------------------------------------
+  // SV-KEY-LEN-01..05 — a key of the wrong length verifies nothing
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * SV-KEY-LEN-01 — an empty Secp256k1 key, approved by mistake, does not sign for anyone
+   * @dev The key's hash covers only its own bytes. The forged payload places the attacker's address
+   * in the word after the empty key, where the signer would be read from if the length went
+   * unchecked.
+   */
+  function test_SV_KEY_LEN_01_anEmptySecp256k1KeySignsNothing() public {
+    (address attacker, uint256 attackerPk) = makeAddrAndKey('attacker');
+    AuthKey memory empty =
+      AuthKey({publicKey: '', keyType: KeyType.Secp256k1, expiration: block.timestamp + 30 days});
+    _delegateKeyThroughHub(empty);
+
+    uint256 nonce = 130;
+    uint256 deadline = block.timestamp + 1 hours;
+    bytes memory sig = _sign(attackerPk, _executionDigest(_standardOrder(nonce, deadline)));
+    bytes memory forged = _authDataWithKeyTail(empty, abi.encode(attacker), sig);
+
+    vm.prank(relayer);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidAuthenticationSignature.selector);
+    hub.executeOrderWithDelegatedAuthentication(
+      _standardOrder(nonce, deadline), address(authenticator), forged, false
+    );
+  }
+
+  /**
+   * SV-KEY-LEN-02 — a Secp256k1 key one byte short is refused, even when the byte after it would
+   * complete the signer's address
+   */
+  function test_SV_KEY_LEN_02_aShortSecp256k1KeyIsRefused() public {
+    bytes memory full = abi.encode(masterSigner);
+    bytes32 digest = keccak256('a digest');
+    bytes memory sig = _sign(masterKeyPk, digest);
+
+    AuthKey memory short_ = AuthKey({
+      publicKey: _prefix(full, 31), keyType: KeyType.Secp256k1, expiration: block.timestamp + 1 days
+    });
+    assertFalse(_verifyWithKeyTail(short_, _suffix(full, 31), digest, sig), 'short key refused');
+
+    AuthKey memory exact =
+      AuthKey({publicKey: full, keyType: KeyType.Secp256k1, expiration: block.timestamp + 1 days});
+    assertTrue(_verifyWithKeyTail(exact, '', digest, sig), 'the full key verifies');
+  }
+
+  /// SV-KEY-LEN-03 — a P256 key one byte short is refused, even when completed from after it
+  function test_SV_KEY_LEN_03_aShortP256KeyIsRefused() public {
+    bytes memory full = KeyFixtures.p256PublicKey();
+    bytes32 digest = keccak256('a digest');
+    bytes memory sig = KeyFixtures.p256Sign(digest);
+
+    AuthKey memory short_ = AuthKey({
+      publicKey: _prefix(full, 63), keyType: KeyType.P256, expiration: block.timestamp + 1 days
+    });
+    assertFalse(_verifyWithKeyTail(short_, _suffix(full, 63), digest, sig), 'short key refused');
+
+    AuthKey memory exact =
+      AuthKey({publicKey: full, keyType: KeyType.P256, expiration: block.timestamp + 1 days});
+    assertTrue(_verifyWithKeyTail(exact, '', digest, sig), 'the full key verifies');
+  }
+
+  /// SV-KEY-LEN-04 — and a WebAuthn key the same
+  function test_SV_KEY_LEN_04_aShortWebAuthnKeyIsRefused() public {
+    bytes memory full = KeyFixtures.p256PublicKey();
+    bytes32 digest = keccak256('a digest');
+    bytes memory assertion = KeyFixtures.webAuthnAssertion(digest, true);
+
+    AuthKey memory short_ = AuthKey({
+      publicKey: _prefix(full, 63), keyType: KeyType.WebAuthn, expiration: block.timestamp + 1 days
+    });
+    assertFalse(
+      _verifyWithKeyTail(short_, _suffix(full, 63), digest, assertion), 'short key refused'
+    );
+
+    AuthKey memory exact =
+      AuthKey({publicKey: full, keyType: KeyType.WebAuthn, expiration: block.timestamp + 1 days});
+    assertTrue(_verifyWithKeyTail(exact, '', digest, assertion), 'the full key verifies');
+  }
+
+  /**
+   * SV-KEY-LEN-05 — an RSA key shorter than its two head words is refused
+   * @dev The forged call places a genuine `e` and `n` before the empty key, and two words after it
+   * that, read as head words, point back at them; `decodeBytes` checks only where a part ends, and
+   * both end before the key does.
+   */
+  function test_SV_KEY_LEN_05_anRsaKeyWithoutItsHeadWordsIsRefused() public {
+    (bytes memory e, bytes memory n) = abi.decode(KeyFixtures.rsaPublicKey(), (bytes, bytes));
+    bytes memory eBlob = _blob(e);
+    bytes memory nBlob = _blob(n);
+
+    uint256 posE = 0x60;
+    uint256 posN = posE + eBlob.length;
+    uint256 posKey = posN + nBlob.length;
+    uint256 posKeyBytes = posKey + 0x80;
+    uint256 posSig = posKeyBytes + 0x40;
+
+    bytes memory args;
+    unchecked {
+      args = abi.encodePacked(
+        abi.encodePacked(posKey, KeyFixtures.RSA_FIXED_DIGEST, posSig),
+        eBlob,
+        nBlob,
+        abi.encode(uint256(0x60), KeyType.RSA, block.timestamp + 1 days, uint256(0)),
+        abi.encodePacked(posE - posKeyBytes, posN - posKeyBytes),
+        _blob(KeyFixtures.rsaSignatureForFixedDigest())
+      );
+    }
+    assertFalse(_rawVerify(args), 'the empty key verified nothing');
+  }
+
+  // -------------------------------------------------------------------------------------------
   // SV-DOMAIN / SV-FUZZ
   // -------------------------------------------------------------------------------------------
 
@@ -1590,6 +1702,77 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
       _walletAddr = address(new ERC1271WalletLocal(signer));
     }
     return _walletAddr;
+  }
+
+  /// @dev `b` behind its length word, padded to a whole number of words, as `abi.encode` lays it
+  function _blob(bytes memory b) private pure returns (bytes memory) {
+    return abi.encodePacked(b.length, b, new bytes((32 - (b.length % 32)) % 32));
+  }
+
+  function _prefix(bytes memory b, uint256 length) private pure returns (bytes memory out) {
+    out = new bytes(length);
+    for (uint256 i = 0; i < length; i++) {
+      out[i] = b[i];
+    }
+  }
+
+  function _suffix(bytes memory b, uint256 from) private pure returns (bytes memory out) {
+    out = new bytes(b.length - from);
+    for (uint256 i = from; i < b.length; i++) {
+      out[i - from] = b[i];
+    }
+  }
+
+  /**
+   * @dev `key`, encoded with `tail` written straight after its `publicKey` bytes rather than zero
+   * padding, so a read past the key's length finds `tail`
+   */
+  function _encodeKeyWithTail(AuthKey memory key, bytes memory tail)
+    private
+    pure
+    returns (bytes memory)
+  {
+    bytes memory region = abi.encodePacked(key.publicKey, tail);
+    return abi.encodePacked(
+      abi.encode(uint256(0x60), key.keyType, key.expiration, key.publicKey.length),
+      region,
+      new bytes((32 - (region.length % 32)) % 32)
+    );
+  }
+
+  /// @dev `abi.encode(key, false, signature)`, with `tail` after the key's bytes
+  function _authDataWithKeyTail(AuthKey memory key, bytes memory tail, bytes memory signature)
+    private
+    pure
+    returns (bytes memory)
+  {
+    bytes memory encodedKey = _encodeKeyWithTail(key, tail);
+    return abi.encodePacked(
+      abi.encode(uint256(0x60), false, 0x60 + encodedKey.length), encodedKey, _blob(signature)
+    );
+  }
+
+  /// @dev {AuthKeyHarness-verify} on `key`, with `tail` after the key's bytes
+  function _verifyWithKeyTail(
+    AuthKey memory key,
+    bytes memory tail,
+    bytes32 digest,
+    bytes memory signature
+  ) private returns (bool) {
+    bytes memory encodedKey = _encodeKeyWithTail(key, tail);
+    return _rawVerify(
+      abi.encodePacked(
+        abi.encode(uint256(0x60), digest, 0x60 + encodedKey.length), encodedKey, _blob(signature)
+      )
+    );
+  }
+
+  /// @dev {AuthKeyHarness-verify} on arguments encoded by hand
+  function _rawVerify(bytes memory args) private returns (bool) {
+    (bool success, bytes memory result) = address(new AuthKeyHarness())
+      .staticcall(abi.encodePacked(AuthKeyHarness.verify.selector, args));
+    assertTrue(success, 'verify does not revert');
+    return abi.decode(result, (bool));
   }
 
   /// @dev The error for a key presented as a master key that the owner never approved, payload
