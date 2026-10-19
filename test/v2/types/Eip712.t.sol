@@ -311,7 +311,7 @@ contract Eip712Test is V2TestBase {
 
   function _sampleSolution() private pure returns (FulfillmentSolution memory) {
     (,, GenericCall[] memory calls) = _sample();
-    return FulfillmentSolution({solverCalls: calls, nonce: 13, deadline: 9012});
+    return FulfillmentSolution({solverCalls: calls, deadline: 9012});
   }
 
   /// @dev Asserts the hand-written names really do sort ascending, which EIP-712 requires

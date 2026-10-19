@@ -362,9 +362,7 @@ contract KSAllowanceHubV2 is
     bytes32 orderHash,
     FulfillmentSolution calldata solution,
     bytes calldata solutionSignature
-  ) internal {
-    _useUnorderedNonce(order.solutionApprover, solution.nonce);
-
+  ) internal view {
     bytes32 digest = _hashTypedDataV4(SolutionApprovalLib.hash(orderHash, solution));
     if (!SignatureChecker.isValidSignatureNow(order.solutionApprover, digest, solutionSignature)) {
       revert InvalidSolutionSignature();

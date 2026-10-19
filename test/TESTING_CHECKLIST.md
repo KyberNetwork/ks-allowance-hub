@@ -968,3 +968,31 @@ deadline in `NonceRevocationLib.hash`, and dropping `owner` from `SessionKeyAppr
 each fail their T712 row.
 
 The authenticator is 12,943 bytes; the hub is unchanged at 24,076. 226 tests pass.
+
+## Run `20261019T085443Z`
+
+Scope: `FulfillmentSolution` loses its `nonce`, and the hub no longer spends one in the solution
+approver's namespace. The approval names `orderHash`, so it settles only its own order and at most
+as often as that order does.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261019T085443Z/SOL-06` | An approved route spends no nonce of the approver's. Relayed over Permit2, the order settles once and the approver's namespace in the hub is untouched; a second submission of the same order and approval is refused by Permit2's `InvalidNonce` | `SOL-06` (renamed `test_SOL_06_anApprovalIsSpentWithItsOrder`); `test/v2/FulfillOrder.t.sol` | `forge test --match-test test_SOL_06` |
+| - [x] | - [ ] | `20261019T085443Z/SOL-01` | The first order's approval, of the very same route, is refused with a second order that differs only in its tail; the second order's own approval of that route settles | `SOL-01`; same file | `forge test --match-test test_SOL_01` |
+| - [x] | - [ ] | `20261019T085443Z/FU-FUZZ` | Over the delegated rail's domain, the approver's namespace stays empty whether or not an approver is named | `testFuzz_FU_FUZZ_delegatedRail`; same file | `forge test --match-test testFuzz_FU_FUZZ_delegatedRail` |
+| - [x] | - [ ] | `20261019T085443Z/T712-SOL` | `FulfillmentSolution` and `SolutionApproval` type strings and their bound schemas agree without the member | `T712-SCHEMA` in `test/v2/types/SchemaAudit.t.sol`; the `FulfillmentSolution` and `SolutionApproval` rows in `test/v2/types/Eip712.t.sol` | `forge test --match-path test/v2/types/*` |
+
+### Notes for this run
+
+**`NONCE-07` is retired.** It showed that a delegation and a route kept separate numbers in the
+hub; routes no longer have numbers.
+
+**Mutation check.** Putting a burn back in `_approveSolution` fails `SOL-06` and
+`testFuzz_FU_FUZZ_delegatedRail` on the approver's namespace, and turns the expected refusals of
+`SOL-01`, `AUTH-01b` and `AUTH-07b` into `NonceAlreadyUsed`.
+
+**An owner submitting their own order on the delegated rail spends no nonce,** so the owner can
+settle the same order, with the same approval, more than once. The owner is the caller and the
+assets are their own; the approval cannot reach any other order.
+
+The hub is 24,153 bytes, 77 more than before the change; 225 tests pass.

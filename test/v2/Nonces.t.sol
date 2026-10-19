@@ -4,12 +4,8 @@ pragma solidity 0.8.36;
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
 import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
-import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
-import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
-import {FulfillmentSolution} from 'src/v2/types/FulfillmentSolution.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
-import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
@@ -17,7 +13,7 @@ import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
 
 /**
  * @title NoncesTest
- * @notice NONCE-01..07 and NONCE-FUZZ — the unordered bitmap
+ * @notice NONCE-01..06 and NONCE-FUZZ — the unordered bitmap
  * @dev A nonce is a word index in its top bits and a bit position in its low byte, spent in any
  * order, and a namespace belongs to whoever signed the data the nonce guards. The boundary cases
  * pin the split between word and bit. The namespace cases spend a number in the owner's namespace
@@ -29,13 +25,9 @@ contract NoncesTest is AuthenticatorBase {
 
   AuthKey internal key;
 
-  address internal approver;
-  uint256 internal approverKey;
-
   function setUp() public override {
     super.setUp();
     key = _secpKey(masterSigner, block.timestamp + 30 days);
-    (approver, approverKey) = makeAddrAndKey('solution approver');
   }
 
   /// NONCE-06 — in the authenticator, the owner's approvals and a session key's orders are separate
@@ -63,39 +55,6 @@ contract NoncesTest is AuthenticatorBase {
     );
     assertEq(authenticator.nonces(lNonceKey(owner), 0), 1 << 7, 'the owner spent 7');
     assertEq(authenticator.nonces(_keyHash(key), 0), 1 << 7, 'and the key spent its own 7');
-  }
-
-  /// NONCE-07 — in the hub, the owner's delegations and an approver's routes are separate
-  function test_NONCE_07_delegationAndRouteNumbersDoNotCollide() public {
-    // Spend 9 in the owner's namespace, which is where a relayed delegation would land
-    vm.prank(owner);
-    hub.revokeNonce(9);
-
-    uint256 deadline = block.timestamp + 1 hours;
-    FulfillmentOrder memory order = _fulfillmentOrder(
-      ANY,
-      _erc20s(_tokenTransfer(AMOUNT)),
-      new ERC721Transfer[](0),
-      new ValidationParams[](0),
-      new GenericCall[](0),
-      approver,
-      9,
-      deadline
-    );
-    FulfillmentSolution memory route = _solution(_calls(_routerCall(0, hex'01')), 9, deadline);
-    bytes memory approval = _signSolutionApproval(approverKey, lFulfillmentOrderHash(order), route);
-
-    uint256 before = IERC20(token18).balanceOf(address(router));
-    vm.prank(owner);
-    hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', route, approval, false);
-
-    assertEq(
-      IERC20(token18).balanceOf(address(router)) - before,
-      AMOUNT,
-      'the route settled on a number the owner had already spent'
-    );
-    assertEq(hub.nonces(lNonceKey(owner), 0), 1 << 9, 'the owner spent 9');
-    assertEq(hub.nonces(lNonceKey(approver), 0), 1 << 9, 'and the approver spent their own 9');
   }
 
   // -------------------------------------------------------------------------------------------

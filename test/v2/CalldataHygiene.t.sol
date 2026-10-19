@@ -81,7 +81,7 @@ contract CalldataHygieneTest is AuthenticatorBase {
           order,
           address(authenticator),
           _fulfillmentAuthData(order, key, masterKeyPk),
-          _solution(_calls(_routerCall(0, hex'01')), 1, deadline),
+          _solution(_calls(_routerCall(0, hex'01')), deadline),
           '',
           false
         )
@@ -101,7 +101,7 @@ contract CalldataHygieneTest is AuthenticatorBase {
         (
           order,
           _signPlainPermit(_erc20s(_tokenTransfer(AMOUNT)), 93, deadline),
-          _solution(_calls(_routerCall(0, hex'02')), 2, deadline),
+          _solution(_calls(_routerCall(0, hex'02')), deadline),
           ''
         )
       )

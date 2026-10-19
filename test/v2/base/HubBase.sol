@@ -261,28 +261,21 @@ abstract contract HubBase is V2TestBase {
     );
   }
 
-  /// @dev Where {_route}'s auto-assigned nonces begin, clear of the nonces cases choose by hand
-  uint256 internal constant ROUTE_NONCE_BASE = 10_000;
-
-  /// @dev How many routes {_route} has issued, so each receives its own nonce
-  uint256 private _routesBuilt;
-
-  function _solution(GenericCall[] memory solverCalls, uint256 nonce, uint256 deadline)
+  function _solution(GenericCall[] memory solverCalls, uint256 deadline)
     internal
     pure
     returns (FulfillmentSolution memory)
   {
-    return FulfillmentSolution({solverCalls: solverCalls, nonce: nonce, deadline: deadline});
+    return FulfillmentSolution({solverCalls: solverCalls, deadline: deadline});
   }
 
-  /**
-   * @dev The route a solver supplies when the owner pinned nothing about it. The hub burns
-   * `solution.nonce` and checks `solution.deadline`, so each call returns a nonce no other route
-   * in the test has used and a deadline an hour out. Route nonces start high enough not to collide
-   * with the order nonces cases pick by hand, and they share the hub's bitmap with nothing else.
-   */
-  function _route(GenericCall[] memory solverCalls) internal returns (FulfillmentSolution memory) {
-    return _solution(solverCalls, ROUTE_NONCE_BASE + _routesBuilt++, block.timestamp + 1 hours);
+  /// @dev The route a solver supplies when the owner pinned nothing about it, valid for an hour
+  function _route(GenericCall[] memory solverCalls)
+    internal
+    view
+    returns (FulfillmentSolution memory)
+  {
+    return _solution(solverCalls, block.timestamp + 1 hours);
   }
 
   // ---------------------------------------------------------------------------------------------

@@ -6,7 +6,7 @@ import {FulfillmentSolution} from './FulfillmentSolution.sol';
 /**
  * @notice An approver's binding of one {FulfillmentSolution} to the {FulfillmentOrder} it settles
  * @dev `orderHash` ties the approval to a single order, so a route approved for one cannot be
- * replayed against another.
+ * presented with another. The approval carries no nonce: it settles at most as often as its order.
  */
 struct SolutionApproval {
   bytes32 orderHash;
@@ -16,7 +16,7 @@ struct SolutionApproval {
 library SolutionApprovalLib {
   bytes32 internal constant SOLUTION_APPROVAL_TYPEHASH = keccak256(
     'SolutionApproval(bytes32 orderHash,FulfillmentSolution solution)'
-    'FulfillmentSolution(GenericCall[] solverCalls,uint256 nonce,uint256 deadline)'
+    'FulfillmentSolution(GenericCall[] solverCalls,uint256 deadline)'
     'GenericCall(address router,uint256 value,bytes data)'
   );
 

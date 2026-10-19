@@ -36,6 +36,9 @@ contract FulfillOrderTest is AuthenticatorBase {
   /// @dev Permit2 does not expose this in the vendored interface, so it is written out here
   bytes4 internal constant PERMIT2_INVALID_SIGNER = bytes4(keccak256('InvalidSigner()'));
 
+  /// @dev Permit2's refusal of a nonce it has already spent
+  bytes4 internal constant PERMIT2_INVALID_NONCE = bytes4(keccak256('InvalidNonce()'));
+
   /// @dev Written out rather than imported: a role read from the hub would agree with a wrong one
   bytes32 internal constant ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
 
@@ -71,7 +74,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     FulfillmentOrder memory order = _fulfillmentOrder(
       ANY, erc20s, new ERC721Transfer[](0), vs, new GenericCall[](0), approver, 61, deadline
     );
-    FulfillmentSolution memory route = _solution(_calls(_routerCall(0, hex'01')), 1, deadline);
+    FulfillmentSolution memory route = _solution(_calls(_routerCall(0, hex'01')), deadline);
 
     bytes memory permitSig = _signPlainPermit(erc20s, 61, deadline);
     bytes memory approval = _signSolutionApproval(approverKey, lFulfillmentOrderHash(order), route);
@@ -88,8 +91,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     FulfillmentOrder memory again = _fulfillmentOrder(
       ANY, erc20s, new ERC721Transfer[](0), vs, new GenericCall[](0), approver, 62, deadline
     );
-    // a route nonce of its own: the hub burns the first leg's, so reusing 1 would be refused
-    FulfillmentSolution memory otherRoute = _solution(_calls(_routerCall(0, hex'02')), 2, deadline);
+    FulfillmentSolution memory otherRoute = _solution(_calls(_routerCall(0, hex'02')), deadline);
     bytes memory permitSig2 = _signPlainPermit(erc20s, 62, deadline);
 
     vm.prank(owner);
@@ -143,7 +145,7 @@ contract FulfillOrderTest is AuthenticatorBase {
       31,
       deadline
     );
-    FulfillmentSolution memory route = _solution(solverCalls, 1, deadline);
+    FulfillmentSolution memory route = _solution(solverCalls, deadline);
     bytes memory approval = _signSolutionApproval(approverKey, lFulfillmentOrderHash(named), route);
     bytes memory matchingWitness = _signFulfillmentWitness(named);
 
@@ -165,7 +167,7 @@ contract FulfillOrderTest is AuthenticatorBase {
       32,
       deadline
     );
-    FulfillmentSolution memory route2 = _solution(solverCalls, 2, deadline);
+    FulfillmentSolution memory route2 = _solution(solverCalls, deadline);
     bytes memory approval2 =
       _signSolutionApproval(approverKey, lFulfillmentOrderHash(swapped), route2);
     // the owner signed a witness naming nobody, so the approver in the order is not the one signed
@@ -256,16 +258,15 @@ contract FulfillOrderTest is AuthenticatorBase {
    * @dev `SolutionApproval` carries `orderHash`, and the order hash covers the owner's tail, so an
    * approver who signed a route for one order has not approved the same route under a different
    * tail. The two orders differ in that one member and nothing else, so the refusal is about the
-   * binding. The second leg carries its own route nonce and an approval genuinely signed over that
-   * route, because the hub burns `solution.nonce` — otherwise the refusal would be the nonce
-   * guard rather than the binding. The first leg is the control.
+   * binding. The second leg presents the first order's approval, of the very same route, with the
+   * second order. The first leg is the control.
    */
   function test_SOL_01_oneApprovalBindsOneOrder() public {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
     uint256 deadline = block.timestamp + 1 hours;
 
-    FulfillmentSolution memory route = _solution(solverCalls, 7, deadline);
+    FulfillmentSolution memory route = _solution(solverCalls, deadline);
 
     FulfillmentOrder memory withTailA = _orderWithTail(_calls(_routerCall(0, hex'aa')), deadline);
     bytes32 hashA = lFulfillmentOrderHash(withTailA);
@@ -282,32 +283,22 @@ contract FulfillOrderTest is AuthenticatorBase {
       IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the approved order settled'
     );
     assertEq(results.length, 2, 'route and tail both ran');
-    assertEq(
-      hub.nonces(lNonceKey(approver), 0), 1 << 7, 'and the approval burned exactly the route nonce'
-    );
 
     FulfillmentOrder memory withTailB = _orderWithTail(_calls(_routerCall(0, hex'bb')), deadline);
     assertTrue(lFulfillmentOrderHash(withTailB) != hashA, 'the two orders really do differ');
 
-    FulfillmentSolution memory routeB = _solution(solverCalls, 8, deadline);
-    bytes memory approvalAB = _signSolutionApproval(approverKey, hashA, routeB);
-
     vm.prank(owner);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.fulfillOrderWithDelegatedAuthentication(
-      withTailB, address(0), '', routeB, approvalAB, false
-    );
+    hub.fulfillOrderWithDelegatedAuthentication(withTailB, address(0), '', route, approvalA, false);
 
     assertEq(router.callCount(), 2, 'the refused order ran nothing');
 
-    // the same order with its own approval does settle, so the refusal was the approval's doing.
-    // A third route nonce, since the first two are spent and the point here is not the nonce guard
-    FulfillmentSolution memory routeC = _solution(solverCalls, 9, deadline);
+    // the same order with its own approval does settle, so the refusal was the approval's doing
     bytes memory approvalB =
-      _signSolutionApproval(approverKey, lFulfillmentOrderHash(withTailB), routeC);
+      _signSolutionApproval(approverKey, lFulfillmentOrderHash(withTailB), route);
 
     vm.prank(owner);
-    hub.fulfillOrderWithDelegatedAuthentication(withTailB, address(0), '', routeC, approvalB, false);
+    hub.fulfillOrderWithDelegatedAuthentication(withTailB, address(0), '', route, approvalB, false);
     assertEq(router.callCount(), 4, 'route and tail ran for the second order too');
   }
 
@@ -332,7 +323,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     uint256 before = IERC20(token18).balanceOf(address(router));
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(
-      open, address(0), '', _solution(solverCalls, 70, block.timestamp), '', false
+      open, address(0), '', _solution(solverCalls, block.timestamp), '', false
     );
     assertEq(
       IERC20(token18).balanceOf(address(router)) - before,
@@ -346,7 +337,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     vm.prank(owner);
     vm.expectRevert(_deadlinePassed(stale));
     hub.fulfillOrderWithDelegatedAuthentication(
-      open, address(0), '', _solution(solverCalls, 71, stale), '', false
+      open, address(0), '', _solution(solverCalls, stale), '', false
     );
 
     // and the same on the Permit2 rail, whose modifier stack is written out separately
@@ -361,20 +352,19 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(_deadlinePassed(stale));
-    hub.fulfillOrderWithPermit2Signature(forRelay, witness, _solution(solverCalls, 73, stale), '');
+    hub.fulfillOrderWithPermit2Signature(forRelay, witness, _solution(solverCalls, stale), '');
   }
 
   /**
-   * SOL-06 — a named approver's route is spent once, and the sentinel's is not spent at all
-   * @dev The hub burns `solution.nonce` inside the approval path, so the burn happens only when the
-   * order names an approver. The third leg records that asymmetry rather than assuming it: under
-   * the sentinel the very same nonce settles twice, so a route approved for nobody in particular
-   * carries no replay bound of its own.
+   * SOL-06 — an approval spends no nonce of its own, and is spent with its order
+   * @dev The approval names the order, so it can settle only that order, and only as often as the
+   * order itself does. Relayed over Permit2, the order spends its Permit2 nonce: a second
+   * submission of the same order and approval is refused there, and the approver's namespace in
+   * the hub is never touched.
    */
-  function test_SOL_06_theRouteNonceIsSpentOnlyUnderANamedApprover() public {
+  function test_SOL_06_anApprovalIsSpentWithItsOrder() public {
     uint256 deadline = block.timestamp + 1 hours;
-    GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
-    FulfillmentSolution memory route = _solution(solverCalls, 80, deadline);
+    FulfillmentSolution memory route = _solution(_calls(_routerCall(0, hex'01')), deadline);
 
     FulfillmentOrder memory named = _fulfillmentOrder(
       ANY,
@@ -387,35 +377,17 @@ contract FulfillOrderTest is AuthenticatorBase {
       deadline
     );
     bytes memory approval = _signSolutionApproval(approverKey, lFulfillmentOrderHash(named), route);
-
-    vm.prank(owner);
-    hub.fulfillOrderWithDelegatedAuthentication(named, address(0), '', route, approval, false);
-    assertEq(hub.nonces(lNonceKey(approver), 0), 1 << 80, 'the hub burned exactly the route nonce');
-
-    vm.prank(owner);
-    vm.expectRevert(
-      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(approver), 80)
-    );
-    hub.fulfillOrderWithDelegatedAuthentication(named, address(0), '', route, approval, false);
-
-    // the sentinel path never reaches the burn, so this nonce stays spendable twice over
-    FulfillmentOrder memory open = _openFulfillmentOrder(
-      _erc20s(_tokenTransfer(AMOUNT)), new ValidationParams[](0), new GenericCall[](0), 81, deadline
-    );
-    FulfillmentSolution memory openRoute = _solution(solverCalls, 81, deadline);
+    bytes memory witness = _signFulfillmentWitness(named);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
-    vm.prank(owner);
-    hub.fulfillOrderWithDelegatedAuthentication(open, address(0), '', openRoute, '', false);
-    vm.prank(owner);
-    hub.fulfillOrderWithDelegatedAuthentication(open, address(0), '', openRoute, '', false);
+    vm.prank(relayer);
+    hub.fulfillOrderWithPermit2Signature(named, witness, route, approval);
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the order settled');
+    assertEq(hub.nonces(lNonceKey(approver), 0), 0, "the approver's namespace is untouched");
 
-    assertEq(
-      IERC20(token18).balanceOf(address(router)) - before,
-      2 * AMOUNT,
-      'the sentinel route ran twice'
-    );
-    assertEq(hub.nonces(lNonceKey(approver), 0), 1 << 80, 'and burned nothing of its own');
+    vm.prank(relayer);
+    vm.expectRevert(PERMIT2_INVALID_NONCE);
+    hub.fulfillOrderWithPermit2Signature(named, witness, route, approval);
   }
 
   /**
@@ -981,8 +953,8 @@ contract FulfillOrderTest is AuthenticatorBase {
     );
     assertEq(
       hub.nonces(lNonceKey(approver), f.nonce >> 8),
-      f.approveSolution ? 1 << (f.nonce & 0xff) : 0,
-      'and the hub burned the route nonce exactly when an approver was named'
+      0,
+      'and the approval spent nothing of the approver\'s'
     );
   }
 
@@ -1086,7 +1058,7 @@ contract FulfillOrderTest is AuthenticatorBase {
       f.nonce,
       block.timestamp + f.deadlineOffset
     );
-    route = _solution(solverCalls, f.nonce, block.timestamp + f.deadlineOffset);
+    route = _solution(solverCalls, block.timestamp + f.deadlineOffset);
   }
 
   function _assertFuzzSettled(

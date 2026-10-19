@@ -10,7 +10,6 @@ import {GenericCall, GenericCallLib} from './GenericCall.sol';
  */
 struct FulfillmentSolution {
   GenericCall[] solverCalls;
-  uint256 nonce;
   uint256 deadline;
 }
 
@@ -20,23 +19,20 @@ library FulfillmentSolutionLib {
   using GenericCallLib for GenericCall[];
 
   bytes32 internal constant FULFILLMENT_SOLUTION_TYPEHASH = keccak256(
-    'FulfillmentSolution(GenericCall[] solverCalls,uint256 nonce,uint256 deadline)'
+    'FulfillmentSolution(GenericCall[] solverCalls,uint256 deadline)'
     'GenericCall(address router,uint256 value,bytes data)'
   );
 
   /// @dev EIP-712 hash of the solution
   function hash(FulfillmentSolution calldata self) internal pure returns (bytes32) {
-    return keccak256(
-      abi.encode(FULFILLMENT_SOLUTION_TYPEHASH, self.solverCalls.hash(), self.nonce, self.deadline)
-    );
+    return
+      keccak256(abi.encode(FULFILLMENT_SOLUTION_TYPEHASH, self.solverCalls.hash(), self.deadline));
   }
 
   /// @dev As {hash}, for a solution already in memory
   function hashMemory(FulfillmentSolution memory self) internal pure returns (bytes32) {
     return keccak256(
-      abi.encode(
-        FULFILLMENT_SOLUTION_TYPEHASH, self.solverCalls.hashMemory(), self.nonce, self.deadline
-      )
+      abi.encode(FULFILLMENT_SOLUTION_TYPEHASH, self.solverCalls.hashMemory(), self.deadline)
     );
   }
 }
