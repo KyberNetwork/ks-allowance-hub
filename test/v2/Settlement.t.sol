@@ -324,7 +324,7 @@ contract SettlementTest is HubBase {
     GenericCall[] memory calls = _calls(GenericCall({router: address(evil), value: 0, data: hex''}));
 
     vm.prank(owner);
-    vm.expectRevert(IMsgSender.AlreadyLocked.selector);
+    vm.expectRevert(abi.encodeWithSelector(IMsgSender.AlreadyLocked.selector, owner));
     hub.executeOrderWithDelegatedAuthentication(
       _openExecutionOrder(new ERC20Transfer[](0), calls, 0, deadline), address(0), '', false
     );
@@ -340,7 +340,7 @@ contract SettlementTest is HubBase {
     ERC721Transfer[] memory nfts = _erc721s(_nftTransfer(address(receiver)));
 
     vm.prank(owner);
-    vm.expectRevert(IMsgSender.AlreadyLocked.selector);
+    vm.expectRevert(abi.encodeWithSelector(IMsgSender.AlreadyLocked.selector, owner));
     hub.executeOrderWithDelegatedAuthentication(
       _executionOrder(ANY, new ERC20Transfer[](0), nfts, new GenericCall[](0), 0, deadline),
       address(0),

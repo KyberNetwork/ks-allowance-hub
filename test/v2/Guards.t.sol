@@ -325,7 +325,7 @@ contract GuardsTest is AuthenticatorBase {
       _route(_calls(GenericCall({router: address(evil), value: 0, data: hex''})));
 
     vm.prank(solver);
-    vm.expectRevert(IMsgSender.AlreadyLocked.selector);
+    vm.expectRevert(abi.encodeWithSelector(IMsgSender.AlreadyLocked.selector, owner));
     hub.fulfillOrderWithPermit2Signature(locked, lockedSig, reentrantRoute, '');
 
     // guardNativeSpend
@@ -338,7 +338,9 @@ contract GuardsTest is AuthenticatorBase {
     FulfillmentSolution memory greedyRoute = _route(_calls(_routerCall(VALUE + 1, hex'01')));
 
     vm.prank(solver);
-    vm.expectRevert(NativeSpendGuard.NativeOverSpent.selector);
+    vm.expectRevert(
+      abi.encodeWithSelector(NativeSpendGuard.NativeOverSpent.selector, VALUE + 1, VALUE)
+    );
     hub.fulfillOrderWithPermit2Signature{value: VALUE}(
       overSpending, overSpendingSig, greedyRoute, ''
     );
@@ -368,7 +370,9 @@ contract GuardsTest is AuthenticatorBase {
     bytes memory greedySig = _signExecutionWitness(greedy);
 
     vm.prank(relayer);
-    vm.expectRevert(NativeSpendGuard.NativeOverSpent.selector);
+    vm.expectRevert(
+      abi.encodeWithSelector(NativeSpendGuard.NativeOverSpent.selector, VALUE + 1, VALUE)
+    );
     hub.executeOrderWithPermit2Signature{value: VALUE}(greedy, greedySig);
 
     assertEq(address(hub).balance, PREFUND, "the execute rail kept the hub's float");
@@ -380,7 +384,7 @@ contract GuardsTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        IAuthDelegator.NotDelegatedAuthenticator.selector, owner, address(authenticator)
+        IAuthDelegator.NotDelegatedAuthenticator.selector, address(authenticator)
       )
     );
     hub.fulfillOrderWithDelegatedAuthentication(
@@ -396,7 +400,9 @@ contract GuardsTest is AuthenticatorBase {
     );
 
     vm.prank(owner);
-    vm.expectRevert(NativeSpendGuard.NativeOverSpent.selector);
+    vm.expectRevert(
+      abi.encodeWithSelector(NativeSpendGuard.NativeOverSpent.selector, VALUE + 1, VALUE)
+    );
     hub.fulfillOrderWithDelegatedAuthentication{value: VALUE}(
       overSpending, address(0), '', _route(_calls(_routerCall(VALUE + 1, hex'01'))), '', false
     );
@@ -463,7 +469,11 @@ contract GuardsTest is AuthenticatorBase {
       _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp);
 
     vm.prank(owner);
-    if (!shouldSettle) vm.expectRevert(NativeSpendGuard.NativeOverSpent.selector);
+    if (!shouldSettle) {
+      vm.expectRevert(
+        abi.encodeWithSelector(NativeSpendGuard.NativeOverSpent.selector, spend, VALUE)
+      );
+    }
     hub.executeOrderWithDelegatedAuthentication{value: VALUE}(order, address(0), '', false);
 
     if (shouldSettle) {

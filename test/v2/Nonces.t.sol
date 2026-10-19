@@ -134,7 +134,9 @@ contract NoncesTest is AuthenticatorBase {
   function test_NONCE_04_doubleRevoke() public {
     vm.startPrank(owner);
     hub.revokeNonce(9);
-    vm.expectRevert(IUnorderedNonce.NonceAlreadyUsed.selector);
+    vm.expectRevert(
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(owner), 9)
+    );
     hub.revokeNonce(9);
     vm.stopPrank();
   }
@@ -152,7 +154,9 @@ contract NoncesTest is AuthenticatorBase {
 
     // spending it on one side does not spend it on the other
     vm.prank(owner);
-    vm.expectRevert(IUnorderedNonce.NonceAlreadyUsed.selector);
+    vm.expectRevert(
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(owner), 3)
+    );
     hub.revokeNonce(3);
   }
 }

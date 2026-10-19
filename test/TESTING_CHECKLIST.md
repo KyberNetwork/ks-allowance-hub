@@ -867,3 +867,63 @@ own: the bound on a session key's expiry, with this check, proves the master is 
 `abi.encode(AuthKey key, bool isSessionKey, bytes signature)`. That moved what word 1 means, which
 `AUTH-13` had been reading as the signature's offset — see `EXP-02` for the three distinct ways a
 short payload now fails.
+
+## Run `20261019T050419Z`
+
+Scope: the master-key rail's ordering and scoping, and the error payloads across V2. Two cases
+change shape, one is added, and the expectations of the reshaped errors — in 46 cases — now
+assert the whole payload.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261019T050419Z/SCOPE-01` | A master key may approve or revoke only a session key it approved, or one no key has approved yet. Another master key is refused both when approving the key under itself and when revoking it, with `SessionKeyApprovedByAnother` naming the presented and the expected master key; the approving master's own revocation then lands | `SV-TIER-13`; `test/v2/authenticators/SessionOrderAuthenticator.t.sol` | `forge test --match-test test_SV_TIER_13` |
+| - [x] | - [ ] | `20261019T050419Z/SCOPE-02` | The bound keeping a session key inside its master key's life applies on approval only. A key the bound refused on the way in can still be revoked through the same master | `SV-TIER-05` gains a revocation leg; same file | `forge test --match-test test_SV_TIER_05` |
+| - [x] | - [ ] | `20261019T050419Z/ERR-01` | Every V2 error names its object, then the object's offending value, then what it was held against; values decoded from opaque bytes are always shown, fields the caller passed in plainly are not, and the four signature errors stay bare. Every expectation of those errors asserts the full payload | `AUTH-08`, `AUTH-13`, `DEL-02`, `DEL-05`, `DEL-12`, `FWD-16`, `GATE-01`, `GATE-02`, `GUARD-04`, `GUARD-06`, `LOCK-02`, `LOCK-03`, `MC-02`, `MC-06`, `MC-08`, `NONCE-04`, `NONCE-05`, `ORD-02`, `ORD-02b`, `ORD-03`, `ORD-03b`, `PF-06`, `PF-06b`, `SOL-04`, `SOL-05`, `SOL-06`, `SV-04`, `SV-05`, `SV-06`, `SV-06b`, `SV-07`, `SV-07b`, `SV-09`, `SV-11`, `SV-REV-01`, `SV-TIER-02`, `SV-TIER-03`, `SV-TIER-04`, `SV-TIER-05`, `SV-TIER-08`, `SV-TIER-09`, `SV-TIER-10`, `SV-TIER-11`, `SV-TIER-12`, `SV-TIER-12b`, `SV-TIER-13` | `forge test` |
+| - [x] | - [ ] | `20261019T050419Z/ORD-01` | Every path checks a key's expiry straight after decoding it, before any hashing, storage read, nonce or signature, so an expired key is refused as expired whatever else is wrong with the call. Each case pairs the expired key with a second fault and then presents that same fault on a live key, which is refused for the fault; so the first refusal is about the order of the checks | `SV-ORD-01` owner's rail, ahead of a bad owner signature; `SV-ORD-02` master key's rail, ahead of an unapproved master key; `SV-ORD-03` authentication, ahead of an unapproved key; `test/v2/authenticators/SessionOrderAuthenticator.t.sol` | `forge test --match-test test_SV_ORD` |
+
+### Notes for this run
+
+**A master key's reach is now its own approvals.** `sessionKeyMaster` was written without reading
+it, so any approved master key could revoke another's session key, and could take one over by
+approving it under itself. One read before the nonce closes both, on the master-key rail only; the
+order-signing path is untouched. Removing the check fails `SV-TIER-13`.
+
+**With that, the bound needs no check on revocation.** A master key can only revoke a session key it
+approved, and the bound held when it did, since both expiries are part of the key hashes. Putting
+the bound back on the revocation path fails `SV-TIER-05` on its new leg.
+
+**The error payloads.** The rule came in two steps: show only what the caller did not pass in, and
+always show the object of the error. Applied together, `owner`, `relayer` and `solver` leave
+every payload they sat in, being plain parameters or decoded struct fields, while expiries and the
+forwarder's selector stay because they are read out of opaque bytes. Errors that carried nothing now
+name their object: the nonce and its namespace, the lock holder, the caller, the authenticator, the
+amount overspent. The two expiry errors keep only the decoded expiries and no key hash, so neither
+revert path hashes the key. The hub ends at 24,076 bytes, five under where this run began, the
+dropped fields paying for the added ones; the authenticator is 12,609.
+
+**The tests became stricter as a consequence.** Foundry matches an error with arguments only on its
+whole payload, so every selector-only expectation of a reshaped error had to state its values, each
+taken from the case's own variables and, for nonce namespaces, from `lNonceKey` and `_keyHash`.
+Those expectations now pin which namespace collided, whose order held the lock and which entry the
+forwarder refused, where before they pinned only that something did.
+
+**Two notices were wrong and are fixed.** `NativeOverSpent` read "drawing on the contract's own"
+with its noun missing, and `NonceAlreadyUsed` said a nonce is revoked "by its owner", which stopped
+being true when namespaces became the signer's.
+
+**Vocabulary.** Session keys are *approved*, not *granted*, throughout the source and the
+`SV-TIER-*` cases; seven test functions are renamed to match, and every case ID is unchanged.
+Role grants and Permit2 allowances keep the word, being the established terms for those.
+
+**The order of the expiry checks is pinned.** Restoring each check to where it stood before this run
+fails exactly its own case and no other: after the signature on the owner's rail fails `SV-ORD-01`,
+after the master key's approval read fails `SV-ORD-02`, and after the tier lookup in authentication
+fails `SV-ORD-03`.
+
+**After `vm.warp`, the time is read with `vm.getBlockTimestamp()`.** Under `via_ir` the compiler
+may fold `block.timestamp` across the warp: in `SV-ORD-03`, `block.timestamp + 1 hours` written
+after the warp was folded into the identical expression computed before it, and the order went out
+already past its deadline. The cheatcode is an external call the compiler cannot fold. All nine
+other reads of `block.timestamp` after a warp, in `SOL-05`, `SV-07`, `SV-07b`, `SV-TIER-12`,
+`SV-TIER-12b` and `SV-ORD-01..03`, passed only because those expressions happened not to be folded,
+and now go through the cheatcode too.

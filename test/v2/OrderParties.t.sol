@@ -60,9 +60,7 @@ contract OrderPartiesTest is AuthenticatorBase {
 
     ExecutionOrder memory again = _executionOrder(relayer, erc20s, noNfts, noCalls, 71, deadline);
     vm.prank(solver);
-    vm.expectRevert(
-      abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedRelayer.selector, solver, relayer)
-    );
+    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedRelayer.selector, solver));
     hub.executeOrderWithDelegatedAuthentication(
       again, address(authenticator), _executionAuthData(again, key, masterKeyPk), false
     );
@@ -71,9 +69,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     // the credential it presents could never have passed
     ExecutionOrder memory third = _executionOrder(relayer, erc20s, noNfts, noCalls, 72, deadline);
     vm.prank(solver);
-    vm.expectRevert(
-      abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedRelayer.selector, solver, relayer)
-    );
+    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedRelayer.selector, solver));
     hub.executeOrderWithDelegatedAuthentication(
       third, address(authenticator), _authData(key, hex'00'), false
     );
@@ -157,9 +153,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     FulfillmentOrder memory again =
       _fulfillmentOrder(solver, erc20s, noNfts, noValidators, noOwnerCalls, ANY, 81, deadline);
     vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedSolver.selector, relayer, solver)
-    );
+    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedSolver.selector, relayer));
     hub.fulfillOrderWithDelegatedAuthentication(
       again,
       address(authenticator),
@@ -173,9 +167,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     FulfillmentOrder memory third =
       _fulfillmentOrder(solver, erc20s, noNfts, noValidators, noOwnerCalls, ANY, 82, deadline);
     vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedSolver.selector, relayer, solver)
-    );
+    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedSolver.selector, relayer));
     hub.fulfillOrderWithDelegatedAuthentication(
       third,
       address(authenticator),

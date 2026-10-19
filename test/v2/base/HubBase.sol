@@ -126,11 +126,11 @@ abstract contract HubBase is V2TestBase {
 
   /**
    * @dev The whole {DeadlineChecker-DeadlinePassed} payload, with the argument order written out
-   * here. The error carries both values, so a selector-only expectation would not match it.
+   * here. The error carries values, so a selector-only expectation would not match it.
    */
   function _deadlinePassed(uint256 deadline) internal view returns (bytes memory) {
     return
-      abi.encodeWithSelector(DeadlineChecker.DeadlinePassed.selector, block.timestamp, deadline);
+      abi.encodeWithSelector(DeadlineChecker.DeadlinePassed.selector, deadline, block.timestamp);
   }
 
   /// @dev Selects the single `TransferTokens` the hub emitted from the fork's log stream

@@ -27,7 +27,7 @@ abstract contract UnorderedNonce is IUnorderedNonce {
     uint256 bit = 1 << bitPos;
     // Flipping clears a bit that was already spent, so reuse is detected
     uint256 flipped = nonces[signer][wordPos] ^= bit;
-    if (flipped & bit == 0) revert NonceAlreadyUsed();
+    if (flipped & bit == 0) revert NonceAlreadyUsed(signer, nonce);
   }
 
   /// @inheritdoc IUnorderedNonce

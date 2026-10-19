@@ -127,7 +127,7 @@ contract KSAllowanceHubV2 is
     // Being the caller is the owner's own authentication; anyone else must present a credential
     if (msg.sender != order.owner) {
       if (msg.sender != order.relayer && order.relayer != DEAD_ADDRESS) {
-        revert UnauthorizedRelayer(msg.sender, order.relayer);
+        revert UnauthorizedRelayer(msg.sender);
       }
       IOrderAuthenticator(authenticator).authenticateExecution(order, authenticationData);
     }
@@ -189,7 +189,7 @@ contract KSAllowanceHubV2 is
         permit2Signature
       );
     } else {
-      revert UnauthorizedRelayer(msg.sender, order.relayer);
+      revert UnauthorizedRelayer(msg.sender);
     }
 
     return _settleExecution(order);
@@ -217,7 +217,7 @@ contract KSAllowanceHubV2 is
     // Being the caller is the owner's own authentication; anyone else must present a credential
     if (msg.sender != order.owner) {
       if (msg.sender != order.solver && order.solver != DEAD_ADDRESS) {
-        revert UnauthorizedSolver(msg.sender, order.solver);
+        revert UnauthorizedSolver(msg.sender);
       }
       IOrderAuthenticator(authenticator).authenticateFulfillment(order, authenticationData);
     }
@@ -302,7 +302,7 @@ contract KSAllowanceHubV2 is
         permit2Signature
       );
     } else {
-      revert UnauthorizedSolver(msg.sender, order.solver);
+      revert UnauthorizedSolver(msg.sender);
     }
 
     return _settleFulfillment(order, solution, beforeExecutionOutputs);

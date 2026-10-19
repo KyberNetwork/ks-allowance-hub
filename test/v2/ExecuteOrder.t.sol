@@ -168,9 +168,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     bytes memory pinnedAgainSig = _signExecutionWitness(pinnedAgain);
 
     vm.prank(solver);
-    vm.expectRevert(
-      abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedRelayer.selector, solver, relayer)
-    );
+    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedRelayer.selector, solver));
     hub.executeOrderWithPermit2Signature(pinnedAgain, pinnedAgainSig);
 
     assertEq(
@@ -243,7 +241,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        IAuthDelegator.NotDelegatedAuthenticator.selector, owner, address(authenticator)
+        IAuthDelegator.NotDelegatedAuthenticator.selector, address(authenticator)
       )
     );
     hub.executeOrderWithDelegatedAuthentication(order, address(authenticator), authData, false);
@@ -378,7 +376,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ISessionOrderAuthenticator.SessionKeyNotApproved.selector, owner, _keyHash(key)
+        ISessionOrderAuthenticator.SessionKeyNotApproved.selector, _keyHash(key)
       )
     );
     hub.executeOrderWithDelegatedAuthentication(

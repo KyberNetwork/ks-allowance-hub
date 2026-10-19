@@ -86,10 +86,15 @@ contract SessionOrderAuthenticator is
   ) external checkDeadline(deadline) {
     if (data.decodeUint256(0) <= 0x40) {
       AuthKey calldata masterKey = _decodeKey(data, 0);
-      bytes32 masterKeyHash = masterKey.hash();
       // Read as a word and narrowed here, so the direction does not depend on the caller having
       // written a canonical bool, nor on the compiler cleaning one that assembly produced
       bool approved = data.decodeUint256(1) != 0;
+      // Only on the way in: a key that has expired must still be clearable
+      if (approved) {
+        _checkNotExpired(masterKey);
+      }
+
+      bytes32 masterKeyHash = masterKey.hash();
 
       // Only the owner authenticates themselves by calling; anyone else, the hub included, must
       // present a signature, because `forwardCalls` relays this from any caller
@@ -103,32 +108,31 @@ contract SessionOrderAuthenticator is
         }
       }
 
-      // Only on the way in: a key that has expired must still be clearable
-      if (approved) {
-        _checkNotExpired(masterKey);
-      }
-
       masterKeys[owner][masterKeyHash] = approved;
     } else {
       AuthKey calldata sessionKey = _decodeKey(data, 0);
       AuthKey calldata masterKey = _decodeKey(data, 1);
+      bool approved = data.decodeUint256(2) != 0;
+      // Only on the way in, as on the owner's rail. The bound keeps a session key inside its master
+      // key's life, so a live session key proves the master key live as well
+      if (approved) {
+        if (sessionKey.expiration > masterKey.expiration) {
+          revert SessionKeyOutlivesMasterKey(sessionKey.expiration, masterKey.expiration);
+        }
+        _checkNotExpired(sessionKey);
+      }
 
       bytes32 masterKeyHash = masterKey.hash();
-      // A session key may only be granted by a key the owner approved themselves
+      // Only a key the owner approved themselves may approve a session key
       if (!masterKeys[owner][masterKeyHash]) {
-        revert MasterKeyNotApproved(owner, masterKeyHash);
-      }
-      // Applied in both directions, so a master key may only address keys it could have approved
-      if (sessionKey.expiration > masterKey.expiration) {
-        revert SessionKeyOutlivesMasterKey(sessionKey.expiration, masterKey.expiration);
+        revert MasterKeyNotApproved(masterKeyHash);
       }
 
       bytes32 sessionKeyHash = sessionKey.hash();
-      bool approved = data.decodeUint256(2) != 0;
-      // With the bound above this proves the master key is live as well, so it needs no check of
-      // its own. Only on the way in, as on the owner's rail
-      if (approved) {
-        _checkNotExpired(sessionKey);
+      // A master key speaks only for the session keys it approved, or for one nobody has approved
+      bytes32 approvedBy = sessionKeyMaster[owner][sessionKeyHash];
+      if (approvedBy != bytes32(0) && approvedBy != masterKeyHash) {
+        revert SessionKeyApprovedByAnother(sessionKeyHash, masterKeyHash, approvedBy);
       }
 
       _useUnorderedNonce(masterKeyHash, nonce);
@@ -179,13 +183,13 @@ contract SessionOrderAuthenticator is
       // session key it approved — and the refusal names that master, not this key
       bytes32 masterKeyHash = sessionKeyMaster[owner][keyHash];
       if (masterKeyHash == bytes32(0)) {
-        revert SessionKeyNotApproved(owner, keyHash);
+        revert SessionKeyNotApproved(keyHash);
       }
       if (!masterKeys[owner][masterKeyHash]) {
-        revert MasterKeyNotApproved(owner, masterKeyHash);
+        revert MasterKeyNotApproved(masterKeyHash);
       }
     } else if (!masterKeys[owner][keyHash]) {
-      revert MasterKeyNotApproved(owner, keyHash);
+      revert MasterKeyNotApproved(keyHash);
     }
 
     _useUnorderedNonce(keyHash, nonce);
@@ -212,7 +216,7 @@ contract SessionOrderAuthenticator is
   /// one that could never sign
   function _checkNotExpired(AuthKey calldata key) private view {
     if (block.timestamp > key.expiration) {
-      revert AuthKeyExpired(block.timestamp, key.expiration);
+      revert AuthKeyExpired(key.expiration, block.timestamp);
     }
   }
 }

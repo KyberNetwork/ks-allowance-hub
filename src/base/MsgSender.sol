@@ -24,8 +24,9 @@ abstract contract MsgSender is IMsgSender {
   /// @dev Claims the lock, refusing a slot that is already held
   function _lock(address locker) internal {
     TransientSlot.AddressSlot slot = LOCKER_SLOT.asAddress();
-    if (slot.tload() != address(0)) {
-      revert AlreadyLocked();
+    address _locker = slot.tload();
+    if (_locker != address(0)) {
+      revert AlreadyLocked(_locker);
     }
 
     slot.tstore(locker);

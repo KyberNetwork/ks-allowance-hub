@@ -4,8 +4,8 @@ pragma solidity ^0.8.0;
 /// @title IUnorderedNonce
 /// @notice Interface of {UnorderedNonce}
 interface IUnorderedNonce {
-  /// @notice This nonce has already been spent, or was revoked by its owner
-  error NonceAlreadyUsed();
+  /// @notice This nonce has already been spent in this namespace, or was revoked by its signer
+  error NonceAlreadyUsed(bytes32 signer, uint256 nonce);
 
   /**
    * @notice Spent-nonce bitmap, keyed by signer namespace and by the nonce's word index

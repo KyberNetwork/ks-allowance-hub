@@ -239,7 +239,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ICallsForwarder.NotSupportedSelector.selector, IERC20.transfer.selector
+        ICallsForwarder.NotSupportedSelector.selector, 0, IERC20.transfer.selector
       )
     );
     hub.forwardCalls(_one(address(permitToken)), data, _bits(0));
@@ -248,7 +248,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ICallsForwarder.NotSupportedSelector.selector, IERC20.transfer.selector
+        ICallsForwarder.NotSupportedSelector.selector, 0, IERC20.transfer.selector
       )
     );
     hub.forwardCalls(_one(address(permitToken)), data, _bits(type(uint256).max));
@@ -259,7 +259,7 @@ contract ForwarderTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(ICallsForwarder.NotSupportedSelector.selector, bytes4(0))
+      abi.encodeWithSelector(ICallsForwarder.NotSupportedSelector.selector, 0, bytes4(0))
     );
     hub.forwardCalls(_one(address(permitToken)), empty, _bits(0));
   }
@@ -280,7 +280,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ICallsForwarder.NotSupportedSelector.selector, IERC20.transfer.selector
+        ICallsForwarder.NotSupportedSelector.selector, 1, IERC20.transfer.selector
       )
     );
     hub.forwardCalls(targets, data, _bits(0));
@@ -464,7 +464,7 @@ contract ForwarderTest is AuthenticatorBase {
   }
 
   /**
-   * FWD-20 — the same relay carries a master key's grant, not only the owner's approval
+   * FWD-20 — the same relay carries a master key's approval, not only the owner's
    * @dev The allowlist matches on the selector and both rails share one, so the second tier is
    * relayable without the forwarder learning anything about it. What moves is the master key's
    * bitmap: the owner neither signed nor submitted, so nothing of theirs is spent.
@@ -476,13 +476,13 @@ contract ForwarderTest is AuthenticatorBase {
 
     uint256 nonce = 310;
     uint256 deadline = block.timestamp + 1 hours;
-    bytes memory grantSig =
+    bytes memory approvalSig =
       _signSessionKeyApproval(masterKey, ephemeral, true, nonce, deadline, masterKeyPk);
 
     bytes[] memory data = new bytes[](1);
     data[0] = abi.encodeCall(
       IOrderAuthenticator.updateAuthentication,
-      (owner, _sessionKeyData(ephemeral, masterKey, true), nonce, deadline, grantSig)
+      (owner, _sessionKeyData(ephemeral, masterKey, true), nonce, deadline, approvalSig)
     );
 
     vm.prank(relayer);
@@ -491,7 +491,7 @@ contract ForwarderTest is AuthenticatorBase {
     assertEq(
       authenticator.sessionKeyMaster(owner, _keyHash(ephemeral)),
       _keyHash(masterKey),
-      'the grant landed'
+      'the approval landed'
     );
     assertEq(
       authenticator.nonces(_keyHash(masterKey), nonce >> 8),
@@ -615,6 +615,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.expectRevert(
       abi.encodeWithSelector(
         ICallsForwarder.NotSupportedSelector.selector,
+        0,
         IOrderAuthenticator.initAuthentication.selector
       )
     );
@@ -628,6 +629,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.expectRevert(
       abi.encodeWithSelector(
         ICallsForwarder.NotSupportedSelector.selector,
+        0,
         IOrderAuthenticator.initAuthentication.selector
       )
     );
@@ -638,6 +640,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.expectRevert(
       abi.encodeWithSelector(
         ICallsForwarder.NotSupportedSelector.selector,
+        0,
         IOrderAuthenticator.authenticateExecution.selector
       )
     );
@@ -647,6 +650,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.expectRevert(
       abi.encodeWithSelector(
         ICallsForwarder.NotSupportedSelector.selector,
+        0,
         IOrderAuthenticator.authenticateFulfillment.selector
       )
     );
@@ -885,7 +889,7 @@ contract ForwarderTest is AuthenticatorBase {
     assertFalse(ok, string.concat(what, ' refused the call'));
     assertEq(
       ret,
-      abi.encodeWithSelector(IOrderAuthenticator.NotAllowanceHub.selector),
+      abi.encodeWithSelector(IOrderAuthenticator.NotAllowanceHub.selector, address(this)),
       string.concat('and refused it at the hub-only gate, so the selector reached the real ', what)
     );
   }

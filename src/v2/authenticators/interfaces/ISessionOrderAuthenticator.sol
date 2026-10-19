@@ -13,13 +13,18 @@ interface ISessionOrderAuthenticator {
   error InvalidAuthenticationSignature();
 
   /// @notice The owner has not approved this master key, or has revoked it
-  error MasterKeyNotApproved(address owner, bytes32 masterKeyHash);
+  error MasterKeyNotApproved(bytes32 masterKeyHash);
 
   /// @notice No master key stands behind this session key
-  error SessionKeyNotApproved(address owner, bytes32 sessionKeyHash);
+  error SessionKeyNotApproved(bytes32 sessionKeyHash);
 
   /// @notice The key's expiry is in the past
-  error AuthKeyExpired(uint256 currentTime, uint256 expiration);
+  error AuthKeyExpired(uint256 expiration, uint256 currentTime);
+
+  /// @notice Another master key approved this session key, and only it may approve or revoke it
+  error SessionKeyApprovedByAnother(
+    bytes32 sessionKeyHash, bytes32 masterKeyHash, bytes32 expectedMasterKeyHash
+  );
 
   /// @notice A session key may not outlive the master key that approves it
   error SessionKeyOutlivesMasterKey(uint256 sessionKeyExpiration, uint256 masterKeyExpiration);

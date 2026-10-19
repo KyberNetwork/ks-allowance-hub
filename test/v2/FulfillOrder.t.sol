@@ -223,9 +223,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     bytes memory againSig = _signFulfillmentWitness(pinnedAgain);
 
     vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedSolver.selector, relayer, solver)
-    );
+    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedSolver.selector, relayer));
     hub.fulfillOrderWithPermit2Signature(pinnedAgain, againSig, route, '');
 
     assertEq(
@@ -343,7 +341,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     );
 
     vm.warp(block.timestamp + 1);
-    uint256 stale = block.timestamp - 1;
+    uint256 stale = vm.getBlockTimestamp() - 1;
 
     vm.prank(owner);
     vm.expectRevert(_deadlinePassed(stale));
@@ -395,7 +393,9 @@ contract FulfillOrderTest is AuthenticatorBase {
     assertEq(hub.nonces(lNonceKey(approver), 0), 1 << 80, 'the hub burned exactly the route nonce');
 
     vm.prank(owner);
-    vm.expectRevert(IUnorderedNonce.NonceAlreadyUsed.selector);
+    vm.expectRevert(
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(approver), 80)
+    );
     hub.fulfillOrderWithDelegatedAuthentication(named, address(0), '', route, approval, false);
 
     // the sentinel path never reaches the burn, so this nonce stays spendable twice over
@@ -527,7 +527,9 @@ contract FulfillOrderTest is AuthenticatorBase {
     assertEq(router.callCount(), 1, 'the route ran once');
 
     vm.prank(relayer);
-    vm.expectRevert(IUnorderedNonce.NonceAlreadyUsed.selector);
+    vm.expectRevert(
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, _keyHash(key), 21)
+    );
     hub.fulfillOrderWithDelegatedAuthentication(
       order, address(authenticator), authData, route, '', false
     );

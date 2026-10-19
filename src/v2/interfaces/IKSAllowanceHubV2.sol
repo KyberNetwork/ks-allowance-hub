@@ -12,10 +12,10 @@ import {NativeTransfer} from '../types/NativeTransfer.sol';
 /// @notice Interface of {KSAllowanceHubV2}
 interface IKSAllowanceHubV2 {
   /// @notice The order named a different relayer than the one submitting it
-  error UnauthorizedRelayer(address caller, address relayer);
+  error UnauthorizedRelayer(address caller);
 
   /// @notice The order named a different solver than the one submitting it
-  error UnauthorizedSolver(address caller, address solver);
+  error UnauthorizedSolver(address caller);
 
   /// @notice The solution was not approved by the `solutionApprover` the order names
   error InvalidSolutionSignature();

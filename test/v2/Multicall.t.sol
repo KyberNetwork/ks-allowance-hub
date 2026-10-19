@@ -116,7 +116,9 @@ contract MulticallTest is AuthenticatorBase {
     uint256 routerBefore = address(router).balance;
 
     vm.prank(owner);
-    vm.expectRevert(NativeSpendGuard.NativeOverSpent.selector);
+    vm.expectRevert(
+      abi.encodeWithSelector(NativeSpendGuard.NativeOverSpent.selector, 2 * VALUE, VALUE)
+    );
     hub.multicall{value: VALUE}(batch);
 
     assertEq(address(hub).balance, 2 * VALUE, "the hub's own float is untouched");
@@ -279,9 +281,7 @@ contract MulticallTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(
-        ISessionOrderAuthenticator.MasterKeyNotApproved.selector, owner, keyHash
-      )
+      abi.encodeWithSelector(ISessionOrderAuthenticator.MasterKeyNotApproved.selector, keyHash)
     );
     hub.multicall(orderOnly);
 
@@ -315,7 +315,7 @@ contract MulticallTest is AuthenticatorBase {
   /**
    * MC-08 — one batch mints an ephemeral key from a master key and spends on it
    * @dev MC-06 with the wallet out of the loop. The only signatures are the master key's, over the
-   * grant, and the ephemeral key's, over the order; the owner signs nothing and submits nothing,
+   * approval, and the ephemeral key's, over the order; the owner signs nothing and submits nothing,
    * which is the purpose of the second tier. The order on its own is refused first, so the batch
    * is evidence that slot 0 is what let it through.
    */
@@ -324,7 +324,7 @@ contract MulticallTest is AuthenticatorBase {
     AuthKey memory ephemeral = _secpKey(sessionSigner, block.timestamp + 10 minutes);
 
     uint256 deadline = block.timestamp + 1 hours;
-    uint256 grantNonce = 80;
+    uint256 approvalNonce = 80;
     uint256 orderNonce = 81;
 
     vm.prank(owner);
@@ -338,8 +338,8 @@ contract MulticallTest is AuthenticatorBase {
     ExecutionOrder memory order = _openExecutionOrder(
       _erc20s(_tokenTransfer(AMOUNT)), _calls(_routerCall(0, hex'01')), orderNonce, deadline
     );
-    bytes memory grantSig =
-      _signSessionKeyApproval(masterKey, ephemeral, true, grantNonce, deadline, masterKeyPk);
+    bytes memory approvalSig =
+      _signSessionKeyApproval(masterKey, ephemeral, true, approvalNonce, deadline, masterKeyPk);
     bytes memory orderAuth = _executionAuthData(order, ephemeral, sessionKeyPk, true);
 
     address[] memory targets = new address[](1);
@@ -348,7 +348,7 @@ contract MulticallTest is AuthenticatorBase {
     bytes[] memory relayed = new bytes[](1);
     relayed[0] = abi.encodeCall(
       IOrderAuthenticator.updateAuthentication,
-      (owner, _sessionKeyData(ephemeral, masterKey, true), grantNonce, deadline, grantSig)
+      (owner, _sessionKeyData(ephemeral, masterKey, true), approvalNonce, deadline, approvalSig)
     );
 
     bytes[] memory batch = new bytes[](2);
@@ -365,7 +365,7 @@ contract MulticallTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ISessionOrderAuthenticator.SessionKeyNotApproved.selector, owner, _keyHash(ephemeral)
+        ISessionOrderAuthenticator.SessionKeyNotApproved.selector, _keyHash(ephemeral)
       )
     );
     hub.multicall(orderOnly);

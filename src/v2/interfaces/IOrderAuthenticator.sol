@@ -8,7 +8,7 @@ import {FulfillmentOrder} from '../types/FulfillmentOrder.sol';
 /// @notice Interface every order authenticator used by {AuthDelegator} must implement
 interface IOrderAuthenticator {
   /// @notice Only the allowance hub this authenticator was bound to at deployment may call this
-  error NotAllowanceHub();
+  error NotAllowanceHub(address caller);
 
   /**
    * @notice Records the owner's first authentication material, as the hub delegates this one
