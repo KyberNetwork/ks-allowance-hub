@@ -335,11 +335,11 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(abi.encodeWithSelector(IOrderAuthenticator.NotAllowanceHub.selector, relayer));
-    authenticator.authenticateExecution(execOrder, data);
+    authenticator.authenticateExecution(execOrder, bytes32(0), data);
 
     vm.prank(relayer);
     vm.expectRevert(abi.encodeWithSelector(IOrderAuthenticator.NotAllowanceHub.selector, relayer));
-    authenticator.authenticateFulfillment(fulfillOrder, data);
+    authenticator.authenticateFulfillment(fulfillOrder, bytes32(0), data);
   }
 
   /// SV-06 — a key the owner never approved cannot authenticate anything

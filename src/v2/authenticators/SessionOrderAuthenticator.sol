@@ -151,19 +151,21 @@ contract SessionOrderAuthenticator is
   }
 
   /// @inheritdoc IOrderAuthenticator
-  function authenticateExecution(ExecutionOrder calldata order, bytes calldata data)
-    external
-    onlyAllowanceHub
-  {
-    _authenticate(order.owner, order.nonce, order.hash(), data);
+  function authenticateExecution(
+    ExecutionOrder calldata order,
+    bytes32 orderHash,
+    bytes calldata data
+  ) external onlyAllowanceHub {
+    _authenticate(order.owner, order.nonce, orderHash, data);
   }
 
   /// @inheritdoc IOrderAuthenticator
-  function authenticateFulfillment(FulfillmentOrder calldata order, bytes calldata data)
-    external
-    onlyAllowanceHub
-  {
-    _authenticate(order.owner, order.nonce, order.hash(), data);
+  function authenticateFulfillment(
+    FulfillmentOrder calldata order,
+    bytes32 orderHash,
+    bytes calldata data
+  ) external onlyAllowanceHub {
+    _authenticate(order.owner, order.nonce, orderHash, data);
   }
 
   /**

@@ -82,11 +82,6 @@ library DynamicArrayLibExt {
     }
   }
 
-  /// @dev An `address[]` of `length` slots, none of them written
-  function mallocAddresses(uint256 length) internal pure returns (address[] memory) {
-    return length.malloc().asAddressArray();
-  }
-
   /// @dev As {mallocBytes}, for ERC20 transfers
   function mallocERC20Transfers(uint256 length)
     internal

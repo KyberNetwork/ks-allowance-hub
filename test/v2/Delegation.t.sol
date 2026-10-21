@@ -37,11 +37,14 @@ contract RevertingAuthenticator is IOrderAuthenticator {
     if (reverting) revert Nope();
   }
 
-  function authenticateExecution(ExecutionOrder calldata, bytes calldata) external view {
+  function authenticateExecution(ExecutionOrder calldata, bytes32, bytes calldata) external view {
     if (reverting) revert Nope();
   }
 
-  function authenticateFulfillment(FulfillmentOrder calldata, bytes calldata) external view {
+  function authenticateFulfillment(FulfillmentOrder calldata, bytes32, bytes calldata)
+    external
+    view
+  {
     if (reverting) revert Nope();
   }
 }

@@ -331,7 +331,8 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
   /**
    * AUTH-11 — the authenticator receives the whole order, unaltered, with the data it was given
-   * @dev The hub forwards the struct rather than repackaging it into a payload of its own.
+   * @dev The hub forwards the struct rather than repackaging it into a payload of its own, with the
+   * order's EIP-712 hash beside it, which the expectation takes from the bound schema.
    * The expected calldata is assembled from a function signature written out in this file, so a
    * mistyped signature would produce a selector the hub never sends and the expectation would fail
    * rather than agree with itself. The settlement assertion is what rules out a vacuous pass.
@@ -347,8 +348,9 @@ contract ExecuteOrderTest is AuthenticatorBase {
       _executionOrder(ANY, erc20s, new ERC721Transfer[](0), calls, 43, deadline);
     bytes memory authData = _executionAuthData(order, key, masterKeyPk);
 
-    bytes memory expectedCall =
-      abi.encodeCall(IOrderAuthenticator.authenticateExecution, (order, authData));
+    bytes memory expectedCall = abi.encodeCall(
+      IOrderAuthenticator.authenticateExecution, (order, SchemaHash.executionOrder(order), authData)
+    );
 
     uint256 before = IERC20(token18).balanceOf(address(router));
 

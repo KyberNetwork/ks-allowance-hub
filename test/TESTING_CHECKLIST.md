@@ -1113,3 +1113,42 @@ ERC20 and ERC721 arrays as `calldata` and emits them as signed, without copying 
 The hub is 23,931 bytes, 429 fewer. Over the 206 deterministic V2 cases the total is 62,211 gas
 lower: an execution order saves about 800 to 2,500 gas, a fulfillment up to about 600, and the seven
 cases that rose did so by 9 gas or less.
+
+## Run `20261021T174529Z`
+
+Scope: `IOrderAuthenticator.authenticateExecution` and `authenticateFulfillment` take the order's
+EIP-712 hash, `(order, orderHash, data)`. The hub hashes the order once, before authentication, and
+uses that hash for the authenticator, the solution approval and the event; `SessionOrderAuthenticator`
+signs over it instead of hashing the order again.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261021T174529Z/AUTH-01` | The hub passes the order, its hash and the data unaltered: `AUTH-11` expects the exact call, the hash taken from the bound schema; every authenticated order on both rails settles only when the passed hash is the one the key signed | `AUTH-11` (`test/v2/ExecuteOrder.t.sol`), `SV-*`, `MC-06`, `MC-08`, `ORD-03b`, `OWN-03`, `DIRTY-01`, `DIRTY-03`; `test/v2/**` | `forge test --isolate` — 245 passed |
+| - [x] | - [ ] | `20261021T174529Z/AUTH-02` | The hub-only gate holds on both entry points with the new signatures, sent directly and relayed through the forwarder | `SV-05`, `FWD-16`; mocks in `Delegation.t.sol` and `Guards.t.sol` | same |
+
+### Notes for this run
+
+**Gas and size.** An authenticated order that settles saves about 1,700 to 7,600 gas, growing with
+the order's size; the authenticator suite is 68,774 gas lower, and the 206 deterministic V2 cases
+88,038 lower in all. An order refused by its authenticator now pays for the hub's hash before the
+refusal, so those cases rise by up to about 600 gas, and the forwarder case that sends both calls
+directly by 1,501. `SessionOrderAuthenticator` is 11,677 bytes, 1,837 fewer; the hub is 23,969, 38
+more.
+
+**Mutation checks.** Passing a hash with one bit flipped fails 58 cases on the execution rail,
+`AUTH-11` among them, and 18 on the fulfillment rail.
+
+## Run `20261021T175259Z`
+
+Scope: `ERC20TransferLib.targetsHash` replaces `extractTargets`, hashing the targets as an
+`address[]` without building that array, and `ExecutionWitnessLib.hash` takes that hash. The four
+uncalled `*Memory` conversions in `ERC20Transfer.sol` are removed, with
+`DynamicArrayLibExt.mallocAddresses`, which only they used.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261021T175259Z/WIT-01` | The execution witness is unchanged: every relayed Permit2 execution still settles against the real Permit2's witness check, and `T712` holds the witness's memory hasher against the bound schema | `AUTH-02..04`, `ORD-02`, `DIRTY-02`, `EX-FUZZ`, `T712-*`; `test/v2/**` | `forge test --isolate` — 245 passed |
+
+### Notes for this run
+
+Ten relayed executions save 23 to 46 gas each, 266 in all; the hub is 23,961 bytes, 8 fewer.

@@ -50,9 +50,9 @@ contract OrderAuthenticatorMock is IOrderAuthenticator {
     updateCount++;
   }
 
-  function authenticateExecution(ExecutionOrder calldata, bytes calldata) external {}
+  function authenticateExecution(ExecutionOrder calldata, bytes32, bytes calldata) external {}
 
-  function authenticateFulfillment(FulfillmentOrder calldata, bytes calldata) external {}
+  function authenticateFulfillment(FulfillmentOrder calldata, bytes32, bytes calldata) external {}
 }
 
 /**

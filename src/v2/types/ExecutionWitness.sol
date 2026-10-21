@@ -65,7 +65,7 @@ library ExecutionWitnessLib {
   /// @dev EIP-712 hash of the witness attached to the owner's Permit2 signature
   function hash(
     address relayer,
-    address[] memory erc20Targets,
+    bytes32 erc20TargetsHash,
     ERC721Transfer[] calldata erc721Transfers,
     GenericCall[] calldata genericCalls
   ) internal pure returns (bytes32) {
@@ -73,7 +73,7 @@ library ExecutionWitnessLib {
       abi.encode(
         EXECUTION_WITNESS_TYPEHASH,
         relayer,
-        erc20Targets.hashMemory(),
+        erc20TargetsHash,
         erc721Transfers.hash(),
         genericCalls.hash()
       )

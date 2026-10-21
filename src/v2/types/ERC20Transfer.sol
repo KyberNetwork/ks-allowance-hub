@@ -8,7 +8,6 @@ import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer
 
 import {TokenHelper} from 'ks-common-sc/src/libraries/token/TokenHelper.sol';
 
-import {DynamicArrayLib} from 'solady/utils/DynamicArrayLib.sol';
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
@@ -97,23 +96,6 @@ library ERC20TransferLib {
     }
   }
 
-  /// @dev As {toPermitBatchTransferFrom}, for an array already in memory
-  function toPermitBatchTransferFromMemory(
-    ERC20Transfer[] memory transfers,
-    uint256 nonce,
-    uint256 deadline
-  ) internal pure returns (ISignatureTransfer.PermitBatchTransferFrom memory permit) {
-    permit.permitted = transfers.length.mallocTokenPermissions();
-    permit.nonce = nonce;
-    permit.deadline = deadline;
-
-    for (uint256 i = 0; i < transfers.length; i++) {
-      ERC20Transfer memory transfer = transfers[i];
-      permit.permitted[i] =
-        ISignatureTransfer.TokenPermissions({token: transfer.token, amount: transfer.amount});
-    }
-  }
-
   /// @dev Converts the transfers into Permit2 signature-transfer details
   function toSignatureTransferDetails(ERC20Transfer[] calldata transfers)
     internal
@@ -129,43 +111,14 @@ library ERC20TransferLib {
     }
   }
 
-  /// @dev As {toSignatureTransferDetails}, for an array already in memory
-  function toSignatureTransferDetailsMemory(ERC20Transfer[] memory transfers)
-    internal
-    pure
-    returns (ISignatureTransfer.SignatureTransferDetails[] memory details)
-  {
-    details = transfers.length.mallocSignatureTransferDetails();
+  /// @dev EIP-712 hash of the transfers' targets as an `address[]`, in order, as a witness binds them
+  function targetsHash(ERC20Transfer[] calldata transfers) internal pure returns (bytes32) {
+    bytes32[] memory targetWords = transfers.length.malloc();
     for (uint256 i = 0; i < transfers.length; i++) {
-      ERC20Transfer memory transfer = transfers[i];
-      details[i] = ISignatureTransfer.SignatureTransferDetails({
-        to: transfer.target, requestedAmount: transfer.amount
-      });
+      targetWords[i] = bytes32(uint256(uint160(transfers[i].target)));
     }
-  }
 
-  /// @dev The target of each transfer, in order, as a witness binds them
-  function extractTargets(ERC20Transfer[] calldata transfers)
-    internal
-    pure
-    returns (address[] memory targets)
-  {
-    targets = transfers.length.mallocAddresses();
-    for (uint256 i = 0; i < transfers.length; i++) {
-      targets[i] = transfers[i].target;
-    }
-  }
-
-  /// @dev As {extractTargets}, for an array already in memory
-  function extractTargetsMemory(ERC20Transfer[] memory transfers)
-    internal
-    pure
-    returns (address[] memory targets)
-  {
-    targets = transfers.length.mallocAddresses();
-    for (uint256 i = 0; i < transfers.length; i++) {
-      targets[i] = transfers[i].target;
-    }
+    return targetWords.hash();
   }
 
   /// @dev Converts the transfers into Permit2 allowance-transfer details, all drawn from `owner`
@@ -177,21 +130,6 @@ library ERC20TransferLib {
     details = transfers.length.mallocAllowanceTransferDetails();
     for (uint256 i = 0; i < transfers.length; i++) {
       ERC20Transfer calldata transfer = transfers[i];
-      details[i] = IAllowanceTransfer.AllowanceTransferDetails({
-        from: owner, to: transfer.target, token: transfer.token, amount: transfer.amount
-      });
-    }
-  }
-
-  /// @dev As {toAllowanceTransferDetails}, for an array already in memory
-  function toAllowanceTransferDetailsMemory(ERC20Transfer[] memory transfers, address owner)
-    internal
-    pure
-    returns (IAllowanceTransfer.AllowanceTransferDetails[] memory details)
-  {
-    details = transfers.length.mallocAllowanceTransferDetails();
-    for (uint256 i = 0; i < transfers.length; i++) {
-      ERC20Transfer memory transfer = transfers[i];
       details[i] = IAllowanceTransfer.AllowanceTransferDetails({
         from: owner, to: transfer.target, token: transfer.token, amount: transfer.amount
       });

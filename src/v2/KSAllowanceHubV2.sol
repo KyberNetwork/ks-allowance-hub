@@ -130,15 +130,16 @@ contract KSAllowanceHubV2 is
     guardNativeSpend
     returns (bytes[] memory results)
   {
+    bytes32 orderHash = order.hash();
     // Being the caller is the owner's own authentication; anyone else must present a credential
     if (msg.sender != order.owner) {
       if (msg.sender != order.relayer && order.relayer != DEAD_ADDRESS) {
         revert UnauthorizedRelayer(msg.sender);
       }
-      IOrderAuthenticator(authenticator).authenticateExecution(order, authenticationData);
+      IOrderAuthenticator(authenticator).authenticateExecution(order, orderHash, authenticationData);
     }
 
-    _announceExecution(order, order.hash());
+    _announceExecution(order, orderHash);
 
     _transferERC20s(order.owner, order.erc20Transfers, usePermit2Allowances);
     return _settleExecution(order);
@@ -170,10 +171,7 @@ contract KSAllowanceHubV2 is
       _permitTransferFrom(order.owner, permit, details, permit2Signature);
     } else if (msg.sender == order.relayer || order.relayer == DEAD_ADDRESS) {
       bytes32 witness = ExecutionWitnessLib.hash(
-        order.relayer,
-        order.erc20Transfers.extractTargets(),
-        order.erc721Transfers,
-        order.genericCalls
+        order.relayer, order.erc20Transfers.targetsHash(), order.erc721Transfers, order.genericCalls
       );
 
       _permitWitnessTransferFrom(
@@ -212,15 +210,16 @@ contract KSAllowanceHubV2 is
     guardNativeSpend
     returns (bytes[] memory results)
   {
+    bytes32 orderHash = order.hash();
     // Being the caller is the owner's own authentication; anyone else must present a credential
     if (msg.sender != order.owner) {
       if (msg.sender != order.solver && order.solver != DEAD_ADDRESS) {
         revert UnauthorizedSolver(msg.sender);
       }
-      IOrderAuthenticator(authenticator).authenticateFulfillment(order, authenticationData);
+      IOrderAuthenticator(authenticator)
+        .authenticateFulfillment(order, orderHash, authenticationData);
     }
 
-    bytes32 orderHash = order.hash();
     // The sentinel means the order.owner accepted any route, so there is no approval to check
     if (order.solutionApprover != DEAD_ADDRESS) {
       _approveSolution(order, orderHash, solution, solutionSignature);

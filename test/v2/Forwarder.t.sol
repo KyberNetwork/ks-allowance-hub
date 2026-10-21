@@ -599,11 +599,12 @@ contract ForwarderTest is AuthenticatorBase {
 
     bytes[] memory executionData = new bytes[](1);
     executionData[0] =
-      abi.encodeCall(IOrderAuthenticator.authenticateExecution, (execOrder, payload));
+      abi.encodeCall(IOrderAuthenticator.authenticateExecution, (execOrder, bytes32(0), payload));
 
     bytes[] memory fulfillmentData = new bytes[](1);
-    fulfillmentData[0] =
-      abi.encodeCall(IOrderAuthenticator.authenticateFulfillment, (fulfillOrder, payload));
+    fulfillmentData[0] = abi.encodeCall(
+      IOrderAuthenticator.authenticateFulfillment, (fulfillOrder, bytes32(0), payload)
+    );
 
     // Sent straight at the authenticator, each of the three reaches its hub-only gate and comes
     // back with that error, so the refusals below are the forwarder's own and not the authenticator
