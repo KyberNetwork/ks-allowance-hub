@@ -21,7 +21,6 @@ import {FulfillmentOrder} from './types/FulfillmentOrder.sol';
 import {FulfillmentSolution} from './types/FulfillmentSolution.sol';
 import {FulfillmentWitnessLib} from './types/FulfillmentWitness.sol';
 import {GenericCall, GenericCallLib} from './types/GenericCall.sol';
-import {NativeTransfer} from './types/NativeTransfer.sol';
 import {SolutionApprovalLib} from './types/SolutionApproval.sol';
 import {ValidationParams, ValidationParamsLib} from './types/ValidationParams.sol';
 
@@ -139,13 +138,7 @@ contract KSAllowanceHubV2 is
       IOrderAuthenticator(authenticator).authenticateExecution(order, authenticationData);
     }
 
-    _announceTransfers(
-      order.owner,
-      order.hash(),
-      order.erc20Transfers,
-      order.erc721Transfers,
-      order.genericCalls.toNativeTransfers()
-    );
+    _announceExecution(order, order.hash());
 
     _transferERC20s(order.owner, order.erc20Transfers, usePermit2Allowances);
     return _settleExecution(order);
@@ -164,13 +157,7 @@ contract KSAllowanceHubV2 is
     guardNativeSpend
     returns (bytes[] memory results)
   {
-    _announceTransfers(
-      order.owner,
-      order.hash(),
-      order.erc20Transfers,
-      order.erc721Transfers,
-      order.genericCalls.toNativeTransfers()
-    );
+    _announceExecution(order, order.hash());
 
     // Self-submitted: nothing to bind, since the order.owner is already the caller. Relayed: the
     // order is bound in as the witness, so a relayer cannot alter it
@@ -309,27 +296,27 @@ contract KSAllowanceHubV2 is
     return _settleFulfillment(order, solution, beforeExecutionOutputs);
   }
 
-  /// @dev The one {TransferTokens} emit site, so neither rail carries its own copy of the encoder
-  function _announceTransfers(
-    address owner,
-    bytes32 orderHash,
-    ERC20Transfer[] memory erc20Transfers,
-    ERC721Transfer[] memory erc721Transfers,
-    NativeTransfer[] memory nativeTransfers
-  ) internal {
+  /// @dev {TransferTokens} for an execution, whose legs are emitted from calldata as signed
+  function _announceExecution(ExecutionOrder calldata order, bytes32 orderHash) internal {
     emit TransferTokens(
-      msg.sender, owner, orderHash, erc20Transfers, erc721Transfers, nativeTransfers
+      msg.sender,
+      order.owner,
+      orderHash,
+      order.erc20Transfers,
+      order.erc721Transfers,
+      order.genericCalls.toNativeTransfers()
     );
   }
 
-  /// @dev {_announceTransfers} for a fulfillment, with each leg paired with the target the
-  /// solution names for it
+  /// @dev {TransferTokens} for a fulfillment, with each leg paired with the target the solution
+  /// names for it
   function _announceFulfillment(
     FulfillmentOrder calldata order,
     bytes32 orderHash,
     FulfillmentSolution calldata solution
   ) internal {
-    _announceTransfers(
+    emit TransferTokens(
+      msg.sender,
       order.owner,
       orderHash,
       order.erc20Allowances.toTransfers(solution.erc20Targets),

@@ -1097,3 +1097,19 @@ functions report as hit, and a trace of `TGT-02` shows `permit2::transferFrom` p
 target. The constructor lines run in every `setUp`.
 
 The hub is 24,360 bytes, 216 under the limit. 245 tests pass.
+
+## Run `20261021T125107Z`
+
+Scope: `TransferTokens` has two emit sites again. `_announceExecution` takes the execution order's
+ERC20 and ERC721 arrays as `calldata` and emits them as signed, without copying them to memory;
+`_announceFulfillment` emits the transfers it builds by pairing each leg with the solution's target.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261021T125107Z/EVT-01` | The event payload is unchanged on every rail: the execution cases assert it from the order's own arrays, the fulfillment cases from the legs paired with their targets | `SET-01..03`, `OWN-07`, `EVT-01`, `EX-FUZZ`, `FU-FUZZ`; `test/v2/**` | `forge test --isolate` — 245 passed |
+
+### Notes for this run
+
+The hub is 23,931 bytes, 429 fewer. Over the 206 deterministic V2 cases the total is 62,211 gas
+lower: an execution order saves about 800 to 2,500 gas, a fulfillment up to about 600, and the seven
+cases that rose did so by 9 gas or less.
