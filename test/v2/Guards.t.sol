@@ -11,6 +11,7 @@ import {IMsgSender} from 'src/base/interfaces/IMsgSender.sol';
 import {IAuthDelegator} from 'src/v2/interfaces/IAuthDelegator.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
 import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
+import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
@@ -109,13 +110,15 @@ contract GuardsTest is AuthenticatorBase {
     OrderAuthenticatorMock mock = new OrderAuthenticatorMock();
 
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
+    ERC20Allowance[] memory allowances = _allowances(_tokenAllowance(AMOUNT));
     uint256 deadline = block.timestamp + 1 hours;
 
     ExecutionOrder memory execOrder =
       _openExecutionOrder(erc20s, new GenericCall[](0), 90, deadline);
     bytes memory permitSig = _signExecutionWitness(execOrder);
-    FulfillmentOrder memory fulfillOrder =
-      _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 0, deadline);
+    FulfillmentOrder memory fulfillOrder = _openFulfillmentOrder(
+      allowances, new ValidationParams[](0), new GenericCall[](0), 0, deadline
+    );
 
     vm.prank(guardian);
     hub.pause();
@@ -131,7 +134,7 @@ contract GuardsTest is AuthenticatorBase {
     vm.prank(owner);
     vm.expectRevert(Pausable.EnforcedPause.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
-      fulfillOrder, address(0), '', _route(new GenericCall[](0)), '', false
+      fulfillOrder, address(0), '', _route(fulfillOrder, new GenericCall[](0)), '', false
     );
 
     // Delegation carries no assets, so the pause does not reach it
@@ -204,6 +207,14 @@ contract GuardsTest is AuthenticatorBase {
 
   /// GUARD-05 — when both guards would fire, the pause wins, because it is the outer modifier
   function test_GUARD_05_pauseTakesPrecedenceOverTheDeadline() public {
+    FulfillmentOrder memory staleFulfillment = _openFulfillmentOrder(
+      _allowances(_tokenAllowance(AMOUNT)),
+      new ValidationParams[](0),
+      new GenericCall[](0),
+      0,
+      block.timestamp - 1
+    );
+
     vm.prank(guardian);
     hub.pause();
 
@@ -221,18 +232,7 @@ contract GuardsTest is AuthenticatorBase {
     vm.prank(owner);
     vm.expectRevert(Pausable.EnforcedPause.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
-      _openFulfillmentOrder(
-        _erc20s(_tokenTransfer(AMOUNT)),
-        new ValidationParams[](0),
-        new GenericCall[](0),
-        0,
-        block.timestamp - 1
-      ),
-      address(0),
-      '',
-      _route(new GenericCall[](0)),
-      '',
-      false
+      staleFulfillment, address(0), '', _route(staleFulfillment, new GenericCall[](0)), '', false
     );
   }
 
@@ -259,7 +259,7 @@ contract GuardsTest is AuthenticatorBase {
    */
   function test_GATE_01_fulfillPermit2CarriesTheFourModifiers() public {
     uint256 deadline = block.timestamp + 1 hours;
-    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
+    ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
 
     // control
     uint256 before = IERC20(token18).balanceOf(address(router));
@@ -269,7 +269,7 @@ contract GuardsTest is AuthenticatorBase {
 
     vm.prank(solver);
     hub.fulfillOrderWithPermit2Signature(
-      control, controlSig, _route(_calls(_routerCall(0, hex'01'))), ''
+      control, controlSig, _route(control, _calls(_routerCall(0, hex'01'))), ''
     );
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the control settled');
 
@@ -284,7 +284,7 @@ contract GuardsTest is AuthenticatorBase {
     vm.prank(solver);
     vm.expectRevert(Pausable.EnforcedPause.selector);
     hub.fulfillOrderWithPermit2Signature(
-      paused, pausedSig, _route(_calls(_routerCall(0, hex'01'))), ''
+      paused, pausedSig, _route(paused, _calls(_routerCall(0, hex'01'))), ''
     );
 
     vm.prank(admin);
@@ -299,7 +299,7 @@ contract GuardsTest is AuthenticatorBase {
     vm.prank(solver);
     vm.expectRevert(_deadlinePassed(block.timestamp - 1));
     hub.fulfillOrderWithPermit2Signature(
-      stale, staleSig, _route(_calls(_routerCall(0, hex'01'))), ''
+      stale, staleSig, _route(stale, _calls(_routerCall(0, hex'01'))), ''
     );
 
     // lock
@@ -322,7 +322,7 @@ contract GuardsTest is AuthenticatorBase {
       )
     );
     FulfillmentSolution memory reentrantRoute =
-      _route(_calls(GenericCall({router: address(evil), value: 0, data: hex''})));
+      _route(locked, _calls(GenericCall({router: address(evil), value: 0, data: hex''})));
 
     vm.prank(solver);
     vm.expectRevert(abi.encodeWithSelector(IMsgSender.AlreadyLocked.selector, owner));
@@ -335,7 +335,8 @@ contract GuardsTest is AuthenticatorBase {
     FulfillmentOrder memory overSpending =
       _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 104, deadline);
     bytes memory overSpendingSig = _signFulfillmentWitness(overSpending);
-    FulfillmentSolution memory greedyRoute = _route(_calls(_routerCall(VALUE + 1, hex'01')));
+    FulfillmentSolution memory greedyRoute =
+      _route(overSpending, _calls(_routerCall(VALUE + 1, hex'01')));
 
     vm.prank(solver);
     vm.expectRevert(
@@ -359,6 +360,7 @@ contract GuardsTest is AuthenticatorBase {
   function test_GATE_02_theUnwatchedModifierApplications() public {
     uint256 deadline = block.timestamp + 1 hours;
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
+    ERC20Allowance[] memory allowances = _allowances(_tokenAllowance(AMOUNT));
 
     // guardNativeSpend on executeOrderWithPermit2Signature
     vm.deal(address(hub), PREFUND);
@@ -378,8 +380,9 @@ contract GuardsTest is AuthenticatorBase {
     assertEq(address(hub).balance, PREFUND, "the execute rail kept the hub's float");
 
     // checkDelegation on fulfillOrderWithDelegatedAuthentication
-    FulfillmentOrder memory undelegated =
-      _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 111, deadline);
+    FulfillmentOrder memory undelegated = _openFulfillmentOrder(
+      allowances, new ValidationParams[](0), new GenericCall[](0), 111, deadline
+    );
 
     vm.prank(relayer);
     vm.expectRevert(
@@ -388,7 +391,7 @@ contract GuardsTest is AuthenticatorBase {
       )
     );
     hub.fulfillOrderWithDelegatedAuthentication(
-      undelegated, address(authenticator), '', _route(new GenericCall[](0)), '', false
+      undelegated, address(authenticator), '', _route(undelegated, new GenericCall[](0)), '', false
     );
 
     // guardNativeSpend on fulfillOrderWithDelegatedAuthentication
@@ -396,7 +399,7 @@ contract GuardsTest is AuthenticatorBase {
     vm.deal(owner, VALUE);
 
     FulfillmentOrder memory overSpending = _openFulfillmentOrder(
-      new ERC20Transfer[](0), new ValidationParams[](0), new GenericCall[](0), 112, deadline
+      new ERC20Allowance[](0), new ValidationParams[](0), new GenericCall[](0), 112, deadline
     );
 
     vm.prank(owner);
@@ -404,18 +407,24 @@ contract GuardsTest is AuthenticatorBase {
       abi.encodeWithSelector(NativeSpendGuard.NativeOverSpent.selector, VALUE + 1, VALUE)
     );
     hub.fulfillOrderWithDelegatedAuthentication{value: VALUE}(
-      overSpending, address(0), '', _route(_calls(_routerCall(VALUE + 1, hex'01'))), '', false
+      overSpending,
+      address(0),
+      '',
+      _route(overSpending, _calls(_routerCall(VALUE + 1, hex'01'))),
+      '',
+      false
     );
 
     assertEq(address(hub).balance, PREFUND, "the fulfill rail kept the hub's float");
 
     // lock(owner) on fulfillOrderWithDelegatedAuthentication, seen from inside the route
-    FulfillmentOrder memory locked =
-      _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 113, deadline);
+    FulfillmentOrder memory locked = _openFulfillmentOrder(
+      allowances, new ValidationParams[](0), new GenericCall[](0), 113, deadline
+    );
 
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(
-      locked, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
+      locked, address(0), '', _route(locked, _calls(_routerCall(0, hex'01'))), '', false
     );
 
     assertEq(router.seenMsgSender(), owner, 'the route ran under a lock naming the owner');
@@ -443,9 +452,13 @@ contract GuardsTest is AuthenticatorBase {
     uint256 routerBefore = IERC20(token18).balanceOf(address(router));
 
     FulfillmentOrder memory order = _openFulfillmentOrder(
-      _erc20s(_tokenTransfer(AMOUNT)), new ValidationParams[](0), new GenericCall[](0), 0, deadline
+      _allowances(_tokenAllowance(AMOUNT)),
+      new ValidationParams[](0),
+      new GenericCall[](0),
+      0,
+      deadline
     );
-    FulfillmentSolution memory route = _route(new GenericCall[](0));
+    FulfillmentSolution memory route = _route(order, new GenericCall[](0));
 
     vm.prank(owner);
     if (!shouldSettle) vm.expectRevert(_deadlinePassed(deadline));

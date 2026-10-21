@@ -12,7 +12,9 @@ import {MasterKeyApprovalLib} from 'src/v2/authenticators/types/MasterKeyApprova
 import {NonceRevocationLib} from 'src/v2/authenticators/types/NonceRevocation.sol';
 import {SessionKeyApprovalLib} from 'src/v2/authenticators/types/SessionKeyApproval.sol';
 import {AuthDelegationLib} from 'src/v2/types/AuthDelegation.sol';
+import {ERC20AllowanceLib} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20TransferLib} from 'src/v2/types/ERC20Transfer.sol';
+import {ERC721ApprovalLib} from 'src/v2/types/ERC721Approval.sol';
 import {ERC721TransferLib} from 'src/v2/types/ERC721Transfer.sol';
 import {ExecutionOrderLib} from 'src/v2/types/ExecutionOrder.sol';
 import {ExecutionWitnessLib} from 'src/v2/types/ExecutionWitness.sol';
@@ -46,6 +48,16 @@ contract SchemaAuditTest is Test {
       ERC721TransferLib.ERC721_TRANSFER_TYPEHASH,
       keccak256(bytes(JsonBindings.schema_ERC721Transfer)),
       'ERC721Transfer'
+    );
+    assertEq(
+      ERC20AllowanceLib.ERC20_ALLOWANCE_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_ERC20Allowance)),
+      'ERC20Allowance'
+    );
+    assertEq(
+      ERC721ApprovalLib.ERC721_APPROVAL_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_ERC721Approval)),
+      'ERC721Approval'
     );
     assertEq(
       GenericCallLib.GENERIC_CALL_TYPEHASH,

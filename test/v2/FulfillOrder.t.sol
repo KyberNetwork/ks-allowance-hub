@@ -15,8 +15,9 @@ import {
 } from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
 import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
+import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
-import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
+import {ERC721Approval} from 'src/v2/types/ERC721Approval.sol';
 import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
 import {FulfillmentSolution} from 'src/v2/types/FulfillmentSolution.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
@@ -69,18 +70,17 @@ contract FulfillOrderTest is AuthenticatorBase {
    * refused even though the owner is the caller.
    */
   function test_AUTH_01b_fulfillmentPermit2SelfSubmitted() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
+    ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     ValidationParams[] memory vs = _validations(_validation(validator));
     uint256 deadline = block.timestamp + 1 hours;
 
     FulfillmentOrder memory order = _fulfillmentOrder(
-      ANY, erc20s, new ERC721Transfer[](0), vs, new GenericCall[](0), approver, 61, deadline
+      ANY, erc20s, new ERC721Approval[](0), vs, new GenericCall[](0), approver, 61, deadline
     );
-    FulfillmentSolution memory route = _solution(_calls(_routerCall(0, hex'01')), deadline);
+    FulfillmentSolution memory route = _solution(order, _calls(_routerCall(0, hex'01')), deadline);
 
     bytes memory permitSig = _signPlainPermit(erc20s, 61, deadline);
-    bytes memory approval =
-      _signSolutionApproval(approverKey, SchemaHash.fulfillmentOrder(order), route);
+    bytes memory approval = _signSolutionApproval(approverKey, order, route);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
 
@@ -92,9 +92,10 @@ contract FulfillOrderTest is AuthenticatorBase {
     assertEq(validator.sequenceLength(), 2, 'validator bracketed the order');
 
     FulfillmentOrder memory again = _fulfillmentOrder(
-      ANY, erc20s, new ERC721Transfer[](0), vs, new GenericCall[](0), approver, 62, deadline
+      ANY, erc20s, new ERC721Approval[](0), vs, new GenericCall[](0), approver, 62, deadline
     );
-    FulfillmentSolution memory otherRoute = _solution(_calls(_routerCall(0, hex'02')), deadline);
+    FulfillmentSolution memory otherRoute =
+      _solution(again, _calls(_routerCall(0, hex'02')), deadline);
     bytes memory permitSig2 = _signPlainPermit(erc20s, 62, deadline);
 
     vm.prank(owner);
@@ -104,13 +105,13 @@ contract FulfillOrderTest is AuthenticatorBase {
 
   /// AUTH-07 — a solver submits, and the witness names who may choose the route, not the route
   function test_AUTH_07_fulfillmentPermit2Witness() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
+    ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     ValidationParams[] memory vs = _validations(_validation(validator));
     uint256 deadline = block.timestamp + 1 hours;
 
     // the sentinel approver, so the owner is signing "any route the solver picks"
     FulfillmentOrder memory order = _fulfillmentOrder(
-      ANY, erc20s, new ERC721Transfer[](0), vs, new GenericCall[](0), ANY, 30, deadline
+      ANY, erc20s, new ERC721Approval[](0), vs, new GenericCall[](0), ANY, 30, deadline
     );
     bytes memory signature = _signFulfillmentWitness(order);
 
@@ -118,7 +119,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(solver);
     bytes[] memory results = hub.fulfillOrderWithPermit2Signature(
-      order, signature, _route(_calls(_routerCall(0, hex'01'))), ''
+      order, signature, _route(order, _calls(_routerCall(0, hex'01'))), ''
     );
 
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'erc20 leg');
@@ -134,23 +135,22 @@ contract FulfillOrderTest is AuthenticatorBase {
    * and is about the witness rather than about the approval. The first leg is the control.
    */
   function test_AUTH_07b_solutionApproverIsBoundByTheWitness() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
+    ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
     uint256 deadline = block.timestamp + 1 hours;
 
     FulfillmentOrder memory named = _fulfillmentOrder(
       ANY,
       erc20s,
-      new ERC721Transfer[](0),
+      new ERC721Approval[](0),
       new ValidationParams[](0),
       new GenericCall[](0),
       approver,
       31,
       deadline
     );
-    FulfillmentSolution memory route = _solution(solverCalls, deadline);
-    bytes memory approval =
-      _signSolutionApproval(approverKey, SchemaHash.fulfillmentOrder(named), route);
+    FulfillmentSolution memory route = _solution(named, solverCalls, deadline);
+    bytes memory approval = _signSolutionApproval(approverKey, named, route);
     bytes memory matchingWitness = _signFulfillmentWitness(named);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
@@ -164,16 +164,15 @@ contract FulfillOrderTest is AuthenticatorBase {
     FulfillmentOrder memory swapped = _fulfillmentOrder(
       ANY,
       erc20s,
-      new ERC721Transfer[](0),
+      new ERC721Approval[](0),
       new ValidationParams[](0),
       new GenericCall[](0),
       approver,
       32,
       deadline
     );
-    FulfillmentSolution memory route2 = _solution(solverCalls, deadline);
-    bytes memory approval2 =
-      _signSolutionApproval(approverKey, SchemaHash.fulfillmentOrder(swapped), route2);
+    FulfillmentSolution memory route2 = _solution(swapped, solverCalls, deadline);
+    bytes memory approval2 = _signSolutionApproval(approverKey, swapped, route2);
     // the owner signed a witness naming nobody, so the approver in the order is not the one signed
     bytes memory openWitness =
       _signFulfillmentWitness(swapped, swapped.solver, swapped.ownerCalls, ANY);
@@ -192,14 +191,19 @@ contract FulfillOrderTest is AuthenticatorBase {
    * the middle one about the pin rather than about the submitter.
    */
   function test_ORD_03_solverPinningAndTheOpenSentinel() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
-    FulfillmentSolution memory route = _route(_calls(_routerCall(0, hex'01')));
+    ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
+    FulfillmentSolution memory route = _solution(
+      _addresses(address(router)),
+      new address[](0),
+      _calls(_routerCall(0, hex'01')),
+      block.timestamp + 1 hours
+    );
     uint256 deadline = block.timestamp + 1 hours;
 
     FulfillmentOrder memory pinned = _fulfillmentOrder(
       solver,
       erc20s,
-      new ERC721Transfer[](0),
+      new ERC721Approval[](0),
       new ValidationParams[](0),
       new GenericCall[](0),
       ANY,
@@ -219,7 +223,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     FulfillmentOrder memory pinnedAgain = _fulfillmentOrder(
       solver,
       erc20s,
-      new ERC721Transfer[](0),
+      new ERC721Approval[](0),
       new ValidationParams[](0),
       new GenericCall[](0),
       ANY,
@@ -266,15 +270,16 @@ contract FulfillOrderTest is AuthenticatorBase {
    * second order. The first leg is the control.
    */
   function test_SOL_01_oneApprovalBindsOneOrder() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
+    ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
     uint256 deadline = block.timestamp + 1 hours;
 
-    FulfillmentSolution memory route = _solution(solverCalls, deadline);
+    FulfillmentSolution memory route =
+      _solution(_addresses(address(router)), new address[](0), solverCalls, deadline);
 
     FulfillmentOrder memory withTailA = _orderWithTail(_calls(_routerCall(0, hex'aa')), deadline);
     bytes32 hashA = SchemaHash.fulfillmentOrder(withTailA);
-    bytes memory approvalA = _signSolutionApproval(approverKey, hashA, route);
+    bytes memory approvalA = _signSolutionApproval(approverKey, withTailA, route);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
 
@@ -298,8 +303,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     assertEq(router.callCount(), 2, 'the refused order ran nothing');
 
     // the same order with its own approval does settle, so the refusal was the approval's doing
-    bytes memory approvalB =
-      _signSolutionApproval(approverKey, SchemaHash.fulfillmentOrder(withTailB), route);
+    bytes memory approvalB = _signSolutionApproval(approverKey, withTailB, route);
 
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(withTailB, address(0), '', route, approvalB, false);
@@ -317,7 +321,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
 
     FulfillmentOrder memory open = _openFulfillmentOrder(
-      _erc20s(_tokenTransfer(AMOUNT)),
+      _allowances(_tokenAllowance(AMOUNT)),
       new ValidationParams[](0),
       new GenericCall[](0),
       70,
@@ -327,7 +331,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     uint256 before = IERC20(token18).balanceOf(address(router));
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(
-      open, address(0), '', _solution(solverCalls, block.timestamp), '', false
+      open, address(0), '', _solution(open, solverCalls, block.timestamp), '', false
     );
     assertEq(
       IERC20(token18).balanceOf(address(router)) - before,
@@ -341,12 +345,12 @@ contract FulfillOrderTest is AuthenticatorBase {
     vm.prank(owner);
     vm.expectRevert(_deadlinePassed(stale));
     hub.fulfillOrderWithDelegatedAuthentication(
-      open, address(0), '', _solution(solverCalls, stale), '', false
+      open, address(0), '', _solution(open, solverCalls, stale), '', false
     );
 
     // and the same on the Permit2 rail, whose modifier stack is written out separately
     FulfillmentOrder memory forRelay = _openFulfillmentOrder(
-      _erc20s(_tokenTransfer(AMOUNT)),
+      _allowances(_tokenAllowance(AMOUNT)),
       new ValidationParams[](0),
       new GenericCall[](0),
       72,
@@ -356,7 +360,9 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(_deadlinePassed(stale));
-    hub.fulfillOrderWithPermit2Signature(forRelay, witness, _solution(solverCalls, stale), '');
+    hub.fulfillOrderWithPermit2Signature(
+      forRelay, witness, _solution(forRelay, solverCalls, stale), ''
+    );
   }
 
   /**
@@ -368,20 +374,21 @@ contract FulfillOrderTest is AuthenticatorBase {
    */
   function test_SOL_06_anApprovalIsSpentWithItsOrder() public {
     uint256 deadline = block.timestamp + 1 hours;
-    FulfillmentSolution memory route = _solution(_calls(_routerCall(0, hex'01')), deadline);
+    FulfillmentSolution memory route = _solution(
+      _addresses(address(router)), new address[](0), _calls(_routerCall(0, hex'01')), deadline
+    );
 
     FulfillmentOrder memory named = _fulfillmentOrder(
       ANY,
-      _erc20s(_tokenTransfer(AMOUNT)),
-      new ERC721Transfer[](0),
+      _allowances(_tokenAllowance(AMOUNT)),
+      new ERC721Approval[](0),
       new ValidationParams[](0),
       new GenericCall[](0),
       approver,
       80,
       deadline
     );
-    bytes memory approval =
-      _signSolutionApproval(approverKey, SchemaHash.fulfillmentOrder(named), route);
+    bytes memory approval = _signSolutionApproval(approverKey, named, route);
     bytes memory witness = _signFulfillmentWitness(named);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
@@ -405,12 +412,12 @@ contract FulfillOrderTest is AuthenticatorBase {
     uint256 deadline = block.timestamp + 1 hours;
 
     FulfillmentOrder memory open = _openFulfillmentOrder(
-      new ERC20Transfer[](0), new ValidationParams[](0), new GenericCall[](0), 0, deadline
+      new ERC20Allowance[](0), new ValidationParams[](0), new GenericCall[](0), 0, deadline
     );
 
     vm.prank(owner);
     bytes[] memory results = hub.fulfillOrderWithDelegatedAuthentication(
-      open, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
+      open, address(0), '', _route(open, _calls(_routerCall(0, hex'01'))), '', false
     );
 
     assertEq(results.length, 1, 'the route ran');
@@ -419,7 +426,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(
-      open, address(0), '', _route(_calls(_routerCall(0, hex'02'))), '', false
+      open, address(0), '', _route(open, _calls(_routerCall(0, hex'02'))), '', false
     );
 
     assertEq(router.callCount(), 2, 'and a different route under the same order ran as well');
@@ -427,8 +434,8 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     FulfillmentOrder memory withApprover = _fulfillmentOrder(
       ANY,
-      new ERC20Transfer[](0),
-      new ERC721Transfer[](0),
+      new ERC20Allowance[](0),
+      new ERC721Approval[](0),
       new ValidationParams[](0),
       new GenericCall[](0),
       approver,
@@ -439,7 +446,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     vm.prank(owner);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
-      withApprover, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
+      withApprover, address(0), '', _route(withApprover, _calls(_routerCall(0, hex'01'))), '', false
     );
   }
 
@@ -453,8 +460,8 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     FulfillmentOrder memory order = _fulfillmentOrder(
       ANY,
-      new ERC20Transfer[](0),
-      new ERC721Transfer[](0),
+      new ERC20Allowance[](0),
+      new ERC721Approval[](0),
       new ValidationParams[](0),
       new GenericCall[](0),
       approver,
@@ -465,7 +472,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     vm.prank(owner);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
-      order, address(0), '', _route(_calls(_routerCall(0, hex'01'))), hex'1234', false
+      order, address(0), '', _route(order, _calls(_routerCall(0, hex'01'))), hex'1234', false
     );
 
     assertEq(router.callCount(), 0, 'and nothing ran');
@@ -479,13 +486,13 @@ contract FulfillOrderTest is AuthenticatorBase {
   function test_SOL_04_anAuthenticatedFulfillmentCannotSettleTwice() public {
     _delegateKeyThroughHub(key);
 
-    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
+    ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     uint256 deadline = block.timestamp + 1 hours;
 
     FulfillmentOrder memory order = _fulfillmentOrder(
       ANY,
       erc20s,
-      new ERC721Transfer[](0),
+      new ERC721Approval[](0),
       new ValidationParams[](0),
       new GenericCall[](0),
       ANY,
@@ -493,7 +500,7 @@ contract FulfillOrderTest is AuthenticatorBase {
       deadline
     );
     bytes memory authData = _fulfillmentAuthData(order, key, masterKeyPk);
-    FulfillmentSolution memory route = _route(_calls(_routerCall(0, hex'01')));
+    FulfillmentSolution memory route = _route(order, _calls(_routerCall(0, hex'01')));
 
     vm.prank(relayer);
     hub.fulfillOrderWithDelegatedAuthentication(
@@ -561,7 +568,7 @@ contract FulfillOrderTest is AuthenticatorBase {
    * signature that was never going to be accepted. Only one byte of call data separates them.
    */
   function test_OWN_02_witnessBindsOwnerCalls() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
+    ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
     GenericCall[] memory signedTail = _calls(_routerCall(0, hex'aa'));
     GenericCall[] memory swappedTail = _calls(_routerCall(0, hex'bb'));
@@ -570,26 +577,26 @@ contract FulfillOrderTest is AuthenticatorBase {
     uint256 before = IERC20(token18).balanceOf(address(router));
 
     FulfillmentOrder memory control = _fulfillmentOrder(
-      ANY, erc20s, new ERC721Transfer[](0), new ValidationParams[](0), signedTail, ANY, 70, deadline
+      ANY, erc20s, new ERC721Approval[](0), new ValidationParams[](0), signedTail, ANY, 70, deadline
     );
 
     vm.prank(solver);
     hub.fulfillOrderWithPermit2Signature(
-      control, _signFulfillmentWitness(control), _route(solverCalls), ''
+      control, _signFulfillmentWitness(control), _route(control, solverCalls), ''
     );
 
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the signed tail settled');
     assertEq(router.callCount(), 2, 'one solver call and one owner call');
 
     FulfillmentOrder memory signed = _fulfillmentOrder(
-      ANY, erc20s, new ERC721Transfer[](0), new ValidationParams[](0), signedTail, ANY, 71, deadline
+      ANY, erc20s, new ERC721Approval[](0), new ValidationParams[](0), signedTail, ANY, 71, deadline
     );
     bytes memory signature = _signFulfillmentWitness(signed);
 
     FulfillmentOrder memory tampered = _fulfillmentOrder(
       ANY,
       erc20s,
-      new ERC721Transfer[](0),
+      new ERC721Approval[](0),
       new ValidationParams[](0),
       swappedTail,
       ANY,
@@ -599,7 +606,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(solver);
     vm.expectRevert(PERMIT2_INVALID_SIGNER);
-    hub.fulfillOrderWithPermit2Signature(tampered, signature, _route(solverCalls), '');
+    hub.fulfillOrderWithPermit2Signature(tampered, signature, _route(tampered, solverCalls), '');
   }
 
   /**
@@ -610,7 +617,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   function test_OWN_03_authenticationBindsOwnerCalls() public {
     _delegateKeyThroughHub(key);
 
-    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
+    ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     ValidationParams[] memory vs = _validations(_validation(validator));
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
     GenericCall[] memory signedTail = _calls(_routerCall(0, hex'aa'));
@@ -620,12 +627,12 @@ contract FulfillOrderTest is AuthenticatorBase {
     uint256 before = IERC20(token18).balanceOf(address(router));
 
     FulfillmentOrder memory control =
-      _fulfillmentOrder(ANY, erc20s, new ERC721Transfer[](0), vs, signedTail, ANY, 72, deadline);
+      _fulfillmentOrder(ANY, erc20s, new ERC721Approval[](0), vs, signedTail, ANY, 72, deadline);
     bytes memory controlAuth = _fulfillmentAuthData(control, key, masterKeyPk);
 
     vm.prank(relayer);
     hub.fulfillOrderWithDelegatedAuthentication(
-      control, address(authenticator), controlAuth, _route(solverCalls), '', false
+      control, address(authenticator), controlAuth, _route(control, solverCalls), '', false
     );
 
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the signed tail settled');
@@ -633,16 +640,16 @@ contract FulfillOrderTest is AuthenticatorBase {
     assertEq(validator.sequenceLength(), 2, 'the validators still bracketed the order');
 
     FulfillmentOrder memory signed =
-      _fulfillmentOrder(ANY, erc20s, new ERC721Transfer[](0), vs, signedTail, ANY, 73, deadline);
+      _fulfillmentOrder(ANY, erc20s, new ERC721Approval[](0), vs, signedTail, ANY, 73, deadline);
     bytes memory signedAuth = _fulfillmentAuthData(signed, key, masterKeyPk);
 
     FulfillmentOrder memory tampered =
-      _fulfillmentOrder(ANY, erc20s, new ERC721Transfer[](0), vs, swappedTail, ANY, 73, deadline);
+      _fulfillmentOrder(ANY, erc20s, new ERC721Approval[](0), vs, swappedTail, ANY, 73, deadline);
 
     vm.prank(relayer);
     vm.expectRevert(ISessionOrderAuthenticator.InvalidAuthenticationSignature.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
-      tampered, address(authenticator), signedAuth, _route(solverCalls), '', false
+      tampered, address(authenticator), signedAuth, _route(tampered, solverCalls), '', false
     );
   }
 
@@ -786,12 +793,12 @@ contract FulfillOrderTest is AuthenticatorBase {
     vs[1] = _validation(validator2);
 
     FulfillmentOrder memory order = _openFulfillmentOrder(
-      _erc20s(_tokenTransfer(amount)), vs, new GenericCall[](0), 0, block.timestamp
+      _allowances(_tokenAllowance(amount)), vs, new GenericCall[](0), 0, block.timestamp
     );
 
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(
-      order, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
+      order, address(0), '', _route(order, _calls(_routerCall(0, hex'01'))), '', false
     );
 
     assertEq(validator.sequenceLength(), 2, 'both hooks ran');
@@ -832,11 +839,11 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     router.setPayout(token18, recipient, payout);
 
-    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(amount));
+    ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(amount));
     FulfillmentOrder memory order = _fulfillmentOrder(
       ANY,
       erc20s,
-      new ERC721Transfer[](0),
+      new ERC721Approval[](0),
       _validations(_validation(validator)),
       _calls(_routerCall(0, hex'99')),
       ANY,
@@ -847,7 +854,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(solver);
     hub.fulfillOrderWithPermit2Signature(
-      order, signature, _route(_calls(_routerCall(0, hex'01'))), ''
+      order, signature, _route(order, _calls(_routerCall(0, hex'01'))), ''
     );
 
     assertEq(validator.sequenceLength(), 2, 'both hooks ran');
@@ -872,7 +879,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     validator.setReverts(false, true);
 
     FulfillmentOrder memory order = _openFulfillmentOrder(
-      new ERC20Transfer[](0),
+      new ERC20Allowance[](0),
       _validations(_validation(validator)),
       new GenericCall[](0),
       0,
@@ -882,7 +889,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     vm.prank(owner);
     vm.expectRevert(bytes('after'));
     hub.fulfillOrderWithDelegatedAuthentication(
-      order, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
+      order, address(0), '', _route(order, _calls(_routerCall(0, hex'01'))), '', false
     );
 
     assertEq(router.callCount(), 0, 'router call rolled back');
@@ -891,12 +898,12 @@ contract FulfillOrderTest is AuthenticatorBase {
   /// VAL-04 — no validators is a legal order
   function test_VAL_04_noValidators() public {
     FulfillmentOrder memory order = _openFulfillmentOrder(
-      new ERC20Transfer[](0), new ValidationParams[](0), new GenericCall[](0), 0, block.timestamp
+      new ERC20Allowance[](0), new ValidationParams[](0), new GenericCall[](0), 0, block.timestamp
     );
 
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(
-      order, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
+      order, address(0), '', _route(order, _calls(_routerCall(0, hex'01'))), '', false
     );
 
     assertEq(router.callCount(), 1);
@@ -917,6 +924,8 @@ contract FulfillOrderTest is AuthenticatorBase {
     bool pinSubmitter;
     bool approveSolution;
     uint256 nonce;
+    address erc20Target;
+    address erc721Target;
   }
 
   /**
@@ -924,7 +933,8 @@ contract FulfillOrderTest is AuthenticatorBase {
    * @dev Both call lists range over empty and non-empty, and they go to different routers so each
    * has a counter of its own. `approveSolution` switches between a named approver with a real
    * approval and the sentinel; `usePermit2Allowances` picks the pull rail; `pinSubmitter` and the
-   * nonce are covered by the order hash the event reports and by the authenticator's bitmap.
+   * nonce are covered by the order hash the event reports and by the authenticator's bitmap. The
+   * solver's two targets are drawn, and receive the legs.
    */
   function testFuzz_FU_FUZZ_delegatedRail(FulfillFuzz memory f) public {
     _delegateKeyThroughHub(key);
@@ -933,15 +943,15 @@ contract FulfillOrderTest is AuthenticatorBase {
     f.solverCallCount = uint8(bound(f.solverCallCount, 0, 3));
     f.ownerCallCount = uint8(bound(f.ownerCallCount, 0, 3));
     f.deadlineOffset = bound(f.deadlineOffset, 0, 30 days);
+    _assumeTargets(f);
     if (f.usePermit2Allowances) _grantPermit2Allowance(token18, uint160(100 ether));
 
     (FulfillmentOrder memory order, FulfillmentSolution memory route) = _fuzzOrder(f, relayer);
     bytes memory authData = _fulfillmentAuthData(order, key, masterKeyPk);
-    bytes memory approval = f.approveSolution
-      ? _signSolutionApproval(approverKey, SchemaHash.fulfillmentOrder(order), route)
-      : bytes('');
+    bytes memory approval =
+      f.approveSolution ? _signSolutionApproval(approverKey, order, route) : bytes('');
 
-    uint256 before = IERC20(token18).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(f.erc20Target);
 
     vm.recordLogs();
 
@@ -974,14 +984,14 @@ contract FulfillOrderTest is AuthenticatorBase {
     f.solverCallCount = uint8(bound(f.solverCallCount, 0, 3));
     f.ownerCallCount = uint8(bound(f.ownerCallCount, 0, 3));
     f.deadlineOffset = bound(f.deadlineOffset, 0, 30 days);
+    _assumeTargets(f);
 
     (FulfillmentOrder memory order, FulfillmentSolution memory route) = _fuzzOrder(f, solver);
     bytes memory signature = _signFulfillmentWitness(order);
-    bytes memory approval = f.approveSolution
-      ? _signSolutionApproval(approverKey, SchemaHash.fulfillmentOrder(order), route)
-      : bytes('');
+    bytes memory approval =
+      f.approveSolution ? _signSolutionApproval(approverKey, order, route) : bytes('');
 
-    uint256 before = IERC20(token18).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(f.erc20Target);
     uint256 bitmapBefore = _permit2NonceBitmap(owner, f.nonce >> 8);
 
     vm.recordLogs();
@@ -1006,15 +1016,11 @@ contract FulfillOrderTest is AuthenticatorBase {
     private
     returns (bytes[] memory results)
   {
+    FulfillmentOrder memory order = _openFulfillmentOrder(
+      new ERC20Allowance[](0), new ValidationParams[](0), ownerCalls, 0, block.timestamp
+    );
     results = hub.fulfillOrderWithDelegatedAuthentication(
-      _openFulfillmentOrder(
-        new ERC20Transfer[](0), new ValidationParams[](0), ownerCalls, 0, block.timestamp
-      ),
-      address(0),
-      '',
-      _route(solverCalls),
-      '',
-      false
+      order, address(0), '', _route(order, solverCalls), '', false
     );
   }
 
@@ -1026,14 +1032,26 @@ contract FulfillOrderTest is AuthenticatorBase {
   {
     return _fulfillmentOrder(
       ANY,
-      _erc20s(_tokenTransfer(AMOUNT)),
-      new ERC721Transfer[](0),
+      _allowances(_tokenAllowance(AMOUNT)),
+      new ERC721Approval[](0),
       new ValidationParams[](0),
       ownerCalls,
       approver,
       60,
       deadline
     );
+  }
+
+  /**
+   * @dev The solver's targets range over every account that can hold both legs and shows the move:
+   * non-zero, since both mocks refuse it; without code, since a contract target would need an
+   * ERC-721 receiver hook; and not the owner, whose balance would net to zero
+   */
+  function _assumeTargets(FulfillFuzz memory f) private view {
+    vm.assume(f.erc20Target != address(0) && f.erc20Target.code.length == 0);
+    vm.assume(f.erc20Target != owner);
+    vm.assume(f.erc721Target != address(0) && f.erc721Target.code.length == 0);
+    vm.assume(f.erc721Target != owner);
   }
 
   function _fuzzOrder(FulfillFuzz memory f, address submitter)
@@ -1055,31 +1073,38 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     order = _fulfillmentOrder(
       f.pinSubmitter ? submitter : ANY,
-      _erc20s(_tokenTransfer(f.amount)),
-      f.moveNft ? _erc721s(_nftTransfer(address(router2))) : new ERC721Transfer[](0),
+      _allowances(_tokenAllowance(f.amount)),
+      f.moveNft ? _approvals(_nftApproval()) : new ERC721Approval[](0),
       _validations(_validation(validator)),
       ownerCalls,
       f.approveSolution ? approver : ANY,
       f.nonce,
       block.timestamp + f.deadlineOffset
     );
-    route = _solution(solverCalls, block.timestamp + f.deadlineOffset);
+    route = _solution(
+      _addresses(f.erc20Target),
+      f.moveNft ? _addresses(f.erc721Target) : new address[](0),
+      solverCalls,
+      block.timestamp + f.deadlineOffset
+    );
   }
 
   function _assertFuzzSettled(
     FulfillFuzz memory f,
     FulfillmentOrder memory order,
     bytes[] memory results,
-    uint256 routerWethBefore
+    uint256 targetBefore
   ) private {
     assertEq(
-      IERC20(token18).balanceOf(address(router)) - routerWethBefore, f.amount, 'exact amount moved'
+      IERC20(token18).balanceOf(f.erc20Target) - targetBefore,
+      f.amount,
+      'exact amount moved to the drawn target'
     );
     assertEq(results.length, uint256(f.solverCallCount) + f.ownerCallCount, 'one result per call');
     assertEq(router.callCount(), f.solverCallCount, 'the solver list ran here');
     assertEq(router2.callCount(), f.ownerCallCount, "and the owner's tail there");
     assertEq(validator.sequenceLength(), 2, 'validator bracketed the order');
-    if (f.moveNft) assertEq(nft.ownerOf(NFT_ID), address(router2), 'nft leg');
+    if (f.moveNft) assertEq(nft.ownerOf(NFT_ID), f.erc721Target, 'nft leg to the drawn target');
 
     Vm.Log memory entry = _settlementLog();
     assertEq(

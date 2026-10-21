@@ -17,6 +17,8 @@ import {MasterKeyApproval} from 'src/v2/authenticators/types/MasterKeyApproval.s
 import {NonceRevocation} from 'src/v2/authenticators/types/NonceRevocation.sol';
 import {SessionKeyApproval} from 'src/v2/authenticators/types/SessionKeyApproval.sol';
 import {AuthDelegation} from 'src/v2/types/AuthDelegation.sol';
+import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
+import {ERC721Approval} from 'src/v2/types/ERC721Approval.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {ExecutionWitness} from 'src/v2/types/ExecutionWitness.sol';
 import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
@@ -62,6 +64,14 @@ library SchemaHash {
 
   function authDelegation(AuthDelegation memory d) internal pure returns (bytes32) {
     return VM.eip712HashStruct(JsonBindings.schema_AuthDelegation, abi.encode(d));
+  }
+
+  function erc20Allowance(ERC20Allowance memory a) internal pure returns (bytes32) {
+    return VM.eip712HashStruct(JsonBindings.schema_ERC20Allowance, abi.encode(a));
+  }
+
+  function erc721Approval(ERC721Approval memory a) internal pure returns (bytes32) {
+    return VM.eip712HashStruct(JsonBindings.schema_ERC721Approval, abi.encode(a));
   }
 
   function authKey(AuthKey memory k) internal pure returns (bytes32) {

@@ -11,7 +11,9 @@ import {ValidatorMock} from 'test/v2/mocks/ValidatorMock.sol';
 
 import {DeadlineChecker} from 'src/base/DeadlineChecker.sol';
 import {KSAllowanceHubV2} from 'src/v2/KSAllowanceHubV2.sol';
+import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
+import {ERC721Approval} from 'src/v2/types/ERC721Approval.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {ExecutionWitness} from 'src/v2/types/ExecutionWitness.sol';
@@ -166,6 +168,16 @@ abstract contract HubBase is V2TestBase {
     return ERC721Transfer({token: address(nft), tokenId: NFT_ID, target: target});
   }
 
+  /// @dev A fulfillment's ERC20 leg: the amount that may leave the owner, with no target
+  function _tokenAllowance(uint160 amount) internal view returns (ERC20Allowance memory) {
+    return ERC20Allowance({token: token18, amount: amount});
+  }
+
+  /// @dev A fulfillment's NFT leg, with no target
+  function _nftApproval() internal view returns (ERC721Approval memory) {
+    return ERC721Approval({token: address(nft), tokenId: NFT_ID});
+  }
+
   function _routerCall(uint256 value, bytes memory data)
     internal
     view
@@ -220,8 +232,8 @@ abstract contract HubBase is V2TestBase {
 
   function _fulfillmentOrder(
     address orderSolver,
-    ERC20Transfer[] memory erc20Transfers,
-    ERC721Transfer[] memory erc721Transfers,
+    ERC20Allowance[] memory erc20Allowances,
+    ERC721Approval[] memory erc721Approvals,
     ValidationParams[] memory validationParams,
     GenericCall[] memory ownerCalls,
     address solutionApprover,
@@ -231,8 +243,8 @@ abstract contract HubBase is V2TestBase {
     return FulfillmentOrder({
       owner: owner,
       solver: orderSolver,
-      erc20Transfers: erc20Transfers,
-      erc721Transfers: erc721Transfers,
+      erc20Allowances: erc20Allowances,
+      erc721Approvals: erc721Approvals,
       validationParams: validationParams,
       ownerCalls: ownerCalls,
       solutionApprover: solutionApprover,
@@ -243,7 +255,7 @@ abstract contract HubBase is V2TestBase {
 
   /// @dev Open to any submitter, any route, plain ERC20 allowance, no NFT leg
   function _openFulfillmentOrder(
-    ERC20Transfer[] memory erc20Transfers,
+    ERC20Allowance[] memory erc20Allowances,
     ValidationParams[] memory validationParams,
     GenericCall[] memory ownerCalls,
     uint256 nonce,
@@ -251,8 +263,8 @@ abstract contract HubBase is V2TestBase {
   ) internal view returns (FulfillmentOrder memory) {
     return _fulfillmentOrder(
       ANY,
-      erc20Transfers,
-      new ERC721Transfer[](0),
+      erc20Allowances,
+      new ERC721Approval[](0),
       validationParams,
       ownerCalls,
       ANY,
@@ -261,21 +273,47 @@ abstract contract HubBase is V2TestBase {
     );
   }
 
-  function _solution(GenericCall[] memory solverCalls, uint256 deadline)
-    internal
-    pure
-    returns (FulfillmentSolution memory)
-  {
-    return FulfillmentSolution({solverCalls: solverCalls, deadline: deadline});
+  function _solution(
+    address[] memory erc20Targets,
+    address[] memory erc721Targets,
+    GenericCall[] memory solverCalls,
+    uint256 deadline
+  ) internal pure returns (FulfillmentSolution memory) {
+    return FulfillmentSolution({
+      erc20Targets: erc20Targets,
+      erc721Targets: erc721Targets,
+      solverCalls: solverCalls,
+      deadline: deadline
+    });
   }
 
-  /// @dev The route a solver supplies when the owner pinned nothing about it, valid for an hour
-  function _route(GenericCall[] memory solverCalls)
+  /**
+   * @dev As above, sending every ERC20 leg of `order` to `router` and every NFT leg to `router2`,
+   * the targets the suite's orders used before the solver chose them
+   */
+  function _solution(
+    FulfillmentOrder memory order,
+    GenericCall[] memory solverCalls,
+    uint256 deadline
+  ) internal view returns (FulfillmentSolution memory) {
+    address[] memory erc20Targets = new address[](order.erc20Allowances.length);
+    for (uint256 i = 0; i < erc20Targets.length; i++) {
+      erc20Targets[i] = address(router);
+    }
+    address[] memory erc721Targets = new address[](order.erc721Approvals.length);
+    for (uint256 i = 0; i < erc721Targets.length; i++) {
+      erc721Targets[i] = address(router2);
+    }
+    return _solution(erc20Targets, erc721Targets, solverCalls, deadline);
+  }
+
+  /// @dev The route a solver supplies for `order` when the owner pinned nothing, valid for an hour
+  function _route(FulfillmentOrder memory order, GenericCall[] memory solverCalls)
     internal
     view
     returns (FulfillmentSolution memory)
   {
-    return _solution(solverCalls, block.timestamp + 1 hours);
+    return _solution(order, solverCalls, block.timestamp + 1 hours);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -326,14 +364,13 @@ abstract contract HubBase is V2TestBase {
   ) internal returns (bytes memory) {
     FulfillmentWitness memory witness = FulfillmentWitness({
       solver: witnessSolver,
-      erc20Targets: _targets(order.erc20Transfers),
-      erc721Transfers: order.erc721Transfers,
+      erc721Approvals: order.erc721Approvals,
       ownerCalls: witnessOwnerCalls,
       validationParams: order.validationParams,
       callsSigner: witnessApprover
     });
 
-    (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(order.erc20Transfers);
+    (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(order.erc20Allowances);
 
     return _sign(
       ownerKey,
@@ -357,13 +394,23 @@ abstract contract HubBase is V2TestBase {
     return _sign(ownerKey, lPermit2BatchDigest(tokens, amounts, address(hub), nonce, deadline));
   }
 
+  /// @dev As {_signPlainPermit}, for a fulfillment order's allowances
+  function _signPlainPermit(
+    ERC20Allowance[] memory erc20Allowances,
+    uint256 nonce,
+    uint256 deadline
+  ) internal returns (bytes memory) {
+    (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(erc20Allowances);
+    return _sign(ownerKey, lPermit2BatchDigest(tokens, amounts, address(hub), nonce, deadline));
+  }
+
   /// @dev The solution approval lives under the hub's own EIP-712 domain
   function _signSolutionApproval(
     uint256 signerKey,
-    bytes32 orderHash,
+    FulfillmentOrder memory order,
     FulfillmentSolution memory solution
   ) internal returns (bytes memory) {
-    return _sign(signerKey, lTypedDataHash(_hubDomain(), lSolutionApproval(orderHash, solution)));
+    return _sign(signerKey, lTypedDataHash(_hubDomain(), lSolutionApproval(order, solution)));
   }
 
   function _signAuthDelegation(

@@ -5,6 +5,7 @@ import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.s
 
 import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
+import {ERC721Approval} from 'src/v2/types/ERC721Approval.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
@@ -81,7 +82,7 @@ contract CalldataHygieneTest is AuthenticatorBase {
           order,
           address(authenticator),
           _fulfillmentAuthData(order, key, masterKeyPk),
-          _solution(_calls(_routerCall(0, hex'01')), deadline),
+          _solution(order, _calls(_routerCall(0, hex'01')), deadline),
           '',
           false
         )
@@ -100,8 +101,8 @@ contract CalldataHygieneTest is AuthenticatorBase {
         IKSAllowanceHubV2.fulfillOrderWithPermit2Signature,
         (
           order,
-          _signPlainPermit(_erc20s(_tokenTransfer(AMOUNT)), 93, deadline),
-          _solution(_calls(_routerCall(0, hex'02')), deadline),
+          _signPlainPermit(_allowances(_tokenAllowance(AMOUNT)), 93, deadline),
+          _solution(order, _calls(_routerCall(0, hex'02')), deadline),
           ''
         )
       )
@@ -112,8 +113,8 @@ contract CalldataHygieneTest is AuthenticatorBase {
   function _order(uint256 nonce, uint256 deadline) internal view returns (FulfillmentOrder memory) {
     return _fulfillmentOrder(
       ANY,
-      _erc20s(_tokenTransfer(AMOUNT)),
-      new ERC721Transfer[](0),
+      _allowances(_tokenAllowance(AMOUNT)),
+      new ERC721Approval[](0),
       new ValidationParams[](0),
       new GenericCall[](0),
       ANY,

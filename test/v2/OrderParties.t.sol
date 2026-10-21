@@ -8,7 +8,9 @@ import {
 } from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
 import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
+import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
+import {ERC721Approval} from 'src/v2/types/ERC721Approval.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
@@ -130,8 +132,8 @@ contract OrderPartiesTest is AuthenticatorBase {
 
   /// ORD-03b — the delegated fulfillment rail refuses a submitter the order did not name
   function test_ORD_03b_delegatedFulfillmentHonoursTheNamedSolver() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
-    ERC721Transfer[] memory noNfts = new ERC721Transfer[](0);
+    ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
+    ERC721Approval[] memory noNfts = new ERC721Approval[](0);
     ValidationParams[] memory noValidators = new ValidationParams[](0);
     GenericCall[] memory noOwnerCalls = new GenericCall[](0);
     uint256 deadline = block.timestamp + 1 hours;
@@ -144,7 +146,7 @@ contract OrderPartiesTest is AuthenticatorBase {
       pinned,
       address(authenticator),
       _fulfillmentAuthData(pinned, key, masterKeyPk),
-      _route(_calls(_routerCall(0, hex'01'))),
+      _route(pinned, _calls(_routerCall(0, hex'01'))),
       '',
       false
     );
@@ -158,7 +160,7 @@ contract OrderPartiesTest is AuthenticatorBase {
       again,
       address(authenticator),
       _fulfillmentAuthData(again, key, masterKeyPk),
-      _route(_calls(_routerCall(0, hex'01'))),
+      _route(again, _calls(_routerCall(0, hex'01'))),
       '',
       false
     );
@@ -172,7 +174,7 @@ contract OrderPartiesTest is AuthenticatorBase {
       third,
       address(authenticator),
       _authData(key, hex'00'),
-      _route(_calls(_routerCall(0, hex'01'))),
+      _route(third, _calls(_routerCall(0, hex'01'))),
       '',
       false
     );
@@ -185,7 +187,7 @@ contract OrderPartiesTest is AuthenticatorBase {
       open,
       address(authenticator),
       _fulfillmentAuthData(open, key, masterKeyPk),
-      _route(_calls(_routerCall(0, hex'01'))),
+      _route(open, _calls(_routerCall(0, hex'01'))),
       '',
       false
     );
@@ -196,7 +198,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     before = _routerWeth();
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(
-      byOwner, address(0), '', _route(_calls(_routerCall(0, hex'01'))), '', false
+      byOwner, address(0), '', _route(byOwner, _calls(_routerCall(0, hex'01'))), '', false
     );
     assertEq(_routerWeth() - before, AMOUNT, 'the owner may submit an order naming someone else');
   }

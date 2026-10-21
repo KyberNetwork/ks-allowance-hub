@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {DynamicArrayLibExt} from '../../base/libraries/DynamicArrayLibExt.sol';
+import {DynamicArrayLibExt} from '../libraries/DynamicArrayLibExt.sol';
 
 import {IKSActionValidator} from 'ks-action-validator-sc/src/interfaces/IKSActionValidator.sol';
 
@@ -22,6 +22,9 @@ struct ValidationParams {
 using ValidationParamsLib for ValidationParams global;
 
 library ValidationParamsLib {
+  using DynamicArrayLibExt for *;
+  using EfficientHashLib for *;
+
   bytes32 internal constant VALIDATION_PARAMS_TYPEHASH = keccak256(
     'ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)'
   );
@@ -58,22 +61,22 @@ library ValidationParamsLib {
    * taken over the array's own data and nothing is copied.
    */
   function hash(ValidationParams[] calldata params) internal pure returns (bytes32) {
-    bytes32[] memory paramsHashes = EfficientHashLib.malloc(params.length);
+    bytes32[] memory paramsHashes = params.length.malloc();
     for (uint256 i = 0; i < params.length; i++) {
       paramsHashes[i] = hash(params[i]);
     }
 
-    return EfficientHashLib.hash(paramsHashes);
+    return paramsHashes.hash();
   }
 
   /// @dev As {hash}, for an array already in memory
   function hashMemory(ValidationParams[] memory params) internal pure returns (bytes32) {
-    bytes32[] memory paramsHashes = EfficientHashLib.malloc(params.length);
+    bytes32[] memory paramsHashes = params.length.malloc();
     for (uint256 i = 0; i < params.length; i++) {
       paramsHashes[i] = hashMemory(params[i]);
     }
 
-    return EfficientHashLib.hash(paramsHashes);
+    return paramsHashes.hash();
   }
 
   /**
@@ -84,7 +87,7 @@ library ValidationParamsLib {
     internal
     returns (bytes[] memory beforeExecutionOutputs)
   {
-    beforeExecutionOutputs = DynamicArrayLibExt.malloc(params.length);
+    beforeExecutionOutputs = params.length.mallocBytes();
     for (uint256 i = 0; i < params.length; i++) {
       ValidationParams calldata _params = params[i];
       beforeExecutionOutputs[i] = IKSActionValidator(_params.validator)

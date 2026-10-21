@@ -21,9 +21,12 @@ import {MasterKeyApproval} from 'src/v2/authenticators/types/MasterKeyApproval.s
 import {NonceRevocation} from 'src/v2/authenticators/types/NonceRevocation.sol';
 import {SessionKeyApproval} from 'src/v2/authenticators/types/SessionKeyApproval.sol';
 import {AuthDelegation} from 'src/v2/types/AuthDelegation.sol';
+import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
+import {ERC721Approval} from 'src/v2/types/ERC721Approval.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {ExecutionWitness} from 'src/v2/types/ExecutionWitness.sol';
+import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
 import {FulfillmentSolution} from 'src/v2/types/FulfillmentSolution.sol';
 import {FulfillmentWitness} from 'src/v2/types/FulfillmentWitness.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
@@ -81,12 +84,12 @@ abstract contract V2TestBase is Test {
   // Struct hashes, derived from the bind-json schemas
   // ---------------------------------------------------------------------------------------------
 
-  function lSolutionApproval(bytes32 orderHash, FulfillmentSolution memory solution)
+  function lSolutionApproval(FulfillmentOrder memory order, FulfillmentSolution memory solution)
     internal
     pure
     returns (bytes32)
   {
-    return SchemaHash.solutionApproval(SolutionApproval({orderHash: orderHash, solution: solution}));
+    return SchemaHash.solutionApproval(SolutionApproval({order: order, solution: solution}));
   }
 
   function lExecutionWitness(
@@ -107,8 +110,7 @@ abstract contract V2TestBase is Test {
 
   function lFulfillmentWitness(
     address signedCaller,
-    address[] memory targets,
-    ERC721Transfer[] memory erc721Transfers,
+    ERC721Approval[] memory erc721Approvals,
     GenericCall[] memory ownerCalls,
     ValidationParams[] memory validationParams,
     address callsSigner
@@ -116,8 +118,7 @@ abstract contract V2TestBase is Test {
     return SchemaHash.fulfillmentWitness(
       FulfillmentWitness({
         solver: signedCaller,
-        erc20Targets: targets,
-        erc721Transfers: erc721Transfers,
+        erc721Approvals: erc721Approvals,
         ownerCalls: ownerCalls,
         validationParams: validationParams,
         callsSigner: callsSigner
@@ -353,6 +354,25 @@ abstract contract V2TestBase is Test {
     out[0] = a;
   }
 
+  function _allowances(ERC20Allowance memory a)
+    internal
+    pure
+    returns (ERC20Allowance[] memory out)
+  {
+    out = new ERC20Allowance[](1);
+    out[0] = a;
+  }
+
+  function _approvals(ERC721Approval memory a) internal pure returns (ERC721Approval[] memory out) {
+    out = new ERC721Approval[](1);
+    out[0] = a;
+  }
+
+  function _addresses(address a) internal pure returns (address[] memory out) {
+    out = new address[](1);
+    out[0] = a;
+  }
+
   function _calls(GenericCall memory a) internal pure returns (GenericCall[] memory out) {
     out = new GenericCall[](1);
     out[0] = a;
@@ -371,6 +391,20 @@ abstract contract V2TestBase is Test {
     out = new address[](transfers.length);
     for (uint256 i = 0; i < transfers.length; i++) {
       out[i] = transfers[i].target;
+    }
+  }
+
+  /// @dev As {_tokensAndAmounts}, for a fulfillment order's allowances
+  function _tokensAndAmounts(ERC20Allowance[] memory allowances)
+    internal
+    pure
+    returns (address[] memory tokens, uint256[] memory amounts)
+  {
+    tokens = new address[](allowances.length);
+    amounts = new uint256[](allowances.length);
+    for (uint256 i = 0; i < allowances.length; i++) {
+      tokens[i] = allowances[i].token;
+      amounts[i] = allowances[i].amount;
     }
   }
 

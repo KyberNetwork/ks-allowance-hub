@@ -3,12 +3,12 @@ pragma solidity ^0.8.0;
 
 import {NativeSpendGuard} from '../base/NativeSpendGuard.sol';
 
-import {DynamicArrayLibExt} from '../base/libraries/DynamicArrayLibExt.sol';
-
 import {PackedBits} from '../base/types/PackedBits.sol';
 
 import {ICallsForwarder} from './interfaces/ICallsForwarder.sol';
 import {IOrderAuthenticator} from './interfaces/IOrderAuthenticator.sol';
+
+import {DynamicArrayLibExt} from './libraries/DynamicArrayLibExt.sol';
 
 import {Common} from 'ks-common-sc/src/base/Common.sol';
 
@@ -33,6 +33,9 @@ import {DynamicArrayLib} from 'solady/utils/DynamicArrayLib.sol';
  * sees.
  */
 abstract contract CallsForwarder is ICallsForwarder, NativeSpendGuard, Common {
+  using DynamicArrayLib for *;
+  using DynamicArrayLibExt for *;
+
   /// @dev Permit2's two `permit` overloads, written out because `.selector` cannot distinguish
   /// them
   bytes4 internal constant PERMIT2_PERMIT_SINGLE_SELECTOR =
@@ -53,7 +56,7 @@ abstract contract CallsForwarder is ICallsForwarder, NativeSpendGuard, Common {
     returns (bytes[] memory results)
   {
     bool success;
-    results = DynamicArrayLibExt.malloc(targets.length);
+    results = targets.length.mallocBytes();
 
     for (uint256 i = 0; i < targets.length; i++) {
       // A payload shorter than a selector reads as zero, which matches nothing below
@@ -84,8 +87,8 @@ abstract contract CallsForwarder is ICallsForwarder, NativeSpendGuard, Common {
     returns (bytes[] memory results, uint256[] memory gasUsages)
   {
     bool success;
-    results = DynamicArrayLibExt.malloc(data.length);
-    gasUsages = DynamicArrayLib.malloc(data.length);
+    results = data.length.mallocBytes();
+    gasUsages = data.length.malloc();
 
     for (uint256 i = 0; i < data.length; i++) {
       uint256 gasStart = gasleft();

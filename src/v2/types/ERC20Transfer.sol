@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import {DynamicArrayLibExt} from '../libraries/DynamicArrayLibExt.sol';
+
 import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 
@@ -23,6 +25,8 @@ struct ERC20Transfer {
 using ERC20TransferLib for ERC20Transfer global;
 
 library ERC20TransferLib {
+  using DynamicArrayLibExt for *;
+  using EfficientHashLib for *;
   using TokenHelper for address;
 
   bytes32 internal constant ERC20_TRANSFER_TYPEHASH =
@@ -50,22 +54,22 @@ library ERC20TransferLib {
    * taken over the array's own data and nothing is copied.
    */
   function hash(ERC20Transfer[] calldata transfers) internal pure returns (bytes32) {
-    bytes32[] memory hashes = EfficientHashLib.malloc(transfers.length);
+    bytes32[] memory transferHashes = transfers.length.malloc();
     for (uint256 i = 0; i < transfers.length; i++) {
-      hashes[i] = hash(transfers[i]);
+      transferHashes[i] = hash(transfers[i]);
     }
 
-    return EfficientHashLib.hash(hashes);
+    return transferHashes.hash();
   }
 
   /// @dev As {hash}, for an array already in memory
   function hashMemory(ERC20Transfer[] memory transfers) internal pure returns (bytes32) {
-    bytes32[] memory hashes = EfficientHashLib.malloc(transfers.length);
+    bytes32[] memory transferHashes = transfers.length.malloc();
     for (uint256 i = 0; i < transfers.length; i++) {
-      hashes[i] = hashMemory(transfers[i]);
+      transferHashes[i] = hashMemory(transfers[i]);
     }
 
-    return EfficientHashLib.hash(hashes);
+    return transferHashes.hash();
   }
 
   /// @dev Pulls each transfer from `owner` directly to its target
@@ -82,7 +86,7 @@ library ERC20TransferLib {
     uint256 nonce,
     uint256 deadline
   ) internal pure returns (ISignatureTransfer.PermitBatchTransferFrom memory permit) {
-    permit.permitted = _mallocTokenPermissions(transfers.length);
+    permit.permitted = transfers.length.mallocTokenPermissions();
     permit.nonce = nonce;
     permit.deadline = deadline;
 
@@ -99,7 +103,7 @@ library ERC20TransferLib {
     uint256 nonce,
     uint256 deadline
   ) internal pure returns (ISignatureTransfer.PermitBatchTransferFrom memory permit) {
-    permit.permitted = _mallocTokenPermissions(transfers.length);
+    permit.permitted = transfers.length.mallocTokenPermissions();
     permit.nonce = nonce;
     permit.deadline = deadline;
 
@@ -116,7 +120,7 @@ library ERC20TransferLib {
     pure
     returns (ISignatureTransfer.SignatureTransferDetails[] memory details)
   {
-    details = _mallocSignatureTransferDetails(transfers.length);
+    details = transfers.length.mallocSignatureTransferDetails();
     for (uint256 i = 0; i < transfers.length; i++) {
       ERC20Transfer calldata transfer = transfers[i];
       details[i] = ISignatureTransfer.SignatureTransferDetails({
@@ -131,7 +135,7 @@ library ERC20TransferLib {
     pure
     returns (ISignatureTransfer.SignatureTransferDetails[] memory details)
   {
-    details = _mallocSignatureTransferDetails(transfers.length);
+    details = transfers.length.mallocSignatureTransferDetails();
     for (uint256 i = 0; i < transfers.length; i++) {
       ERC20Transfer memory transfer = transfers[i];
       details[i] = ISignatureTransfer.SignatureTransferDetails({
@@ -146,7 +150,7 @@ library ERC20TransferLib {
     pure
     returns (address[] memory targets)
   {
-    targets = DynamicArrayLib.asAddressArray(DynamicArrayLib.malloc(transfers.length));
+    targets = transfers.length.mallocAddresses();
     for (uint256 i = 0; i < transfers.length; i++) {
       targets[i] = transfers[i].target;
     }
@@ -158,7 +162,7 @@ library ERC20TransferLib {
     pure
     returns (address[] memory targets)
   {
-    targets = DynamicArrayLib.asAddressArray(DynamicArrayLib.malloc(transfers.length));
+    targets = transfers.length.mallocAddresses();
     for (uint256 i = 0; i < transfers.length; i++) {
       targets[i] = transfers[i].target;
     }
@@ -170,7 +174,7 @@ library ERC20TransferLib {
     pure
     returns (IAllowanceTransfer.AllowanceTransferDetails[] memory details)
   {
-    details = _mallocAllowanceTransferDetails(transfers.length);
+    details = transfers.length.mallocAllowanceTransferDetails();
     for (uint256 i = 0; i < transfers.length; i++) {
       ERC20Transfer calldata transfer = transfers[i];
       details[i] = IAllowanceTransfer.AllowanceTransferDetails({
@@ -185,52 +189,12 @@ library ERC20TransferLib {
     pure
     returns (IAllowanceTransfer.AllowanceTransferDetails[] memory details)
   {
-    details = _mallocAllowanceTransferDetails(transfers.length);
+    details = transfers.length.mallocAllowanceTransferDetails();
     for (uint256 i = 0; i < transfers.length; i++) {
       ERC20Transfer memory transfer = transfers[i];
       details[i] = IAllowanceTransfer.AllowanceTransferDetails({
         from: owner, to: transfer.target, token: transfer.token, amount: transfer.amount
       });
-    }
-  }
-
-  /**
-   * @dev The three allocators below return pointer slots and nothing else. Assigning a struct
-   * to a memory array element writes a pointer to a freshly built struct, so the bodies `new`
-   * allocates and zeroes are discarded unread; every slot is written before anything reads one.
-   */
-  function _mallocTokenPermissions(uint256 length)
-    private
-    pure
-    returns (ISignatureTransfer.TokenPermissions[] memory array)
-  {
-    uint256[] memory buffer = DynamicArrayLib.malloc(length);
-    assembly ('memory-safe') {
-      array := buffer
-    }
-  }
-
-  /// @dev As {_mallocTokenPermissions}, for Permit2's signature-transfer details
-  function _mallocSignatureTransferDetails(uint256 length)
-    private
-    pure
-    returns (ISignatureTransfer.SignatureTransferDetails[] memory array)
-  {
-    uint256[] memory buffer = DynamicArrayLib.malloc(length);
-    assembly ('memory-safe') {
-      array := buffer
-    }
-  }
-
-  /// @dev As {_mallocTokenPermissions}, for Permit2's allowance-transfer details
-  function _mallocAllowanceTransferDetails(uint256 length)
-    private
-    pure
-    returns (IAllowanceTransfer.AllowanceTransferDetails[] memory array)
-  {
-    uint256[] memory buffer = DynamicArrayLib.malloc(length);
-    assembly ('memory-safe') {
-      array := buffer
     }
   }
 }

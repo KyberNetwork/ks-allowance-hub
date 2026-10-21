@@ -22,6 +22,7 @@ import {PackedBits} from 'src/base/types/PackedBits.sol';
 import {ICallsForwarder} from 'src/v2/interfaces/ICallsForwarder.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
 import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
+import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
@@ -593,7 +594,7 @@ contract ForwarderTest is AuthenticatorBase {
     ExecutionOrder memory execOrder =
       _openExecutionOrder(new ERC20Transfer[](0), new GenericCall[](0), 0, block.timestamp);
     FulfillmentOrder memory fulfillOrder = _openFulfillmentOrder(
-      new ERC20Transfer[](0), new ValidationParams[](0), new GenericCall[](0), 0, block.timestamp
+      new ERC20Allowance[](0), new ValidationParams[](0), new GenericCall[](0), 0, block.timestamp
     );
 
     bytes[] memory executionData = new bytes[](1);

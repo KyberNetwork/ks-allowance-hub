@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import {EfficientHashLibExt} from '../libraries/EfficientHashLibExt.sol';
+
 import {ERC721Transfer, ERC721TransferLib} from './ERC721Transfer.sol';
 import {GenericCall, GenericCallLib} from './GenericCall.sol';
 
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
-
-import {DynamicArrayLib} from 'solady/utils/DynamicArrayLib.sol';
-import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
  * @notice Attached to the owner's Permit2 signature on a relayed
@@ -47,6 +46,7 @@ struct PermitBatchWitnessTransferFrom {
 }
 
 library ExecutionWitnessLib {
+  using EfficientHashLibExt for address[];
   using ERC721TransferLib for ERC721Transfer[];
   using GenericCallLib for GenericCall[];
 
@@ -73,9 +73,7 @@ library ExecutionWitnessLib {
       abi.encode(
         EXECUTION_WITNESS_TYPEHASH,
         relayer,
-        EfficientHashLib.hash(
-          DynamicArrayLib.asBytes32Array(DynamicArrayLib.toUint256Array(erc20Targets))
-        ),
+        erc20Targets.hashMemory(),
         erc721Transfers.hash(),
         genericCalls.hash()
       )
@@ -93,9 +91,7 @@ library ExecutionWitnessLib {
       abi.encode(
         EXECUTION_WITNESS_TYPEHASH,
         relayer,
-        EfficientHashLib.hash(
-          DynamicArrayLib.asBytes32Array(DynamicArrayLib.toUint256Array(erc20Targets))
-        ),
+        erc20Targets.hashMemory(),
         erc721Transfers.hashMemory(),
         genericCalls.hashMemory()
       )

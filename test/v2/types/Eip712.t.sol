@@ -4,8 +4,11 @@ pragma solidity 0.8.36;
 import {SchemaHash} from 'test/base/SchemaHash.sol';
 import {V2TestBase} from 'test/base/V2TestBase.sol';
 
+import {EfficientHashLibExt} from 'src/v2/libraries/EfficientHashLibExt.sol';
 import {AuthDelegationLib} from 'src/v2/types/AuthDelegation.sol';
+import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
+import {ERC721Approval} from 'src/v2/types/ERC721Approval.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {ExecutionWitnessLib} from 'src/v2/types/ExecutionWitness.sol';
@@ -76,7 +79,7 @@ contract Eip712Test is V2TestBase {
     );
 
     string[] memory fulfillmentNames = new string[](5);
-    fulfillmentNames[0] = 'ERC721Transfer(';
+    fulfillmentNames[0] = 'ERC721Approval(';
     fulfillmentNames[1] = 'FulfillmentWitness(';
     fulfillmentNames[2] = 'GenericCall(';
     fulfillmentNames[3] = 'TokenPermissions(';
@@ -103,13 +106,13 @@ contract Eip712Test is V2TestBase {
 
   /// @dev The owner's tail is non-empty here, so that member is encoded
   function test_T712_fulfillmentWitnessStructHash() public pure {
-    (address[] memory targets, ERC721Transfer[] memory nfts, GenericCall[] memory ownerCalls) =
-      _sample();
+    (,, GenericCall[] memory ownerCalls) = _sample();
+    ERC721Approval[] memory nfts = _sampleApprovals();
     ValidationParams[] memory vs = _sampleValidations();
 
     assertEq(
-      FulfillmentWitnessLib.hashMemory(ANY, targets, nfts, ownerCalls, vs, address(0xBEEF)),
-      lFulfillmentWitness(ANY, targets, nfts, ownerCalls, vs, address(0xBEEF))
+      FulfillmentWitnessLib.hashMemory(ANY, nfts, ownerCalls, vs, address(0xBEEF)),
+      lFulfillmentWitness(ANY, nfts, ownerCalls, vs, address(0xBEEF))
     );
   }
 
@@ -141,19 +144,49 @@ contract Eip712Test is V2TestBase {
     assertEq(this.extHashSolution(solution), expected, 'calldata hasher');
   }
 
-  /// @dev `orderHash` is a member, so one approval ties to one order
+  /**
+   * @dev The whole order is a member, encoded by its own struct hash, so the production hasher takes
+   * that hash and the expected side nests the order. One approval ties to one order and to the
+   * targets it names.
+   */
   function test_T712_solutionApprovalStructHash() public view {
+    FulfillmentOrder memory order = _sampleFulfillmentOrder();
     FulfillmentSolution memory solution = _sampleSolution();
-    bytes32 orderHash = keccak256('an arbitrary order hash');
-    bytes32 expected = lSolutionApproval(orderHash, solution);
+    bytes32 orderHash = SchemaHash.fulfillmentOrder(order);
+    bytes32 expected = lSolutionApproval(order, solution);
 
     assertEq(SolutionApprovalLib.hashMemory(orderHash, solution), expected, 'memory hasher');
     assertEq(this.extHashSolutionApproval(orderHash, solution), expected, 'calldata hasher');
 
+    FulfillmentOrder memory otherOrder = _sampleFulfillmentOrder();
+    otherOrder.owner = address(0xB0B);
     assertTrue(
-      SolutionApprovalLib.hashMemory(keccak256('another order'), solution) != expected,
-      'the order hash changes the approval'
+      lSolutionApproval(otherOrder, solution) != expected, 'the order changes the approval'
     );
+
+    FulfillmentSolution memory otherTargets = _sampleSolution();
+    otherTargets.erc20Targets[0] = address(0xBBB9);
+    assertTrue(
+      lSolutionApproval(order, otherTargets) != expected, 'the targets change the approval'
+    );
+  }
+
+  /// @dev An allowance carries no target, so its two members are all the struct encodes
+  function test_T712_erc20AllowanceStructHash() public view {
+    ERC20Allowance[] memory allowances = _sampleAllowances();
+    for (uint256 i = 0; i < allowances.length; i++) {
+      bytes32 expected = SchemaHash.erc20Allowance(allowances[i]);
+      assertEq(allowances[i].hashMemory(), expected, 'memory hasher');
+      assertEq(this.extHashAllowance(allowances[i]), expected, 'calldata hasher');
+    }
+  }
+
+  function test_T712_erc721ApprovalStructHash() public view {
+    ERC721Approval memory approval = _sampleApprovals()[0];
+    bytes32 expected = SchemaHash.erc721Approval(approval);
+
+    assertEq(approval.hashMemory(), expected, 'memory hasher');
+    assertEq(this.extHashApproval(approval), expected, 'calldata hasher');
   }
 
   // -------------------------------------------------------------------------------------------
@@ -174,6 +207,18 @@ contract Eip712Test is V2TestBase {
     assertEq(keccak256(abi.encodePacked(arr)), keccak256(abi.encode(a0, a1, a2)));
   }
 
+  /// @dev Both {EfficientHashLibExt} hashers against the words of the array, written one by one
+  function testFuzz_T712_ARRAY_efficientHashLibExt(address[] memory arr) public view {
+    bytes memory words;
+    for (uint256 i = 0; i < arr.length; i++) {
+      words = bytes.concat(words, abi.encode(arr[i]));
+    }
+    bytes32 expected = keccak256(words);
+
+    assertEq(this.extHashAddresses(arr), expected, 'calldata hasher');
+    assertEq(EfficientHashLibExt.hashMemory(arr), expected, 'memory hasher');
+  }
+
   // -------------------------------------------------------------------------------------------
   // T712-DIFF — the calldata and memory variants must never drift apart
   // -------------------------------------------------------------------------------------------
@@ -188,6 +233,14 @@ contract Eip712Test is V2TestBase {
 
   function testFuzz_T712_DIFF_erc721Transfer(ERC721Transfer memory t) public view {
     assertEq(this.extHashErc721(t), t.hashMemory());
+  }
+
+  function testFuzz_T712_DIFF_erc20Allowance(ERC20Allowance memory a) public view {
+    assertEq(this.extHashAllowance(a), a.hashMemory());
+  }
+
+  function testFuzz_T712_DIFF_erc721Approval(ERC721Approval memory a) public view {
+    assertEq(this.extHashApproval(a), a.hashMemory());
   }
 
   function testFuzz_T712_DIFF_validationParams(ValidationParams memory v) public view {
@@ -213,6 +266,18 @@ contract Eip712Test is V2TestBase {
 
   function extHashErc721(ERC721Transfer calldata t) external pure returns (bytes32) {
     return t.hash();
+  }
+
+  function extHashAllowance(ERC20Allowance calldata a) external pure returns (bytes32) {
+    return a.hash();
+  }
+
+  function extHashApproval(ERC721Approval calldata a) external pure returns (bytes32) {
+    return a.hash();
+  }
+
+  function extHashAddresses(address[] calldata a) external pure returns (bytes32) {
+    return EfficientHashLibExt.hash(a);
   }
 
   function extHashValidation(ValidationParams calldata v) external pure returns (bytes32) {
@@ -295,13 +360,24 @@ contract Eip712Test is V2TestBase {
     });
   }
 
+  function _sampleAllowances() private pure returns (ERC20Allowance[] memory allowances) {
+    allowances = new ERC20Allowance[](2);
+    allowances[0] = ERC20Allowance({token: address(0xAAA1), amount: 1000});
+    allowances[1] = ERC20Allowance({token: address(0xAAA2), amount: 0});
+  }
+
+  function _sampleApprovals() private pure returns (ERC721Approval[] memory approvals) {
+    approvals = new ERC721Approval[](1);
+    approvals[0] = ERC721Approval({token: address(0xBADD), tokenId: 42});
+  }
+
   function _sampleFulfillmentOrder() private pure returns (FulfillmentOrder memory) {
-    (, ERC721Transfer[] memory nfts, GenericCall[] memory ownerCalls) = _sample();
+    (,, GenericCall[] memory ownerCalls) = _sample();
     return FulfillmentOrder({
       owner: address(0xA11CE),
       solver: ANY,
-      erc20Transfers: _sampleErc20s(),
-      erc721Transfers: nfts,
+      erc20Allowances: _sampleAllowances(),
+      erc721Approvals: _sampleApprovals(),
       validationParams: _sampleValidations(),
       ownerCalls: ownerCalls,
       solutionApprover: address(0xBEEF),
@@ -310,9 +386,17 @@ contract Eip712Test is V2TestBase {
     });
   }
 
+  /// @dev One target per leg of {_sampleFulfillmentOrder}, none of them a router
   function _sampleSolution() private pure returns (FulfillmentSolution memory) {
     (,, GenericCall[] memory calls) = _sample();
-    return FulfillmentSolution({solverCalls: calls, deadline: 9012});
+    address[] memory erc20Targets = new address[](2);
+    erc20Targets[0] = address(0xBBB1);
+    erc20Targets[1] = address(0xBBB2);
+    address[] memory erc721Targets = new address[](1);
+    erc721Targets[0] = address(0xBBB3);
+    return FulfillmentSolution({
+      erc20Targets: erc20Targets, erc721Targets: erc721Targets, solverCalls: calls, deadline: 9012
+    });
   }
 
   /// @dev Asserts the hand-written names really do sort ascending, which EIP-712 requires

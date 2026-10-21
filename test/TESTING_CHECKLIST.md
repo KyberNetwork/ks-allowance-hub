@@ -1056,3 +1056,44 @@ key hash with its expiry. Two byte encodings of one RSA key remain two credentia
 namespace `key` already spent in.
 
 The authenticator is 13,172 bytes. 234 tests pass.
+
+## Run `20261021T091104Z`
+
+Scope: the fulfillment order names what may leave the owner — `ERC20Allowance(address token,uint160 amount)` and `ERC721Approval(address token,uint256 tokenId)` legs, no targets — and the `FulfillmentSolution` names one target per leg in `erc20Targets` and `erc721Targets`. The witness no longer carries ERC20 targets and takes `ERC721Approval[]`; `SolutionApproval` nests the whole order; both fulfill entry points refuse a solution without exactly one target per leg (`MismatchedArrayLengths`). Existing fulfillment cases keep their IDs and assertions on the new shapes.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261021T091104Z/MIG-01` | Every existing fulfillment case runs on the new order and solution shapes with its assertions intact: orders built from allowances and approvals, routes defaulting each ERC20 leg to `router` and each NFT leg to `router2`, witness and approval signed over the new types | `AUTH-*`, `SOL-*`, `OWN-*`, `VAL-*`, `GUARD-*`, `GATE-*`, `ORD-*`, `DIRTY-*`, `SV-*` fulfillment legs, `SET-*`/`OWN-07`; `test/v2/**` | `forge test --isolate` — 245 passed |
+| - [x] | - [ ] | `20261021T091104Z/TGT-01` | The solver chooses each leg's target, on every pull branch: owner-submitted plain pull, Permit2 allowance pull, relayed Permit2 witness, owner-submitted Permit2 permit. ERC20 and ERC721 legs land at the chosen targets, not at any target the owner signed; the witness carries no ERC20 target | `TGT-01..04`; `test/v2/FulfillTargets.t.sol` `test_TGT_01..04_*` | `forge test --match-path test/v2/FulfillTargets.t.sol` |
+| - [x] | - [ ] | `20261021T091104Z/LEN-01` | Both fulfill entry points revert `MismatchedArrayLengths()` when `erc20Targets` or `erc721Targets` has 0 or 2 entries for 1 leg, with nothing moved; one target per leg settles | `LEN-01` in `test_TGT_01_solverChoosesTheTargetsOnTheDelegatedRail`, `LEN-02` in `test_TGT_03_witnessDoesNotBindTheErc20Targets`, whose settling legs are their controls; `test/v2/FulfillTargets.t.sol` | `forge test --match-test 'test_TGT_0[13]'` |
+| - [x] | - [ ] | `20261021T091104Z/APR-01` | A named approver's signature covers the targets: an approval of one set of targets is refused with `InvalidSolutionSignature` for another, and the approval of that other set settles | `APR-01`; `test/v2/FulfillTargets.t.sol` `test_APR_01_theApprovalBindsTheTargets` | `forge test --match-test test_APR_01` |
+| - [x] | - [ ] | `20261021T091104Z/EVT-01` | `TransferTokens` on a fulfillment lists each leg paired with the target the solution named, for two ERC20 legs and one NFT leg, and the balances follow it | `EVT-01`; `test/v2/FulfillTargets.t.sol` `test_EVT_01_fulfillmentEventPairsLegsWithTargets` | `forge test --match-test test_EVT_01` |
+| - [x] | - [ ] | `20261021T091104Z/FUZZ-01` | The fulfillment fuzz cases draw the ERC20 and NFT targets, and assert the drawn targets receive the legs | `FU-FUZZ`; `test/v2/FulfillOrder.t.sol` `testFuzz_FU_FUZZ_delegatedRail`, `testFuzz_FU_FUZZ_permit2Rail` | `forge test --match-test FU_FUZZ` |
+| - [x] | - [ ] | `20261021T091104Z/T712-01` | Struct hashes of `ERC20Allowance`, `ERC721Approval` and the changed `FulfillmentOrder`, `FulfillmentSolution`, `FulfillmentWitness`, `SolutionApproval` against their bound schemas, calldata and memory; the typehashes in `SchemaAudit`; `EfficientHashLibExt` against the word-by-word encoding | `T712-*` incl. `test_T712_erc20AllowanceStructHash`, `test_T712_erc721ApprovalStructHash`, `testFuzz_T712_DIFF_erc20Allowance`, `testFuzz_T712_DIFF_erc721Approval`, `testFuzz_T712_ARRAY_efficientHashLibExt`; `T712-SCHEMA` rows; `test/v2/types/*` | `forge test --match-path 'test/v2/types/*'` |
+
+### Notes for this run
+
+**Shared helpers.** `_solution(order, calls, deadline)` and `_route(order, calls)` send every ERC20 leg
+of the order to `router` and every NFT leg to `router2`, the targets the suite's orders named before,
+so the existing cases keep their balance assertions unchanged. `_solution(erc20Targets,
+erc721Targets, calls, deadline)` names targets explicitly. `_tokenAllowance`, `_nftApproval`,
+`_allowances`, `_approvals` and `_addresses` build the new legs.
+
+**The new cases live in `FulfillTargets.t.sol`,** beside `FulfillOrder.t.sol`, which is at the
+`via_ir` compiler limit noted in the PR. `LEN-01` and `LEN-02` are folded into `TGT-01` and `TGT-03`:
+their controls were the same settlement those tests make.
+
+**Mutation checks.** Sending the plain pull, the Permit2 allowance pull, the Permit2 signature pull
+or the NFT to a fixed address instead of the solution's target fails the `TGT` cases and every
+existing case on that branch. Dropping either `checkLengths` on either entry point fails `TGT-01` or
+`TGT-03`. Hashing constants in place of the targets in `FulfillmentSolution` fails `APR-01`, `SOL-01`,
+`SOL-06`, `AUTH-01b`, `AUTH-07b` and the two `T712` rows. Dropping either target from the event fails
+`EVT-01`. Typing the approval's order member as `bytes32` fails `APR-01`, the `SOL` cases, `T712` and
+`T712-SCHEMA`.
+
+**Coverage, `--ir-minimum`.** Every reported miss in the changed files was checked: the assembly
+bodies, the allocator calls and both `_transferERC20s` overloads are attribution artifacts. The
+functions report as hit, and a trace of `TGT-02` shows `permit2::transferFrom` paying the solver's
+target. The constructor lines run in every `setUp`.
+
+The hub is 24,360 bytes, 216 under the limit. 245 tests pass.

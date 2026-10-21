@@ -14,6 +14,7 @@ import {IMsgSender} from 'src/base/interfaces/IMsgSender.sol';
 import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
 
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
+import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
@@ -178,14 +179,14 @@ contract SettlementTest is HubBase {
     vm.deal(owner, 3);
 
     FulfillmentOrder memory order = _openFulfillmentOrder(
-      new ERC20Transfer[](0), new ValidationParams[](0), ownerCalls, 0, block.timestamp
+      new ERC20Allowance[](0), new ValidationParams[](0), ownerCalls, 0, block.timestamp
     );
 
     vm.recordLogs();
 
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication{value: 3}(
-      order, address(0), '', _route(solverCalls), '', false
+      order, address(0), '', _route(order, solverCalls), '', false
     );
 
     Vm.Log memory entry = _settlementLog();

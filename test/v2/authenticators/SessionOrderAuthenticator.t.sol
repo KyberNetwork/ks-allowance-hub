@@ -12,6 +12,7 @@ import {
 import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 import {KeyType} from 'src/v2/authenticators/types/KeyType.sol';
 import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
+import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
@@ -328,7 +329,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
   function test_SV_05_onlyAllowanceHubMayAuthenticate() public {
     ExecutionOrder memory execOrder = _standardOrder(0, block.timestamp);
     FulfillmentOrder memory fulfillOrder = _openFulfillmentOrder(
-      new ERC20Transfer[](0), new ValidationParams[](0), new GenericCall[](0), 0, block.timestamp
+      new ERC20Allowance[](0), new ValidationParams[](0), new GenericCall[](0), 0, block.timestamp
     );
     bytes memory data = _authData(key, hex'00');
 
@@ -411,7 +412,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     uint256 nonce = 13;
     uint256 deadline = block.timestamp + 1 hours;
 
-    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
+    ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     FulfillmentOrder memory fulfillOrder = _openFulfillmentOrder(
       erc20s, new ValidationParams[](0), new GenericCall[](0), nonce, deadline
     );
@@ -425,7 +426,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
       fulfillOrder,
       address(authenticator),
       _authData(key, sig),
-      _route(_calls(_routerCall(0, hex'01'))),
+      _route(fulfillOrder, _calls(_routerCall(0, hex'01'))),
       '',
       false
     );
@@ -438,7 +439,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     uint256 nonce = 14;
     uint256 deadline = block.timestamp + 1 hours;
 
-    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
+    ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     FulfillmentOrder memory fulfillOrder = _openFulfillmentOrder(
       erc20s, new ValidationParams[](0), new GenericCall[](0), nonce, deadline
     );
@@ -449,7 +450,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
       fulfillOrder,
       address(authenticator),
       _fulfillmentAuthData(fulfillOrder, key, masterKeyPk),
-      _route(_calls(_routerCall(0, hex'01'))),
+      _route(fulfillOrder, _calls(_routerCall(0, hex'01'))),
       '',
       false
     );
@@ -1956,7 +1957,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     bool isSessionKey
   ) private {
     FulfillmentOrder memory order = _openFulfillmentOrder(
-      _erc20s(_tokenTransfer(AMOUNT)),
+      _allowances(_tokenAllowance(AMOUNT)),
       new ValidationParams[](0),
       new GenericCall[](0),
       nonce,
@@ -1966,7 +1967,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
     vm.prank(relayer);
     hub.fulfillOrderWithDelegatedAuthentication(
-      order, address(authenticator), data, _route(_calls(_routerCall(0, hex'01'))), '', false
+      order, address(authenticator), data, _route(order, _calls(_routerCall(0, hex'01'))), '', false
     );
   }
 

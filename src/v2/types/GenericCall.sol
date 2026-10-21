@@ -3,9 +3,10 @@ pragma solidity ^0.8.0;
 
 import {IKSGenericRouter} from '../../base/interfaces/IKSGenericRouter.sol';
 
+import {DynamicArrayLibExt} from '../libraries/DynamicArrayLibExt.sol';
+
 import {NativeTransfer} from './NativeTransfer.sol';
 
-import {DynamicArrayLib} from 'solady/utils/DynamicArrayLib.sol';
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
@@ -22,6 +23,9 @@ struct GenericCall {
 using GenericCallLib for GenericCall global;
 
 library GenericCallLib {
+  using DynamicArrayLibExt for *;
+  using EfficientHashLib for *;
+
   bytes32 internal constant GENERIC_CALL_TYPEHASH =
     keccak256('GenericCall(address router,uint256 value,bytes data)');
 
@@ -43,22 +47,22 @@ library GenericCallLib {
    * taken over the array's own data and nothing is copied.
    */
   function hash(GenericCall[] calldata calls) internal pure returns (bytes32) {
-    bytes32[] memory callsHashes = EfficientHashLib.malloc(calls.length);
+    bytes32[] memory callHashes = calls.length.malloc();
     for (uint256 i = 0; i < calls.length; i++) {
-      callsHashes[i] = hash(calls[i]);
+      callHashes[i] = hash(calls[i]);
     }
 
-    return EfficientHashLib.hash(callsHashes);
+    return callHashes.hash();
   }
 
   /// @dev As {hash}, for an array already in memory
   function hashMemory(GenericCall[] memory calls) internal pure returns (bytes32) {
-    bytes32[] memory callsHashes = EfficientHashLib.malloc(calls.length);
+    bytes32[] memory callHashes = calls.length.malloc();
     for (uint256 i = 0; i < calls.length; i++) {
-      callsHashes[i] = hashMemory(calls[i]);
+      callHashes[i] = hashMemory(calls[i]);
     }
 
-    return EfficientHashLib.hash(callsHashes);
+    return callHashes.hash();
   }
 
   /// @dev Calls the router, forwarding the call's share of the native value sent to the hub
@@ -76,7 +80,7 @@ library GenericCallLib {
     returns (NativeTransfer[] memory transfers)
   {
     uint256 index = 0;
-    transfers = _mallocNativeTransfers(genericCalls.length);
+    transfers = genericCalls.length.mallocNativeTransfers();
 
     for (uint256 i = 0; i < genericCalls.length; i++) {
       GenericCall calldata call = genericCalls[i];
@@ -101,7 +105,7 @@ library GenericCallLib {
     returns (NativeTransfer[] memory transfers)
   {
     uint256 index = 0;
-    transfers = _mallocNativeTransfers(solverCalls.length + ownerCalls.length);
+    transfers = (solverCalls.length + ownerCalls.length).mallocNativeTransfers();
 
     for (uint256 i = 0; i < solverCalls.length; i++) {
       GenericCall calldata call = solverCalls[i];
@@ -118,22 +122,6 @@ library GenericCallLib {
 
     assembly ('memory-safe') {
       mstore(transfers, index)
-    }
-  }
-
-  /**
-   * @dev Pointer slots and nothing else: assigning a struct to a memory array element writes a
-   * pointer to a freshly built struct, so the bodies `new` allocates and zeroes are discarded
-   * unread. The callers write a pointer to every slot they keep, truncating the remainder.
-   */
-  function _mallocNativeTransfers(uint256 length)
-    private
-    pure
-    returns (NativeTransfer[] memory array)
-  {
-    uint256[] memory buffer = DynamicArrayLib.malloc(length);
-    assembly ('memory-safe') {
-      array := buffer
     }
   }
 }

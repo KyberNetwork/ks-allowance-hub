@@ -15,6 +15,8 @@ struct ERC721Transfer {
 using ERC721TransferLib for ERC721Transfer global;
 
 library ERC721TransferLib {
+  using EfficientHashLib for *;
+
   bytes32 internal constant ERC721_TRANSFER_TYPEHASH =
     keccak256('ERC721Transfer(address token,uint256 tokenId,address target)');
 
@@ -40,22 +42,22 @@ library ERC721TransferLib {
    * taken over the array's own data and nothing is copied.
    */
   function hash(ERC721Transfer[] calldata transfers) internal pure returns (bytes32) {
-    bytes32[] memory hashes = EfficientHashLib.malloc(transfers.length);
+    bytes32[] memory transferHashes = transfers.length.malloc();
     for (uint256 i = 0; i < transfers.length; i++) {
-      hashes[i] = hash(transfers[i]);
+      transferHashes[i] = hash(transfers[i]);
     }
 
-    return EfficientHashLib.hash(hashes);
+    return transferHashes.hash();
   }
 
   /// @dev As {hash}, for an array already in memory
   function hashMemory(ERC721Transfer[] memory transfers) internal pure returns (bytes32) {
-    bytes32[] memory hashes = EfficientHashLib.malloc(transfers.length);
+    bytes32[] memory transferHashes = transfers.length.malloc();
     for (uint256 i = 0; i < transfers.length; i++) {
-      hashes[i] = hashMemory(transfers[i]);
+      transferHashes[i] = hashMemory(transfers[i]);
     }
 
-    return EfficientHashLib.hash(hashes);
+    return transferHashes.hash();
   }
 
   /// @dev Moves each token from `owner` to its target, so the hub never holds the NFT
