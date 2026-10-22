@@ -222,7 +222,7 @@ contract KSAllowanceHubV2 is
 
     // The sentinel means the order.owner accepted any route, so there is no approval to check
     if (order.solutionApprover != DEAD_ADDRESS) {
-      _approveSolution(order, orderHash, solution, solutionSignature);
+      _approveSolution(order.solutionApprover, orderHash, solution, solutionSignature);
     }
 
     // Snapshot before anything moves, so a validator measures the whole order and not just its tail
@@ -254,7 +254,7 @@ contract KSAllowanceHubV2 is
     bytes32 orderHash = order.hash();
     // The sentinel means the order.owner accepted any route, so there is no approval to check
     if (order.solutionApprover != DEAD_ADDRESS) {
-      _approveSolution(order, orderHash, solution, solutionSignature);
+      _approveSolution(order.solutionApprover, orderHash, solution, solutionSignature);
     }
 
     // Snapshot before anything moves, so a validator measures the whole order and not just its tail
@@ -347,15 +347,15 @@ contract KSAllowanceHubV2 is
       .permitWitnessTransferFrom(permit, details, owner, witness, witnessTypeString, signature);
   }
 
-  /// @dev Recovers the solution approver and checks it is the one the order named
+  /// @dev Checks that the approver the order named signed `solution` for the order
   function _approveSolution(
-    FulfillmentOrder calldata order,
+    address solutionApprover,
     bytes32 orderHash,
     FulfillmentSolution calldata solution,
     bytes calldata solutionSignature
   ) internal view {
     bytes32 digest = _hashTypedDataV4(SolutionApprovalLib.hash(orderHash, solution));
-    if (!SignatureChecker.isValidSignatureNow(order.solutionApprover, digest, solutionSignature)) {
+    if (!SignatureChecker.isValidSignatureNow(solutionApprover, digest, solutionSignature)) {
       revert InvalidSolutionSignature();
     }
   }
@@ -413,10 +413,10 @@ contract KSAllowanceHubV2 is
   ) internal returns (bytes[] memory results) {
     order.erc721Approvals.execute(order.owner, solution.erc721Targets);
 
-    // The validators bound what the solver did, so they run before the owner's own tail
     results = (solution.solverCalls.length + order.ownerCalls.length).mallocBytes();
     _executeCalls(solution.solverCalls, results, 0);
 
+    // The validators bound what the solver did, so they run before the owner's own tail
     order.validationParams.afterExecution(beforeExecutionOutputs);
 
     _executeCalls(order.ownerCalls, results, solution.solverCalls.length);
