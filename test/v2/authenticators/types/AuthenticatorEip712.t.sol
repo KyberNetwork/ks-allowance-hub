@@ -34,23 +34,29 @@ contract AuthenticatorEip712Test is V2TestBase {
   // -------------------------------------------------------------------------------------------
 
   function test_T712_10_masterKeyApprovalStructHash() public pure {
+    address keyOwner = address(0xA11CE);
     AuthKey memory key = _sampleKey();
     bytes32 keyHash = key.hashMemory();
 
     assertEq(
-      MasterKeyApprovalLib.hash(keyHash, true, 7, 99),
-      lMasterKeyApproval(key, true, 7, 99),
+      MasterKeyApprovalLib.hash(keyOwner, keyHash, true, 7, 99),
+      lMasterKeyApproval(keyOwner, key, true, 7, 99),
       'approval struct hash'
     );
     assertEq(
-      MasterKeyApprovalLib.hash(keyHash, false, 7, 99),
-      lMasterKeyApproval(key, false, 7, 99),
+      MasterKeyApprovalLib.hash(keyOwner, keyHash, false, 7, 99),
+      lMasterKeyApproval(keyOwner, key, false, 7, 99),
       'revocation struct hash'
     );
     assertTrue(
-      MasterKeyApprovalLib.hash(keyHash, true, 7, 99)
-        != MasterKeyApprovalLib.hash(keyHash, false, 7, 99),
+      MasterKeyApprovalLib.hash(keyOwner, keyHash, true, 7, 99)
+        != MasterKeyApprovalLib.hash(keyOwner, keyHash, false, 7, 99),
       'the direction changes the digest'
+    );
+    assertTrue(
+      MasterKeyApprovalLib.hash(keyOwner, keyHash, true, 7, 99)
+        != MasterKeyApprovalLib.hash(address(0xB0B), keyHash, true, 7, 99),
+      'the owner changes the digest'
     );
   }
 

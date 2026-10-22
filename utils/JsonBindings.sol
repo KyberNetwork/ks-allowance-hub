@@ -34,13 +34,13 @@ library JsonBindings {
     Vm constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
     string constant schema_AuthKey = "AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)";
-    string constant schema_MasterKeyApproval = "MasterKeyApproval(AuthKey masterKey,bool approved,uint256 nonce,uint256 deadline)AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)";
+    string constant schema_MasterKeyApproval = "MasterKeyApproval(address owner,AuthKey masterKey,bool approved,uint256 nonce,uint256 deadline)AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)";
     string constant schema_NonceRevocation = "NonceRevocation(AuthKey key,uint256 nonce,uint256 deadline)AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)";
     string constant schema_SessionKeyApproval = "SessionKeyApproval(address owner,AuthKey masterKey,AuthKey sessionKey,bool approved,uint256 nonce,uint256 deadline)AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)";
     string constant schema_ERC20Transfer = "ERC20Transfer(address token,address target,uint160 amount)";
     string constant schema_ERC721Transfer = "ERC721Transfer(address token,uint256 tokenId,address target)";
     string constant schema_NativeTransfer = "NativeTransfer(address target,uint256 amount)";
-    string constant schema_AuthDelegation = "AuthDelegation(address authenticator,bool delegated,bytes data,uint256 nonce,uint256 deadline)";
+    string constant schema_AuthDelegation = "AuthDelegation(address owner,address authenticator,bool delegated,bytes data,uint256 nonce,uint256 deadline)";
     string constant schema_ERC20Allowance = "ERC20Allowance(address token,uint160 amount)";
     string constant schema_ERC721Approval = "ERC721Approval(address token,uint256 tokenId)";
     string constant schema_GenericCall = "GenericCall(address router,uint256 value,bytes data)";

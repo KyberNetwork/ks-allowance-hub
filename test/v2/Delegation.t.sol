@@ -88,8 +88,9 @@ contract DelegationTest is AuthenticatorBase {
   function test_DEL_02_relayedDelegationConsumesNonce() public {
     uint256 nonce = 5;
     uint256 deadline = block.timestamp + 1 days;
-    bytes memory sig =
-      _signAuthDelegation(ownerKey, address(authenticator), true, _encodeKey(key), nonce, deadline);
+    bytes memory sig = _signAuthDelegation(
+      ownerKey, owner, address(authenticator), true, _encodeKey(key), nonce, deadline
+    );
 
     vm.prank(relayer);
     hub.updateDelegation(owner, address(authenticator), true, _encodeKey(key), nonce, deadline, sig);
@@ -108,8 +109,9 @@ contract DelegationTest is AuthenticatorBase {
   /// DEL-03 — changing any signed field invalidates the delegation
   function test_DEL_03_tamperedDelegationRejected() public {
     uint256 deadline = block.timestamp + 1 days;
-    bytes memory sig =
-      _signAuthDelegation(ownerKey, address(authenticator), true, _encodeKey(key), 1, deadline);
+    bytes memory sig = _signAuthDelegation(
+      ownerKey, owner, address(authenticator), true, _encodeKey(key), 1, deadline
+    );
 
     AuthKey memory otherKey = _secpKey(relayer, block.timestamp + 30 days);
 
@@ -127,7 +129,7 @@ contract DelegationTest is AuthenticatorBase {
 
     uint256 deadline = block.timestamp + 1 days;
     bytes memory sig = _signAuthDelegation(
-      walletSignerKey, address(authenticator), true, _encodeKey(key), 2, deadline
+      walletSignerKey, address(wallet), address(authenticator), true, _encodeKey(key), 2, deadline
     );
 
     vm.prank(relayer);
@@ -139,7 +141,7 @@ contract DelegationTest is AuthenticatorBase {
     // and a wallet that returns the wrong magic value is rejected
     wallet.setReturnWrongMagic(true);
     bytes memory sig2 = _signAuthDelegation(
-      walletSignerKey, address(authenticator), true, _encodeKey(key), 3, deadline
+      walletSignerKey, address(wallet), address(authenticator), true, _encodeKey(key), 3, deadline
     );
 
     vm.prank(relayer);
@@ -152,8 +154,9 @@ contract DelegationTest is AuthenticatorBase {
   /// DEL-05 — the delegation deadline is enforced
   function test_DEL_05_expiredDelegation() public {
     uint256 deadline = block.timestamp - 1;
-    bytes memory sig =
-      _signAuthDelegation(ownerKey, address(authenticator), true, _encodeKey(key), 4, deadline);
+    bytes memory sig = _signAuthDelegation(
+      ownerKey, owner, address(authenticator), true, _encodeKey(key), 4, deadline
+    );
 
     vm.prank(relayer);
     vm.expectRevert(_deadlinePassed(deadline));
@@ -217,7 +220,7 @@ contract DelegationTest is AuthenticatorBase {
 
     // the direction is signed, so a delegation signature cannot be submitted as a withdrawal
     bytes memory delegateSig =
-      _signAuthDelegation(ownerKey, address(authenticator), true, '', 5, deadline);
+      _signAuthDelegation(ownerKey, owner, address(authenticator), true, '', 5, deadline);
     vm.prank(relayer);
     vm.expectRevert(IAuthDelegator.InvalidDelegationSignature.selector);
     hub.updateDelegation(owner, address(authenticator), false, '', 5, deadline, delegateSig);
@@ -228,7 +231,7 @@ contract DelegationTest is AuthenticatorBase {
     assertTrue(hub.authDelegated(owner, address(authenticator)), 'delegated on its own direction');
 
     bytes memory withdrawSig =
-      _signAuthDelegation(ownerKey, address(authenticator), false, '', 6, deadline);
+      _signAuthDelegation(ownerKey, owner, address(authenticator), false, '', 6, deadline);
     vm.prank(relayer);
     hub.updateDelegation(owner, address(authenticator), false, '', 6, deadline, withdrawSig);
 
@@ -412,13 +415,40 @@ contract DelegationTest is AuthenticatorBase {
     assertEq(bad.initCount(), 0, 'and the authenticator was never called');
   }
 
+  /**
+   * DEL-16 — a delegation signed for one account is refused for another account the same signer
+   * controls: two ERC-1271 wallets sharing one signer accept the same signatures, so only the
+   * signed `owner` tells them apart.
+   */
+  function test_DEL_16_delegationIsBoundToItsOwner() public {
+    (address sharedSigner, uint256 sharedSignerKey) = makeAddrAndKey('shared signer');
+    address walletA = address(new ERC1271WalletMock(sharedSigner));
+    address walletB = address(new ERC1271WalletMock(sharedSigner));
+
+    uint256 deadline = block.timestamp + 1 days;
+    bytes memory sig = _signAuthDelegation(
+      sharedSignerKey, walletA, address(authenticator), true, _encodeKey(key), 7, deadline
+    );
+
+    vm.prank(relayer);
+    vm.expectRevert(IAuthDelegator.InvalidDelegationSignature.selector);
+    hub.updateDelegation(walletB, address(authenticator), true, _encodeKey(key), 7, deadline, sig);
+    assertFalse(hub.authDelegated(walletB, address(authenticator)), 'B not delegated');
+
+    // the same signature on the account it names is accepted, so the refusal is evidence
+    vm.prank(relayer);
+    hub.updateDelegation(walletA, address(authenticator), true, _encodeKey(key), 7, deadline, sig);
+    assertTrue(hub.authDelegated(walletA, address(authenticator)), 'A delegated');
+  }
+
   /// DEL-FUZZ — the delegation nonce bitmap behaves across its whole domain
   function testFuzz_DEL_FUZZ_relayedDelegation(DelegationFuzz memory f) public {
     uint256 nonce = f.nonce;
     uint256 deadline = block.timestamp + bound(f.deadlineOffset, 0, 30 days);
 
-    bytes memory sig =
-      _signAuthDelegation(ownerKey, address(authenticator), true, _encodeKey(key), nonce, deadline);
+    bytes memory sig = _signAuthDelegation(
+      ownerKey, owner, address(authenticator), true, _encodeKey(key), nonce, deadline
+    );
 
     vm.prank(relayer);
     hub.updateDelegation(owner, address(authenticator), true, _encodeKey(key), nonce, deadline, sig);

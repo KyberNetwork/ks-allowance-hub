@@ -127,6 +127,7 @@ abstract contract V2TestBase is Test {
   }
 
   function lAuthDelegation(
+    address delegator,
     address authenticator,
     bool delegated,
     bytes memory data,
@@ -135,6 +136,7 @@ abstract contract V2TestBase is Test {
   ) internal pure returns (bytes32) {
     return SchemaHash.authDelegation(
       AuthDelegation({
+        owner: delegator,
         authenticator: authenticator,
         delegated: delegated,
         data: data,
@@ -155,6 +157,7 @@ abstract contract V2TestBase is Test {
   }
 
   function lMasterKeyApproval(
+    address keyOwner,
     AuthKey memory masterKey,
     bool approved,
     uint256 nonce,
@@ -162,7 +165,7 @@ abstract contract V2TestBase is Test {
   ) internal pure returns (bytes32) {
     return SchemaHash.masterKeyApproval(
       MasterKeyApproval({
-        masterKey: masterKey, approved: approved, nonce: nonce, deadline: deadline
+        owner: keyOwner, masterKey: masterKey, approved: approved, nonce: nonce, deadline: deadline
       })
     );
   }

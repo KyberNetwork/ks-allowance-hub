@@ -103,8 +103,9 @@ contract SessionOrderAuthenticator is
       if (msg.sender != owner) {
         _useUnorderedNonce(owner, nonce);
 
-        bytes32 digest =
-          _hashTypedDataV4(MasterKeyApprovalLib.hash(masterKeyHash, approved, nonce, deadline));
+        bytes32 digest = _hashTypedDataV4(
+          MasterKeyApprovalLib.hash(owner, masterKeyHash, approved, nonce, deadline)
+        );
         if (!SignatureChecker.isValidSignatureNow(owner, digest, signature)) {
           revert InvalidApprovalSignature();
         }

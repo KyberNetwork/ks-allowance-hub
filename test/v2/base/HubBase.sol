@@ -415,6 +415,7 @@ abstract contract HubBase is V2TestBase {
 
   function _signAuthDelegation(
     uint256 signerKey,
+    address delegator,
     address authenticator,
     bool delegated,
     bytes memory data,
@@ -423,7 +424,9 @@ abstract contract HubBase is V2TestBase {
   ) internal returns (bytes memory) {
     return _sign(
       signerKey,
-      lTypedDataHash(_hubDomain(), lAuthDelegation(authenticator, delegated, data, nonce, deadline))
+      lTypedDataHash(
+        _hubDomain(), lAuthDelegation(delegator, authenticator, delegated, data, nonce, deadline)
+      )
     );
   }
 

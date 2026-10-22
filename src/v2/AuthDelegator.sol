@@ -57,8 +57,9 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
     if (owner != msg.sender) {
       _useUnorderedNonce(owner, nonce);
 
-      bytes32 hash =
-        _hashTypedDataV4(AuthDelegationLib.hash(authenticator, delegated, data, nonce, deadline));
+      bytes32 hash = _hashTypedDataV4(
+        AuthDelegationLib.hash(owner, authenticator, delegated, data, nonce, deadline)
+      );
       if (!SignatureChecker.isValidSignatureNow(owner, hash, signature)) {
         revert InvalidDelegationSignature();
       }

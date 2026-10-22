@@ -1170,3 +1170,19 @@ Scope: the hub inherits `ManagementSimple` in place of `ManagementPausable` and
 function exists any more. A native leg to the zero address is not refused, and burns the ether.
 Removing the full-balance sweep fails `MGMT-08a` and `MGMT-08b`; removing the caller check fails
 `MGMT-08c`. The hub is 20,045 bytes.
+
+## Run `20261022T092125Z`
+
+Scope: `AuthDelegation` and `MasterKeyApproval` sign `owner` as their first member, so a
+signature for one account cannot be submitted for another account the same signer controls.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261022T092125Z/OWN-BIND-01` | Both struct hashes match their bound schemas with `owner` included, and changing `owner` changes each digest | `T712-08b` — `test/v2/types/Eip712.t.sol`; `T712-10` — `test/v2/authenticators/types/AuthenticatorEip712.t.sol` | `forge test --isolate` — 246 passed |
+| - [x] | - [ ] | `20261022T092125Z/OWN-BIND-02` | Two ERC-1271 wallets sharing one signer: a delegation or master-key approval signed for wallet A is refused for wallet B and accepted for A | `DEL-16` — `test/v2/Delegation.t.sol`; `SV-13` — `test/v2/authenticators/SessionOrderAuthenticator.t.sol` | same |
+
+### Notes for this run
+
+Removing `owner` from both the production hashes and the test oracle fails exactly `DEL-16`,
+`SV-13`, `T712-08b` and `T712-10`. Every other signing helper now passes the account it signs
+for. The hub is 22,396 bytes and the authenticator 11,683.

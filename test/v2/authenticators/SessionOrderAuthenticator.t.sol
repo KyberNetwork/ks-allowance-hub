@@ -114,7 +114,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     uint256 deadline = block.timestamp + 1 days;
 
     bytes32 digest =
-      lTypedDataHash(_authenticatorDomain(), lMasterKeyApproval(fresh, true, 4, deadline));
+      lTypedDataHash(_authenticatorDomain(), lMasterKeyApproval(owner, fresh, true, 4, deadline));
     bytes memory sig = _sign(masterKeyPk, digest); // the session key, not the owner
 
     vm.prank(relayer);
@@ -521,6 +521,34 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
     vm.expectRevert(_masterKeyNotApproved(stretched));
     _executeViaAuthenticator(stretched, masterKeyPk, 15, block.timestamp + 1 hours, false);
+  }
+
+  /**
+   * SV-13 — a master-key approval signed for one account is refused for another account the same
+   * signer controls: two ERC-1271 wallets sharing one signer accept the same signatures, so only
+   * the signed `owner` tells them apart.
+   */
+  function test_SV_13_masterKeyApprovalIsBoundToItsOwner() public {
+    (address sharedSigner, uint256 sharedSignerKey) = makeAddrAndKey('shared signer');
+    address walletA = address(new ERC1271WalletLocal(sharedSigner));
+    address walletB = address(new ERC1271WalletLocal(sharedSigner));
+
+    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
+    uint256 deadline = block.timestamp + 1 days;
+    bytes memory sig = _sign(
+      sharedSignerKey,
+      lTypedDataHash(_authenticatorDomain(), lMasterKeyApproval(walletA, fresh, true, 8, deadline))
+    );
+
+    vm.prank(relayer);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
+    authenticator.updateAuthentication(walletB, _approveKey(fresh), 8, deadline, sig);
+    assertFalse(authenticator.masterKeys(walletB, _keyHash(fresh)), 'B has no master key');
+
+    // the same signature on the account it names is accepted, so the refusal is evidence
+    vm.prank(relayer);
+    authenticator.updateAuthentication(walletA, _approveKey(fresh), 8, deadline, sig);
+    assertTrue(authenticator.masterKeys(walletA, _keyHash(fresh)), 'A has the master key');
   }
 
   // -------------------------------------------------------------------------------------------

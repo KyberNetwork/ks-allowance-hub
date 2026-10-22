@@ -32,25 +32,32 @@ contract Eip712Test is V2TestBase {
   // T712-08b..12 — struct and array encodings, against the schemas the structs declare
   // -------------------------------------------------------------------------------------------
 
-  /// @dev Both directions, because `delegated` is what separates a delegation from a withdrawal
+  /// @dev Both directions, because `delegated` is what separates a delegation from a withdrawal,
+  /// and both owners, because `owner` is what ties the decision to one account
   function test_T712_08b_authDelegationStructHash() public pure {
+    address delegator = address(0xA11CE);
     address authenticatorAddress = address(0xBEEF);
     bytes memory data = hex'c0ffee';
 
     assertEq(
-      AuthDelegationLib.hash(authenticatorAddress, true, data, 7, 99),
-      lAuthDelegation(authenticatorAddress, true, data, 7, 99),
+      AuthDelegationLib.hash(delegator, authenticatorAddress, true, data, 7, 99),
+      lAuthDelegation(delegator, authenticatorAddress, true, data, 7, 99),
       'delegation struct hash'
     );
     assertEq(
-      AuthDelegationLib.hash(authenticatorAddress, false, data, 7, 99),
-      lAuthDelegation(authenticatorAddress, false, data, 7, 99),
+      AuthDelegationLib.hash(delegator, authenticatorAddress, false, data, 7, 99),
+      lAuthDelegation(delegator, authenticatorAddress, false, data, 7, 99),
       'withdrawal struct hash'
     );
     assertTrue(
-      AuthDelegationLib.hash(authenticatorAddress, true, data, 7, 99)
-        != AuthDelegationLib.hash(authenticatorAddress, false, data, 7, 99),
+      AuthDelegationLib.hash(delegator, authenticatorAddress, true, data, 7, 99)
+        != AuthDelegationLib.hash(delegator, authenticatorAddress, false, data, 7, 99),
       'the direction changes the digest'
+    );
+    assertTrue(
+      AuthDelegationLib.hash(delegator, authenticatorAddress, true, data, 7, 99)
+        != AuthDelegationLib.hash(address(0xB0B), authenticatorAddress, true, data, 7, 99),
+      'the owner changes the digest'
     );
   }
 

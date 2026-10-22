@@ -167,7 +167,7 @@ abstract contract AuthenticatorBase is HubBase {
     uint256 deadline
   ) internal returns (bytes memory) {
     bytes32 digest = lTypedDataHash(
-      _authenticatorDomain(), lMasterKeyApproval(key, approved, nonce, deadline)
+      _authenticatorDomain(), lMasterKeyApproval(owner, key, approved, nonce, deadline)
     );
     return _sign(ownerKey, digest);
   }

@@ -8,6 +8,7 @@ pragma solidity ^0.8.0;
  * `data` reaches the authenticator only when delegating.
  */
 struct AuthDelegation {
+  address owner;
   address authenticator;
   bool delegated;
   bytes data;
@@ -19,11 +20,12 @@ using AuthDelegationLib for AuthDelegation global;
 
 library AuthDelegationLib {
   bytes32 internal constant AUTH_DELEGATION_TYPEHASH = keccak256(
-    'AuthDelegation(address authenticator,bool delegated,bytes data,uint256 nonce,uint256 deadline)'
+    'AuthDelegation(address owner,address authenticator,bool delegated,bytes data,uint256 nonce,uint256 deadline)'
   );
 
   /// @dev EIP-712 hash of a delegation the owner signs
   function hash(
+    address owner,
     address authenticator,
     bool delegated,
     bytes memory data,
@@ -32,13 +34,14 @@ library AuthDelegationLib {
   ) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(
-        AUTH_DELEGATION_TYPEHASH, authenticator, delegated, keccak256(data), nonce, deadline
+        AUTH_DELEGATION_TYPEHASH, owner, authenticator, delegated, keccak256(data), nonce, deadline
       )
     );
   }
 
   /// @dev As {hash}, taking the struct rather than its fields
   function hash(AuthDelegation memory self) internal pure returns (bytes32) {
-    return hash(self.authenticator, self.delegated, self.data, self.nonce, self.deadline);
+    return
+      hash(self.owner, self.authenticator, self.delegated, self.data, self.nonce, self.deadline);
   }
 }
