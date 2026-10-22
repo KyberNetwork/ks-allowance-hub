@@ -1,202 +1,279 @@
 # KS Allowance Hub
 
-Separates token approval from execution. Users grant their allowance once — to the hub, or to
-Permit2 — instead of to every router they interact with. Each entrypoint pulls the tokens straight
-to the routers that will consume them, then calls those routers.
+The allowance hub separates token approval from execution. An owner approves the hub, or Permit2,
+once instead of approving each router. The hub transfers the owner's tokens to the targets of an
+order and then calls whitelisted routers.
 
-Only whitelisted routers can be called, so `WHITELISTED_ROUTER_ROLE` is what keeps the hub's
-standing allowances out of reach of arbitrary callees. Guardians can revoke that role without
-waiting on the admin.
+Only routers holding `WHITELISTED_ROUTER_ROLE` can be called, so no other contract can reach the
+owners' allowances to the hub. Guardians can revoke that role without the admin.
 
-Two contracts are deployable side by side:
+Two hubs can be deployed side by side:
 
-| Contract | Entrypoints |
+| Contract | Description |
 |---|---|
-| `KSAllowanceHub` | the legacy hub, still live |
-| `KSAllowanceHubV2` | adds solver-fulfilled intents, delegated verifiers and open submission |
+| `KSAllowanceHub` | The legacy hub |
+| `KSAllowanceHubV2` | Signed orders, solver fulfillment, delegated authentication and relayed approvals |
 
-## Entrypoints (V2)
+## KSAllowanceHubV2
 
-| Function | What the owner signs |
-|---|---|
-| `transferAndExecute` | the funding **and** the exact generic calls |
-| `transferAndFulfill` | the funding and the acceptance criteria, not the calls |
+### Orders
 
-Both pull ERC20s and ERC721s from `owner` and forward them to the routers named in the transfers,
-then call those routers. `multicall` (Solady) batches them into one transaction, bounded as a whole
-for native spend.
+The owner signs one of two order types. Both name the assets that may leave the owner and the
+account that may submit the order.
 
-Routers read `msgSender()` to learn whose behalf they act on, since the hub — not the user — is
-their `msg.sender`. It holds the **owner**, is transient, and doubles as the reentrancy guard.
-
-### Authorisation
-
-`authFlags` is a `PackedBits` read as three low bits, and it selects the rail rather than granting
-anything:
-
-| Bit | Set | Effect |
+| Order | The owner signs | The submitter chooses |
 |---|---|---|
-| 0 | Permit2 signature transfer | the owner's Permit2 signature funds the order |
-| 1 | Permit2 allowance transfer | pull through the owner's standing Permit2 allowance |
-| 2 | caller is pinned | the owner named `msg.sender`; unset means anyone may submit |
-
-`authData` is packed to match:
+| `ExecutionOrder` | the legs, their targets and the exact router calls | nothing |
+| `FulfillmentOrder` | the legs, the validators and the owner's own router calls | a `FulfillmentSolution`: the target of each leg and the solver's router calls |
 
 ```
-Permit2 rail    abi.encode(uint256 nonce, bytes signature)
-verifier rail   abi.encode(address verifier, uint256 nonce, bytes key, bytes signature)
+ExecutionOrder(address owner,address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 deadline)
+FulfillmentOrder(address owner,address solver,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,ValidationParams[] validationParams,GenericCall[] ownerCalls,address solutionApprover,uint256 nonce,uint256 deadline)
+FulfillmentSolution(address[] erc20Targets,address[] erc721Targets,GenericCall[] solverCalls,uint256 deadline)
 ```
 
-An owner calling on their own behalf needs neither rail's signature — `msg.sender == owner` is the
-authorisation.
+`relayer` or `solver` is the account that may submit the order besides the owner. The dead address
+`0x…dEaD` allows any account to submit.
 
-### Signing model
+A fulfillment settles in this order:
 
-When someone other than the owner submits over Permit2, the signature must also cover a **witness**:
+1. the solution approval is checked, unless `solutionApprover` is the dead address;
+2. each validator's `beforeExecution` runs;
+3. each leg is transferred to the target the solution names for it;
+4. `solution.solverCalls` run;
+5. each validator's `afterExecution` runs;
+6. `order.ownerCalls` run.
 
-```
-ExecutionWitness(address relayer,address[] targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls)
-FulfillmentWitness(address solver,address[] targets,ERC721Transfer[] erc721Transfers,ValidationParams[] validationParams,address callsSigner)
-```
+The validators do not observe the effects of `ownerCalls`. The solution approval is an EIP-712
+`SolutionApproval(FulfillmentOrder order,FulfillmentSolution solution)` signed by
+`solutionApprover`. It carries no nonce, so it is valid for every settlement of its order.
 
-`ExecutionWitness` pins the calls themselves, so a relayer can only execute exactly what was signed.
-`FulfillmentWitness` deliberately does not: the owner signs the outcome it wants and the solver
-chooses the path, bounded by `validationParams` and by `callsSigner`.
+An order with no validators and a dead-address `solutionApprover` places no constraint on the
+solver: the solver chooses every target and every router call.
 
-Two slots may be left open by signing `0x…dEaD` into them:
+### Entry points
 
-- **the submitter** — leave bit 2 of `authFlags` clear and anyone may submit. The flag is not
-  signed and does not need to be: it only selects which digest the hub rebuilds, and the wrong
-  choice rebuilds one the owner never signed.
-- **the calls signer** — the hub recovers it from `callsSignature` over an EIP-712
-  `CallsApproval(address owner,GenericCall[] genericCalls,uint256 nonce,uint256 deadline)` and puts
-  the result in the witness. Pass an empty signature to leave the call list to the solver; a
-  non-empty one burns `callsNonce` against the owner, so an approval settles at most once.
+| Function | Authorisation |
+|---|---|
+| `executeOrderWithPermit2Signature` | the owner's Permit2 signature |
+| `executeOrderWithDelegatedAuthentication` | an authenticator the owner delegated |
+| `fulfillOrderWithPermit2Signature` | the owner's Permit2 signature |
+| `fulfillOrderWithDelegatedAuthentication` | an authenticator the owner delegated |
 
-Leaving both open **and** supplying no `validationParams` lets any caller take the funding and do
-whatever a whitelisted router permits.
-
-### Delegated verifiers
-
-Instead of a Permit2 signature, an owner can delegate an `IAuthVerifier` once through
-`updateDelegation`, and afterwards authorise orders with whatever credential that verifier
-understands. The hub checks only that the verifier is delegated; the verifier must revert when a
-signature does not authorise the order, and owns its own replay protection.
-
-The hub is not an authenticator on the update path. `updateAuth` is relayable through `forward`
-from any caller, and the verifier sees the hub as `msg.sender` either way, so a verifier must
-treat only `msg.sender == owner` as authentication and check a signature in every other case.
-`initAuth` is the exception — it carries no signature, so `updateDelegation` authenticates the
-owner before calling it, and its selector is deliberately kept off `forward`'s allowlist.
-
-`SessionAuthVerifier` is the reference implementation: the owner approves a `SessionKey`
-(`Secp256k1`, `P256`, `WebAuthn` or `RSA`, with an expiry) and that key then signs orders. Its
-`data` is `abi.encode(SessionKey key, bool approved)`, so the same call approves a key or revokes
-one, and the direction is part of the `SessionApproval` struct the owner signs:
+On the **Permit2 entry points**, the ERC20 legs are transferred through a Permit2 batch permit whose
+nonce is `order.nonce` and whose deadline is `order.deadline`. When another account submits, the
+owner's signature must also cover a witness:
 
 ```
-SessionApproval(SessionKey sessionKey,bool approved,uint256 nonce,uint256 deadline)
+ExecutionWitness(address relayer,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls)
+FulfillmentWitness(address solver,ERC721Approval[] erc721Approvals,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner)
 ```
 
-Delegation itself works the same way: `updateDelegation` takes a `bool delegated`, so the one call
-both arms a verifier and withdraws it, and the direction is part of the `AuthDelegation` struct:
+The two witnesses have distinct type names, so a signature for one entry point is not valid for the
+other.
+
+On the **delegated entry points**, the owner must have delegated the authenticator, the caller must
+be the order's submitter, and the authenticator must accept `authenticationData` for the order. The
+hub does not spend `order.nonce`; replay protection is the authenticator's. The ERC20 legs are drawn
+from the owner's allowances to the hub, or from the owner's Permit2 allowances when
+`usePermit2Allowances` is set.
+
+### Orders submitted by the owner
+
+When the caller is `order.owner`, the call itself authorises the order:
+
+- `relayer` and `solver` do not apply;
+- on the Permit2 entry points, the owner signs the permit without a witness, and the Permit2 nonce
+  is still spent;
+- on the delegated entry points, the authenticator is not called, `authenticationData` is ignored
+  and no nonce is spent, so the same order may settle more than once. `authenticator` may be the
+  zero address in this case only;
+- a fulfillment still requires its solution approval.
+
+### Delegation
 
 ```
-AuthDelegation(address verifier,bool delegated,bytes data,uint256 nonce,uint256 deadline)
+AuthDelegation(address owner,address authenticator,bool delegated,bytes data,uint256 nonce,uint256 deadline)
 ```
 
-`data` reaches the verifier only when delegating, and only when it is non-empty — a verifier that
-reverts must not be able to trap the owner in a delegation. It arrives as `initAuth`, which reads
-the key and nothing else: a direction packed into that payload is ignored. Withdrawing leaves the
-verifier's own state untouched, so a key that should go too is revoked separately, through
-`forward` carrying `updateAuth`.
+`updateDelegation` delegates an `IOrderAuthenticator` or withdraws it. When the owner calls it, the
+signature must be empty and no nonce is spent. Any other caller must present the owner's signature
+over the `AuthDelegation`, which spends `nonce` in the owner's namespace. When delegating with
+non-empty `data`, the hub passes `data` to the authenticator's `initAuthentication`. Withdrawing
+calls no authenticator and leaves the authenticator's own state unchanged.
 
-### Gasless flows
+An authenticator has two update functions:
 
-`forward` relays calls that carry their own authorisation — EIP-2612 and DAI permits, both ERC721
-permit flavours, both Permit2 overloads, and a verifier's `updateAuth` — so an approval and the
-spend that follows fit in one `multicall` even when it carries value. The owner signs messages and
-sends no transaction:
+- `initAuthentication(owner, data)` takes no signature. Only the hub may call it, from
+  `updateDelegation`, and `forwardCalls` does not relay it.
+- `updateAuthentication(owner, data, nonce, deadline, signature)` can be called by any account,
+  and `forwardCalls` relays it with the hub as `msg.sender`. An authenticator must therefore accept
+  only `msg.sender == owner` without a signature.
+
+### SessionOrderAuthenticator
+
+The reference authenticator. The owner approves keys, and the keys sign orders without the owner's
+wallet.
+
+```
+AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)
+MasterKeyApproval(address owner,AuthKey masterKey,bool approved,uint256 nonce,uint256 deadline)
+SessionKeyApproval(address owner,AuthKey masterKey,AuthKey sessionKey,bool approved,uint256 nonce,uint256 deadline)
+NonceRevocation(AuthKey key,uint256 nonce,uint256 deadline)
+```
+
+| `keyType` | `publicKey` | Verification |
+|---|---|---|
+| `Secp256k1` | `abi.encode(address)` | ECDSA recovery |
+| `P256` | `abi.encodePacked(qx, qy)` | P-256 |
+| `WebAuthn` | `abi.encodePacked(qx, qy)` | WebAuthn assertion with user verification |
+| `RSA` | `abi.encode(bytes e, bytes n)` | PKCS#1 v1.5 with SHA-256 |
+| `ERC1271` | `abi.encode(address)` | the contract's `isValidSignature` |
+| `ERC7913` | `abi.encodePacked(verifier, key)` | the verifier's `verify` |
+
+Keys have two tiers. The owner approves **master keys**, through `initAuthentication` when
+delegating or through `updateAuthentication` afterwards. A master key approves **session keys** for
+the same owner, so a passkey can issue short-lived local keys without the wallet. Both tiers sign
+orders.
+
+- A session key may not expire after its master key, and is not accepted once its master key is
+  revoked.
+- A master key may change only a session key it approved, or one that no master key has approved.
+- A key's expiry is checked only when approving, so an expired key can still be revoked.
+
+`updateAuthentication` takes `abi.encode(AuthKey masterKey, bool approved)` for the owner's
+decision, or `abi.encode(AuthKey sessionKey, AuthKey masterKey, bool approved)` for a master key's.
+The owner's decision needs no signature when the owner calls; a master key's decision is always
+signed by the master key. Orders are authenticated with
+`abi.encode(AuthKey key, bool isSessionKey, bytes signature)`, where `signature` is the key's
+signature over the order's EIP-712 digest under the authenticator's domain.
+
+Every signature spends a nonce in its signer's namespace: the owner's address for the owner's
+approvals, and the key's credential hash, `keccak256(abi.encodePacked(keyType, publicKey))`, for
+anything a key signs. The credential hash excludes the expiry, so all approvals of one key share
+its nonces. `revokeNonce(AuthKey, nonce, deadline, signature)` spends a key's nonce on the key's
+signature, whether or not the key is still approved or unexpired.
+
+### Relayed approvals
+
+`forwardCalls(targets, data, allowFailure)` relays calls that carry their own authorisation:
+
+- Permit2 `permit`, both overloads;
+- ERC-2612 `permit` and the DAI-style `permit`;
+- ERC-721 `permit`, both variants;
+- the hub's `updateDelegation`;
+- an authenticator's `updateAuthentication`.
+
+Every target sees the hub as `msg.sender`, so any other selector reverts with
+`UnsupportedSelector`. A reverting call reverts the batch unless its bit in `allowFailure` is set.
+A relayer that batches a signed permit or delegation with the order using it should set that bit,
+so that another account submitting the same signature first does not revert the batch. Native
+value sent with `forwardCalls` is not forwarded and remains in the hub.
+
+`multicall` runs several hub calls in one transaction with `delegatecall`, so each keeps the
+original `msg.sender` and `msg.value`. The native value spent by the whole batch is limited to
+`msg.value`.
 
 ```solidity
 hub.multicall([
-  abi.encodeCall(hub.forward, (tokens, permitCalls, allowFailure)),
-  abi.encodeCall(hub.transferAndExecute, (owner, erc20Transfers, …, authFlags, authData))
+  abi.encodeCall(hub.forwardCalls, (targets, permitCalls, allowFailure)),
+  abi.encodeCall(hub.executeOrderWithDelegatedAuthentication, (order, authenticator, authData, false))
 ]);
 ```
 
-Anything outside that selector allowlist is refused: this contract is the `msg.sender` every
-target sees, so only calls whose effect does not depend on who made them are safe to relay. A
-failing call bubbles its revert unless its `allowFailure` bit is set, so a front-run permit that
-should not sink the batch needs that bit — the old forwarder swallowed every failure instead.
+### Routers and native value
 
-Two things to know when integrating:
+While an order settles, `msgSender()` returns its owner, so a router called by the hub can identify
+the owner. No other order may settle until it completes. Each router call may spend native value
+only from the `msg.value` sent with the order. The hub has no `receive` function, so a router cannot
+refund native value to it; unspent `msg.value` remains in the hub.
 
-- A relayer-submitted flow needs a **witness signature**, not a self-permit one. Under `multicall`
-  the delegatecall preserves `msg.sender` as the relayer, so `owner != msg.sender`.
-- `multicall` is **payable**, and bounded as a whole: every sub-call is a `delegatecall` and sees
-  the same `msg.value` though it arrived once, so the batch may spend that value in total, not once
-  per call. Nested batches are covered by the same outer bound.
-- The hub has no `receive`, so a router cannot refund native to it. Unspent `msg.value` stays in
-  the hub and is recoverable only by a rescuer.
+### Management
+
+The hub inherits `ManagementSimple` from `ks-common-sc`. The owner holds the default admin role,
+transferable in one step with `transferOwnership`. Guardians pause the hub and revoke routers.
+Rescuers, or the default admin, call `rescueTokens(erc20Transfers, erc721Transfers)` to transfer
+assets held by the hub. An ERC20 entry with a zero amount transfers the hub's entire balance, and a
+token of `0xEeee…EEeE` or the zero address transfers native value.
+
+### Signing domains
+
+| Contract | EIP-712 name | Version |
+|---|---|---|
+| `KSAllowanceHubV2` | `KyberSwap Allowance Hub` | `2.0.0` |
+| `SessionOrderAuthenticator` | `KyberSwap Session Order Authenticator` | `1.0.0` |
+
+Each domain is published through ERC-5267's `eip712Domain()`.
 
 ## Layout
 
 ```
 src/
-  base/        building blocks shared by the hub and verifiers
-  v1/          legacy hub
-  v2/          KSAllowanceHubV2 and its types
-  verifiers/   SessionAuthVerifier
+  base/            contracts shared by both hubs
+  v1/              KSAllowanceHub
+  v2/              KSAllowanceHubV2, its delegator, forwarder, types and libraries
+  v2/authenticators/  SessionOrderAuthenticator and its key types
 test/
-  v1/          legacy hub suite, mainnet fork
-  libraries/   shared helpers
-script/        deploy + router whitelisting, per hub
+  base/            shared test base, EIP-712 oracles and the Permit2 artifact check
+  v1/              KSAllowanceHub suite, on a mainnet fork
+  v2/              KSAllowanceHubV2 and SessionOrderAuthenticator suites, on a local chain
+  libraries/       Permit2 hashing and array helpers
+  artifacts/       Permit2 creation code
+script/
+  v1/, v2/         deployment and router whitelisting
 ```
 
 ## Testing
 
 ```shell
 forge test                                 # the whole suite
-forge test --match-path 'test/v1/*'        # legacy hub
+forge test --match-path 'test/v1/*'        # KSAllowanceHub only
 FOUNDRY_PROFILE=deep forge test            # 10,000 fuzz runs per property
-forge coverage --report summary --ir-minimum --no-match-coverage 'lib|script'
+forge coverage --ir-minimum --report summary
 ```
 
-The v1 suite forks mainnet, so `RPC_1` must be set — locally through `.env`, in CI through
-repository secrets. CI runs `forge test -vvv --isolate`, which executes every top-level call as its
-own transaction: transient state such as the `msgSender()` lock is cleared between calls, so it has
-to be observed from inside a router callback rather than across two calls.
+The V1 suite forks mainnet and requires `RPC_1`, through `.env` locally and repository secrets in
+CI. The V2 suite deploys Permit2 from `test/artifacts/Permit2.json` and needs no RPC.
+
+CI runs `forge test -vvv --isolate`, which executes each top-level call as its own transaction.
+Transient state such as the `msgSender()` lock is cleared between calls, so it can only be observed
+from inside a router call.
+
+The EIP-712 type strings are checked against the struct declarations through `forge bind-json`,
+which generates `utils/JsonBindings.sol`. Run it twice after changing a bound struct; CI fails when
+the regenerated file differs.
 
 ### Known tooling issues
 
-- **Coverage needs `--ir-minimum`.** The project builds with `via_ir` and a high optimizer run
-  count; plain `forge coverage` recompiles without them. `--ir-minimum` recompiles differently from
-  the artifacts CI builds, so treat reported misses on assembly-bodied code as diagnostic and
-  reconcile them against `forge test -vvvv` traces.
-- **Cheatcodes are consumed by external calls in argument position.** `vm.prank` /
-  `vm.expectRevert` apply to the *next* call, and a helper that reads from a contract while
-  building an argument is that call. Hoist such values into a local first.
+- **Coverage requires `--ir-minimum`.** Plain `forge coverage` compiles without `via_ir` and fails
+  with stack-too-deep. `--ir-minimum` compiles differently from the build the tests run against, so
+  some covered branches are reported as missed.
+- **Cheatcodes apply to the next external call, including one made while building an argument.**
+  Read such values into a local before `vm.prank` or `vm.expectRevert`.
 
 ## Deployment
 
-Scripts use CREATE3 and read `script/config/*.json` per chain.
+The scripts deploy with CREATE3 and read `script/config/*.json` per chain.
 
 ```shell
-forge script script/v1/DeployKSAllowanceHub.s.sol   --sig 'run(string[])' '[1,56]' --broadcast
-forge script script/v1/AddWhitelistedRouters.s.sol  --sig 'run(string[])' '[1,56]' --broadcast
+forge script script/v1/DeployKSAllowanceHub.s.sol             --sig 'run(string[])' '[1,56]' --broadcast
+forge script script/v1/AddWhitelistedRouters.s.sol            --sig 'run(string[])' '[1,56]' --broadcast
 
-forge script script/v2/DeployKSAllowanceHubV2.s.sol --sig 'run(string[])' '[1,56]' --broadcast
-forge script script/v2/AddWhitelistedRoutersV2.s.sol --sig 'run(string[])' '[1,56]' --broadcast
+forge script script/v2/DeployKSAllowanceHubV2.s.sol           --sig 'run(string[])' '[1,56]' --broadcast
+forge script script/v2/DeploySessionOrderAuthenticator.s.sol  --sig 'run(string[])' '[1,56]' --broadcast
+forge script script/v2/AddWhitelistedRoutersV2.s.sol          --sig 'run(string[])' '[1,56]' --broadcast
 ```
 
-Deployed addresses land in `allowance-hub.json` and `allowance-hub-v2.json`; the V2 scripts read and
-write the latter, so `AddWhitelistedRoutersV2` only works once `DeployKSAllowanceHubV2` has
-broadcast. The two hubs carry **different router roles** — v1 grants `WHITELIST_ROUTER_ROLE`, v2
-grants `WHITELISTED_ROUTER_ROLE` — so the scripts are not interchangeable.
+`DeployKSAllowanceHubV2` writes the hub's address to `allowance-hub-v2.json`, which
+`DeploySessionOrderAuthenticator` and `AddWhitelistedRoutersV2` read, so the hub is deployed first.
+`AddWhitelistedRoutersV2` grants the missing routers in one transaction through the hub's
+`multicall`.
 
-The V2 salt lives in `DeployKSAllowanceHubV2.salt` and is part of the CREATE3 preimage, so changing
-it changes the address on every chain. Fix it before the first broadcast.
+The two hubs use different router roles: V1 grants `WHITELIST_ROUTER_ROLE` and V2 grants
+`WHITELISTED_ROUTER_ROLE`, so their scripts are not interchangeable.
 
-CI needs a `GH_PAT` repository secret with read access to the private `ks-action-validator-sc`
-submodule, which `actions/checkout` cannot clone with the default token.
+Each deploy script's `salt` is part of the CREATE3 salt, so changing it changes the deployed address
+on every chain.
+
+CI requires a `GH_PAT` repository secret with read access to the private `ks-action-validator-sc`
+submodule.
