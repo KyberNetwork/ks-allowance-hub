@@ -7,23 +7,30 @@ import {GenericCall, GenericCallLib} from './GenericCall.sol';
 import {ValidationParams, ValidationParamsLib} from './ValidationParams.sol';
 
 /**
- * @notice An owner's signed order to move assets and leave the route to a solver
- * @dev Fixes neither the route nor where each leg goes, both of which are left to a
- * {FulfillmentSolution}: the owner names an approver for it and relies on the validators instead.
- * @param owner Account the assets come from
- * @param solver The account that may submit this order; the dead-address sentinel permits any
- * caller
- * @param erc20Allowances ERC20 legs, each moved in full from the owner to the target the solution
+ * @notice An owner's order to transfer assets along a route chosen by a solver
+ * @dev The order names neither the route nor the targets of its legs; a {FulfillmentSolution}
+ * supplies both. The validators constrain the result of the solution, and `solutionApprover` may
+ * be required to approve it. The validators do not observe the effects of `ownerCalls`.
+ *
+ * When `owner` submits the order, `solver` does not apply and no authentication is required
+ * beyond the call itself, except that a Permit2 entry point still requires the owner's permit
+ * signature, without a witness. The solution approval is required whoever submits. On a delegated
+ * entry point the owner's own submission spends no nonce, so the same order may settle more than
+ * once.
+ * @param owner Account the assets are transferred from
+ * @param solver Account that may submit the order besides the owner; the dead address allows any
+ * account
+ * @param erc20Allowances ERC20 legs, each transferred in full from the owner to the target the
+ * solution names for it
+ * @param erc721Approvals ERC721 legs, each transferred from the owner to the target the solution
  * names for it
- * @param erc721Approvals ERC721 legs, each moved from the owner to the target the solution names
- * for it
- * @param validationParams Validators run before and after the solver's route, on which the owner
- * relies in place of signing that route
- * @param ownerCalls The tail the owner fixes exactly, run after the validators, for effects no
- * validator can check
- * @param solutionApprover The account that may approve the solver's route; the dead-address
- * sentinel accepts any route
- * @param nonce Burned against the owner, so one order settles at most once
+ * @param validationParams Validators run before the legs are transferred and after the solver's
+ * calls
+ * @param ownerCalls Router calls fixed by the owner, run after the validators
+ * @param solutionApprover Account whose signature the solution requires; the dead address
+ * requires none
+ * @param nonce Permit2 nonce on the Permit2 entry points; on the delegated entry points, for the
+ * authenticator to spend
  * @param deadline Last timestamp at which the order may settle
  */
 struct FulfillmentOrder {
@@ -53,7 +60,7 @@ library FulfillmentOrderLib {
     'ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)'
   );
 
-  /// @dev EIP-712 hash of the order the owner signs
+  /// @dev EIP-712 hash of the order
   function hash(FulfillmentOrder calldata order) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(

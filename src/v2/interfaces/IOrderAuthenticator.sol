@@ -5,36 +5,34 @@ import {ExecutionOrder} from '../types/ExecutionOrder.sol';
 import {FulfillmentOrder} from '../types/FulfillmentOrder.sol';
 
 /// @title IOrderAuthenticator
-/// @notice Interface every order authenticator used by {AuthDelegator} must implement
+/// @notice Interface an authenticator must implement to be delegated through {AuthDelegator}
 interface IOrderAuthenticator {
-  /// @notice Only the allowance hub this authenticator was bound to at deployment may call this
+  /// @notice The caller is not the allowance hub this authenticator was deployed for
   error CallerNotAllowanceHub(address caller);
 
   /**
-   * @notice Records the owner's first authentication material, as the hub delegates this one
-   * @dev Carries no signature, nonce or deadline, so an implementation must accept it only from a
-   * hub it trusts: {AuthDelegator-updateDelegation} authenticates the owner before calling, and
-   * this selector is deliberately absent from {ICallsForwarder-forwardCalls}'s allowlist, so it
-   * cannot be relayed on anyone's behalf.
+   * @notice Records the owner's initial authentication material when the owner delegates this
+   * authenticator
+   * @dev Takes no signature, nonce or deadline, so an implementation must accept it only from the
+   * hub. {AuthDelegator-updateDelegation} authenticates the owner before calling it, and
+   * {ICallsForwarder-forwardCalls} does not relay this selector.
    * @param owner Account the material belongs to
-   * @param data Verifier-specific payload
+   * @param data Implementation-specific payload
    */
   function initAuthentication(address owner, bytes calldata data) external;
 
   /**
    * @notice Records, replaces or withdraws the owner's authentication material
-   * @dev Anyone may reach this, including through {ICallsForwarder-forwardCalls}, which relays it
-   * from any caller and leaves the hub as `msg.sender`. An implementation must therefore treat
-   * only
-   * `msg.sender == owner` as authentication and verify `signature` in every other case; reading
-   * "called by the hub" as proof the owner was authenticated would let anyone install material
-   * for anyone. Which signature authorises an update is for the implementation to determine, and
-   * it need not be the owner's. Replay protection belongs to the implementation.
+   * @dev Any account may call this, and {ICallsForwarder-forwardCalls} relays it with the hub as
+   * `msg.sender`. An implementation must therefore accept only `msg.sender == owner` as
+   * authentication without a signature, and must verify `signature` for every other caller,
+   * including the hub. The implementation determines which signer may authorise an update, and
+   * is responsible for replay protection.
    * @param owner Account the material belongs to
-   * @param data Verifier-specific payload
-   * @param nonce For the implementation to consume, when it checks the signature
-   * @param deadline Last timestamp at which the update is valid
-   * @param signature Authorisation for the update, needed unless the owner is the caller
+   * @param data Implementation-specific payload
+   * @param nonce Nonce of the signature, for the implementation to spend
+   * @param deadline Last timestamp at which the call is accepted
+   * @param signature Authorisation for the update; not required when the caller is `owner`
    */
   function updateAuthentication(
     address owner,
@@ -45,14 +43,14 @@ interface IOrderAuthenticator {
   ) external;
 
   /**
-   * @notice Checks that `data` authenticates `order` as the owner's
-   * @dev Must revert when it does not; returning normally is read as success. The hub enforces
-   * `order.deadline` before calling but never touches `order.nonce`, so an implementation owns
-   * replay protection. The hub computes `orderHash` from `order` itself, so an implementation that
-   * accepts calls only from the hub may sign over it without hashing the order again.
+   * @notice Checks that `data` authenticates `order` on behalf of its owner
+   * @dev Must revert when it does not; a normal return is treated as success. The hub calls this
+   * only when the caller is not the owner, after checking `order.deadline` and the submitter. The
+   * hub does not spend `order.nonce`, so replay protection is the implementation's. `orderHash` is
+   * computed by the hub from `order`.
    * @param order The order to authenticate
    * @param orderHash EIP-712 struct hash of `order`
-   * @param data Credential and signature, in whatever shape the implementation reads
+   * @param data Credential and signature, in the encoding the implementation reads
    */
   function authenticateExecution(
     ExecutionOrder calldata order,
@@ -61,11 +59,11 @@ interface IOrderAuthenticator {
   ) external;
 
   /**
-   * @notice Checks that `data` authenticates `order` as the owner's
-   * @dev As {authenticateExecution}, over the fulfillment shape
+   * @notice Checks that `data` authenticates `order` on behalf of its owner
+   * @dev As {authenticateExecution}, for a fulfillment order
    * @param order The order to authenticate
    * @param orderHash EIP-712 struct hash of `order`
-   * @param data Credential and signature, in whatever shape the implementation reads
+   * @param data Credential and signature, in the encoding the implementation reads
    */
   function authenticateFulfillment(
     FulfillmentOrder calldata order,

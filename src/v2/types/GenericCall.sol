@@ -11,8 +11,9 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
  * @notice One router call in an order
- * @dev `value` is paid out of the native value the hub was sent, and `router` must hold the
- * whitelisted router role at the time the call runs.
+ * @dev `value` is paid from the native value sent with the order; the order cannot spend native
+ * value the hub held before it. `router` must hold the whitelisted router role when the call runs,
+ * and may read the order's owner from {IMsgSender-msgSender}.
  */
 struct GenericCall {
   address router;
@@ -41,11 +42,7 @@ library GenericCallLib {
       keccak256(abi.encode(GENERIC_CALL_TYPEHASH, self.router, self.value, keccak256(self.data)));
   }
 
-  /**
-   * @dev EIP-712 hash of the array: its member hashes, concatenated and hashed. Word-sized members
-   * are already laid out in memory exactly as `abi.encodePacked` would place them, so the digest is
-   * taken over the array's own data and nothing is copied.
-   */
+  /// @dev EIP-712 hash of the array: its member hashes, concatenated and hashed
   function hash(GenericCall[] calldata calls) internal pure returns (bytes32) {
     bytes32[] memory callHashes = calls.length.malloc();
     for (uint256 i = 0; i < calls.length; i++) {
@@ -65,15 +62,12 @@ library GenericCallLib {
     return callHashes.hash();
   }
 
-  /// @dev Calls the router, forwarding the call's share of the native value sent to the hub
+  /// @dev Calls `ksExecute` on the router with the call's data and native value
   function execute(GenericCall calldata self) internal returns (bytes memory) {
     return IKSGenericRouter(self.router).ksExecute{value: self.value}(self.data);
   }
 
-  /**
-   * @dev The calls that carry value, for the event. Calls with no value are omitted and the array
-   * is truncated in place, so an order with none emits an empty array rather than a run of zeros.
-   */
+  /// @dev The calls that carry native value, as native transfers to their routers
   function toNativeTransfers(GenericCall[] calldata genericCalls)
     internal
     pure
@@ -94,11 +88,7 @@ library GenericCallLib {
     }
   }
 
-  /**
-   * @dev The calls that carry value, solver's route first then the owner's tail, for the event.
-   * Calls with no value are omitted and the array is truncated in place, so an order with none
-   * emits an empty array rather than a run of zero entries.
-   */
+  /// @dev As {toNativeTransfers}, for the solver's calls followed by the owner's calls
   function toNativeTransfers(GenericCall[] calldata solverCalls, GenericCall[] calldata ownerCalls)
     internal
     pure

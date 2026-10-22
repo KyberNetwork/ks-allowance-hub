@@ -39,24 +39,19 @@ import {
 
 /**
  * @title KSAllowanceHubV2
- * @notice Single approval target for KyberSwap: pulls a user's ERC20s and ERC721s and passes them
- * to whitelisted routers in one transaction, so users approve this hub instead of every router.
- * @dev The owner signs one order struct — {ExecutionOrder} or {FulfillmentOrder} — which fixes
- * what may move and the `relayer` or `solver` who may submit it. An execution order also fixes
- * where each leg goes; a fulfillment order leaves that to its solution. Only the ERC20 pull rail
- * is the submitter's: the delegated entry points take it as an argument, and the
- * Permit2-signature ones have no choice to make.
+ * @notice Single approval target for KyberSwap. It transfers an owner's ERC20 and ERC721 tokens
+ * and calls whitelisted routers in one transaction, so that the owner approves this contract
+ * instead of each router.
+ * @dev The owner signs an {ExecutionOrder} or a {FulfillmentOrder}. Both name the assets that may
+ * leave the owner and the account that may submit the order. An execution order also names the
+ * target of each leg and the exact router calls; a fulfillment order leaves both to a
+ * {FulfillmentSolution} and constrains the result with validators.
  *
- * An order is authenticated either by the owner's own Permit2 signature, which carries the order
- * as its witness, or by an {IOrderAuthenticator} the owner delegated through {AuthDelegator}. An
- * owner submitting on their own behalf needs no authenticator; on the Permit2 rails they still
- * sign, with no witness to bind.
+ * An order is authorised either by the owner's Permit2 signature, which signs the order as its
+ * witness, or by an {IOrderAuthenticator} the owner has delegated through {AuthDelegator}. An
+ * owner who submits their own order needs no witness and no authenticator.
  *
- * A fulfillment splits in two: the owner fixes `ownerCalls` and the validators, while a
- * {FulfillmentSolution} supplies the route and the target of each leg, approved by the
- * `solutionApprover` the order names.
- * The validators run between the two, so they bound the solver's work before the owner's tail
- * acts on it.
+ * While an order settles, {msgSender} returns its owner, and no other order may settle.
  */
 contract KSAllowanceHubV2 is
   IKSAllowanceHubV2,
@@ -75,12 +70,12 @@ contract KSAllowanceHubV2 is
   using TokenHelper for address;
   using ValidationParamsLib for ValidationParams[];
 
-  /// @notice Only routers holding this role may be called by a settled order
+  /// @notice Role a router must hold to be called by an order
   bytes32 internal constant WHITELISTED_ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
 
   /**
-   * @notice Sentinel for an order that names no counterparty: any caller may submit it, and on
-   * `solutionApprover` any route is accepted without an approval signature
+   * @notice Value of `relayer` or `solver` that allows any caller to submit the order, and of
+   * `solutionApprover` that accepts any solution without an approval
    */
   address internal constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
@@ -89,7 +84,7 @@ contract KSAllowanceHubV2 is
   /**
    * @param initialAdmin Holder of the default admin role
    * @param initialGuardians Accounts that may pause the hub and revoke routers
-   * @param initialRescuers Accounts that may sweep assets stranded in the hub
+   * @param initialRescuers Accounts that may transfer assets held by the hub
    * @param initialWhitelistedRouters Routers callable from the start
    * @param permit2 The canonical Permit2 deployment
    */
@@ -106,7 +101,7 @@ contract KSAllowanceHubV2 is
     _batchGrantRole(KSRoles.RESCUER_ROLE, initialRescuers);
 
     _batchGrantRole(WHITELISTED_ROUTER_ROLE, initialWhitelistedRouters);
-    // Guardians may revoke a compromised router without waiting for the admin
+    // Guardians may revoke a router without the admin
     _setRoleRevoker(WHITELISTED_ROUTER_ROLE, KSRoles.GUARDIAN_ROLE);
 
     PERMIT2 = permit2;
@@ -129,7 +124,7 @@ contract KSAllowanceHubV2 is
     returns (bytes[] memory results)
   {
     bytes32 orderHash = order.hash();
-    // Being the caller is the owner's own authentication; anyone else must present a credential
+    // The owner's call is its own authentication; any other caller needs the authenticator's
     if (msg.sender != order.owner) {
       if (msg.sender != order.relayer && order.relayer != DEAD_ADDRESS) {
         revert UnauthorizedRelayer(msg.sender);
@@ -158,13 +153,12 @@ contract KSAllowanceHubV2 is
   {
     _announceExecution(order, order.hash());
 
-    // Self-submitted: nothing to bind, since the order.owner is already the caller. Relayed: the
-    // order is bound in as the witness, so a relayer cannot alter it
     ISignatureTransfer.PermitBatchTransferFrom memory permit =
       order.erc20Transfers.toPermitBatchTransferFrom(order.nonce, order.deadline);
     ISignatureTransfer.SignatureTransferDetails[] memory details =
       order.erc20Transfers.toSignatureTransferDetails();
 
+    // The owner signs the permit alone; for any other caller the order is signed as the witness
     if (msg.sender == order.owner) {
       _permitTransferFrom(order.owner, permit, details, permit2Signature);
     } else if (msg.sender == order.relayer || order.relayer == DEAD_ADDRESS) {
@@ -209,7 +203,7 @@ contract KSAllowanceHubV2 is
     returns (bytes[] memory results)
   {
     bytes32 orderHash = order.hash();
-    // Being the caller is the owner's own authentication; anyone else must present a credential
+    // The owner's call is its own authentication; any other caller needs the authenticator's
     if (msg.sender != order.owner) {
       if (msg.sender != order.solver && order.solver != DEAD_ADDRESS) {
         revert UnauthorizedSolver(msg.sender);
@@ -218,12 +212,12 @@ contract KSAllowanceHubV2 is
         .authenticateFulfillment(order, orderHash, authenticationData);
     }
 
-    // The sentinel means the order.owner accepted any route, so there is no approval to check
+    // A dead-address approver accepts any solution
     if (order.solutionApprover != DEAD_ADDRESS) {
       _approveSolution(order.solutionApprover, orderHash, solution, solutionSignature);
     }
 
-    // Snapshot before anything moves, so a validator measures the whole order and not just its tail
+    // Run before any asset moves, so that each validator observes the state before settlement
     bytes[] memory beforeExecutionOutputs = order.validationParams.beforeExecution();
 
     _announceFulfillment(order, orderHash, solution);
@@ -250,12 +244,12 @@ contract KSAllowanceHubV2 is
     returns (bytes[] memory results)
   {
     bytes32 orderHash = order.hash();
-    // The sentinel means the order.owner accepted any route, so there is no approval to check
+    // A dead-address approver accepts any solution
     if (order.solutionApprover != DEAD_ADDRESS) {
       _approveSolution(order.solutionApprover, orderHash, solution, solutionSignature);
     }
 
-    // Snapshot before anything moves, so a validator measures the whole order and not just its tail
+    // Run before any asset moves, so that each validator observes the state before settlement
     bytes[] memory beforeExecutionOutputs = order.validationParams.beforeExecution();
 
     _announceFulfillment(order, orderHash, solution);
@@ -265,8 +259,7 @@ contract KSAllowanceHubV2 is
     ISignatureTransfer.SignatureTransferDetails[] memory details =
       order.erc20Allowances.toSignatureTransferDetails(solution.erc20Targets);
 
-    // Self-submitted: nothing to bind, since the order.owner is already the caller. Relayed: the
-    // order is bound in as the witness, so a solver cannot alter it
+    // The owner signs the permit alone; for any other caller the order is signed as the witness
     if (msg.sender == order.owner) {
       _permitTransferFrom(order.owner, permit, details, permit2Signature);
     } else if (msg.sender == order.solver || order.solver == DEAD_ADDRESS) {
@@ -308,7 +301,7 @@ contract KSAllowanceHubV2 is
     emit RescueTokens(erc20Transfers, erc721Transfers);
   }
 
-  /// @dev {TransferTokens} for an execution, whose legs are emitted from calldata as signed
+  /// @dev Emits {TransferTokens} for an execution order
   function _announceExecution(ExecutionOrder calldata order, bytes32 orderHash) internal {
     emit TransferTokens(
       msg.sender,
@@ -320,8 +313,8 @@ contract KSAllowanceHubV2 is
     );
   }
 
-  /// @dev {TransferTokens} for a fulfillment, with each leg paired with the target the solution
-  /// names for it
+  /// @dev Emits {TransferTokens} for a fulfillment order, pairing each leg with the target the
+  /// solution names for it
   function _announceFulfillment(
     FulfillmentOrder calldata order,
     bytes32 orderHash,
@@ -337,7 +330,7 @@ contract KSAllowanceHubV2 is
     );
   }
 
-  /// @dev Permit2 signature transfer by the owner themselves, so there is nothing to witness
+  /// @dev Transfers the ERC20 legs through a Permit2 permit signed without a witness
   function _permitTransferFrom(
     address owner,
     ISignatureTransfer.PermitBatchTransferFrom memory permit,
@@ -347,7 +340,7 @@ contract KSAllowanceHubV2 is
     ISignatureTransfer(PERMIT2).permitTransferFrom(permit, details, owner, signature);
   }
 
-  /// @dev Permit2 signature transfer for a relayed order, with the order bound in as the witness
+  /// @dev Transfers the ERC20 legs through a Permit2 permit that also signs `witness`
   function _permitWitnessTransferFrom(
     address owner,
     ISignatureTransfer.PermitBatchTransferFrom memory permit,
@@ -360,7 +353,7 @@ contract KSAllowanceHubV2 is
       .permitWitnessTransferFrom(permit, details, owner, witness, witnessTypeString, signature);
   }
 
-  /// @dev Checks that the approver the order named signed `solution` for the order
+  /// @dev Reverts unless `solutionApprover` signed `solution` for the order with hash `orderHash`
   function _approveSolution(
     address solutionApprover,
     bytes32 orderHash,
@@ -373,7 +366,7 @@ contract KSAllowanceHubV2 is
     }
   }
 
-  /// @dev Pulls the ERC20s over Permit2's allowance rail, or over a plain approval to this hub
+  /// @dev Transfers the ERC20 legs from `owner` through Permit2 allowances or allowances to this hub
   function _transferERC20s(
     address owner,
     ERC20Transfer[] calldata erc20Transfers,
@@ -404,10 +397,7 @@ contract KSAllowanceHubV2 is
     }
   }
 
-  /**
-   * @dev Shared tail of both execution rails: the NFT leg, then the order's calls. The ERC20s
-   * have already moved by this point, and that is the only difference between the two rails.
-   */
+  /// @dev Transfers the ERC721 legs and runs the router calls of an execution order
   function _settleExecution(ExecutionOrder calldata order)
     internal
     returns (bytes[] memory results)
@@ -418,7 +408,10 @@ contract KSAllowanceHubV2 is
     _executeCalls(order.genericCalls, results, 0);
   }
 
-  /// @dev Shared tail of both fulfillment rails, as {_settleExecution} is for an execution
+  /**
+   * @dev Transfers the ERC721 legs, runs the solver's calls, runs the validators' `afterExecution`
+   * and runs the owner's calls of a fulfillment order
+   */
   function _settleFulfillment(
     FulfillmentOrder calldata order,
     FulfillmentSolution calldata solution,
@@ -429,13 +422,14 @@ contract KSAllowanceHubV2 is
     results = (solution.solverCalls.length + order.ownerCalls.length).mallocBytes();
     _executeCalls(solution.solverCalls, results, 0);
 
-    // The validators bound what the solver did, so they run before the owner's own tail
+    // The validators check the result of the solver's calls, before the owner's calls run
     order.validationParams.afterExecution(beforeExecutionOutputs);
 
     _executeCalls(order.ownerCalls, results, solution.solverCalls.length);
   }
 
-  /// @dev Runs one call list into `results` from `offset`, checking each router role in turn
+  /// @dev Runs `calls` in order, writing their return data to `results` from `offset`; each router
+  /// must hold the whitelisted router role
   function _executeCalls(GenericCall[] calldata calls, bytes[] memory results, uint256 offset)
     internal
   {

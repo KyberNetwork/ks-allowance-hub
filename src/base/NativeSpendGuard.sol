@@ -4,13 +4,12 @@ pragma solidity ^0.8.0;
 /// @title NativeSpendGuard
 /// @notice Limits the native value a call may spend to the value it was sent
 abstract contract NativeSpendGuard {
-  /// @notice The call spent more native value than it was sent, drawing on the contract's own
-  /// balance
+  /// @notice The call spent more native value than it was sent
   error NativeOverspent(uint256 spent, uint256 value);
 
   /**
-   * @dev `balanceBefore` already includes `msg.value`, so the check reduces to confirming that
-   * the balance held before the call is intact, which protects any native value already held.
+   * @dev Reverts when the balance after the call is less than the balance before it minus
+   * `msg.value`. `balanceBefore` already includes `msg.value`.
    */
   modifier guardNativeSpend() {
     uint256 balanceBefore = address(this).balance;

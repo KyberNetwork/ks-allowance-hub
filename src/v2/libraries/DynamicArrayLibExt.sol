@@ -12,18 +12,15 @@ import {DynamicArrayLib} from 'solady/utils/DynamicArrayLib.sol';
 
 /**
  * @title DynamicArrayLibExt
- * @notice Allocation of typed arrays without the zeroing that `new` performs, completing
- * {DynamicArrayLib}
- * @dev Only for an array whose every slot is written before anything reads one, since an unwritten
- * slot holds whatever the allocator returned. {DynamicArrayLib} has casts for the word-sized
- * element types but none for arrays of `bytes` or of structs. For a struct array, `new` would also
- * allocate and zero a body behind every slot; assigning a struct to an element writes a pointer to
- * a freshly built one, so those bodies would be discarded unread.
+ * @notice Allocates typed memory arrays without zeroing their elements, for the element types
+ * {DynamicArrayLib} does not cover
+ * @dev The caller must write every element before reading any, since an unwritten element holds
+ * whatever memory the allocator returned.
  */
 library DynamicArrayLibExt {
   using DynamicArrayLib for *;
 
-  /// @dev A `bytes[]` of `length` slots, none of them written
+  /// @dev A `bytes[]` of `length` unwritten elements
   function mallocBytes(uint256 length) internal pure returns (bytes[] memory array) {
     uint256[] memory buffer = length.malloc();
     assembly ('memory-safe') {
@@ -32,8 +29,8 @@ library DynamicArrayLibExt {
   }
 
   /**
-   * @dev As {mallocBytes}, for native transfers. A caller may write fewer slots than it allocates
-   * and truncate the array to those it wrote.
+   * @dev As {mallocBytes}, for native transfers. The caller may write fewer elements than it
+   * allocates and shorten the array to those it wrote.
    */
   function mallocNativeTransfers(uint256 length)
     internal

@@ -8,9 +8,11 @@ import {IKSActionValidator} from 'ks-action-validator-sc/src/interfaces/IKSActio
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
- * @notice A validator to run around an order, and the inputs it needs
- * @dev In a fulfillment the solver chooses the route, so these are what bound the outcome.
- * `validator` is arbitrary and not whitelisted.
+ * @notice A validator of a fulfillment order and its inputs
+ * @dev `validator` may be any address; it does not need a role. Its `beforeExecution` runs before
+ * any asset moves, and its `afterExecution` runs after the solver's calls and before the owner's
+ * calls. On the Permit2 entry point, `beforeExecution` runs before the owner's signature is
+ * checked.
  */
 struct ValidationParams {
   address validator;
@@ -55,11 +57,7 @@ library ValidationParamsLib {
     );
   }
 
-  /**
-   * @dev EIP-712 hash of the array: its member hashes, concatenated and hashed. Word-sized members
-   * are already laid out in memory exactly as `abi.encodePacked` would place them, so the digest is
-   * taken over the array's own data and nothing is copied.
-   */
+  /// @dev EIP-712 hash of the array: its member hashes, concatenated and hashed
   function hash(ValidationParams[] calldata params) internal pure returns (bytes32) {
     bytes32[] memory paramsHashes = params.length.malloc();
     for (uint256 i = 0; i < params.length; i++) {
@@ -79,10 +77,7 @@ library ValidationParamsLib {
     return paramsHashes.hash();
   }
 
-  /**
-   * @dev Runs every validator's pre-hook and keeps each snapshot.
-   * Called before anything moves, so a validator measures the whole order rather than its tail.
-   */
+  /// @dev Calls `beforeExecution` on each validator and returns their outputs, in order
   function beforeExecution(ValidationParams[] calldata params)
     internal
     returns (bytes[] memory beforeExecutionOutputs)
@@ -95,7 +90,7 @@ library ValidationParamsLib {
     }
   }
 
-  /// @dev Each validator receives its own snapshot, paired by index
+  /// @dev Calls `afterExecution` on each validator with the output its `beforeExecution` returned
   function afterExecution(ValidationParams[] calldata params, bytes[] memory beforeExecutionOutputs)
     internal
   {

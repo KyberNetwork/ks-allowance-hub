@@ -27,19 +27,17 @@ import {
 
 /**
  * @title SessionOrderAuthenticator
- * @notice Authenticates allowance-hub orders against keys an owner has approved, in place of their
- * main wallet. Each key carries its own expiry and may be Secp256k1, P256, WebAuthn, RSA, an
- * ERC-1271 contract or an ERC-7913 verifier key, so a passkey or a local key may sign orders
- * without involving the wallet.
- * @dev Keys form two tiers. The owner approves master keys, the only tier permitted to approve
- * further keys; a master key approves session keys beneath it, which allows a passkey to issue
- * short-lived local keys without a wallet prompt. Both tiers may sign orders. A session key may
- * not outlive the master key it names, and does not survive its revocation.
+ * @notice Authenticates allowance-hub orders signed by keys the owner has approved, so that orders
+ * can be signed without the owner's wallet. A key has an expiry and is a Secp256k1, P256,
+ * WebAuthn, RSA, ERC-1271 or ERC-7913 key.
+ * @dev Keys have two tiers. The owner approves master keys, and only a master key may approve
+ * other keys. A master key approves session keys for the same owner. Both tiers may sign orders.
+ * A session key may not expire after its master key, and is not accepted once its master key is
+ * revoked.
  *
- * Replay protection belongs to this contract rather than the hub: every verification spends a
- * nonce in the namespace of the account or the key credential that signed, and the nonce and
- * deadline are bound into the digest. A credential's namespace is shared by all of its approvals,
- * whatever their expiry, so a signature settles once however many approvals could accept it.
+ * Every signature this contract verifies spends a nonce in the signer's namespace: the owner's
+ * address for the owner's approvals, and the key's credential hash for anything a key signs. The
+ * credential hash excludes the expiry, so all approvals of one credential share its nonces.
  */
 contract SessionOrderAuthenticator is
   ISessionOrderAuthenticator,
@@ -64,7 +62,7 @@ contract SessionOrderAuthenticator is
 
   /**
    * @inheritdoc IOrderAuthenticator
-   * @dev `data` is `abi.encode(AuthKey masterKey)`; approval is the only direction on this path
+   * @dev `data` is `abi.encode(AuthKey masterKey)`, which is approved as a master key
    */
   function initAuthentication(address owner, bytes calldata data) external onlyAllowanceHub {
     AuthKey calldata masterKey = _decodeKey(data, 0);
@@ -75,11 +73,19 @@ contract SessionOrderAuthenticator is
 
   /**
    * @inheritdoc IOrderAuthenticator
-   * @dev `data` is `abi.encode(AuthKey masterKey, bool approved)` for the owner's own decision, or
-   * `abi.encode(AuthKey sessionKey, AuthKey masterKey, bool approved)` for a master key's,
-   * distinguished by the offset of the first key. Only the owner's rail may approve a master key,
-   * and a master key's reaches no further than a session key beneath it. The owner calling for
-   * themselves passes an empty signature.
+   * @dev `data` takes one of two encodings, distinguished by the offset of its first key:
+   *
+   * - `abi.encode(AuthKey masterKey, bool approved)` approves or revokes a master key. When the
+   *   caller is `owner`, `signature` must be empty and no nonce is spent; otherwise `signature`
+   *   must be the owner's signature over a {MasterKeyApproval}, which spends `nonce` in the owner's
+   *   namespace.
+   * - `abi.encode(AuthKey sessionKey, AuthKey masterKey, bool approved)` approves or revokes a
+   *   session key. `signature` must be the master key's signature over a {SessionKeyApproval},
+   *   which spends `nonce` under the master key's credential, whoever the caller is. The master key
+   *   must be approved, and may act only on a session key that it approved or that no master key
+   *   has approved.
+   *
+   * A key's expiry is checked only when approving, so an expired key can still be revoked.
    */
   function updateAuthentication(
     address owner,
@@ -90,18 +96,15 @@ contract SessionOrderAuthenticator is
   ) external checkDeadline(deadline) {
     if (data.decodeUint256(0) <= 0x40) {
       AuthKey calldata masterKey = _decodeKey(data, 0);
-      // Read as a word and narrowed here, so the direction does not depend on the caller having
-      // written a canonical bool, nor on the compiler cleaning one that assembly produced
+      // Read as a word, so any non-zero value approves
       bool approved = data.decodeUint256(1) != 0;
-      // Only on the way in: a key that has expired must still be clearable
       if (approved) {
         _checkNotExpired(masterKey);
       }
 
       bytes32 masterKeyHash = masterKey.hash();
 
-      // Only the owner authenticates themselves by calling; anyone else, the hub included, must
-      // present a signature, because `forwardCalls` relays this from any caller
+      // Any caller other than the owner, the hub included, must present the owner's signature
       if (msg.sender != owner) {
         _useUnorderedNonce(owner, nonce);
 
@@ -120,8 +123,8 @@ contract SessionOrderAuthenticator is
       AuthKey calldata sessionKey = _decodeKey(data, 0);
       AuthKey calldata masterKey = _decodeKey(data, 1);
       bool approved = data.decodeUint256(2) != 0;
-      // Only on the way in, as on the owner's rail. The bound keeps a session key inside its master
-      // key's life, so a live session key proves the master key live as well
+      // A session key that expires no later than its master key is live only while the master
+      // key is live
       if (approved) {
         if (sessionKey.expiration > masterKey.expiration) {
           revert SessionKeyOutlivesMasterKey(sessionKey.expiration, masterKey.expiration);
@@ -130,13 +133,13 @@ contract SessionOrderAuthenticator is
       }
 
       bytes32 masterKeyHash = masterKey.hash();
-      // Only a key the owner approved themselves may approve a session key
+      // Only a master key may approve a session key
       if (!masterKeys[owner][masterKeyHash]) {
         revert MasterKeyNotApproved(masterKeyHash);
       }
 
       bytes32 sessionKeyHash = sessionKey.hash();
-      // A master key speaks only for the session keys it approved, or for one nobody has approved
+      // A master key may act only on a session key it approved, or on one with no approval
       bytes32 approvedBy = sessionKeyMaster[owner][sessionKeyHash];
       if (approvedBy != bytes32(0) && approvedBy != masterKeyHash) {
         revert SessionKeyAlreadyApproved(sessionKeyHash, masterKeyHash, approvedBy);
@@ -155,7 +158,12 @@ contract SessionOrderAuthenticator is
     }
   }
 
-  /// @inheritdoc IOrderAuthenticator
+  /**
+   * @inheritdoc IOrderAuthenticator
+   * @dev `data` is `abi.encode(AuthKey key, bool isSessionKey, bytes signature)`. `signature` is
+   * the key's signature over the EIP-712 digest of the order under this contract's domain, and
+   * `order.nonce` is spent under the key's credential.
+   */
   function authenticateExecution(
     ExecutionOrder calldata order,
     bytes32 orderHash,
@@ -164,7 +172,10 @@ contract SessionOrderAuthenticator is
     _authenticate(order.owner, order.nonce, orderHash, data);
   }
 
-  /// @inheritdoc IOrderAuthenticator
+  /**
+   * @inheritdoc IOrderAuthenticator
+   * @dev `data` is encoded as for {authenticateExecution}
+   */
   function authenticateFulfillment(
     FulfillmentOrder calldata order,
     bytes32 orderHash,
@@ -175,8 +186,8 @@ contract SessionOrderAuthenticator is
 
   /**
    * @inheritdoc ISessionOrderAuthenticator
-   * @dev Neither the key's expiry nor its approval is checked: its nonces are its own, and a key
-   * that has expired or been revoked must still be able to cancel what it signed
+   * @dev Neither the key's expiry nor its approval is checked, so an expired or revoked key can
+   * still cancel its unused signatures.
    */
   function revokeNonce(
     AuthKey calldata key,
@@ -193,11 +204,10 @@ contract SessionOrderAuthenticator is
   }
 
   /**
-   * @dev Verifies that the key in `abi.encode(AuthKey key, bool isSessionKey, bytes signature)` may
-   * still sign for `owner` and did sign `orderHash`, and spends `nonce` under that key's
-   * credential. `isSessionKey` says which tier the key is presented as, so a master key is settled
-   * by its own approval alone. It is read as a hint and trusted for nothing: a key presented as the
-   * tier it does not hold finds no approval under that tier and is refused.
+   * @dev Verifies that the key in `data` may sign for `owner` and signed the order with hash
+   * `orderHash`, and spends `nonce` under the key's credential. `isSessionKey` selects the tier the
+   * key is checked under; a key presented under a tier it does not hold has no approval there and
+   * is refused.
    */
   function _authenticate(address owner, uint256 nonce, bytes32 orderHash, bytes calldata data)
     private
@@ -207,8 +217,7 @@ contract SessionOrderAuthenticator is
 
     bytes32 keyHash = key.hash();
     if (data.decodeUint256(1) != 0) {
-      // A session key is judged on the master key it names, so revoking that key withdraws every
-      // session key it approved — and the refusal names that master, not this key
+      // A session key is accepted only while the master key that approved it is approved
       bytes32 masterKeyHash = sessionKeyMaster[owner][keyHash];
       if (masterKeyHash == bytes32(0)) {
         revert SessionKeyNotApproved(keyHash);
@@ -229,7 +238,7 @@ contract SessionOrderAuthenticator is
     }
   }
 
-  /// @dev The key the word at `index` of `data` points at
+  /// @dev The key located at the offset stored in word `index` of `data`
   function _decodeKey(bytes calldata data, uint256 index)
     private
     pure
@@ -240,8 +249,7 @@ contract SessionOrderAuthenticator is
     }
   }
 
-  /// @dev Refuses a key whose expiry has passed, so neither an approval nor an order can rest on
-  /// one that could never sign
+  /// @dev Reverts when `key` has expired
   function _checkNotExpired(AuthKey calldata key) private view {
     if (block.timestamp > key.expiration) {
       revert AuthKeyExpired(key.expiration, block.timestamp);

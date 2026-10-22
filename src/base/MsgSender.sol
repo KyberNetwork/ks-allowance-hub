@@ -7,8 +7,8 @@ import {TransientSlot} from 'openzeppelin-contracts/contracts/utils/TransientSlo
 
 /**
  * @title MsgSender
- * @notice Publishes the account the contract is acting for, so a callee that sees this contract as
- * its `msg.sender` can still identify the user, and also serves as the reentrancy guard.
+ * @notice Records the account a call is acting for, so that a contract it calls can identify that
+ * account, and rejects a second locked call while one is in progress
  */
 abstract contract MsgSender is IMsgSender {
   using TransientSlot for *;
@@ -21,7 +21,7 @@ abstract contract MsgSender is IMsgSender {
     LOCKER_SLOT.asAddress().tstore(address(0));
   }
 
-  /// @dev Claims the lock, refusing a slot that is already held
+  /// @dev Records `locker`, reverting when another account is already recorded
   function _lock(address locker) internal {
     TransientSlot.AddressSlot slot = LOCKER_SLOT.asAddress();
     address _locker = slot.tload();

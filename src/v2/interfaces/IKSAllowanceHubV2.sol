@@ -11,19 +11,20 @@ import {NativeTransfer} from '../types/NativeTransfer.sol';
 /// @title IKSAllowanceHubV2
 /// @notice Interface of {KSAllowanceHubV2}
 interface IKSAllowanceHubV2 {
-  /// @notice The order named a different relayer than the one submitting it
+  /// @notice The caller is neither the order's owner nor its relayer, and the order names a relayer
   error UnauthorizedRelayer(address caller);
 
-  /// @notice The order named a different solver than the one submitting it
+  /// @notice The caller is neither the order's owner nor its solver, and the order names a solver
   error UnauthorizedSolver(address caller);
 
-  /// @notice The solution was not approved by the `solutionApprover` the order names
+  /// @notice The solution signature is not valid for the `solutionApprover` the order names
   error InvalidSolutionSignature();
 
   /**
-   * @notice Emitted once per order, before its transfers and calls run
-   * @dev `nativeTransfers` lists only the calls carrying value, so an order with none emits an
-   * empty array rather than a run of zeros.
+   * @notice Emitted once for each settled order, before its assets move and its calls run
+   * @dev For a fulfillment, each ERC20 and ERC721 entry pairs a leg of the order with the target
+   * the solution names for it. `nativeTransfers` lists only the calls that carry native value, the
+   * solver's calls before the owner's, and is empty when no call carries value.
    */
   event TransferTokens(
     address indexed caller,
@@ -34,22 +35,26 @@ interface IKSAllowanceHubV2 {
     NativeTransfer[] nativeTransfers
   );
 
-  /// @notice Emitted when tokens held by the hub are rescued, with the legs as given
+  /// @notice Emitted when assets held by the hub are transferred out, with the entries as given
   event RescueTokens(ERC20Transfer[] erc20Transfers, ERC721Transfer[] erc721Transfers);
 
   /**
-   * @notice Pulls the owner's assets and runs the order's calls, authenticated by a delegated
-   * {IOrderAuthenticator} rather than by a Permit2 signature
-   * @dev The hub checks that `owner` delegated `authenticator` and that the caller is the
-   * `order.relayer`, the owner themselves, or anyone when the order leaves the field open; the
-   * authenticator must revert when `authenticationData` does not authenticate the order, and owns
-   * its own replay protection. A credential states that the owner authorised the order, not who
-   * may submit it, so the hub enforces that itself rather than leaving it to the authenticator.
-   * @param order What the owner signed, including who may submit it
-   * @param authenticator The delegated authenticator to consult
-   * @param authenticationData Credential and signature, in whatever shape that authenticator reads
-   * @param usePermit2Allowances Draw the ERC20 legs on the owner's Permit2 allowance rather than on
-   * a plain allowance to this hub
+   * @notice Settles an execution order authenticated by an {IOrderAuthenticator} the owner has
+   * delegated
+   * @dev `authenticator` must be delegated by `order.owner`, or be the zero address.
+   *
+   * When the caller is `order.owner`, the call is the authentication: the authenticator is not
+   * called, `authenticationData` is ignored, `order.relayer` does not apply and no nonce is spent,
+   * so the owner may settle the same order more than once.
+   *
+   * Any other caller must be `order.relayer`, or any account when `order.relayer` is the dead
+   * address, and the authenticator must accept `authenticationData` for the order. The hub does
+   * not spend `order.nonce`; replay protection is the authenticator's.
+   * @param order The order to settle
+   * @param authenticator The authenticator that checks `authenticationData`
+   * @param authenticationData Credential and signature, in the encoding the authenticator reads
+   * @param usePermit2Allowances Whether the ERC20 legs are drawn from the owner's Permit2
+   * allowances instead of the owner's allowances to this hub
    * @return results Return data of each router call, in order
    */
   function executeOrderWithDelegatedAuthentication(
@@ -60,11 +65,15 @@ interface IKSAllowanceHubV2 {
   ) external payable returns (bytes[] memory results);
 
   /**
-   * @notice Pulls the owner's assets and runs the order's calls, funded by the owner's Permit2
-   * signature
-   * @param order What the owner signed
-   * @param permit2Signature The owner's Permit2 signature over the permit, and over the order as
-   * its witness when relayed
+   * @notice Settles an execution order authorised by the owner's Permit2 signature
+   * @dev The ERC20 legs are transferred through a Permit2 batch permit whose nonce is
+   * `order.nonce` and whose deadline is `order.deadline`.
+   *
+   * When the caller is `order.owner`, `permit2Signature` signs the permit alone. Any other caller
+   * must be `order.relayer`, or any account when `order.relayer` is the dead address, and
+   * `permit2Signature` must also sign the order's {ExecutionWitness}.
+   * @param order The order to settle
+   * @param permit2Signature The owner's Permit2 signature
    * @return results Return data of each router call, in order
    */
   function executeOrderWithPermit2Signature(
@@ -73,21 +82,29 @@ interface IKSAllowanceHubV2 {
   ) external payable returns (bytes[] memory results);
 
   /**
-   * @notice Settles a fulfillment authenticated by a delegated {IOrderAuthenticator}: a solver
-   * supplies the route, the owner's validators bound it, and the owner's own tail runs after
-   * @dev The validators run between the two call lists, so they measure the solver's work before
-   * `order.ownerCalls` acts on it. The owner's tail is not validated, by design. As on the
-   * execution rail, the caller must be the `order.solver`, the owner themselves, or anyone when the
-   * order leaves the field open.
-   * @param order What the owner signed, including the validators, their own tail and which
-   * account may solve it
-   * @param authenticator The delegated authenticator to consult
-   * @param authenticationData Credential and signature, in whatever shape that authenticator reads
-   * @param solution The route the solver chose
-   * @param solutionSignature Approval of `solution` by the `solutionApprover` the order names
-   * @param usePermit2Allowances Draw the ERC20 legs on the owner's Permit2 allowance rather than on
-   * a plain allowance to this hub
-   * @return results Return data of every router call, the solution's first then the owner's
+   * @notice Settles a fulfillment order authenticated by an {IOrderAuthenticator} the owner has
+   * delegated, along the route in `solution`
+   * @dev The settlement runs in this order: the solution approval is checked, each validator's
+   * `beforeExecution` runs, the legs move to the targets `solution` names, `solution.solverCalls`
+   * run, each validator's `afterExecution` runs, and `order.ownerCalls` run. The validators do not
+   * observe the effects of `order.ownerCalls`.
+   *
+   * `solution` must name one target for each leg and must not have passed its own deadline. The
+   * approval is checked against `order.solutionApprover`, and is not required when that is the
+   * dead address. The approval carries no nonce, so it remains valid for every settlement of its
+   * order.
+   *
+   * The caller and the authenticator are treated as in {executeOrderWithDelegatedAuthentication},
+   * with `order.solver` in place of `order.relayer`. When the caller is `order.owner`, the solution
+   * approval is still required.
+   * @param order The order to settle
+   * @param authenticator The authenticator that checks `authenticationData`
+   * @param authenticationData Credential and signature, in the encoding the authenticator reads
+   * @param solution The route and the leg targets the solver chose
+   * @param solutionSignature The `solutionApprover`'s signature over the {SolutionApproval}
+   * @param usePermit2Allowances Whether the ERC20 legs are drawn from the owner's Permit2
+   * allowances instead of the owner's allowances to this hub
+   * @return results Return data of each router call, the solver's calls first
    */
   function fulfillOrderWithDelegatedAuthentication(
     FulfillmentOrder calldata order,
@@ -99,14 +116,20 @@ interface IKSAllowanceHubV2 {
   ) external payable returns (bytes[] memory results);
 
   /**
-   * @notice As {fulfillOrderWithDelegatedAuthentication}, but funded by the owner's Permit2
-   * signature
-   * @param order What the owner signed
-   * @param permit2Signature The owner's Permit2 signature over the permit, and over the order as
-   * its witness when relayed
-   * @param solution The route the solver chose
-   * @param solutionSignature Approval of `solution` by the `solutionApprover` the order names
-   * @return results Return data of every router call, the solution's first then the owner's
+   * @notice Settles a fulfillment order authorised by the owner's Permit2 signature, along the
+   * route in `solution`
+   * @dev The settlement and the solution approval are as in
+   * {fulfillOrderWithDelegatedAuthentication}. The ERC20 legs are transferred through a Permit2
+   * batch permit whose nonce is `order.nonce` and whose deadline is `order.deadline`.
+   *
+   * When the caller is `order.owner`, `permit2Signature` signs the permit alone. Any other caller
+   * must be `order.solver`, or any account when `order.solver` is the dead address, and
+   * `permit2Signature` must also sign the order's {FulfillmentWitness}.
+   * @param order The order to settle
+   * @param permit2Signature The owner's Permit2 signature
+   * @param solution The route and the leg targets the solver chose
+   * @param solutionSignature The `solutionApprover`'s signature over the {SolutionApproval}
+   * @return results Return data of each router call, the solver's calls first
    */
   function fulfillOrderWithPermit2Signature(
     FulfillmentOrder calldata order,
@@ -116,10 +139,13 @@ interface IKSAllowanceHubV2 {
   ) external payable returns (bytes[] memory results);
 
   /**
-   * @notice Sends tokens held by the hub to their targets; for a rescuer or the default admin
-   * @dev A zero ERC20 amount sends the whole balance; the native-token address sends ether
-   * @param erc20Transfers ERC20 and native legs
-   * @param erc721Transfers NFT legs
+   * @notice Transfers assets held by the hub to the given targets; callable by an account with the
+   * rescuer role or by the default admin
+   * @dev An ERC20 entry with a zero `amount` transfers the hub's entire balance of `token`. An entry
+   * whose `token` is the native-token address or the zero address transfers native value. A zero
+   * `target` is not refused.
+   * @param erc20Transfers ERC20 and native entries
+   * @param erc721Transfers ERC721 entries
    */
   function rescueTokens(
     ERC20Transfer[] calldata erc20Transfers,

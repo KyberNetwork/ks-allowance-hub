@@ -3,7 +3,11 @@ pragma solidity ^0.8.0;
 
 import {AuthKey} from './AuthKey.sol';
 
-/// @notice A key's decision to spend one of its own nonces, cancelling the signature carrying it
+/**
+ * @notice A key's signed decision to spend one of its nonces, invalidating its unused signature
+ * that carries it
+ * @dev The nonce is spent under the key's credential. The key need not be approved or unexpired.
+ */
 struct NonceRevocation {
   AuthKey key;
   uint256 nonce;

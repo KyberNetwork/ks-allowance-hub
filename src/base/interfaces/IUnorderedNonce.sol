@@ -4,19 +4,20 @@ pragma solidity ^0.8.0;
 /// @title IUnorderedNonce
 /// @notice Interface of {UnorderedNonce}
 interface IUnorderedNonce {
-  /// @notice This nonce has already been spent in this namespace, or was revoked by its signer
+  /// @notice The nonce has already been spent in this namespace
   error NonceAlreadyUsed(bytes32 namespace, uint256 nonce);
 
   /**
-   * @notice Spent-nonce bitmap, keyed by signer namespace and by the nonce's word index
-   * @param namespace Namespace the nonces belong to: whoever signed the data they guard, as an
-   * address widened to a word or as the hash of a key credential
-   * @param word The nonce's top bits, i.e. `nonce >> 8`
+   * @notice One word of the spent-nonce bitmap of a namespace
+   * @param namespace An account's address as a 32-byte word, or a key's credential hash
+   * @param word The nonce's word index, `nonce >> 8`
+   * @return The bitmap word, in which bit `nonce & 0xff` is set when the nonce is spent
    */
   function nonces(bytes32 namespace, uint256 word) external view returns (uint256);
 
   /**
-   * @notice Burns one of the caller's own nonces, cancelling a signature that has not been used
+   * @notice Spends a nonce in the caller's address namespace, invalidating the caller's unused
+   * signature that carries it
    * @param nonce The nonce to spend
    */
   function revokeNonce(uint256 nonce) external payable;

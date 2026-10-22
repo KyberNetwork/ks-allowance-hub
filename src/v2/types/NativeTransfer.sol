@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-/// @notice Event-only record of native value paid to a router; never an input
+/// @notice Native value paid to a router, as reported in {IKSAllowanceHubV2-TransferTokens}
 struct NativeTransfer {
   address target;
   uint256 amount;

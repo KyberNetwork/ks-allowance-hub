@@ -5,10 +5,8 @@ import {FulfillmentOrder} from './FulfillmentOrder.sol';
 import {FulfillmentSolution} from './FulfillmentSolution.sol';
 
 /**
- * @notice An approver's binding of one {FulfillmentSolution} to the {FulfillmentOrder} it settles
- * @dev The whole order is a member, so a route approved for one order cannot be presented with
- * another, and the approver signs the order in full rather than an opaque hash of it. The approval
- * carries no nonce: it settles at most as often as its order.
+ * @notice A solution approver's approval of one {FulfillmentSolution} for one {FulfillmentOrder}
+ * @dev The approval carries no nonce, so it is valid for every settlement of its order.
  */
 struct SolutionApproval {
   FulfillmentOrder order;
@@ -25,7 +23,7 @@ library SolutionApprovalLib {
     'ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)'
   );
 
-  /// @dev EIP-712 hash of the approval the solution approver produces
+  /// @dev EIP-712 hash of the approval, taking the order by its struct hash
   function hash(bytes32 orderHash, FulfillmentSolution calldata solution)
     internal
     pure

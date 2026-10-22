@@ -13,10 +13,10 @@ import {TokenHelper} from 'ks-common-sc/src/libraries/token/TokenHelper.sol';
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
- * @notice One ERC20 leg of a fulfillment order: how much of `token` may leave the owner
- * @dev The destination is not part of the order. The solver names one target per leg in its
- * {FulfillmentSolution}, and the whole `amount` moves to it. `amount` is `uint160` to match
- * Permit2's allowance width.
+ * @notice One ERC20 leg of a fulfillment order: an amount of `token` that leaves the owner
+ * @dev The order does not name the leg's target. The {FulfillmentSolution} names one target for
+ * each leg, and the full `amount` is transferred to it. `amount` has the width of a Permit2
+ * allowance.
  */
 struct ERC20Allowance {
   address token;
@@ -69,7 +69,7 @@ library ERC20AllowanceLib {
     return allowanceHashes.hash();
   }
 
-  /// @dev Pulls each allowance in full from `owner` to the target at the same index
+  /// @dev Transfers each allowance in full from `owner` to the target at the same index
   function execute(ERC20Allowance[] calldata allowances, address owner, address[] calldata targets)
     internal
   {
@@ -124,7 +124,7 @@ library ERC20AllowanceLib {
     }
   }
 
-  /// @dev The transfers the allowances become once each is paired with its target
+  /// @dev The allowances as transfers, each paired with the target at the same index
   function toTransfers(ERC20Allowance[] calldata allowances, address[] calldata targets)
     internal
     pure

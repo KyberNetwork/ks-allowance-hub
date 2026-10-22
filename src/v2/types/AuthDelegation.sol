@@ -2,10 +2,11 @@
 pragma solidity ^0.8.0;
 
 /**
- * @notice An owner's decision to delegate an authenticator or withdraw it, needed only when
- * someone else submits it on their behalf
- * @dev `delegated` carries the direction: true delegates the authenticator, false withdraws it.
- * `data` reaches the authenticator only when delegating.
+ * @notice An owner's signed decision to delegate an authenticator or withdraw it, required when the
+ * decision is submitted by another account
+ * @dev `delegated` is true to delegate and false to withdraw. `data` is passed to the
+ * authenticator only when delegating. When the owner submits the decision, no signature is given
+ * and `nonce` is not spent.
  */
 struct AuthDelegation {
   address owner;
@@ -39,7 +40,7 @@ library AuthDelegationLib {
     );
   }
 
-  /// @dev As {hash}, taking the struct rather than its fields
+  /// @dev As {hash}, for a delegation held as a struct
   function hash(AuthDelegation memory self) internal pure returns (bytes32) {
     return
       hash(self.owner, self.authenticator, self.delegated, self.data, self.nonce, self.deadline);

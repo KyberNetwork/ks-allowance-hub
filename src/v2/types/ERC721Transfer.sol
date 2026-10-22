@@ -5,7 +5,10 @@ import {IERC721} from 'openzeppelin-contracts/contracts/token/ERC721/IERC721.sol
 
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
-/// @notice One ERC721 leg of an order, moved directly from the owner to `target`
+/**
+ * @notice One ERC721 leg of an execution order, transferred from the owner to `target`
+ * @dev In {IKSAllowanceHubV2-rescueTokens}, the entry is a transfer from the hub.
+ */
 struct ERC721Transfer {
   address token;
   uint256 tokenId;
@@ -36,11 +39,7 @@ library ERC721TransferLib {
     return keccak256(abi.encode(ERC721_TRANSFER_TYPEHASH, self.token, self.tokenId, self.target));
   }
 
-  /**
-   * @dev EIP-712 hash of the array: its member hashes, concatenated and hashed. Word-sized members
-   * are already laid out in memory exactly as `abi.encodePacked` would place them, so the digest is
-   * taken over the array's own data and nothing is copied.
-   */
+  /// @dev EIP-712 hash of the array: its member hashes, concatenated and hashed
   function hash(ERC721Transfer[] calldata transfers) internal pure returns (bytes32) {
     bytes32[] memory transferHashes = transfers.length.malloc();
     for (uint256 i = 0; i < transfers.length; i++) {
@@ -60,7 +59,7 @@ library ERC721TransferLib {
     return transferHashes.hash();
   }
 
-  /// @dev Moves each token from `owner` to its target, so the hub never holds the NFT
+  /// @dev Transfers each token from `owner` to its target
   function execute(ERC721Transfer[] calldata transfers, address owner) internal {
     for (uint256 i = 0; i < transfers.length; i++) {
       ERC721Transfer calldata transfer = transfers[i];

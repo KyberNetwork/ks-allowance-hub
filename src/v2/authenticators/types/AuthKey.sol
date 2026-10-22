@@ -15,10 +15,11 @@ import {
 import {WebAuthn} from 'openzeppelin-contracts/contracts/utils/cryptography/WebAuthn.sol';
 
 /**
- * @notice A credential approved to sign for an account until `expiration`
- * @dev `publicKey` is encoded per `keyType`: a 32-byte ABI-encoded address for Secp256k1 and
+ * @notice A key that may sign for an account until `expiration`
+ * @dev `publicKey` is encoded according to `keyType`: an ABI-encoded address for Secp256k1 and
  * ERC1271, `abi.encodePacked(qx, qy)` for P256 and WebAuthn, `abi.encode(bytes e, bytes n)` for
- * RSA, and `abi.encodePacked(verifier, key)` for ERC7913.
+ * RSA, and `abi.encodePacked(verifier, key)` for ERC7913. Approvals identify a key by its hash,
+ * which includes the expiry; nonces are spent under its credential hash, which does not.
  */
 struct AuthKey {
   bytes publicKey;
@@ -34,10 +35,7 @@ library AuthKeyLib {
   bytes32 internal constant AUTH_KEY_TYPEHASH =
     keccak256('AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)');
 
-  /**
-   * @dev EIP-712 hash identifying one approval of the key: its public half, scheme and expiry
-   * together. Approving the same credential with another expiry gives another hash.
-   */
+  /// @dev EIP-712 hash of the key, covering its public key, type and expiry
   function hash(AuthKey calldata key) internal pure returns (bytes32) {
     return
       keccak256(
@@ -53,28 +51,31 @@ library AuthKeyLib {
       );
   }
 
-  /**
-   * @dev Hash of the key's public half and scheme without its expiry, under which the key's nonces
-   * are spent. Every approval of the same credential shares it, so a signature spent under one
-   * approval is spent under all of them.
-   */
+  /// @dev Hash of the key's type and public key, without its expiry, under which its nonces are
+  /// spent
   function credentialHash(AuthKey calldata key) internal pure returns (bytes32) {
     return keccak256(abi.encodePacked(key.keyType, key.publicKey));
   }
 
   /**
-   * @notice Checks `signature` over `digest` under this key's scheme
-   * @dev `signature` is encoded per `keyType`, mirroring `publicKey`: a 65-byte ECDSA signature for
-   * Secp256k1, `abi.encodePacked(r, s)` for P256, an encoded `WebAuthn.WebAuthnAuth` for WebAuthn,
-   * a PKCS#1 v1.5 signature for RSA, and whatever the signer contract or verifier accepts for
-   * ERC1271 and ERC7913. The P256 words are read without a length check, so a short signature reads
-   * whatever follows it in calldata and fails verification rather than reverting. A `publicKey`
-   * that is not 32 bytes for Secp256k1 and ERC1271 or 64 bytes for P256 and WebAuthn, shorter than
-   * its two head words for RSA, or no longer than the verifier's address for ERC7913, verifies
-   * nothing, and neither does a Secp256k1 or ERC1271 key with any of its top 12 bytes set, so each
-   * address signer has one encoding and one credential.
-   * The words read as a Secp256k1, ERC1271, P256 or WebAuthn key, and the head words locating an
-   * RSA key's `e` and `n`, then all lie within the bytes the key's hash covers.
+   * @notice Whether `signature` is a valid signature of `digest` by this key
+   * @dev `signature` is encoded according to `keyType`: a 65-byte ECDSA signature for Secp256k1,
+   * `abi.encodePacked(r, s)` for P256, an ABI-encoded `WebAuthn.WebAuthnAuth` for WebAuthn, a
+   * PKCS#1 v1.5 signature for RSA, and the encoding the contract or verifier accepts for ERC1271
+   * and ERC7913.
+   *
+   * Returns false, without reverting, when `publicKey` is not 32 bytes for Secp256k1 and ERC1271,
+   * not 64 bytes for P256 and WebAuthn, shorter than 64 bytes for RSA, or not longer than 20 bytes
+   * for ERC7913, and when a Secp256k1 or ERC1271 key has any of its top 12 bytes set. A P256
+   * signature is read without a length check; a short one fails verification.
+   *
+   * Secp256k1 keys are verified by ECDSA recovery only, and ERC1271 keys by the contract only.
+   * ERC7913 keys are verified by a static call to the verifier; a verifier that reverts, has no
+   * code or returns anything other than the `verify` selector fails verification.
+   * @param key The key
+   * @param digest The signed digest
+   * @param signature The signature
+   * @return result Whether the signature is valid
    */
   function verify(AuthKey calldata key, bytes32 digest, bytes calldata signature)
     internal

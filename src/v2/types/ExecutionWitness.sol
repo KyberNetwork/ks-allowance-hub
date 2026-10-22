@@ -9,13 +9,14 @@ import {GenericCall, GenericCallLib} from './GenericCall.sol';
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 
 /**
- * @notice Attached to the owner's Permit2 signature on a relayed
+ * @notice Witness the owner's Permit2 signature covers when another account submits
  * {KSAllowanceHubV2-executeOrderWithPermit2Signature}
- * @dev Fixes everything the permit itself does not: the permit covers only tokens and amounts.
- * @param relayer The account that may submit; the dead-address sentinel permits any caller
- * @param erc20Targets The destination of each ERC20 leg, in order
- * @param erc721Transfers The NFT leg
- * @param genericCalls The exact router calls the owner agreed to
+ * @dev Covers the parts of the order the permit does not; the permit covers the ERC20 tokens and
+ * amounts.
+ * @param relayer Account that may submit the order; the dead address allows any account
+ * @param erc20Targets Target of each ERC20 leg, in order
+ * @param erc721Transfers ERC721 legs
+ * @param genericCalls Router calls
  */
 struct ExecutionWitness {
   address relayer;
@@ -25,17 +26,14 @@ struct ExecutionWitness {
 }
 
 /**
- * @notice The type Permit2 hashes on the relayed execution rail
- * @dev Permit2 completes its own stub with the witness type string the hub supplies, and this is
- * the result. Declaring it keeps that string checkable against a struct rather than a
- * transcription. Permit2 names both witness variants alike, so the fulfillment one is declared
- * beside
- * {FulfillmentWitness} and the two never share a file.
+ * @notice The struct Permit2 hashes for an execution order's witness permit
+ * @dev Declared so that the witness type string the hub passes to Permit2 can be checked against a
+ * struct. The fulfillment variant has the same name and is declared beside {FulfillmentWitness}.
  * @param permitted Tokens and amounts the permit covers
- * @param spender The account that may transfer them
- * @param nonce Permit2's own nonce
+ * @param spender Account that may transfer them
+ * @param nonce Permit2 nonce
  * @param deadline Last timestamp at which the permit may be used
- * @param witness The order, bound to the signature
+ * @param witness The order's witness
  */
 struct PermitBatchWitnessTransferFrom {
   ISignatureTransfer.TokenPermissions[] permitted;
@@ -62,7 +60,7 @@ library ExecutionWitnessLib {
     'GenericCall(address router,uint256 value,bytes data)'
   );
 
-  /// @dev EIP-712 hash of the witness attached to the owner's Permit2 signature
+  /// @dev EIP-712 hash of the witness
   function hash(
     address relayer,
     bytes32 erc20TargetsHash,

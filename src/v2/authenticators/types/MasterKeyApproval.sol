@@ -4,8 +4,10 @@ pragma solidity ^0.8.0;
 import {AuthKey} from './AuthKey.sol';
 
 /**
- * @notice An owner's decision about one master key
- * @dev `approved` carries the direction: true approves the key, false revokes it
+ * @notice An owner's signed decision to approve or revoke one master key
+ * @dev `approved` is true to approve and false to revoke. When the owner submits the decision, no
+ * signature is given and `nonce` is not spent. Otherwise `nonce` is spent in the owner's
+ * namespace.
  */
 struct MasterKeyApproval {
   address owner;

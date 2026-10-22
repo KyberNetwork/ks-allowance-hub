@@ -10,9 +10,9 @@ import {IERC721} from 'openzeppelin-contracts/contracts/token/ERC721/IERC721.sol
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
- * @notice One ERC721 leg of a fulfillment order: a token that may leave the owner
- * @dev The destination is not part of the order. The solver names one target per leg in its
- * {FulfillmentSolution}.
+ * @notice One ERC721 leg of a fulfillment order: a token that leaves the owner
+ * @dev The order does not name the leg's target. The {FulfillmentSolution} names one target for
+ * each leg.
  */
 struct ERC721Approval {
   address token;
@@ -64,7 +64,7 @@ library ERC721ApprovalLib {
     return approvalHashes.hash();
   }
 
-  /// @dev Moves each token from `owner` to the target at the same index
+  /// @dev Transfers each token from `owner` to the target at the same index
   function execute(ERC721Approval[] calldata approvals, address owner, address[] calldata targets)
     internal
   {
@@ -74,7 +74,7 @@ library ERC721ApprovalLib {
     }
   }
 
-  /// @dev The transfers the approvals become once each is paired with its target
+  /// @dev The approvals as transfers, each paired with the target at the same index
   function toTransfers(ERC721Approval[] calldata approvals, address[] calldata targets)
     internal
     pure

@@ -11,9 +11,11 @@ import {TokenHelper} from 'ks-common-sc/src/libraries/token/TokenHelper.sol';
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
- * @notice One ERC20 leg of an order: how much of `token` leaves the owner for `target`
- * @dev `amount` is `uint160` to match Permit2's allowance width, so the same struct serves both the
- * Permit2 rails and a plain approval to the hub.
+ * @notice One ERC20 leg of an execution order: an amount of `token` transferred from the owner to
+ * `target`
+ * @dev `amount` has the width of a Permit2 allowance. In {IKSAllowanceHubV2-rescueTokens}, the
+ * entry is a transfer from the hub: a zero `amount` transfers the hub's entire balance, and a
+ * `token` of the native-token address or the zero address transfers native value.
  */
 struct ERC20Transfer {
   address token;
@@ -47,11 +49,7 @@ library ERC20TransferLib {
     return keccak256(abi.encode(ERC20_TRANSFER_TYPEHASH, self.token, self.target, self.amount));
   }
 
-  /**
-   * @dev EIP-712 hash of the array: its member hashes, concatenated and hashed. Word-sized members
-   * are already laid out in memory exactly as `abi.encodePacked` would place them, so the digest is
-   * taken over the array's own data and nothing is copied.
-   */
+  /// @dev EIP-712 hash of the array: its member hashes, concatenated and hashed
   function hash(ERC20Transfer[] calldata transfers) internal pure returns (bytes32) {
     bytes32[] memory transferHashes = transfers.length.malloc();
     for (uint256 i = 0; i < transfers.length; i++) {
@@ -71,7 +69,7 @@ library ERC20TransferLib {
     return transferHashes.hash();
   }
 
-  /// @dev Pulls each transfer from `owner` directly to its target
+  /// @dev Transfers each leg from `owner` to its target
   function execute(ERC20Transfer[] calldata transfers, address owner) internal {
     for (uint256 i = 0; i < transfers.length; i++) {
       ERC20Transfer calldata transfer = transfers[i];
@@ -111,7 +109,7 @@ library ERC20TransferLib {
     }
   }
 
-  /// @dev EIP-712 hash of the transfers' targets as an `address[]`, in order, as a witness binds them
+  /// @dev EIP-712 hash of the legs' targets, in order, encoded as an `address[]`
   function targetsHash(ERC20Transfer[] calldata transfers) internal pure returns (bytes32) {
     bytes32[] memory targetWords = transfers.length.malloc();
     for (uint256 i = 0; i < transfers.length; i++) {

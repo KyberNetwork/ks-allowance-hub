@@ -4,35 +4,41 @@ pragma solidity ^0.8.0;
 /// @title IAuthDelegator
 /// @notice Interface of {AuthDelegator}
 interface IAuthDelegator {
-  /// @notice The signature does not authorise this decision on the owner's behalf
+  /// @notice The signature is not the owner's signature over the delegation
   error InvalidDelegationSignature();
 
-  /// @notice The owner is the caller, so the decision takes no signature, yet one was given
+  /// @notice The owner called directly, which takes an empty signature, and gave a signature
   error UnexpectedSignature();
 
-  /// @notice The owner has not delegated the authenticator being asked to authenticate the order
+  /// @notice The order's owner has not delegated this authenticator
   error AuthenticatorNotDelegated(address authenticator);
 
   /**
-   * @notice Whether `owner` has authorised `authenticator` to approve orders on their behalf
-   * @param owner Account whose assets the authenticator may authorise
-   * @param authenticator Contract that authenticates the owner's orders
+   * @notice Whether `owner` has delegated `authenticator` to authenticate their orders
+   * @param owner Account whose orders the authenticator may authenticate
+   * @param authenticator Authenticator contract
    * @return Whether the delegation is in place
    */
   function authDelegated(address owner, address authenticator) external view returns (bool);
 
   /**
-   * @notice Delegates authentication to `authenticator`, or withdraws it
-   * @dev `data` reaches the authenticator only when delegating, so withdrawing cannot be blocked
-   * by one that reverts. Withdrawing leaves the authenticator's own state untouched; withdraw that
-   * separately through {ICallsForwarder-forwardCalls} when both are to be removed.
-   * @param owner Account whose orders the authenticator may approve
-   * @param authenticator Contract that will authenticate future orders
-   * @param delegated True to delegate the authenticator, false to withdraw it
-   * @param data Authenticator-specific payload, opaque here and ignored when withdrawing
-   * @param nonce Consumed only when someone other than the owner submits
-   * @param deadline Last timestamp at which the delegation may be submitted
-   * @param signature The owner's `AuthDelegation` signature; empty when the owner is the caller
+   * @notice Delegates `authenticator` to authenticate `owner`'s orders, or withdraws the delegation
+   * @dev When the caller is `owner`, the call is the authorisation: `signature` must be empty and
+   * no nonce is spent. Any other caller, including this contract when the call is relayed through
+   * {ICallsForwarder-forwardCalls}, must present the owner's signature over the
+   * {AuthDelegation}, which spends `nonce` in the owner's namespace.
+   *
+   * When delegating with non-empty `data`, `data` is passed to
+   * {IOrderAuthenticator-initAuthentication}. Withdrawing calls no authenticator and leaves the
+   * authenticator's own state unchanged.
+   * @param owner Account whose orders the authenticator may authenticate
+   * @param authenticator Authenticator contract
+   * @param delegated True to delegate, false to withdraw
+   * @param data Initial authentication material for the authenticator; ignored when withdrawing
+   * @param nonce Nonce of the signature; unused when the caller is `owner`
+   * @param deadline Last timestamp at which the call is accepted
+   * @param signature The owner's signature over the {AuthDelegation}, or empty when the caller is
+   * `owner`
    */
   function updateDelegation(
     address owner,

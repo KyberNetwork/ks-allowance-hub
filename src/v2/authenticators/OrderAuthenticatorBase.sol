@@ -5,14 +5,12 @@ import {IOrderAuthenticator} from '../interfaces/IOrderAuthenticator.sol';
 
 /**
  * @title OrderAuthenticatorBase
- * @notice Binds an authenticator to one allowance hub. Authentication is meaningful only when
- * that hub asks for it, since the hub is what pairs an order with the owner whose assets it
- * moves.
+ * @notice Restricts an authenticator's hub-only functions to the allowance hub it was deployed for
  */
 abstract contract OrderAuthenticatorBase is IOrderAuthenticator {
   address internal immutable ALLOWANCE_HUB;
 
-  /// @param allowanceHub The only contract whose authentication requests this one answers
+  /// @param allowanceHub The allowance hub this authenticator serves
   constructor(address allowanceHub) {
     ALLOWANCE_HUB = allowanceHub;
   }

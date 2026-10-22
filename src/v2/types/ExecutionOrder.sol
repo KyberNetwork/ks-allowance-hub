@@ -8,15 +8,19 @@ import {GenericCall, GenericCallLib} from './GenericCall.sol';
 import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
 
 /**
- * @notice An owner's signed order to move assets and run an exact list of router calls
- * @dev Fixes the calls themselves, so the owner signs what will run.
- * @param owner Account the assets come from
- * @param relayer The account that may submit this order; the dead-address sentinel permits any
- * caller
- * @param erc20Transfers ERC20 legs, moved from the owner to their targets
- * @param erc721Transfers ERC721 legs, moved from the owner to their targets
- * @param genericCalls Router calls to run once the assets have moved
- * @param nonce Burned against the owner, so one order settles at most once
+ * @notice An owner's order to transfer assets to named targets and run a fixed list of router calls
+ * @dev When `owner` submits the order, `relayer` does not apply and no authentication is required
+ * beyond the call itself, except that a Permit2 entry point still requires the owner's permit
+ * signature, without a witness. On a delegated entry point the owner's own submission spends no
+ * nonce, so the same order may settle more than once.
+ * @param owner Account the assets are transferred from
+ * @param relayer Account that may submit the order besides the owner; the dead address allows any
+ * account
+ * @param erc20Transfers ERC20 legs, each transferred from the owner to its target
+ * @param erc721Transfers ERC721 legs, each transferred from the owner to its target
+ * @param genericCalls Router calls run after the legs are transferred
+ * @param nonce Permit2 nonce on the Permit2 entry points; on the delegated entry points, for the
+ * authenticator to spend
  * @param deadline Last timestamp at which the order may settle
  */
 struct ExecutionOrder {
@@ -43,7 +47,7 @@ library ExecutionOrderLib {
     'GenericCall(address router,uint256 value,bytes data)'
   );
 
-  /// @dev EIP-712 hash of the order the owner signs
+  /// @dev EIP-712 hash of the order
   function hash(ExecutionOrder calldata order) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(

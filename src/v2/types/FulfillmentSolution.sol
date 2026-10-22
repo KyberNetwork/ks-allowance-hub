@@ -6,14 +6,14 @@ import {EfficientHashLibExt} from '../libraries/EfficientHashLibExt.sol';
 import {GenericCall, GenericCallLib} from './GenericCall.sol';
 
 /**
- * @notice The route a solver chose for a {FulfillmentOrder}, approved separately from the order
- * @dev Signed by the `solutionApprover` the order names, not by the owner, so the route may be
- * chosen after the owner has signed. The solver also chooses where each of the order's legs goes:
- * `erc20Targets[i]` receives `order.erc20Allowances[i]` and `erc721Targets[i]` receives
- * `order.erc721Approvals[i]`.
- * @param erc20Targets The destination of each ERC20 leg, one per leg and in order
- * @param erc721Targets The destination of each ERC721 leg, one per leg and in order
- * @param solverCalls The router calls that make up the route
+ * @notice The route and the leg targets a solver chose for a {FulfillmentOrder}
+ * @dev Approved by the order's `solutionApprover` rather than signed by the owner, so it may be
+ * chosen after the order is signed. `erc20Targets[i]` receives `order.erc20Allowances[i]` and
+ * `erc721Targets[i]` receives `order.erc721Approvals[i]`, so each target array must have one entry
+ * per leg. No approval is required when the order's `solutionApprover` is the dead address.
+ * @param erc20Targets Target of each ERC20 leg, in order
+ * @param erc721Targets Target of each ERC721 leg, in order
+ * @param solverCalls Router calls of the route
  * @param deadline Last timestamp at which the solution may settle
  */
 struct FulfillmentSolution {
