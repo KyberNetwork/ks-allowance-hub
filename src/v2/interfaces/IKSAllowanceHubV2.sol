@@ -34,6 +34,9 @@ interface IKSAllowanceHubV2 {
     NativeTransfer[] nativeTransfers
   );
 
+  /// @notice Emitted when tokens held by the hub are rescued, with the legs as given
+  event RescueTokens(ERC20Transfer[] erc20Transfers, ERC721Transfer[] erc721Transfers);
+
   /**
    * @notice Pulls the owner's assets and runs the order's calls, authenticated by a delegated
    * {IOrderAuthenticator} rather than by a Permit2 signature
@@ -111,4 +114,15 @@ interface IKSAllowanceHubV2 {
     FulfillmentSolution calldata solution,
     bytes calldata solutionSignature
   ) external payable returns (bytes[] memory results);
+
+  /**
+   * @notice Sends tokens held by the hub to their targets; for a rescuer or the default admin
+   * @dev A zero ERC20 amount sends the whole balance; the native-token address sends ether
+   * @param erc20Transfers ERC20 and native legs
+   * @param erc721Transfers NFT legs
+   */
+  function rescueTokens(
+    ERC20Transfer[] calldata erc20Transfers,
+    ERC721Transfer[] calldata erc721Transfers
+  ) external;
 }

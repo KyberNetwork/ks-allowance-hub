@@ -22,7 +22,7 @@ struct ValidationParams {
 using ValidationParamsLib for ValidationParams global;
 
 library ValidationParamsLib {
-  using DynamicArrayLibExt for *;
+  using DynamicArrayLibExt for uint256;
   using EfficientHashLib for *;
 
   bytes32 internal constant VALIDATION_PARAMS_TYPEHASH = keccak256(

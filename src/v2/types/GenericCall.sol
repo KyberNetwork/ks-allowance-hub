@@ -23,7 +23,7 @@ struct GenericCall {
 using GenericCallLib for GenericCall global;
 
 library GenericCallLib {
-  using DynamicArrayLibExt for *;
+  using DynamicArrayLibExt for uint256;
   using EfficientHashLib for *;
 
   bytes32 internal constant GENERIC_CALL_TYPEHASH =

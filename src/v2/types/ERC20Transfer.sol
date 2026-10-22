@@ -24,7 +24,7 @@ struct ERC20Transfer {
 using ERC20TransferLib for ERC20Transfer global;
 
 library ERC20TransferLib {
-  using DynamicArrayLibExt for *;
+  using DynamicArrayLibExt for uint256;
   using EfficientHashLib for *;
   using TokenHelper for address;
 

@@ -2,8 +2,8 @@
 pragma solidity ^0.8.0;
 
 import 'ks-common-sc/script/Base.s.sol';
-import {IManagementBase} from 'ks-common-sc/src/interfaces/IManagementBase.sol';
 import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
+import {ICallsForwarder} from 'src/v2/interfaces/ICallsForwarder.sol';
 
 contract AddWhitelistedRoutersV2Script is BaseScript {
   /// @dev Must match KSAllowanceHubV2.WHITELISTED_ROUTER_ROLE, which is NOT v1's
@@ -16,10 +16,12 @@ contract AddWhitelistedRoutersV2Script is BaseScript {
 
     /// @dev Only grant the role to routers that do not already have it
     uint256 count;
-    address[] memory toGrant = new address[](whitelistedRouters.length);
+    bytes[] memory grants = new bytes[](whitelistedRouters.length);
     for (uint256 i = 0; i < whitelistedRouters.length; i++) {
       if (!IAccessControl(allowanceHubV2).hasRole(WHITELISTED_ROUTER_ROLE, whitelistedRouters[i])) {
-        toGrant[count++] = whitelistedRouters[i];
+        grants[count++] = abi.encodeCall(
+          IAccessControl.grantRole, (WHITELISTED_ROUTER_ROLE, whitelistedRouters[i])
+        );
       }
     }
 
@@ -29,9 +31,10 @@ contract AddWhitelistedRoutersV2Script is BaseScript {
 
     // Shrinks the array to the number of routers to grant
     assembly {
-      mstore(toGrant, count)
+      mstore(grants, count)
     }
 
-    IManagementBase(allowanceHubV2).batchGrantRole(WHITELISTED_ROUTER_ROLE, toGrant);
+    // The hub's multicall delegates each grant to itself, so they all go in one transaction
+    ICallsForwarder(allowanceHubV2).multicall(grants);
   }
 }

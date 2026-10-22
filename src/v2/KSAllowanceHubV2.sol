@@ -24,16 +24,14 @@ import {GenericCall, GenericCallLib} from './types/GenericCall.sol';
 import {SolutionApprovalLib} from './types/SolutionApproval.sol';
 import {ValidationParams, ValidationParamsLib} from './types/ValidationParams.sol';
 
-import {ManagementBase} from 'ks-common-sc/src/base/ManagementBase.sol';
-import {ManagementPausable} from 'ks-common-sc/src/base/ManagementPausable.sol';
-import {ManagementRescuable} from 'ks-common-sc/src/base/ManagementRescuable.sol';
+import {ManagementSimple} from 'ks-common-sc/src/base/ManagementSimple.sol';
 
 import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 
 import {KSRoles} from 'ks-common-sc/src/libraries/KSRoles.sol';
-
 import {CalldataDecoder} from 'ks-common-sc/src/libraries/calldata/CalldataDecoder.sol';
+import {TokenHelper} from 'ks-common-sc/src/libraries/token/TokenHelper.sol';
 
 import {
   SignatureChecker
@@ -62,19 +60,19 @@ import {
  */
 contract KSAllowanceHubV2 is
   IKSAllowanceHubV2,
-  ManagementPausable,
-  ManagementRescuable,
+  ManagementSimple,
   AuthDelegator,
   CallsForwarder,
   MsgSender
 {
   using CalldataDecoder for bytes;
-  using DynamicArrayLibExt for *;
+  using DynamicArrayLibExt for uint256;
   using ERC20AllowanceLib for ERC20Allowance[];
   using ERC20TransferLib for ERC20Transfer[];
   using ERC721ApprovalLib for ERC721Approval[];
   using ERC721TransferLib for ERC721Transfer[];
   using GenericCallLib for GenericCall[];
+  using TokenHelper for address;
   using ValidationParamsLib for ValidationParams[];
 
   /// @notice Only routers holding this role may be called by a settled order
@@ -102,11 +100,11 @@ contract KSAllowanceHubV2 is
     address[] memory initialWhitelistedRouters,
     address permit2
   )
-    ManagementBase(0, initialAdmin)
-    ManagementPausable(initialGuardians)
-    ManagementRescuable(initialRescuers)
+    ManagementSimple(initialAdmin, initialGuardians)
     AuthDelegator('KyberSwap Allowance Hub', '2.0.0')
   {
+    _batchGrantRole(KSRoles.RESCUER_ROLE, initialRescuers);
+
     _batchGrantRole(WHITELISTED_ROUTER_ROLE, initialWhitelistedRouters);
     // Guardians may revoke a compromised router without waiting for the admin
     _setRoleRevoker(WHITELISTED_ROUTER_ROLE, KSRoles.GUARDIAN_ROLE);
@@ -293,6 +291,21 @@ contract KSAllowanceHubV2 is
     }
 
     return _settleFulfillment(order, solution, beforeExecutionOutputs);
+  }
+
+  /// @inheritdoc IKSAllowanceHubV2
+  function rescueTokens(
+    ERC20Transfer[] calldata erc20Transfers,
+    ERC721Transfer[] calldata erc721Transfers
+  ) external onlyRoleOrDefaultAdmin(KSRoles.RESCUER_ROLE) {
+    for (uint256 i = 0; i < erc20Transfers.length; i++) {
+      ERC20Transfer calldata transfer = erc20Transfers[i];
+      uint256 amount = transfer.amount == 0 ? transfer.token.selfBalance() : transfer.amount;
+      transfer.token.safeTransfer(transfer.target, amount);
+    }
+    erc721Transfers.execute(address(this));
+
+    emit RescueTokens(erc20Transfers, erc721Transfers);
   }
 
   /// @dev {TransferTokens} for an execution, whose legs are emitted from calldata as signed

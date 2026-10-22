@@ -3,28 +3,24 @@ pragma solidity 0.8.36;
 
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
-import {ERC1155SeedMock} from 'test/v2/mocks/PermitTokenMocks.sol';
-
 import {KSAllowanceHubV2} from 'src/v2/KSAllowanceHubV2.sol';
+import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
+import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
+import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 
-import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
-import {IManagementBase} from 'ks-common-sc/src/interfaces/IManagementBase.sol';
-import {IManagementRescuable} from 'ks-common-sc/src/interfaces/IManagementRescuable.sol';
+import {IManagementSimple} from 'ks-common-sc/src/interfaces/IManagementSimple.sol';
 
 import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
-import {
-  IAccessControlDefaultAdminRules
-} from 'openzeppelin-contracts/contracts/access/extensions/IAccessControlDefaultAdminRules.sol';
-import {IERC1155} from 'openzeppelin-contracts/contracts/token/ERC1155/IERC1155.sol';
+import {Ownable} from 'openzeppelin-contracts/contracts/access/Ownable.sol';
+import {IERC20Errors} from 'openzeppelin-contracts/contracts/interfaces/draft-IERC6093.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
-import {IERC721} from 'openzeppelin-contracts/contracts/token/ERC721/IERC721.sol';
 
 import {Vm} from 'forge-std/Vm.sol';
 
 /**
  * @title ManagementTest
  * @notice `MGMT-01..11` and `DOM-01`: constructor wiring, both EIP-712 domains, ERC-165, the role
- * admin surface and all three rescue paths.
+ * admin surface, ownership and the rescue path.
  * @dev Every role hash, interface id and domain field on the expected side of an assertion is
  * written out here rather than imported, so the suite disagrees with the hub whenever the hub is
  * wrong. Interface ids are rebuilt by xor-ing selectors transcribed from the interface source.
@@ -83,9 +79,9 @@ contract ManagementTest is AuthenticatorBase {
     assertTrue(hub.hasRole(RESCUER_ROLE, rescuer), 'rescuer');
     assertFalse(hub.hasRole(ROUTER_ROLE, relayer), 'nobody else is whitelisted');
 
-    assertEq(hub.defaultAdmin(), admin, 'default admin');
-    assertEq(hub.owner(), admin, 'owner mirrors the default admin');
-    assertEq(hub.defaultAdminDelay(), 0, 'the admin hand-over is one step');
+    assertEq(hub.owner(), admin, 'owner');
+    assertTrue(hub.hasRole(ADMIN_ROLE, admin), 'the owner holds the default admin role');
+    assertFalse(hub.hasRole(ADMIN_ROLE, guardian), 'and nobody else does');
 
     assertEq(hub.roleRevokers(ROUTER_ROLE), GUARDIAN_ROLE, 'guardians may drop a router');
     assertEq(hub.roleRevokers(GUARDIAN_ROLE), ADMIN_ROLE, 'an unset revoker reads as the admin');
@@ -154,64 +150,31 @@ contract ManagementTest is AuthenticatorBase {
 
     assertTrue(hub.supportsInterface(erc165), 'ERC-165');
     assertTrue(hub.supportsInterface(accessControl), 'IAccessControl');
-    assertTrue(hub.supportsInterface(adminRules), 'IAccessControlDefaultAdminRules');
+    assertFalse(hub.supportsInterface(adminRules), 'the delayed admin rules are not claimed');
 
     assertFalse(hub.supportsInterface(0xffffffff), 'the ERC-165 invalid id');
     assertFalse(hub.supportsInterface(bytes4(keccak256('nothing()'))), 'an unrelated id');
   }
 
   // -----------------------------------------------------------------------------------------------
-  // MGMT-04..07 — the role admin surface
+  // MGMT-05..07 — the role admin surface and ownership
   // -----------------------------------------------------------------------------------------------
 
-  /// MGMT-04 — the batch grant and revoke round trip, with one event per account
-  function test_MGMT_04_batchGrantAndRevokeRole() public {
-    address[] memory accounts = new address[](2);
-    accounts[0] = relayer;
-    accounts[1] = solver;
-
-    vm.expectEmit(true, true, true, true, address(hub));
-    emit IAccessControl.RoleGranted(TEST_ROLE, relayer, admin);
-    vm.expectEmit(true, true, true, true, address(hub));
-    emit IAccessControl.RoleGranted(TEST_ROLE, solver, admin);
-
-    vm.prank(admin);
-    hub.batchGrantRole(TEST_ROLE, accounts);
-
-    assertTrue(hub.hasRole(TEST_ROLE, relayer), 'relayer granted');
-    assertTrue(hub.hasRole(TEST_ROLE, solver), 'solver granted');
-
-    vm.expectEmit(true, true, true, true, address(hub));
-    emit IAccessControl.RoleRevoked(TEST_ROLE, relayer, admin);
-    vm.expectEmit(true, true, true, true, address(hub));
-    emit IAccessControl.RoleRevoked(TEST_ROLE, solver, admin);
-
-    vm.prank(admin);
-    hub.batchRevokeRole(TEST_ROLE, accounts);
-
-    assertFalse(hub.hasRole(TEST_ROLE, relayer), 'relayer revoked');
-    assertFalse(hub.hasRole(TEST_ROLE, solver), 'solver revoked');
-
-    // the batch helpers are gated on the role's admin, not on the role itself
-    vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        IAccessControl.AccessControlUnauthorizedAccount.selector, relayer, ADMIN_ROLE
-      )
-    );
-    hub.batchGrantRole(TEST_ROLE, accounts);
-  }
-
-  /// MGMT-05 — a role may not be its own revoker; anything else is recorded and announced
+  /// MGMT-05 — no self-revoker and no revoker for the admin role; anything else is recorded
   function test_MGMT_05_setRoleRevoker() public {
     vm.prank(admin);
-    vm.expectRevert(IManagementBase.InvalidRoleRevoker.selector);
+    vm.expectRevert(IManagementSimple.SelfRoleRevokerNotAllowed.selector);
     hub.setRoleRevoker(TEST_ROLE, TEST_ROLE);
 
+    vm.prank(admin);
+    vm.expectRevert(IManagementSimple.DefaultAdminRoleActionNotAllowed.selector);
+    hub.setRoleRevoker(ADMIN_ROLE, GUARDIAN_ROLE);
+
     assertEq(hub.roleRevokers(TEST_ROLE), ADMIN_ROLE, 'rejected change left no trace');
+    assertEq(hub.roleRevokers(ADMIN_ROLE), ADMIN_ROLE, 'and neither did the second');
 
     vm.expectEmit(true, true, true, true, address(hub));
-    emit IManagementBase.RoleRevokerChanged(TEST_ROLE, ADMIN_ROLE, GUARDIAN_ROLE);
+    emit IManagementSimple.RoleRevokerChanged(TEST_ROLE, ADMIN_ROLE, GUARDIAN_ROLE);
 
     vm.prank(admin);
     hub.setRoleRevoker(TEST_ROLE, GUARDIAN_ROLE);
@@ -227,7 +190,7 @@ contract ManagementTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(IManagementBase.UnauthorizedAccount.selector, relayer, neededRoles)
+      abi.encodeWithSelector(IManagementSimple.UnauthorizedAccount.selector, relayer, neededRoles)
     );
     hub.revokeRole(ROUTER_ROLE, address(router));
 
@@ -240,96 +203,97 @@ contract ManagementTest is AuthenticatorBase {
     assertFalse(hub.hasRole(ROUTER_ROLE, address(router2)), 'admin may revoke');
   }
 
-  /// MGMT-07 — ownership moves in one step, because the configured delay is zero
+  /// MGMT-07 — the default admin role follows ownership, which moves in one step
   function test_MGMT_07_transferOwnership() public {
     address newAdmin = makeAddr('newAdmin');
 
     vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        IAccessControl.AccessControlUnauthorizedAccount.selector, relayer, ADMIN_ROLE
-      )
-    );
+    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, relayer));
     hub.transferOwnership(newAdmin);
+
+    vm.prank(admin);
+    vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
+    hub.transferOwnership(address(0));
+
+    vm.expectEmit(true, true, true, true, address(hub));
+    emit Ownable.OwnershipTransferred(admin, newAdmin);
 
     vm.prank(admin);
     hub.transferOwnership(newAdmin);
 
-    assertEq(hub.defaultAdmin(), newAdmin, 'default admin moved');
     assertEq(hub.owner(), newAdmin, 'owner moved');
     assertTrue(hub.hasRole(ADMIN_ROLE, newAdmin), 'new admin holds the role');
     assertFalse(hub.hasRole(ADMIN_ROLE, admin), 'old admin gave it up');
+  }
 
-    (address pending, uint48 schedule) = hub.pendingDefaultAdmin();
-    assertEq(pending, address(0), 'nothing left pending');
-    assertEq(schedule, 0, 'no schedule');
+  /// MGMT-07b — renouncing ownership leaves no default admin
+  function test_MGMT_07b_renounceOwnership() public {
+    vm.prank(admin);
+    hub.renounceOwnership();
+
+    assertEq(hub.owner(), address(0), 'no owner');
+    assertFalse(hub.hasRole(ADMIN_ROLE, admin), 'the former owner lost the role');
+    assertFalse(hub.hasRole(ADMIN_ROLE, address(0)), 'and the zero address does not hold it');
+
+    vm.prank(admin);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IAccessControl.AccessControlUnauthorizedAccount.selector, admin, ADMIN_ROLE
+      )
+    );
+    hub.grantRole(TEST_ROLE, relayer);
   }
 
   // -----------------------------------------------------------------------------------------------
-  // MGMT-08..10 — the rescue paths
+  // MGMT-08..09 — the rescue path
   // -----------------------------------------------------------------------------------------------
 
-  /// MGMT-08a — a zero amount means "everything", and the event carries what was resolved
+  /// MGMT-08a — each ERC20 leg goes to its target; a zero amount sends the whole balance
   function test_MGMT_08a_rescueErc20s() public {
     deal(token18, address(hub), 3 ether);
     deal(token6, address(hub), 500e6);
 
-    address[] memory tokens = new address[](2);
-    tokens[0] = token18;
-    tokens[1] = token6;
-
-    uint256[] memory amounts = new uint256[](2);
-    amounts[0] = 0; // sweep
-    amounts[1] = 100e6; // exactly this much
-
-    uint256[] memory resolved = new uint256[](2);
-    resolved[0] = 3 ether;
-    resolved[1] = 100e6;
+    ERC20Transfer[] memory erc20s = new ERC20Transfer[](2);
+    erc20s[0] = ERC20Transfer({token: token18, target: recipient, amount: 0});
+    erc20s[1] = ERC20Transfer({token: token6, target: solver, amount: 100e6});
 
     vm.expectEmit(address(hub));
-    emit IManagementRescuable.RescueERC20s(tokens, resolved, recipient);
+    emit IKSAllowanceHubV2.RescueTokens(erc20s, new ERC721Transfer[](0));
 
     vm.prank(rescuer);
-    hub.rescueERC20s(tokens, amounts, recipient);
+    hub.rescueTokens(erc20s, new ERC721Transfer[](0));
 
-    assertEq(IERC20(token18).balanceOf(recipient), 3 ether, 'swept balance');
-    assertEq(IERC20(token18).balanceOf(address(hub)), 0, 'nothing left behind');
-    assertEq(IERC20(token6).balanceOf(recipient), 100e6, 'named amount');
+    assertEq(IERC20(token18).balanceOf(recipient), 3 ether, 'the zero amount swept the balance');
+    assertEq(IERC20(token18).balanceOf(address(hub)), 0, 'nothing left of it');
+    assertEq(IERC20(token6).balanceOf(solver), 100e6, 'the second leg, to its own target');
     assertEq(IERC20(token6).balanceOf(address(hub)), 400e6, 'the rest stays put');
   }
 
-  /// MGMT-08b — native arrives through the same entry point, under the native sentinel
+  /// MGMT-08b — native leaves under either native sentinel
   function test_MGMT_08b_rescueStrandedNative() public {
     // The hub has no `receive`, so native can only be planted on it — by a coinbase payment, a
     // selfdestruct, or the cheatcode standing in for either
-    vm.deal(address(hub), 2 ether);
-    uint256 balanceBefore = recipient.balance;
+    vm.deal(address(hub), 3 ether);
+    uint256 recipientBefore = recipient.balance;
+    uint256 solverBefore = solver.balance;
 
-    address[] memory tokens = _one(NATIVE);
-    uint256[] memory amounts = new uint256[](1);
-
-    uint256[] memory resolved = _oneAmount(2 ether);
-
-    vm.expectEmit(address(hub));
-    emit IManagementRescuable.RescueERC20s(tokens, resolved, recipient);
+    ERC20Transfer[] memory erc20s = new ERC20Transfer[](2);
+    erc20s[0] = ERC20Transfer({token: NATIVE, target: recipient, amount: 2 ether});
+    erc20s[1] = ERC20Transfer({token: address(0), target: solver, amount: 0});
 
     vm.prank(rescuer);
-    hub.rescueERC20s(tokens, amounts, recipient);
+    hub.rescueTokens(erc20s, new ERC721Transfer[](0));
 
-    assertEq(recipient.balance - balanceBefore, 2 ether, 'native recovered');
+    assertEq(recipient.balance - recipientBefore, 2 ether, 'under the native-token address');
+    assertEq(solver.balance - solverBefore, 1 ether, 'and the rest under the zero address');
     assertEq(address(hub).balance, 0, 'hub drained');
   }
 
-  /// MGMT-08c — the recipient is checked, and so is the caller
+  /// MGMT-08c — only a rescuer or the default admin may rescue
   function test_MGMT_08c_rescueGuards() public {
-    deal(token18, address(hub), 1 ether);
-
-    address[] memory tokens = _one(token18);
-    uint256[] memory amounts = new uint256[](1);
-
-    vm.prank(rescuer);
-    vm.expectRevert(ICommon.InvalidAddress.selector);
-    hub.rescueERC20s(tokens, amounts, address(0));
+    deal(token18, address(hub), 2 ether);
+    ERC20Transfer[] memory erc20s = new ERC20Transfer[](1);
+    erc20s[0] = ERC20Transfer({token: token18, target: recipient, amount: 1 ether});
 
     bytes32[] memory neededRoles = new bytes32[](2);
     neededRoles[0] = RESCUER_ROLE;
@@ -337,16 +301,30 @@ contract ManagementTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(IManagementBase.UnauthorizedAccount.selector, relayer, neededRoles)
+      abi.encodeWithSelector(IManagementSimple.UnauthorizedAccount.selector, relayer, neededRoles)
     );
-    hub.rescueERC20s(tokens, amounts, recipient);
+    hub.rescueTokens(erc20s, new ERC721Transfer[](0));
+    assertEq(IERC20(token18).balanceOf(address(hub)), 2 ether, 'nothing moved');
 
-    // lengths are guarded here too
+    ERC20Transfer[] memory toZero = new ERC20Transfer[](1);
+    toZero[0] = ERC20Transfer({token: token18, target: address(0), amount: 1 ether});
+    // TokenHelper wraps the token's refusal as ERC-7751 describes, naming the call that failed
     vm.prank(rescuer);
-    vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-    hub.rescueERC20s(tokens, new uint256[](2), recipient);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        bytes4(keccak256('WrappedError(address,bytes4,bytes,bytes)')),
+        token18,
+        bytes4(keccak256('transfer(address,uint256)')),
+        abi.encodeWithSelector(IERC20Errors.ERC20InvalidReceiver.selector, address(0)),
+        abi.encodeWithSelector(bytes4(keccak256('ERC20TransferFailed()')))
+      )
+    );
+    hub.rescueTokens(toZero, new ERC721Transfer[](0));
 
-    assertEq(IERC20(token18).balanceOf(address(hub)), 1 ether, 'nothing moved');
+    // the default admin is the other accepted caller
+    vm.prank(admin);
+    hub.rescueTokens(erc20s, new ERC721Transfer[](0));
+    assertEq(IERC20(token18).balanceOf(recipient), 1 ether, 'the admin rescued');
   }
 
   /// MGMT-09 — an NFT can only be stranded by an unsafe transfer, since the hub has no hook
@@ -358,52 +336,17 @@ contract ManagementTest is AuthenticatorBase {
     nft.transferFrom(owner, address(hub), STRANDED_NFT_ID);
     assertEq(nft.ownerOf(STRANDED_NFT_ID), address(hub), 'stranded');
 
-    IERC721[] memory tokens = new IERC721[](1);
-    tokens[0] = IERC721(address(nft));
-    uint256[] memory tokenIds = _oneAmount(STRANDED_NFT_ID);
+    ERC721Transfer[] memory nfts = new ERC721Transfer[](1);
+    nfts[0] = ERC721Transfer({token: address(nft), tokenId: STRANDED_NFT_ID, target: recipient});
 
     vm.expectEmit(address(hub));
-    emit IManagementRescuable.RescueERC721s(tokens, tokenIds, recipient);
+    emit IKSAllowanceHubV2.RescueTokens(new ERC20Transfer[](0), nfts);
 
     vm.prank(rescuer);
-    hub.rescueERC721s(tokens, tokenIds, recipient);
+    hub.rescueTokens(new ERC20Transfer[](0), nfts);
 
     assertEq(nft.ownerOf(STRANDED_NFT_ID), recipient, 'recovered');
     assertEq(nft.ownerOf(NFT_ID), owner, 'the owner keeps what was never stranded');
-  }
-
-  /// MGMT-10 — the ERC1155 path resolves a zero amount but reports the caller's array untouched
-  function test_MGMT_10_rescueErc1155s() public {
-    ERC1155SeedMock multi = new ERC1155SeedMock();
-    multi.mintUnchecked(address(hub), 1, 10);
-    multi.mintUnchecked(address(hub), 2, 20);
-
-    IERC1155[] memory tokens = new IERC1155[](2);
-    tokens[0] = IERC1155(address(multi));
-    tokens[1] = IERC1155(address(multi));
-
-    uint256[] memory tokenIds = new uint256[](2);
-    tokenIds[0] = 1;
-    tokenIds[1] = 2;
-
-    uint256[] memory amounts = new uint256[](2);
-    amounts[0] = 0; // sweep
-    amounts[1] = 5; // exactly this much
-
-    bytes[] memory datas = new bytes[](2);
-
-    // Unlike the ERC20 path, `amounts` is calldata here, so the event reports the zero rather than
-    // the balance the sweep resolved to
-    vm.expectEmit(address(hub));
-    emit IManagementRescuable.RescueERC1155s(tokens, tokenIds, amounts, recipient);
-
-    vm.prank(rescuer);
-    hub.rescueERC1155s(tokens, tokenIds, amounts, datas, recipient);
-
-    assertEq(multi.balanceOf(recipient, 1), 10, 'swept');
-    assertEq(multi.balanceOf(address(hub), 1), 0, 'nothing left behind');
-    assertEq(multi.balanceOf(recipient, 2), 5, 'named amount');
-    assertEq(multi.balanceOf(address(hub), 2), 15, 'the rest stays put');
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -422,14 +365,22 @@ contract ManagementTest is AuthenticatorBase {
     assertEq(hub.getRoleAdmin(ROUTER_ROLE), ADMIN_ROLE, 'administered by the default admin');
   }
 
-  /// MGMT-11b — the default admin role is not grantable, even by the default admin
-  function test_MGMT_11b_grantRoleRejectsDefaultAdmin() public {
-    vm.prank(admin);
-    vm.expectRevert(IAccessControlDefaultAdminRules.AccessControlEnforcedDefaultAdminRules.selector);
+  /// MGMT-11b — the default admin role cannot be granted, revoked or renounced
+  function test_MGMT_11b_defaultAdminRoleFollowsOwnershipOnly() public {
+    vm.startPrank(admin);
+    vm.expectRevert(IManagementSimple.DefaultAdminRoleActionNotAllowed.selector);
     hub.grantRole(ADMIN_ROLE, relayer);
 
+    vm.expectRevert(IManagementSimple.DefaultAdminRoleActionNotAllowed.selector);
+    hub.revokeRole(ADMIN_ROLE, admin);
+
+    vm.expectRevert(IManagementSimple.DefaultAdminRoleActionNotAllowed.selector);
+    hub.renounceRole(ADMIN_ROLE, admin);
+    vm.stopPrank();
+
     assertFalse(hub.hasRole(ADMIN_ROLE, relayer), 'nothing granted');
-    assertEq(hub.defaultAdmin(), admin, 'admin unchanged');
+    assertTrue(hub.hasRole(ADMIN_ROLE, admin), 'nothing revoked');
+    assertEq(hub.owner(), admin, 'owner unchanged');
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -438,11 +389,6 @@ contract ManagementTest is AuthenticatorBase {
 
   function _one(address a) internal pure returns (address[] memory out) {
     out = new address[](1);
-    out[0] = a;
-  }
-
-  function _oneAmount(uint256 a) internal pure returns (uint256[] memory out) {
-    out = new uint256[](1);
     out[0] = a;
   }
 }

@@ -34,7 +34,7 @@ import {DynamicArrayLib} from 'solady/utils/DynamicArrayLib.sol';
  */
 abstract contract CallsForwarder is ICallsForwarder, NativeSpendGuard, Common {
   using DynamicArrayLib for *;
-  using DynamicArrayLibExt for *;
+  using DynamicArrayLibExt for uint256;
 
   /// @dev Permit2's two `permit` overloads, written out because `.selector` cannot distinguish
   /// them

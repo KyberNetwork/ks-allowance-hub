@@ -22,7 +22,7 @@ struct ERC721Approval {
 using ERC721ApprovalLib for ERC721Approval global;
 
 library ERC721ApprovalLib {
-  using DynamicArrayLibExt for *;
+  using DynamicArrayLibExt for uint256;
   using EfficientHashLib for *;
 
   bytes32 internal constant ERC721_APPROVAL_TYPEHASH =

@@ -37,11 +37,11 @@ library JsonBindings {
     string constant schema_MasterKeyApproval = "MasterKeyApproval(AuthKey masterKey,bool approved,uint256 nonce,uint256 deadline)AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)";
     string constant schema_NonceRevocation = "NonceRevocation(AuthKey key,uint256 nonce,uint256 deadline)AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)";
     string constant schema_SessionKeyApproval = "SessionKeyApproval(address owner,AuthKey masterKey,AuthKey sessionKey,bool approved,uint256 nonce,uint256 deadline)AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)";
+    string constant schema_ERC20Transfer = "ERC20Transfer(address token,address target,uint160 amount)";
+    string constant schema_ERC721Transfer = "ERC721Transfer(address token,uint256 tokenId,address target)";
     string constant schema_NativeTransfer = "NativeTransfer(address target,uint256 amount)";
     string constant schema_AuthDelegation = "AuthDelegation(address authenticator,bool delegated,bytes data,uint256 nonce,uint256 deadline)";
-    string constant schema_ERC20Transfer = "ERC20Transfer(address token,address target,uint160 amount)";
     string constant schema_ERC20Allowance = "ERC20Allowance(address token,uint160 amount)";
-    string constant schema_ERC721Transfer = "ERC721Transfer(address token,uint256 tokenId,address target)";
     string constant schema_ERC721Approval = "ERC721Approval(address token,uint256 tokenId)";
     string constant schema_GenericCall = "GenericCall(address router,uint256 value,bytes data)";
     string constant schema_ExecutionOrder = "ExecutionOrder(address owner,address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 deadline)ERC20Transfer(address token,address target,uint160 amount)ERC721Transfer(address token,uint256 tokenId,address target)GenericCall(address router,uint256 value,bytes data)";
@@ -134,6 +134,46 @@ library JsonBindings {
         return abi.decode(vm.parseJsonTypeArray(json, path, schema_SessionKeyApproval), (SessionKeyApproval[]));
     }
 
+    function serialize(ERC20Transfer memory value) internal pure returns (string memory) {
+        return vm.serializeJsonType(schema_ERC20Transfer, abi.encode(value));
+    }
+
+    function serialize(ERC20Transfer memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
+        return vm.serializeJsonType(objectKey, valueKey, schema_ERC20Transfer, abi.encode(value));
+    }
+
+    function deserializeERC20Transfer(string memory json) public pure returns (ERC20Transfer memory) {
+        return abi.decode(vm.parseJsonType(json, schema_ERC20Transfer), (ERC20Transfer));
+    }
+
+    function deserializeERC20Transfer(string memory json, string memory path) public pure returns (ERC20Transfer memory) {
+        return abi.decode(vm.parseJsonType(json, path, schema_ERC20Transfer), (ERC20Transfer));
+    }
+
+    function deserializeERC20TransferArray(string memory json, string memory path) public pure returns (ERC20Transfer[] memory) {
+        return abi.decode(vm.parseJsonTypeArray(json, path, schema_ERC20Transfer), (ERC20Transfer[]));
+    }
+
+    function serialize(ERC721Transfer memory value) internal pure returns (string memory) {
+        return vm.serializeJsonType(schema_ERC721Transfer, abi.encode(value));
+    }
+
+    function serialize(ERC721Transfer memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
+        return vm.serializeJsonType(objectKey, valueKey, schema_ERC721Transfer, abi.encode(value));
+    }
+
+    function deserializeERC721Transfer(string memory json) public pure returns (ERC721Transfer memory) {
+        return abi.decode(vm.parseJsonType(json, schema_ERC721Transfer), (ERC721Transfer));
+    }
+
+    function deserializeERC721Transfer(string memory json, string memory path) public pure returns (ERC721Transfer memory) {
+        return abi.decode(vm.parseJsonType(json, path, schema_ERC721Transfer), (ERC721Transfer));
+    }
+
+    function deserializeERC721TransferArray(string memory json, string memory path) public pure returns (ERC721Transfer[] memory) {
+        return abi.decode(vm.parseJsonTypeArray(json, path, schema_ERC721Transfer), (ERC721Transfer[]));
+    }
+
     function serialize(NativeTransfer memory value) internal pure returns (string memory) {
         return vm.serializeJsonType(schema_NativeTransfer, abi.encode(value));
     }
@@ -174,26 +214,6 @@ library JsonBindings {
         return abi.decode(vm.parseJsonTypeArray(json, path, schema_AuthDelegation), (AuthDelegation[]));
     }
 
-    function serialize(ERC20Transfer memory value) internal pure returns (string memory) {
-        return vm.serializeJsonType(schema_ERC20Transfer, abi.encode(value));
-    }
-
-    function serialize(ERC20Transfer memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
-        return vm.serializeJsonType(objectKey, valueKey, schema_ERC20Transfer, abi.encode(value));
-    }
-
-    function deserializeERC20Transfer(string memory json) public pure returns (ERC20Transfer memory) {
-        return abi.decode(vm.parseJsonType(json, schema_ERC20Transfer), (ERC20Transfer));
-    }
-
-    function deserializeERC20Transfer(string memory json, string memory path) public pure returns (ERC20Transfer memory) {
-        return abi.decode(vm.parseJsonType(json, path, schema_ERC20Transfer), (ERC20Transfer));
-    }
-
-    function deserializeERC20TransferArray(string memory json, string memory path) public pure returns (ERC20Transfer[] memory) {
-        return abi.decode(vm.parseJsonTypeArray(json, path, schema_ERC20Transfer), (ERC20Transfer[]));
-    }
-
     function serialize(ERC20Allowance memory value) internal pure returns (string memory) {
         return vm.serializeJsonType(schema_ERC20Allowance, abi.encode(value));
     }
@@ -212,26 +232,6 @@ library JsonBindings {
 
     function deserializeERC20AllowanceArray(string memory json, string memory path) public pure returns (ERC20Allowance[] memory) {
         return abi.decode(vm.parseJsonTypeArray(json, path, schema_ERC20Allowance), (ERC20Allowance[]));
-    }
-
-    function serialize(ERC721Transfer memory value) internal pure returns (string memory) {
-        return vm.serializeJsonType(schema_ERC721Transfer, abi.encode(value));
-    }
-
-    function serialize(ERC721Transfer memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
-        return vm.serializeJsonType(objectKey, valueKey, schema_ERC721Transfer, abi.encode(value));
-    }
-
-    function deserializeERC721Transfer(string memory json) public pure returns (ERC721Transfer memory) {
-        return abi.decode(vm.parseJsonType(json, schema_ERC721Transfer), (ERC721Transfer));
-    }
-
-    function deserializeERC721Transfer(string memory json, string memory path) public pure returns (ERC721Transfer memory) {
-        return abi.decode(vm.parseJsonType(json, path, schema_ERC721Transfer), (ERC721Transfer));
-    }
-
-    function deserializeERC721TransferArray(string memory json, string memory path) public pure returns (ERC721Transfer[] memory) {
-        return abi.decode(vm.parseJsonTypeArray(json, path, schema_ERC721Transfer), (ERC721Transfer[]));
     }
 
     function serialize(ERC721Approval memory value) internal pure returns (string memory) {

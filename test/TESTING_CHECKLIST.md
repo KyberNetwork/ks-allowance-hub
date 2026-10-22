@@ -1152,3 +1152,21 @@ uncalled `*Memory` conversions in `ERC20Transfer.sol` are removed, with
 ### Notes for this run
 
 Ten relayed executions save 23 to 46 gas each, 266 in all; the hub is 23,961 bytes, 8 fewer.
+
+## Run `20261022T085037Z`
+
+Scope: the hub inherits `ManagementSimple` in place of `ManagementPausable` and
+`ManagementRescuable`: the default admin role follows `Ownable` ownership, and
+`rescueTokens(ERC20Transfer[], ERC721Transfer[])` replaces the three rescue functions.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261022T085037Z/MGMT-01` | Ownership holds the default admin role: deploy wiring, one-step transfer with the zero owner refused, renouncing leaves no admin, and the role cannot be granted, revoked or renounced; the delayed-admin interface is no longer claimed | `MGMT-01`, `MGMT-03`, `MGMT-05`, `MGMT-06`, `MGMT-07`, `MGMT-07b`, `MGMT-11b`; `test/v2/Management.t.sol` | `forge test --isolate` — 244 passed |
+| - [x] | - [ ] | `20261022T085037Z/RESCUE-01` | `rescueTokens` sends each ERC20 leg to its target, a zero amount sweeping the balance, native under either sentinel, and each NFT leg; only a rescuer or the default admin may call it, and a token leg to the zero address surfaces the token's wrapped refusal | `MGMT-08a..c`, `MGMT-09`; same file | same |
+
+### Notes for this run
+
+`MGMT-04` (the external batch grant and revoke) and `MGMT-10` (ERC-1155 rescue) are retired: neither
+function exists any more. A native leg to the zero address is not refused, and burns the ether.
+Removing the full-balance sweep fails `MGMT-08a` and `MGMT-08b`; removing the caller check fails
+`MGMT-08c`. The hub is 20,045 bytes.

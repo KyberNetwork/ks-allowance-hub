@@ -19,7 +19,7 @@ import {FulfillmentSolution} from 'src/v2/types/FulfillmentSolution.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
 import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
-import {IManagementBase} from 'ks-common-sc/src/interfaces/IManagementBase.sol';
+import {IManagementSimple} from 'ks-common-sc/src/interfaces/IManagementSimple.sol';
 
 import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
@@ -156,7 +156,7 @@ contract GuardsTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(IManagementBase.UnauthorizedAccount.selector, relayer, needed)
+      abi.encodeWithSelector(IManagementSimple.UnauthorizedAccount.selector, relayer, needed)
     );
     hub.pause();
 

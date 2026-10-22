@@ -26,7 +26,7 @@ struct ERC20Allowance {
 using ERC20AllowanceLib for ERC20Allowance global;
 
 library ERC20AllowanceLib {
-  using DynamicArrayLibExt for *;
+  using DynamicArrayLibExt for uint256;
   using EfficientHashLib for *;
   using TokenHelper for address;
 
