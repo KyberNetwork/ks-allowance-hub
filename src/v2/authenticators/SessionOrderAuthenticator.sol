@@ -2,7 +2,6 @@
 pragma solidity 0.8.36;
 
 import {DeadlineChecker} from '../../base/DeadlineChecker.sol';
-import {EIP712Base} from '../../base/EIP712Base.sol';
 import {UnorderedNonce} from '../../base/UnorderedNonce.sol';
 
 import {IOrderAuthenticator} from '../interfaces/IOrderAuthenticator.sol';
@@ -21,6 +20,7 @@ import {SessionKeyApprovalLib} from './types/SessionKeyApproval.sol';
 
 import {CalldataDecoder} from 'ks-common-sc/src/libraries/calldata/CalldataDecoder.sol';
 
+import {EIP712} from 'openzeppelin-contracts/contracts/utils/cryptography/EIP712.sol';
 import {
   SignatureChecker
 } from 'openzeppelin-contracts/contracts/utils/cryptography/SignatureChecker.sol';
@@ -46,7 +46,7 @@ contract SessionOrderAuthenticator is
   OrderAuthenticatorBase,
   DeadlineChecker,
   UnorderedNonce,
-  EIP712Base
+  EIP712
 {
   using CalldataDecoder for bytes;
 
@@ -59,7 +59,7 @@ contract SessionOrderAuthenticator is
   /// @param allowanceHub The only hub whose authentication requests this one answers
   constructor(address allowanceHub)
     OrderAuthenticatorBase(allowanceHub)
-    EIP712Base('KyberSwap Session Order Authenticator', '1.0.0')
+    EIP712('KyberSwap Session Order Authenticator', '1.0.0')
   {}
 
   /**

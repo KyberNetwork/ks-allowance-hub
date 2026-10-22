@@ -1245,3 +1245,18 @@ are named `namespace`.
 ### Notes for this run
 
 Earlier runs above keep the names that held when they ran.
+
+## Run `20261022T180646Z`
+
+Scope: `EIP712Base` and `IEIP712Base` are removed. `AuthDelegator` and
+`SessionOrderAuthenticator` inherit OpenZeppelin's `EIP712` directly, so neither exposes
+`DOMAIN_SEPARATOR()`; ERC-5267's `eip712Domain()` describes each domain.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261022T180646Z/DOM-02` | The hub and the authenticator sign under different domains; after the chain id moves, a delegation and a master-key approval signed for the old chain are refused and the same decisions signed for the new chain are accepted | `DOM-01` `test_DOM_01_bothDomainsAreChainScoped` — `test/v2/Management.t.sol`; the published fields stay `MGMT-02` and `SV-DOMAIN` | `forge test --isolate` — 254 passed |
+
+### Notes for this run
+
+`DOM-01` is rewritten: it read `DOMAIN_SEPARATOR()` and now observes the separator through the
+signatures it accepts. The hub is 22,994 bytes and the authenticator 12,029.

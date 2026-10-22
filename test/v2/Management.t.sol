@@ -4,6 +4,11 @@ pragma solidity 0.8.36;
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
 import {KSAllowanceHubV2} from 'src/v2/KSAllowanceHubV2.sol';
+import {
+  ISessionOrderAuthenticator
+} from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
+import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
+import {IAuthDelegator} from 'src/v2/interfaces/IAuthDelegator.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
@@ -43,30 +48,40 @@ contract ManagementTest is AuthenticatorBase {
   // -----------------------------------------------------------------------------------------------
 
   /**
-   * MGMT-12 / DOM-01 — both signing domains publish a separator, each its own and each chain-scoped
-   * @dev The two contracts now inherit the same {EIP712Base}, so one statement covers both. Each
-   * separator must match the domain written out from its own name, version and address; the two
-   * must differ from each other, since the hub and the authenticator scope their signatures
-   * separately; and each must be rebuilt once the chain id has moved, so a signature cannot be
-   * replayed onto another chain. Without the third leg the first would only mirror the contract.
+   * DOM-01 — the hub and the authenticator sign under domains of their own, each scoped to the chain
+   * @dev The separator in use is observed through the signatures it accepts: one made for the
+   * current chain is refused once the chain id has moved, and one made for the new chain is
+   * accepted. The fields each domain publishes are `MGMT-02` and `SV-DOMAIN`.
    */
-  function test_DOM_01_bothDomainSeparators() public {
-    bytes32 expectedHub = lDomainSeparator('KyberSwap Allowance Hub', '2.0.0', address(hub));
-    bytes32 expectedAuthenticator = _authenticatorDomain();
+  function test_DOM_01_bothDomainsAreChainScoped() public {
+    assertTrue(_hubDomain() != _authenticatorDomain(), 'the two domains are not the same');
 
-    assertEq(hub.DOMAIN_SEPARATOR(), expectedHub, "the hub's matches its hand-written domain");
-    assertEq(
-      authenticator.DOMAIN_SEPARATOR(), expectedAuthenticator, "the authenticator's matches its own"
-    );
-    assertTrue(expectedHub != expectedAuthenticator, 'and the two domains are not the same');
+    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
+    uint256 deadline = block.timestamp + 1 days;
+    bytes memory delegationSig =
+      _signAuthDelegation(ownerKey, owner, address(authenticator), true, '', 1, deadline);
+    bytes memory approvalSig = _signMasterKeyApproval(fresh, true, 1, deadline);
 
     vm.chainId(block.chainid + 1);
-    assertTrue(
-      hub.DOMAIN_SEPARATOR() != expectedHub, 'a different chain gives the hub a new separator'
-    );
-    assertTrue(
-      authenticator.DOMAIN_SEPARATOR() != expectedAuthenticator, 'and the authenticator one too'
-    );
+
+    vm.prank(relayer);
+    vm.expectRevert(IAuthDelegator.InvalidDelegationSignature.selector);
+    hub.updateDelegation(owner, address(authenticator), true, '', 1, deadline, delegationSig);
+
+    vm.prank(relayer);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
+    authenticator.updateAuthentication(owner, _approveKey(fresh), 1, deadline, approvalSig);
+
+    delegationSig =
+      _signAuthDelegation(ownerKey, owner, address(authenticator), true, '', 1, deadline);
+    vm.prank(relayer);
+    hub.updateDelegation(owner, address(authenticator), true, '', 1, deadline, delegationSig);
+    assertTrue(hub.authDelegated(owner, address(authenticator)), "the new chain's delegation");
+
+    approvalSig = _signMasterKeyApproval(fresh, true, 1, deadline);
+    vm.prank(relayer);
+    authenticator.updateAuthentication(owner, _approveKey(fresh), 1, deadline, approvalSig);
+    assertTrue(authenticator.masterKeys(owner, _keyHash(fresh)), "the new chain's approval");
   }
 
   /// MGMT-01 — everything the constructor is responsible for, including its one event

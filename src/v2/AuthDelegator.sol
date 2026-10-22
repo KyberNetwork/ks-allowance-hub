@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 import {DeadlineChecker} from '../base/DeadlineChecker.sol';
-import {EIP712Base} from '../base/EIP712Base.sol';
 import {UnorderedNonce} from '../base/UnorderedNonce.sol';
 
 import {IAuthDelegator} from './interfaces/IAuthDelegator.sol';
@@ -10,6 +9,7 @@ import {IOrderAuthenticator} from './interfaces/IOrderAuthenticator.sol';
 
 import {AuthDelegationLib} from './types/AuthDelegation.sol';
 
+import {EIP712} from 'openzeppelin-contracts/contracts/utils/cryptography/EIP712.sol';
 import {
   SignatureChecker
 } from 'openzeppelin-contracts/contracts/utils/cryptography/SignatureChecker.sol';
@@ -22,7 +22,7 @@ import {
  * @dev The authenticator is trusted by the owner, not by this contract: the only check is that the
  * owner delegated it.
  */
-abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNonce, EIP712Base {
+abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNonce, EIP712 {
   /// @inheritdoc IAuthDelegator
   mapping(address owner => mapping(address authenticator => bool)) public authDelegated;
 
@@ -30,7 +30,7 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
    * @param name EIP-712 domain name, which scopes every signature this contract checks
    * @param version EIP-712 domain version
    */
-  constructor(string memory name, string memory version) EIP712Base(name, version) {}
+  constructor(string memory name, string memory version) EIP712(name, version) {}
 
   modifier checkDelegation(address owner, address authenticator) {
     _checkDelegation(owner, authenticator);
