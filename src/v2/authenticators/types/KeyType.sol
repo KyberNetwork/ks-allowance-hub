@@ -7,5 +7,7 @@ enum KeyType {
   Secp256k1,
   P256,
   WebAuthn,
-  RSA
+  RSA,
+  ERC1271,
+  ERC7913
 }

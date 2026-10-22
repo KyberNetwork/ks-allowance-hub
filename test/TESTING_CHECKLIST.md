@@ -1186,3 +1186,24 @@ signature for one account cannot be submitted for another account the same signe
 Removing `owner` from both the production hashes and the test oracle fails exactly `DEL-16`,
 `SV-13`, `T712-08b` and `T712-10`. Every other signing helper now passes the account it signs
 for. The hub is 22,396 bytes and the authenticator 11,683.
+
+## Run `20261022T093411Z`
+
+Scope: `KeyType` gains `ERC1271` and `ERC7913`. `Secp256k1` verifies by ECDSA recovery alone,
+`ERC1271` by the named contract alone, and `ERC7913` by calling its verifier's `verify`
+directly, with a non-empty key after the verifier's address.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261022T093411Z/KEY-1271-01` | A Secp256k1 key naming a contract refuses a signature the contract accepts; an ERC1271 key over the same bytes accepts it, authenticates an order end to end, and refuses an account without code | `SV-KEY-SECP-02`, `SV-KEY-1271-01`, `SV-KEY-1271-02` — `test/v2/authenticators/SessionOrderAuthenticator.t.sol` | `forge test --isolate` — 250 passed |
+| - [x] | - [ ] | `20261022T093411Z/KEY-7913-01` | An ERC7913 key authenticates an order through OpenZeppelin's `ERC7913P256Verifier` and refuses a signature over another digest; a key with nothing after the verifier's address, even through a verifier that accepts every key, and a verifier without code verify nothing | `SV-KEY-7913-01`, `SV-KEY-7913-02`; same file | same |
+| - [x] | - [ ] | `20261022T093411Z/KEY-CANON-01` | A Secp256k1 or ERC1271 key with any of its top 12 bytes set verifies nothing; the direct-update fuzz covers all six key types | `SV-CRED-04`, `SV-FUZZ-UPD`; same file | same |
+
+### Notes for this run
+
+`SV-KEY-SECP-02` is repurposed: the contract-signer case it held moved to `SV-KEY-1271-01` under
+the `ERC1271` type. Mutations, each failing exactly its case: Secp256k1 falling back to ERC-1271
+(`SV-KEY-SECP-02`), ERC1271 falling back to ECDSA (`SV-KEY-1271-02`), ERC7913 accepting a 20-byte
+key (`SV-KEY-7913-02`), ERC7913 verifying nothing or ignoring the word the verifier returns
+(`SV-KEY-7913-01`), dropping the canonical address check (`SV-CRED-04`). The authenticator is
+12,070 bytes.

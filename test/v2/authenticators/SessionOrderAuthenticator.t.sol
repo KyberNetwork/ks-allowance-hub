@@ -21,6 +21,9 @@ import {GenericCall} from 'src/v2/types/GenericCall.sol';
 import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
+import {
+  ERC7913P256Verifier
+} from 'openzeppelin-contracts/contracts/utils/cryptography/verifiers/ERC7913P256Verifier.sol';
 
 /// @notice `SV-*` — session key approval, the hub-only gate, expiry, replay and every key scheme.
 contract SessionOrderAuthenticatorTest is AuthenticatorBase {
@@ -555,12 +558,31 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
   // SV-KEY-* — every signature scheme
   // -------------------------------------------------------------------------------------------
 
-  /// SV-KEY-SECP-01 is covered by SV-01; this is the ERC-1271 half
-  function test_SV_KEY_SECP_02_contractSigner() public {
-    // a session key naming a contract: SignatureChecker falls through to ERC-1271
+  /**
+   * SV-KEY-SECP-02 — a Secp256k1 key naming a contract verifies nothing, even a signature the
+   * contract accepts through ERC-1271, while an ERC1271 key over the same bytes accepts it
+   */
+  function test_SV_KEY_SECP_02_aContractIsNotASecp256k1Signer() public {
+    address wallet = _wallet();
+    bytes32 digest = keccak256('a digest');
+    bytes memory sig = _sign(_walletSignerKey, digest);
+
+    AuthKey memory asSecp = AuthKey({
+      publicKey: abi.encode(wallet), keyType: KeyType.Secp256k1, expiration: block.timestamp + 1
+    });
+    AuthKey memory as1271 = AuthKey({
+      publicKey: abi.encode(wallet), keyType: KeyType.ERC1271, expiration: block.timestamp + 1
+    });
+
+    assertFalse(_verifyWithKeyTail(asSecp, '', digest, sig), 'Secp256k1 does not call ERC-1271');
+    assertTrue(_verifyWithKeyTail(as1271, '', digest, sig), 'ERC1271 does');
+  }
+
+  /// SV-KEY-1271-01 — an ERC1271 key authenticates an order through its contract
+  function test_SV_KEY_1271_01_contractSigner() public {
     AuthKey memory walletKey = AuthKey({
-      publicKey: abi.encode(address(_wallet())),
-      keyType: KeyType.Secp256k1,
+      publicKey: abi.encode(_wallet()),
+      keyType: KeyType.ERC1271,
       expiration: block.timestamp + 30 days
     });
     _delegateKeyThroughHub(walletKey);
@@ -568,6 +590,79 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     uint256 before = IERC20(token18).balanceOf(address(router));
     _executeViaAuthenticator(walletKey, _walletSignerKey, 16, block.timestamp + 1 hours, true);
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT);
+  }
+
+  /// SV-KEY-1271-02 — an ERC1271 key naming an account without code verifies nothing, even that
+  /// account's own ECDSA signature
+  function test_SV_KEY_1271_02_anEoaIsNotAnErc1271Signer() public {
+    bytes32 digest = keccak256('a digest');
+    bytes memory sig = _sign(masterKeyPk, digest);
+
+    AuthKey memory as1271 = AuthKey({
+      publicKey: abi.encode(masterSigner), keyType: KeyType.ERC1271, expiration: block.timestamp + 1
+    });
+    AuthKey memory asSecp = AuthKey({
+      publicKey: abi.encode(masterSigner),
+      keyType: KeyType.Secp256k1,
+      expiration: block.timestamp + 1
+    });
+
+    assertFalse(_verifyWithKeyTail(as1271, '', digest, sig), 'ERC1271 does not recover');
+    assertTrue(_verifyWithKeyTail(asSecp, '', digest, sig), 'Secp256k1 does');
+  }
+
+  /**
+   * SV-KEY-7913-01 — an ERC7913 key authenticates an order through its verifier, and a signature
+   * over another digest is refused
+   */
+  function test_SV_KEY_7913_01_verifierSigner() public {
+    AuthKey memory verifierKey = AuthKey({
+      publicKey: abi.encodePacked(address(new ERC7913P256Verifier()), KeyFixtures.p256PublicKey()),
+      keyType: KeyType.ERC7913,
+      expiration: block.timestamp + 30 days
+    });
+    _delegateKeyThroughHub(verifierKey);
+
+    uint256 deadline = block.timestamp + 1 hours;
+    bytes memory signature = KeyFixtures.p256Sign(_executionDigest(_standardOrder(19, deadline)));
+
+    uint256 before = IERC20(token18).balanceOf(address(router));
+    _submitExecution(verifierKey, signature, 19, deadline);
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'ERC7913 accepted');
+
+    vm.prank(relayer);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidAuthenticationSignature.selector);
+    _submitExecutionRaw(verifierKey, signature, 20, deadline);
+  }
+
+  /**
+   * SV-KEY-7913-02 — an ERC7913 key with nothing after the verifier's address verifies nothing,
+   * even through a verifier that accepts every key, and neither does one whose verifier has no code
+   */
+  function test_SV_KEY_7913_02_aKeylessVerifierIsRefused() public {
+    bytes32 digest = keccak256('a digest');
+    address permissive = address(new PermissiveVerifier());
+
+    AuthKey memory bare = AuthKey({
+      publicKey: abi.encodePacked(permissive), keyType: KeyType.ERC7913, expiration: block.timestamp
+    });
+    assertFalse(_verifyWithKeyTail(bare, '', digest, ''), 'no key refused');
+
+    AuthKey memory oneByte = AuthKey({
+      publicKey: abi.encodePacked(permissive, hex'01'),
+      keyType: KeyType.ERC7913,
+      expiration: block.timestamp
+    });
+    assertTrue(_verifyWithKeyTail(oneByte, '', digest, ''), 'a one-byte key reaches the verifier');
+
+    AuthKey memory noCode = AuthKey({
+      publicKey: abi.encodePacked(masterSigner, KeyFixtures.p256PublicKey()),
+      keyType: KeyType.ERC7913,
+      expiration: block.timestamp
+    });
+    assertFalse(
+      _verifyWithKeyTail(noCode, '', digest, KeyFixtures.p256Sign(digest)), 'codeless verifier'
+    );
   }
 
   /// SV-KEY-P256-01 / -02 — a canonical signature is accepted, its malleable twin is not
@@ -860,26 +955,14 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   /**
-   * SV-CRED-04 — a Secp256k1 key with any of its top 12 bytes set verifies nothing
-   * @dev Such a key would resolve to the same account as its clean encoding under a separate
-   * credential. An ERC-1271 wallet is the signer here, since its call reads only the low 20 bytes.
+   * SV-CRED-04 — a Secp256k1 or ERC1271 key with any of its top 12 bytes set verifies nothing
+   * @dev Such a key would resolve to the same signer as its clean encoding under a separate
+   * credential.
    */
-  function test_SV_CRED_04_aNonCanonicalSecp256k1KeyIsRefused() public {
-    address wallet = _wallet();
+  function test_SV_CRED_04_aNonCanonicalAddressKeyIsRefused() public {
     bytes32 digest = keccak256('a digest');
-    bytes memory sig = _sign(_walletSignerKey, digest);
-
-    AuthKey memory clean = AuthKey({
-      publicKey: abi.encode(wallet), keyType: KeyType.Secp256k1, expiration: block.timestamp + 1
-    });
-    AuthKey memory dirty = AuthKey({
-      publicKey: abi.encode(uint256(uint160(wallet)) | (1 << 200)),
-      keyType: KeyType.Secp256k1,
-      expiration: block.timestamp + 1
-    });
-
-    assertTrue(_verifyWithKeyTail(clean, '', digest, sig), 'the clean encoding verifies');
-    assertFalse(_verifyWithKeyTail(dirty, '', digest, sig), 'the dirty encoding does not');
+    _assertOnlyCleanEncodingVerifies(KeyType.Secp256k1, masterSigner, _sign(masterKeyPk, digest));
+    _assertOnlyCleanEncodingVerifies(KeyType.ERC1271, _wallet(), _sign(_walletSignerKey, digest));
   }
 
   // -------------------------------------------------------------------------------------------
@@ -901,13 +984,13 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
    * SV-FUZZ-UPD — updating a key directly, across every scheme, expiry, nonce and direction
    * @dev Subsumes the relayed half of SV-02: same rail, same call, and both of that case's
    * assertions appear below over a wider domain. The update path never verifies signature material
-   * against the key, only its hash, so the key type can be fuzzed across all four arms here even
+   * against the key, only its hash, so the key type can be fuzzed across every arm here even
    * though only Secp256k1 can be signed for in {testFuzz_SV_FUZZ_VER_nonceAndDeadline}. The
    * pre-state is set to the opposite of the fuzzed direction, so every run is a transition rather
    * than a no-op.
    */
   function testFuzz_SV_FUZZ_UPD_directUpdate(SessionFuzz memory f) public {
-    KeyType keyType = KeyType(bound(f.keyType, 0, 3));
+    KeyType keyType = KeyType(bound(f.keyType, 0, 5));
     uint256 expiration = block.timestamp + bound(f.expirationOffset, 0, 365 days);
     uint256 deadline = block.timestamp + bound(f.deadlineOffset, 0, 30 days);
 
@@ -936,7 +1019,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     // key
     AuthKey memory other = AuthKey({
       publicKey: abi.encode(recipient),
-      keyType: KeyType((uint8(keyType) + 1) % 4),
+      keyType: KeyType((uint8(keyType) + 1) % 6),
       expiration: expiration
     });
     assertFalse(
@@ -1886,6 +1969,24 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     );
   }
 
+  /// @dev Checks that `signer` encoded as a `keyType` key verifies `signature` over the digest
+  /// SV-CRED-04 signs, and that the same key with a high bit set does not
+  function _assertOnlyCleanEncodingVerifies(KeyType keyType, address signer, bytes memory signature)
+    private
+  {
+    bytes32 digest = keccak256('a digest');
+    AuthKey memory clean =
+      AuthKey({publicKey: abi.encode(signer), keyType: keyType, expiration: block.timestamp + 1});
+    AuthKey memory dirty = AuthKey({
+      publicKey: abi.encode(uint256(uint160(signer)) | (1 << 200)),
+      keyType: keyType,
+      expiration: block.timestamp + 1
+    });
+
+    assertTrue(_verifyWithKeyTail(clean, '', digest, signature), 'the clean encoding verifies');
+    assertFalse(_verifyWithKeyTail(dirty, '', digest, signature), 'the dirty encoding does not');
+  }
+
   /// @dev {AuthKeyHarness-verify} on `key`, with `tail` after the key's bytes
   function _verifyWithKeyTail(
     AuthKey memory key,
@@ -2042,6 +2143,13 @@ contract AuthKeyHarness {
     returns (bool)
   {
     return key.verify(digest, signature);
+  }
+}
+
+/// @dev ERC-7913 verifier that accepts every key and signature
+contract PermissiveVerifier {
+  function verify(bytes calldata, bytes32, bytes calldata) external pure returns (bytes4) {
+    return PermissiveVerifier.verify.selector;
   }
 }
 

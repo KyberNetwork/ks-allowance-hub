@@ -28,8 +28,9 @@ import {
 /**
  * @title SessionOrderAuthenticator
  * @notice Authenticates allowance-hub orders against keys an owner has approved, in place of their
- * main wallet. Each key carries its own expiry and may be Secp256k1, P256, WebAuthn or RSA, so a
- * passkey or a local key may sign orders without involving the wallet.
+ * main wallet. Each key carries its own expiry and may be Secp256k1, P256, WebAuthn, RSA, an
+ * ERC-1271 contract or an ERC-7913 verifier key, so a passkey or a local key may sign orders
+ * without involving the wallet.
  * @dev Keys form two tiers. The owner approves master keys, the only tier permitted to approve
  * further keys; a master key approves session keys beneath it, which allows a passkey to issue
  * short-lived local keys without a wallet prompt. Both tiers may sign orders. A session key may
