@@ -251,6 +251,27 @@ the regenerated file differs.
 - **Cheatcodes apply to the next external call, including one made while building an argument.**
   Read such values into a local before `vm.prank` or `vm.expectRevert`.
 
+## Documentation
+
+`forge doc` generates a [Vocs](https://vocs.dev) site from the NatSpec into `docs/`, which is not
+committed. The dependencies `forge doc` declares do not currently install cleanly, so the first
+install pins working versions:
+
+```shell
+forge doc
+cd docs
+npm install --save-exact --legacy-peer-deps \
+  vocs@2.10.3 \
+  waku@1.0.0-rc.4 \
+  react@19.3.1 \
+  react-dom@19.3.1
+npm run dev      # serve locally
+npm run build    # build the static site
+```
+
+`forge doc` keeps an existing `docs/package.json`, so later runs need only `npm install` in
+`docs/`. See [Foundry's contract documentation guide](https://www.getfoundry.sh/forge/documentation#contract-documentation).
+
 ## Deployment
 
 The scripts deploy with CREATE3 and read `script/config/*.json` per chain.
