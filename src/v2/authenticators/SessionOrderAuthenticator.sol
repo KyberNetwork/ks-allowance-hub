@@ -139,7 +139,7 @@ contract SessionOrderAuthenticator is
       // A master key speaks only for the session keys it approved, or for one nobody has approved
       bytes32 approvedBy = sessionKeyMaster[owner][sessionKeyHash];
       if (approvedBy != bytes32(0) && approvedBy != masterKeyHash) {
-        revert SessionKeyApprovedByAnother(sessionKeyHash, masterKeyHash, approvedBy);
+        revert SessionKeyAlreadyApproved(sessionKeyHash, masterKeyHash, approvedBy);
       }
 
       _useUnorderedNonce(masterKey.credentialHash(), nonce);
@@ -225,7 +225,7 @@ contract SessionOrderAuthenticator is
     bytes32 digest = _hashTypedDataV4(orderHash);
     bytes calldata signature = data.decodeBytes(2);
     if (!key.verify(digest, signature)) {
-      revert InvalidAuthenticationSignature();
+      revert InvalidOrderSignature();
     }
   }
 

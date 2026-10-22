@@ -71,7 +71,7 @@ abstract contract CallsForwarder is ICallsForwarder, NativeSpendGuard, Common {
           && selector != IAuthDelegator.updateDelegation.selector
           && selector != IOrderAuthenticator.updateAuthentication.selector
       ) {
-        revert NotSupportedSelector(i, selector);
+        revert UnsupportedSelector(i, selector);
       }
 
       (success, results[i]) = targets[i].call(data[i]);

@@ -647,7 +647,7 @@ contract FulfillOrderTest is AuthenticatorBase {
       _fulfillmentOrder(ANY, erc20s, new ERC721Approval[](0), vs, swappedTail, ANY, 73, deadline);
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidAuthenticationSignature.selector);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
       tampered, address(authenticator), signedAuth, _route(tampered, solverCalls), '', false
     );

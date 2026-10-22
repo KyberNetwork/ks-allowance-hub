@@ -118,7 +118,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     // the signature check, leaving the second leg the same number to spend
     order.owner = other;
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidAuthenticationSignature.selector);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
     hub.executeOrderWithDelegatedAuthentication(order, address(authenticator), authData, false);
 
     order.owner = owner;

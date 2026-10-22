@@ -241,7 +241,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ICallsForwarder.NotSupportedSelector.selector, 0, IERC20.transfer.selector
+        ICallsForwarder.UnsupportedSelector.selector, 0, IERC20.transfer.selector
       )
     );
     hub.forwardCalls(_one(address(permitToken)), data, _bits(0));
@@ -250,7 +250,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ICallsForwarder.NotSupportedSelector.selector, 0, IERC20.transfer.selector
+        ICallsForwarder.UnsupportedSelector.selector, 0, IERC20.transfer.selector
       )
     );
     hub.forwardCalls(_one(address(permitToken)), data, _bits(type(uint256).max));
@@ -261,7 +261,7 @@ contract ForwarderTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(ICallsForwarder.NotSupportedSelector.selector, 0, bytes4(0))
+      abi.encodeWithSelector(ICallsForwarder.UnsupportedSelector.selector, 0, bytes4(0))
     );
     hub.forwardCalls(_one(address(permitToken)), empty, _bits(0));
   }
@@ -282,7 +282,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ICallsForwarder.NotSupportedSelector.selector, 1, IERC20.transfer.selector
+        ICallsForwarder.UnsupportedSelector.selector, 1, IERC20.transfer.selector
       )
     );
     hub.forwardCalls(targets, data, _bits(0));
@@ -667,7 +667,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ICallsForwarder.NotSupportedSelector.selector,
+        ICallsForwarder.UnsupportedSelector.selector,
         0,
         IOrderAuthenticator.initAuthentication.selector
       )
@@ -681,7 +681,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ICallsForwarder.NotSupportedSelector.selector,
+        ICallsForwarder.UnsupportedSelector.selector,
         0,
         IOrderAuthenticator.initAuthentication.selector
       )
@@ -692,7 +692,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ICallsForwarder.NotSupportedSelector.selector,
+        ICallsForwarder.UnsupportedSelector.selector,
         0,
         IOrderAuthenticator.authenticateExecution.selector
       )
@@ -702,7 +702,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ICallsForwarder.NotSupportedSelector.selector,
+        ICallsForwarder.UnsupportedSelector.selector,
         0,
         IOrderAuthenticator.authenticateFulfillment.selector
       )
@@ -942,7 +942,7 @@ contract ForwarderTest is AuthenticatorBase {
     assertFalse(ok, string.concat(what, ' refused the call'));
     assertEq(
       ret,
-      abi.encodeWithSelector(IOrderAuthenticator.NotAllowanceHub.selector, address(this)),
+      abi.encodeWithSelector(IOrderAuthenticator.CallerNotAllowanceHub.selector, address(this)),
       string.concat('and refused it at the hub-only gate, so the selector reached the real ', what)
     );
   }

@@ -340,7 +340,7 @@ contract GuardsTest is AuthenticatorBase {
 
     vm.prank(solver);
     vm.expectRevert(
-      abi.encodeWithSelector(NativeSpendGuard.NativeOverSpent.selector, VALUE + 1, VALUE)
+      abi.encodeWithSelector(NativeSpendGuard.NativeOverspent.selector, VALUE + 1, VALUE)
     );
     hub.fulfillOrderWithPermit2Signature{value: VALUE}(
       overSpending, overSpendingSig, greedyRoute, ''
@@ -373,7 +373,7 @@ contract GuardsTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(NativeSpendGuard.NativeOverSpent.selector, VALUE + 1, VALUE)
+      abi.encodeWithSelector(NativeSpendGuard.NativeOverspent.selector, VALUE + 1, VALUE)
     );
     hub.executeOrderWithPermit2Signature{value: VALUE}(greedy, greedySig);
 
@@ -387,7 +387,7 @@ contract GuardsTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        IAuthDelegator.NotDelegatedAuthenticator.selector, address(authenticator)
+        IAuthDelegator.AuthenticatorNotDelegated.selector, address(authenticator)
       )
     );
     hub.fulfillOrderWithDelegatedAuthentication(
@@ -404,7 +404,7 @@ contract GuardsTest is AuthenticatorBase {
 
     vm.prank(owner);
     vm.expectRevert(
-      abi.encodeWithSelector(NativeSpendGuard.NativeOverSpent.selector, VALUE + 1, VALUE)
+      abi.encodeWithSelector(NativeSpendGuard.NativeOverspent.selector, VALUE + 1, VALUE)
     );
     hub.fulfillOrderWithDelegatedAuthentication{value: VALUE}(
       overSpending,
@@ -484,7 +484,7 @@ contract GuardsTest is AuthenticatorBase {
     vm.prank(owner);
     if (!shouldSettle) {
       vm.expectRevert(
-        abi.encodeWithSelector(NativeSpendGuard.NativeOverSpent.selector, spend, VALUE)
+        abi.encodeWithSelector(NativeSpendGuard.NativeOverspent.selector, spend, VALUE)
       );
     }
     hub.executeOrderWithDelegatedAuthentication{value: VALUE}(order, address(0), '', false);

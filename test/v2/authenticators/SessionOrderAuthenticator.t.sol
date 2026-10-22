@@ -305,11 +305,15 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory data = _authData(key, hex'00');
 
     vm.prank(relayer);
-    vm.expectRevert(abi.encodeWithSelector(IOrderAuthenticator.NotAllowanceHub.selector, relayer));
+    vm.expectRevert(
+      abi.encodeWithSelector(IOrderAuthenticator.CallerNotAllowanceHub.selector, relayer)
+    );
     authenticator.authenticateExecution(execOrder, bytes32(0), data);
 
     vm.prank(relayer);
-    vm.expectRevert(abi.encodeWithSelector(IOrderAuthenticator.NotAllowanceHub.selector, relayer));
+    vm.expectRevert(
+      abi.encodeWithSelector(IOrderAuthenticator.CallerNotAllowanceHub.selector, relayer)
+    );
     authenticator.authenticateFulfillment(fulfillOrder, bytes32(0), data);
   }
 
@@ -348,7 +352,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
     (, uint256 impostorKey) = makeAddrAndKey('impostor');
 
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidAuthenticationSignature.selector);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
     _executeViaAuthenticator(key, impostorKey, 11, block.timestamp + 1 hours, false);
   }
 
@@ -392,7 +396,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory sig = _sign(masterKeyPk, _executionDigest(_standardOrder(nonce, deadline)));
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidAuthenticationSignature.selector);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
       fulfillOrder,
       address(authenticator),
@@ -599,7 +603,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'ERC7913 accepted');
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidAuthenticationSignature.selector);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
     _submitExecutionRaw(verifierKey, signature, 20, deadline);
   }
 
@@ -659,7 +663,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     assertGt(KeyFixtures.sOf(malleable), KeyFixtures.P256_HALF_N, 'twin is non-canonical');
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidAuthenticationSignature.selector);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
     _submitExecutionRaw(p256, malleable, 18, deadline);
   }
 
@@ -687,12 +691,12 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory upOnly = KeyFixtures.webAuthnAssertion(digest2, false);
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidAuthenticationSignature.selector);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
     _submitExecutionRaw(wa, upOnly, 20, deadline);
 
     // -03 an assertion that does not decode at all is rejected rather than reverting oddly
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidAuthenticationSignature.selector);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
     _submitExecutionRaw(wa, hex'deadbeef', 21, deadline);
   }
 
@@ -759,7 +763,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory forged = _authDataWithKeyTail(empty, abi.encode(attacker), sig);
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidAuthenticationSignature.selector);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
     hub.executeOrderWithDelegatedAuthentication(
       _standardOrder(nonce, deadline), address(authenticator), forged, false
     );
@@ -1491,7 +1495,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     _approveSessionKey(key, sessionKey, 80, deadline, masterKeyPk);
 
     bytes memory expected = abi.encodeWithSelector(
-      ISessionOrderAuthenticator.SessionKeyApprovedByAnother.selector,
+      ISessionOrderAuthenticator.SessionKeyAlreadyApproved.selector,
       _keyHash(sessionKey),
       _keyHash(other),
       _keyHash(key)

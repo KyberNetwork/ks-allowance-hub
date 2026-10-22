@@ -5,15 +5,15 @@ pragma solidity ^0.8.0;
 /// @notice Interface of {UnorderedNonce}
 interface IUnorderedNonce {
   /// @notice This nonce has already been spent in this namespace, or was revoked by its signer
-  error NonceAlreadyUsed(bytes32 signer, uint256 nonce);
+  error NonceAlreadyUsed(bytes32 namespace, uint256 nonce);
 
   /**
    * @notice Spent-nonce bitmap, keyed by signer namespace and by the nonce's word index
-   * @param signer Namespace the nonces belong to: whoever signed the data they guard, as an
+   * @param namespace Namespace the nonces belong to: whoever signed the data they guard, as an
    * address widened to a word or as the hash of a key credential
    * @param word The nonce's top bits, i.e. `nonce >> 8`
    */
-  function nonces(bytes32 signer, uint256 word) external view returns (uint256);
+  function nonces(bytes32 namespace, uint256 word) external view returns (uint256);
 
   /**
    * @notice Burns one of the caller's own nonces, cancelling a signature that has not been used

@@ -118,7 +118,7 @@ contract MulticallTest is AuthenticatorBase {
 
     vm.prank(owner);
     vm.expectRevert(
-      abi.encodeWithSelector(NativeSpendGuard.NativeOverSpent.selector, 2 * VALUE, VALUE)
+      abi.encodeWithSelector(NativeSpendGuard.NativeOverspent.selector, 2 * VALUE, VALUE)
     );
     hub.multicall{value: VALUE}(batch);
 

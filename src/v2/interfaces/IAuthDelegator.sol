@@ -11,7 +11,7 @@ interface IAuthDelegator {
   error UnexpectedSignature();
 
   /// @notice The owner has not delegated the authenticator being asked to authenticate the order
-  error NotDelegatedAuthenticator(address authenticator);
+  error AuthenticatorNotDelegated(address authenticator);
 
   /**
    * @notice Whether `owner` has authorised `authenticator` to approve orders on their behalf

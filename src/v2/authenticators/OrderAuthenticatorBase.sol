@@ -19,7 +19,7 @@ abstract contract OrderAuthenticatorBase is IOrderAuthenticator {
 
   modifier onlyAllowanceHub() {
     if (msg.sender != ALLOWANCE_HUB) {
-      revert NotAllowanceHub(msg.sender);
+      revert CallerNotAllowanceHub(msg.sender);
     }
     _;
   }

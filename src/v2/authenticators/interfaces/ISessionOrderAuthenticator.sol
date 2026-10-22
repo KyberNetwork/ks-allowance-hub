@@ -13,7 +13,7 @@ interface ISessionOrderAuthenticator {
   error UnexpectedSignature();
 
   /// @notice The key's signature does not authenticate the order it was presented with
-  error InvalidAuthenticationSignature();
+  error InvalidOrderSignature();
 
   /// @notice The signature does not authorise this key's revocation of the nonce
   error InvalidRevocationSignature();
@@ -28,7 +28,7 @@ interface ISessionOrderAuthenticator {
   error AuthKeyExpired(uint256 expiration, uint256 currentTime);
 
   /// @notice Another master key approved this session key, and only it may approve or revoke it
-  error SessionKeyApprovedByAnother(
+  error SessionKeyAlreadyApproved(
     bytes32 sessionKeyHash, bytes32 masterKeyHash, bytes32 expectedMasterKeyHash
   );
 

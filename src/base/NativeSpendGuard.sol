@@ -6,7 +6,7 @@ pragma solidity ^0.8.0;
 abstract contract NativeSpendGuard {
   /// @notice The call spent more native value than it was sent, drawing on the contract's own
   /// balance
-  error NativeOverSpent(uint256 spent, uint256 value);
+  error NativeOverspent(uint256 spent, uint256 value);
 
   /**
    * @dev `balanceBefore` already includes `msg.value`, so the check reduces to confirming that
@@ -16,7 +16,7 @@ abstract contract NativeSpendGuard {
     uint256 balanceBefore = address(this).balance;
     _;
     if (address(this).balance + msg.value < balanceBefore) {
-      revert NativeOverSpent(balanceBefore - address(this).balance, msg.value);
+      revert NativeOverspent(balanceBefore - address(this).balance, msg.value);
     }
   }
 }

@@ -1228,3 +1228,20 @@ failing exactly its cases: dropping the selector from the allowlist (`FWD-21`, `
 `MC-09`), dropping the hub-as-caller guard (`FWD-22`), and accepting a signature on the owner's
 call in the hub (`DEL-17`) or the authenticator (`SV-UPD-01`). The hub is 22,493 bytes and the
 authenticator 12,104.
+
+## Run `20261022T175036Z`
+
+Scope: errors renamed, behaviour unchanged. `NotDelegatedAuthenticator` →
+`AuthenticatorNotDelegated`, `NotAllowanceHub` → `CallerNotAllowanceHub`, `NotSupportedSelector`
+→ `UnsupportedSelector`, `NativeOverSpent` → `NativeOverspent`, `InvalidAuthenticationSignature`
+→ `InvalidOrderSignature`, `SessionKeyApprovedByAnother` → `SessionKeyAlreadyApproved`. The
+nonce bitmap's key, `NonceAlreadyUsed`'s first argument and `_useUnorderedNonce`'s word argument
+are named `namespace`.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261022T175036Z/ERR-01` | Every case asserting one of the renamed errors expects it under its new name | every case naming those errors; `test/v2/**` | `forge test --isolate` — 254 passed |
+
+### Notes for this run
+
+Earlier runs above keep the names that held when they ran.

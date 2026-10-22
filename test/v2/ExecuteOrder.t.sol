@@ -243,7 +243,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        IAuthDelegator.NotDelegatedAuthenticator.selector, address(authenticator)
+        IAuthDelegator.AuthenticatorNotDelegated.selector, address(authenticator)
       )
     );
     hub.executeOrderWithDelegatedAuthentication(order, address(authenticator), authData, false);
@@ -388,7 +388,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     );
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidAuthenticationSignature.selector);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
     hub.executeOrderWithDelegatedAuthentication(
       order, address(authenticator), abi.encode(key, false), false
     );

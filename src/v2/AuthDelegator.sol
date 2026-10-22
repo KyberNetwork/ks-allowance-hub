@@ -40,7 +40,7 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
   /// @dev Held in one place rather than inlined at every use of the modifier
   function _checkDelegation(address owner, address authenticator) internal view {
     if (authenticator != address(0) && !authDelegated[owner][authenticator]) {
-      revert NotDelegatedAuthenticator(authenticator);
+      revert AuthenticatorNotDelegated(authenticator);
     }
   }
 

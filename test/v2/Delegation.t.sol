@@ -311,11 +311,15 @@ contract DelegationTest is AuthenticatorBase {
     bytes32 keyHash = _keyHash(key);
 
     vm.prank(relayer);
-    vm.expectRevert(abi.encodeWithSelector(IOrderAuthenticator.NotAllowanceHub.selector, relayer));
+    vm.expectRevert(
+      abi.encodeWithSelector(IOrderAuthenticator.CallerNotAllowanceHub.selector, relayer)
+    );
     authenticator.initAuthentication(owner, payload);
 
     vm.prank(owner);
-    vm.expectRevert(abi.encodeWithSelector(IOrderAuthenticator.NotAllowanceHub.selector, owner));
+    vm.expectRevert(
+      abi.encodeWithSelector(IOrderAuthenticator.CallerNotAllowanceHub.selector, owner)
+    );
     authenticator.initAuthentication(owner, payload);
 
     assertFalse(authenticator.masterKeys(owner, keyHash), 'nothing was approved either time');

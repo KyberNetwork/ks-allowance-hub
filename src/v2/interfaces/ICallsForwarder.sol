@@ -7,7 +7,7 @@ import {PackedBits} from '../../base/types/PackedBits.sol';
 /// @notice Interface of {CallsForwarder}
 interface ICallsForwarder {
   /// @notice The entry at `index` carries a selector this contract will not relay
-  error NotSupportedSelector(uint256 index, bytes4 selector);
+  error UnsupportedSelector(uint256 index, bytes4 selector);
 
   /**
    * @notice Relays a batch of calls that carry their own authorisation
