@@ -78,7 +78,8 @@ contract SessionOrderAuthenticator is
    * @dev `data` is `abi.encode(AuthKey masterKey, bool approved)` for the owner's own decision, or
    * `abi.encode(AuthKey sessionKey, AuthKey masterKey, bool approved)` for a master key's,
    * distinguished by the offset of the first key. Only the owner's rail may approve a master key,
-   * and a master key's reaches no further than a session key beneath it.
+   * and a master key's reaches no further than a session key beneath it. The owner calling for
+   * themselves passes an empty signature.
    */
   function updateAuthentication(
     address owner,
@@ -110,6 +111,8 @@ contract SessionOrderAuthenticator is
         if (!SignatureChecker.isValidSignatureNow(owner, digest, signature)) {
           revert InvalidApprovalSignature();
         }
+      } else if (signature.length != 0) {
+        revert UnexpectedSignature();
       }
 
       masterKeys[owner][masterKeyHash] = approved;

@@ -252,72 +252,40 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   // -------------------------------------------------------------------------------------------
-  // SV-UPD-01 — what the owner branch of `updateAuthentication` does with what it does not read
+  // SV-UPD-01 — the owner's own call takes no signature
   // -------------------------------------------------------------------------------------------
 
   /**
-   * SV-UPD-01 — on the owner's own call the signature and the nonce are both ignored
-   * @dev Deliberate, and pinned as-is rather than reported: being `msg.sender` IS the
-   * authentication on this branch, exactly as it is on the hub's `updateDelegation`, so
-   * `updateAuthentication` never looks at `signature` and never burns `nonce`. Two consequences
-   * follow, and both are asserted below so that a future reader meets them here instead of
-   * discovering them in production. A signature on this path proves nothing — an obviously bogus
-   * one is accepted as readily as a real one, because neither is examined. And the call carries no
-   * replay protection of its own: identical calldata settles again, with effect, as many times as
-   * it is submitted. Neither is exploitable, because no one but the owner can be `msg.sender` here
-   * and an owner replaying their own instruction is just the owner repeating themselves. What would
-   * be a finding is the reverse reading — treating a signature accepted on this path as having been
-   * checked, or expecting the named nonce to have been spent.
+   * SV-UPD-01 — on the owner's own call a signature is refused, and an empty one approves without
+   * spending the nonce
+   * @dev Being `msg.sender` is the authentication on this branch, so a signature here would not be
+   * checked and its nonce would stay unspent, leaving it to be replayed by anyone later. The same
+   * bytes from anyone else are checked and refused.
    */
-  function test_SV_UPD_01_ownerBranchIgnoresTheSignatureAndTheNonce() public {
+  function test_SV_UPD_01_ownerBranchTakesNoSignature() public {
     AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
     bytes32 freshHash = _keyHash(fresh);
     uint256 nonce = 40;
     uint256 deadline = block.timestamp + 1 days;
 
-    // 65 bytes shaped like an ECDSA signature, over nothing, recovering to nobody in particular
-    bytes memory garbage = abi.encodePacked(bytes32(uint256(1)), bytes32(uint256(2)), uint8(27));
+    bytes memory sig = _signMasterKeyApproval(fresh, true, nonce, deadline);
     bytes memory approve = _approveKey(fresh);
 
     vm.prank(owner);
-    authenticator.updateAuthentication(owner, approve, nonce, deadline, garbage);
-
-    assertTrue(authenticator.masterKeys(owner, freshHash), 'approved on a signature over nothing');
-    assertEq(
-      authenticator.nonces(lNonceKey(owner), nonce >> 8),
-      0,
-      'and the nonce it named was never burned'
-    );
-
-    // the same calldata a second time, byte for byte: it settles again, which is the replay the
-    // untouched bitmap implies
-    vm.prank(owner);
-    authenticator.updateAuthentication(owner, approve, nonce, deadline, garbage);
-    assertTrue(authenticator.masterKeys(owner, freshHash), 'still approved');
-    assertEq(authenticator.nonces(lNonceKey(owner), nonce >> 8), 0, 'still nothing burned');
-
-    // and with an effect the third time, so "it settles again" is more than an idempotent write:
-    // the state is moved away in between and the identical call moves it back
-    vm.prank(owner);
-    authenticator.updateAuthentication(owner, _revokeKey(fresh), nonce, deadline, garbage);
-    assertFalse(authenticator.masterKeys(owner, freshHash), 'revoked, on the same dead signature');
+    vm.expectRevert(ISessionOrderAuthenticator.UnexpectedSignature.selector);
+    authenticator.updateAuthentication(owner, approve, nonce, deadline, sig);
 
     vm.prank(owner);
-    authenticator.updateAuthentication(owner, approve, nonce, deadline, garbage);
-    assertTrue(
-      authenticator.masterKeys(owner, freshHash), 'and the very same call approves it again'
-    );
-    assertEq(
-      authenticator.nonces(lNonceKey(owner), nonce >> 8),
-      0,
-      'across all four calls, no nonce was spent'
-    );
+    authenticator.updateAuthentication(owner, approve, nonce, deadline, '');
+    assertTrue(authenticator.masterKeys(owner, freshHash), 'approved on the empty signature');
+    assertEq(authenticator.nonces(lNonceKey(owner), nonce >> 8), 0, 'no nonce spent');
 
-    // the contrast that makes the above about the branch and not about the signature: the same
-    // bogus bytes from anyone else are examined, and rejected
+    // the signature the owner could not pass is still good for anyone else, on its nonce
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
-    authenticator.updateAuthentication(owner, approve, nonce, deadline, garbage);
+    authenticator.updateAuthentication(owner, approve, nonce, deadline, sig);
+    assertEq(
+      authenticator.nonces(lNonceKey(owner), nonce >> 8), 1 << (nonce & 0xff), 'relayed, spent'
+    );
   }
 
   // -------------------------------------------------------------------------------------------

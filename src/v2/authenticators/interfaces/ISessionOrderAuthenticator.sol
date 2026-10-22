@@ -9,6 +9,9 @@ interface ISessionOrderAuthenticator {
   /// @notice The signature does not authorise this decision about the key
   error InvalidApprovalSignature();
 
+  /// @notice The owner is the caller, so the decision takes no signature, yet one was given
+  error UnexpectedSignature();
+
   /// @notice The key's signature does not authenticate the order it was presented with
   error InvalidAuthenticationSignature();
 

@@ -1207,3 +1207,24 @@ the `ERC1271` type. Mutations, each failing exactly its case: Secp256k1 falling 
 key (`SV-KEY-7913-02`), ERC7913 verifying nothing or ignoring the word the verifier returns
 (`SV-KEY-7913-01`), dropping the canonical address check (`SV-CRED-04`). The authenticator is
 12,070 bytes.
+
+## Run `20261022T105959Z`
+
+Scope: `forwardCalls` relays `updateDelegation`, so a relayer can carry past a delegation someone
+else submitted first. `updateDelegation` never takes the hub, its caller on that route, for the
+owner. The owner's own call to `updateDelegation` or to the authenticator's owner rail refuses a
+non-empty signature with `UnexpectedSignature`.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261022T105959Z/FWD-DEL-01` | A relayed delegation settles on the owner's signature and the hub's nonce; after a front-runner submits the same delegation, the relayer's batch unwinds with the failure bit clear and settles its order with it set | `FWD-21` — `test/v2/Forwarder.t.sol`; `MC-09` — `test/v2/Multicall.t.sol` | `forge test --isolate` — 254 passed |
+| - [x] | - [ ] | `20261022T105959Z/FWD-DEL-02` | A forwarded delegation naming the hub as owner, or the owner with no signature, is refused | `FWD-22` — `test/v2/Forwarder.t.sol` | same |
+| - [x] | - [ ] | `20261022T105959Z/SELF-SIG-01` | The owner's own call refuses a signature and accepts an empty one without spending the nonce, on the hub and on the authenticator | `DEL-17` — `test/v2/Delegation.t.sol`; `SV-UPD-01` — `test/v2/authenticators/SessionOrderAuthenticator.t.sol` | same |
+
+### Notes for this run
+
+`SV-UPD-01` is rewritten: it pinned that the owner's call ignored a signature. Mutations, each
+failing exactly its cases: dropping the selector from the allowlist (`FWD-21`, `FWD-22`,
+`MC-09`), dropping the hub-as-caller guard (`FWD-22`), and accepting a signature on the owner's
+call in the hub (`DEL-17`) or the authenticator (`SV-UPD-01`). The hub is 22,493 bytes and the
+authenticator 12,104.

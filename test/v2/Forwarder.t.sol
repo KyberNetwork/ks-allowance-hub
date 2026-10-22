@@ -19,6 +19,7 @@ import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 
 import {PackedBits} from 'src/base/types/PackedBits.sol';
 
+import {IAuthDelegator} from 'src/v2/interfaces/IAuthDelegator.sol';
 import {ICallsForwarder} from 'src/v2/interfaces/ICallsForwarder.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
 import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
@@ -538,6 +539,56 @@ contract ForwarderTest is AuthenticatorBase {
     vm.prank(owner);
     authenticator.updateAuthentication(owner, _approveKey(fresh), nonce, deadline, noSignature);
     assertTrue(authenticator.masterKeys(owner, freshHash), 'accepted when the owner calls directly');
+  }
+
+  /// FWD-21 — a relayed `updateDelegation` delegates on the owner's signature and the hub's nonce
+  function test_FWD_21_updateDelegationIsRelayed() public {
+    uint256 nonce = 310;
+    uint256 deadline = block.timestamp + 1 hours;
+    bytes memory sig =
+      _signAuthDelegation(ownerKey, owner, address(authenticator), true, '', nonce, deadline);
+
+    bytes[] memory data = new bytes[](1);
+    data[0] = abi.encodeCall(
+      IAuthDelegator.updateDelegation,
+      (owner, address(authenticator), true, '', nonce, deadline, sig)
+    );
+
+    vm.prank(relayer);
+    hub.forwardCalls(_one(address(hub)), data, _bits(0));
+
+    assertTrue(hub.authDelegated(owner, address(authenticator)), 'delegated');
+    assertEq(
+      hub.nonces(lNonceKey(owner), nonce >> 8), 1 << (nonce & 0xff), 'the hub burned that nonce'
+    );
+  }
+
+  /**
+   * FWD-22 — a relayed `updateDelegation` never takes the hub, its caller, for the owner
+   * @dev Without the signature, the hub would be an account anyone could delegate an authenticator
+   * for, and an order naming the hub as owner would spend what the hub holds. An owner forwarding
+   * their own delegation must sign it too.
+   */
+  function test_FWD_22_theHubNeverAuthenticatesAsAnOwner() public {
+    uint256 deadline = block.timestamp + 1 hours;
+
+    bytes[] memory data = new bytes[](1);
+    data[0] = abi.encodeCall(
+      IAuthDelegator.updateDelegation,
+      (address(hub), address(authenticator), true, '', 0, deadline, '')
+    );
+    vm.prank(relayer);
+    vm.expectRevert(IAuthDelegator.InvalidDelegationSignature.selector);
+    hub.forwardCalls(_one(address(hub)), data, _bits(0));
+    assertFalse(hub.authDelegated(address(hub), address(authenticator)), 'the hub is not delegated');
+
+    data[0] = abi.encodeCall(
+      IAuthDelegator.updateDelegation, (owner, address(authenticator), true, '', 0, deadline, '')
+    );
+    vm.prank(owner);
+    vm.expectRevert(IAuthDelegator.InvalidDelegationSignature.selector);
+    hub.forwardCalls(_one(address(hub)), data, _bits(0));
+    assertFalse(hub.authDelegated(owner, address(authenticator)), 'nor is the owner');
   }
 
   /**

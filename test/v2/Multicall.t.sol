@@ -14,6 +14,7 @@ import {NativeSpendGuard} from 'src/base/NativeSpendGuard.sol';
 import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
 import {PackedBits} from 'src/base/types/PackedBits.sol';
 
+import {IAuthDelegator} from 'src/v2/interfaces/IAuthDelegator.sol';
 import {ICallsForwarder} from 'src/v2/interfaces/ICallsForwarder.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
 import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
@@ -226,6 +227,78 @@ contract MulticallTest is AuthenticatorBase {
     assertFalse(ok, 'there is nothing to receive it');
     assertEq(address(hub).balance, 0, 'the hub holds nothing');
     assertEq(owner.balance, 1, 'and the wei stayed with the sender');
+  }
+
+  /**
+   * MC-09 — a delegation relayed through `forwardCalls` with its failure bit set survives being
+   * front-run, so the order batched after it still settles
+   * @dev The front-runner submits the same signed delegation first, which spends its nonce. The
+   * relayer's copy then reverts; with the bit clear that unwinds the whole batch, with it set the
+   * batch carries on, and the delegation is in place either way.
+   */
+  function test_MC_09_aFrontRunDelegationDoesNotUnwindTheBatch() public {
+    AuthKey memory key = _secpKey(masterSigner, block.timestamp + 30 days);
+    uint256 deadline = block.timestamp + 1 hours;
+    uint256 delegationNonce = 80;
+
+    bytes memory delegationSig = _signAuthDelegation(
+      ownerKey, owner, address(authenticator), true, _encodeKey(key), delegationNonce, deadline
+    );
+    ExecutionOrder memory order = _openExecutionOrder(
+      _erc20s(_tokenTransfer(AMOUNT)), _calls(_routerCall(0, hex'01')), 81, deadline
+    );
+    bytes memory orderAuth = _executionAuthData(order, key, masterKeyPk);
+
+    bytes[] memory relayed = new bytes[](1);
+    relayed[0] = abi.encodeCall(
+      IAuthDelegator.updateDelegation,
+      (
+        owner,
+        address(authenticator),
+        true,
+        _encodeKey(key),
+        delegationNonce,
+        deadline,
+        delegationSig
+      )
+    );
+    address[] memory targets = new address[](1);
+    targets[0] = address(hub);
+
+    bytes[] memory batch = new bytes[](2);
+    batch[1] = abi.encodeCall(
+      IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
+      (order, address(authenticator), orderAuth, false)
+    );
+
+    // the front-runner lands the same signed delegation first
+    vm.prank(recipient);
+    hub.updateDelegation(
+      owner, address(authenticator), true, _encodeKey(key), delegationNonce, deadline, delegationSig
+    );
+
+    // with the failure bit clear, the spent nonce unwinds the batch
+    batch[0] =
+      abi.encodeCall(ICallsForwarder.forwardCalls, (targets, relayed, PackedBits.wrap(bytes32(0))));
+    vm.prank(relayer);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(owner), delegationNonce
+      )
+    );
+    hub.multicall(batch);
+
+    // with it set, the batch carries past the delegation and settles the order
+    batch[0] = abi.encodeCall(
+      ICallsForwarder.forwardCalls, (targets, relayed, PackedBits.wrap(bytes32(uint256(1))))
+    );
+    uint256 routerBefore = IERC20(token18).balanceOf(address(router));
+
+    vm.prank(relayer);
+    hub.multicall(batch);
+
+    assertTrue(hub.authDelegated(owner, address(authenticator)), 'delegated by the front-runner');
+    assertEq(IERC20(token18).balanceOf(address(router)) - routerBefore, AMOUNT, 'the order settled');
   }
 
   /**

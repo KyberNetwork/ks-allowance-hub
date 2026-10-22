@@ -5,6 +5,7 @@ import {NativeSpendGuard} from '../base/NativeSpendGuard.sol';
 
 import {PackedBits} from '../base/types/PackedBits.sol';
 
+import {IAuthDelegator} from './interfaces/IAuthDelegator.sol';
 import {ICallsForwarder} from './interfaces/ICallsForwarder.sol';
 import {IOrderAuthenticator} from './interfaces/IOrderAuthenticator.sol';
 
@@ -26,8 +27,8 @@ import {DynamicArrayLib} from 'solady/utils/DynamicArrayLib.sol';
 
 /**
  * @title CallsForwarder
- * @notice Relays calls that authorise themselves — token permits and authenticator updates — so
- * approval and the spend that follows fit in one transaction.
+ * @notice Relays calls that authorise themselves — token permits, delegations and authenticator
+ * updates — so approval and the spend that follows fit in one transaction.
  * @dev Anyone may relay anyone's call: the signature inside each payload is the authorisation.
  * Safety rests on the selector allowlist, since this contract is the `msg.sender` every target
  * sees.
@@ -67,6 +68,7 @@ abstract contract CallsForwarder is ICallsForwarder, NativeSpendGuard, Common {
           && selector != IERC20Permit.permit.selector && selector != IDaiLikePermit.permit.selector
           && selector != IERC721Permit_v3.permit.selector
           && selector != IERC721Permit_v4.permit.selector
+          && selector != IAuthDelegator.updateDelegation.selector
           && selector != IOrderAuthenticator.updateAuthentication.selector
       ) {
         revert NotSupportedSelector(i, selector);

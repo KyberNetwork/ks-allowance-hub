@@ -54,7 +54,8 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
     uint256 deadline,
     bytes calldata signature
   ) external payable checkDeadline(deadline) {
-    if (owner != msg.sender) {
+    // `forwardCalls` reaches this with the hub as the caller, which never authenticates as an owner
+    if (owner != msg.sender || msg.sender == address(this)) {
       _useUnorderedNonce(owner, nonce);
 
       bytes32 hash = _hashTypedDataV4(
@@ -63,6 +64,8 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
       if (!SignatureChecker.isValidSignatureNow(owner, hash, signature)) {
         revert InvalidDelegationSignature();
       }
+    } else if (signature.length != 0) {
+      revert UnexpectedSignature();
     }
 
     // Forwarded only when delegating, so an authenticator that reverts cannot trap the owner in

@@ -7,6 +7,9 @@ interface IAuthDelegator {
   /// @notice The signature does not authorise this decision on the owner's behalf
   error InvalidDelegationSignature();
 
+  /// @notice The owner is the caller, so the decision takes no signature, yet one was given
+  error UnexpectedSignature();
+
   /// @notice The owner has not delegated the authenticator being asked to authenticate the order
   error NotDelegatedAuthenticator(address authenticator);
 
@@ -29,7 +32,7 @@ interface IAuthDelegator {
    * @param data Authenticator-specific payload, opaque here and ignored when withdrawing
    * @param nonce Consumed only when someone other than the owner submits
    * @param deadline Last timestamp at which the delegation may be submitted
-   * @param signature The owner's `AuthDelegation` signature, or empty when the owner is the caller
+   * @param signature The owner's `AuthDelegation` signature; empty when the owner is the caller
    */
   function updateDelegation(
     address owner,

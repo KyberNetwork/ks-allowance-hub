@@ -441,6 +441,25 @@ contract DelegationTest is AuthenticatorBase {
     assertTrue(hub.authDelegated(walletA, address(authenticator)), 'A delegated');
   }
 
+  /**
+   * DEL-17 — the owner's own call takes no signature: one is refused, so a signed delegation the
+   * owner submits never leaves its nonce unspent for a later replay
+   */
+  function test_DEL_17_ownerCallTakesNoSignature() public {
+    uint256 deadline = block.timestamp + 1 days;
+    bytes memory sig =
+      _signAuthDelegation(ownerKey, owner, address(authenticator), true, '', 9, deadline);
+
+    vm.prank(owner);
+    vm.expectRevert(IAuthDelegator.UnexpectedSignature.selector);
+    hub.updateDelegation(owner, address(authenticator), true, '', 9, deadline, sig);
+
+    vm.prank(owner);
+    hub.updateDelegation(owner, address(authenticator), true, '', 9, deadline, '');
+    assertTrue(hub.authDelegated(owner, address(authenticator)), 'delegated on the empty signature');
+    assertEq(hub.nonces(lNonceKey(owner), 0), 0, 'no nonce spent');
+  }
+
   /// DEL-FUZZ — the delegation nonce bitmap behaves across its whole domain
   function testFuzz_DEL_FUZZ_relayedDelegation(DelegationFuzz memory f) public {
     uint256 nonce = f.nonce;
