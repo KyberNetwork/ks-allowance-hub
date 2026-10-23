@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IKSAllowanceHub} from 'src/interfaces/IKSAllowanceHub.sol';
-import {IKSGenericRouter} from 'src/interfaces/IKSGenericRouter.sol';
+import {IKSGenericRouter} from 'src/base/interfaces/IKSGenericRouter.sol';
+import {IKSAllowanceHub} from 'src/v1/interfaces/IKSAllowanceHub.sol';
 
 import {TokenHelper} from 'ks-common-sc/src/libraries/token/TokenHelper.sol';
 

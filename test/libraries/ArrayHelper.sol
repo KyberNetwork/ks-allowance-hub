@@ -2,7 +2,8 @@
 
 pragma solidity ^0.8.0;
 
-/// @notice Library of helper functions to convert fixed-sized array types to dynamic arrays in tests.
+/// @notice Library of helper functions to convert fixed-sized array types to dynamic arrays in
+/// tests.
 library ArrayHelper {
   function toMemoryArray(address[1] memory array) internal pure returns (address[] memory) {
     address[] memory ret = new address[](1);
