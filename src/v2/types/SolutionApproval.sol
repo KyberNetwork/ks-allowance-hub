@@ -7,6 +7,8 @@ import {FulfillmentSolution} from './FulfillmentSolution.sol';
 /**
  * @notice A solution approver's approval of one {FulfillmentSolution} for one {FulfillmentOrder}
  * @dev The approval carries no nonce, so it is valid for every settlement of its order.
+ * @param order The order the solution settles
+ * @param solution The approved solution
  */
 struct SolutionApproval {
   FulfillmentOrder order;

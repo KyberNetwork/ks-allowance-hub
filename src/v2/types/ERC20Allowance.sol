@@ -15,8 +15,9 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 /**
  * @notice One ERC20 leg of a fulfillment order: an amount of `token` that leaves the owner
  * @dev The order does not name the leg's target. The {FulfillmentSolution} names one target for
- * each leg, and the full `amount` is transferred to it. `amount` has the width of a Permit2
- * allowance.
+ * each leg, and the full `amount` is transferred to it.
+ * @param token The ERC20 token
+ * @param amount Amount transferred, with the width of a Permit2 allowance
  */
 struct ERC20Allowance {
   address token;

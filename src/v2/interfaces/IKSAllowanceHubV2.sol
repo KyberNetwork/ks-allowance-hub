@@ -91,7 +91,7 @@ interface IKSAllowanceHubV2 {
    *
    * `solution` must name one target for each leg and must not have passed its own deadline. The
    * approval is checked against `order.solutionApprover`, and is not required when that is the
-   * dead address. The approval carries no nonce, so it remains valid for every settlement of its
+   * dead address. The approval carries no nonce, so it remains valid until the settlement of its
    * order.
    *
    * The caller and the authenticator are treated as in {executeOrderWithDelegatedAuthentication},

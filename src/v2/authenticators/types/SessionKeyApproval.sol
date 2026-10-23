@@ -5,9 +5,14 @@ import {AuthKey} from './AuthKey.sol';
 
 /**
  * @notice A master key's signed decision to approve or revoke one session key for `owner`
- * @dev `approved` is true to approve and false to revoke. The master key signs the decision
- * whoever submits it, and `nonce` is spent under the master key's credential. A master key may
- * decide only about a session key it approved or one that no master key has approved.
+ * @dev The master key signs the decision whoever submits it. A master key may decide only about a
+ * session key it approved or one that no master key has approved.
+ * @param owner Account the session key may sign for
+ * @param masterKey The approved master key that signs the decision
+ * @param sessionKey The session key
+ * @param approved True to approve, false to revoke
+ * @param nonce Nonce spent under the master key's credential
+ * @param deadline Last timestamp at which the decision may be submitted
  */
 struct SessionKeyApproval {
   address owner;

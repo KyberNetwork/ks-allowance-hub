@@ -4,10 +4,13 @@ pragma solidity ^0.8.0;
 import {AuthKey} from './AuthKey.sol';
 
 /**
- * @notice An owner's signed decision to approve or revoke one master key
- * @dev `approved` is true to approve and false to revoke. When the owner submits the decision, no
- * signature is given and `nonce` is not spent. Otherwise `nonce` is spent in the owner's
- * namespace.
+ * @notice An owner's signed decision to approve or revoke one master key, required when the
+ * decision is submitted by another account
+ * @param owner Account the key may sign for
+ * @param masterKey The master key
+ * @param approved True to approve, false to revoke
+ * @param nonce Nonce spent in the owner's namespace
+ * @param deadline Last timestamp at which the decision may be submitted
  */
 struct MasterKeyApproval {
   address owner;

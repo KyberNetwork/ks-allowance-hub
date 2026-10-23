@@ -13,9 +13,12 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 /**
  * @notice One ERC20 leg of an execution order: an amount of `token` transferred from the owner to
  * `target`
- * @dev `amount` has the width of a Permit2 allowance. In {IKSAllowanceHubV2-rescueTokens}, the
- * entry is a transfer from the hub: a zero `amount` transfers the hub's entire balance, and a
- * `token` of the native-token address or the zero address transfers native value.
+ * @dev In {IKSAllowanceHubV2-rescueTokens}, the entry is a transfer from the hub: a zero `amount`
+ * transfers the hub's entire balance, and a `token` of the native-token address or the zero
+ * address transfers native value.
+ * @param token The ERC20 token
+ * @param target Account the amount is transferred to
+ * @param amount Amount transferred, with the width of a Permit2 allowance
  */
 struct ERC20Transfer {
   address token;

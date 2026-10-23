@@ -6,7 +6,10 @@ import {AuthKey} from './AuthKey.sol';
 /**
  * @notice A key's signed decision to spend one of its nonces, invalidating its unused signature
  * that carries it
- * @dev The nonce is spent under the key's credential. The key need not be approved or unexpired.
+ * @dev The key need not be approved or unexpired.
+ * @param key The key that signs the revocation
+ * @param nonce Nonce spent under the key's credential
+ * @param deadline Last timestamp at which the revocation may be submitted
  */
 struct NonceRevocation {
   AuthKey key;

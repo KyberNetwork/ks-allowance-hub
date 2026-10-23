@@ -11,9 +11,11 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
  * @notice One router call in an order
- * @dev `value` is paid from the native value sent with the order; the order cannot spend native
- * value the hub held before it. `router` must hold the whitelisted router role when the call runs,
- * and may read the order's owner from {IMsgSender-msgSender}.
+ * @dev The router may read the order's owner from {IMsgSender-msgSender}.
+ * @param router Router called with `ksExecute`; must hold the whitelisted router role when the call
+ * runs
+ * @param value Native value sent with the call, paid from the native value sent with the order
+ * @param data Payload passed to `ksExecute`
  */
 struct GenericCall {
   address router;

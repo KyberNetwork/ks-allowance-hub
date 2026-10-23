@@ -4,9 +4,12 @@ pragma solidity ^0.8.0;
 /**
  * @notice An owner's signed decision to delegate an authenticator or withdraw it, required when the
  * decision is submitted by another account
- * @dev `delegated` is true to delegate and false to withdraw. `data` is passed to the
- * authenticator only when delegating. When the owner submits the decision, no signature is given
- * and `nonce` is not spent.
+ * @param owner Account whose orders the authenticator may authenticate
+ * @param authenticator Authenticator contract
+ * @param delegated True to delegate, false to withdraw
+ * @param data Initial authentication material, passed to the authenticator only when delegating
+ * @param nonce Nonce spent in the owner's namespace
+ * @param deadline Last timestamp at which the decision may be submitted
  */
 struct AuthDelegation {
   address owner;

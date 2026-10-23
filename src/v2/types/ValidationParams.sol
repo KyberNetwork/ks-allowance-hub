@@ -9,10 +9,14 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
  * @notice A validator of a fulfillment order and its inputs
- * @dev `validator` may be any address; it does not need a role. Its `beforeExecution` runs before
- * any asset moves, and its `afterExecution` runs after the solver's calls and before the owner's
- * calls. On the Permit2 entry point, `beforeExecution` runs before the owner's signature is
- * checked.
+ * @dev The validator's `beforeExecution` runs before any asset moves, and its `afterExecution` runs
+ * after the solver's calls and before the owner's calls. On the Permit2 entry point,
+ * `beforeExecution` runs before the owner's signature is checked.
+ * @param validator Validator contract; any address, with no role required
+ * @param action Validator-specific identifier of the check to perform
+ * @param beforeExecutionInput Input passed to `beforeExecution`
+ * @param afterExecutionInput Input passed to `afterExecution`, with the output `beforeExecution`
+ * returned
  */
 struct ValidationParams {
   address validator;

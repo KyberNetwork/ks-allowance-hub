@@ -13,6 +13,8 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * @notice One ERC721 leg of a fulfillment order: a token that leaves the owner
  * @dev The order does not name the leg's target. The {FulfillmentSolution} names one target for
  * each leg.
+ * @param token The ERC721 contract
+ * @param tokenId The token transferred
  */
 struct ERC721Approval {
   address token;

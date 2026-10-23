@@ -16,10 +16,13 @@ import {WebAuthn} from 'openzeppelin-contracts/contracts/utils/cryptography/WebA
 
 /**
  * @notice A key that may sign for an account until `expiration`
- * @dev `publicKey` is encoded according to `keyType`: an ABI-encoded address for Secp256k1 and
- * ERC1271, `abi.encodePacked(qx, qy)` for P256 and WebAuthn, `abi.encode(bytes e, bytes n)` for
- * RSA, and `abi.encodePacked(verifier, key)` for ERC7913. Approvals identify a key by its hash,
- * which includes the expiry; nonces are spent under its credential hash, which does not.
+ * @dev Approvals identify a key by its hash, which includes the expiry; nonces are spent under its
+ * credential hash, which does not.
+ * @param publicKey The public key, encoded according to `keyType`: an ABI-encoded address for
+ * Secp256k1 and ERC1271, `abi.encodePacked(qx, qy)` for P256 and WebAuthn,
+ * `abi.encode(bytes e, bytes n)` for RSA, and `abi.encodePacked(verifier, key)` for ERC7913
+ * @param keyType The signature scheme
+ * @param expiration Last timestamp at which the key may be approved or sign an order
  */
 struct AuthKey {
   bytes publicKey;
