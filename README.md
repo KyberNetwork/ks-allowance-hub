@@ -254,8 +254,8 @@ the regenerated file differs.
 ## Documentation
 
 `forge doc` generates a [Vocs](https://vocs.dev) site from the NatSpec into `docs/`, which is not
-committed. The dependencies `forge doc` declares do not currently install cleanly, so the first
-install pins working versions:
+committed. The dependencies `forge doc` declares do not currently install cleanly, so each run of
+`forge doc` is followed by an install that pins working versions:
 
 ```shell
 forge doc
@@ -269,8 +269,7 @@ npm run dev      # serve locally
 npm run build    # build the static site
 ```
 
-`forge doc` keeps an existing `docs/package.json`, so later runs need only `npm install` in
-`docs/`. See [Foundry's contract documentation guide](https://www.getfoundry.sh/forge/documentation#contract-documentation).
+See [Foundry's contract documentation guide](https://www.getfoundry.sh/forge/documentation#contract-documentation).
 
 ## Deployment
 
