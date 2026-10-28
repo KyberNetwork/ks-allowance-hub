@@ -22,6 +22,7 @@ import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer
  * @param nonce Permit2 nonce on the Permit2 entry points; on the delegated entry points, for the
  * authenticator to spend
  * @param deadline Last timestamp at which the order may settle
+ * @param metadata Data the hub does not read, covered by the order's signature
  */
 struct ExecutionOrder {
   address owner;
@@ -31,6 +32,7 @@ struct ExecutionOrder {
   GenericCall[] genericCalls;
   uint256 nonce;
   uint256 deadline;
+  string metadata;
 }
 
 using ExecutionOrderLib for ExecutionOrder global;
@@ -41,7 +43,7 @@ library ExecutionOrderLib {
   using GenericCallLib for GenericCall[];
 
   bytes32 internal constant EXECUTION_ORDER_TYPEHASH = keccak256(
-    'ExecutionOrder(address owner,address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 deadline)'
+    'ExecutionOrder(address owner,address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 deadline,string metadata)'
     'ERC20Transfer(address token,address target,uint160 amount)'
     'ERC721Transfer(address token,uint256 tokenId,address target)'
     'GenericCall(address router,uint256 value,bytes data)'
@@ -58,7 +60,8 @@ library ExecutionOrderLib {
         order.erc721Transfers.hash(),
         order.genericCalls.hash(),
         order.nonce,
-        order.deadline
+        order.deadline,
+        keccak256(bytes(order.metadata))
       )
     );
   }
@@ -74,7 +77,8 @@ library ExecutionOrderLib {
         order.erc721Transfers.hashMemory(),
         order.genericCalls.hashMemory(),
         order.nonce,
-        order.deadline
+        order.deadline,
+        keccak256(bytes(order.metadata))
       )
     );
   }

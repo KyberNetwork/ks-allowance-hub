@@ -32,6 +32,7 @@ import {ValidationParams, ValidationParamsLib} from './ValidationParams.sol';
  * @param nonce Permit2 nonce on the Permit2 entry points; on the delegated entry points, for the
  * authenticator to spend
  * @param deadline Last timestamp at which the order may settle
+ * @param metadata Data the hub does not read, covered by the order's signature
  */
 struct FulfillmentOrder {
   address owner;
@@ -43,6 +44,7 @@ struct FulfillmentOrder {
   address solutionApprover;
   uint256 nonce;
   uint256 deadline;
+  string metadata;
 }
 
 using FulfillmentOrderLib for FulfillmentOrder global;
@@ -54,7 +56,7 @@ library FulfillmentOrderLib {
   using ValidationParamsLib for ValidationParams[];
 
   bytes32 internal constant FULFILLMENT_ORDER_TYPEHASH = keccak256(
-    'FulfillmentOrder(address owner,address solver,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,ValidationParams[] validationParams,GenericCall[] ownerCalls,address solutionApprover,uint256 nonce,uint256 deadline)'
+    'FulfillmentOrder(address owner,address solver,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,ValidationParams[] validationParams,GenericCall[] ownerCalls,address solutionApprover,uint256 nonce,uint256 deadline,string metadata)'
     'ERC20Allowance(address token,uint160 amount)' 'ERC721Approval(address token,uint256 tokenId)'
     'GenericCall(address router,uint256 value,bytes data)'
     'ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)'
@@ -73,7 +75,8 @@ library FulfillmentOrderLib {
         order.ownerCalls.hash(),
         order.solutionApprover,
         order.nonce,
-        order.deadline
+        order.deadline,
+        keccak256(bytes(order.metadata))
       )
     );
   }
@@ -91,7 +94,8 @@ library FulfillmentOrderLib {
         order.ownerCalls.hashMemory(),
         order.solutionApprover,
         order.nonce,
-        order.deadline
+        order.deadline,
+        keccak256(bytes(order.metadata))
       )
     );
   }

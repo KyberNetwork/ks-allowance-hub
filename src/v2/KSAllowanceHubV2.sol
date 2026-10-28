@@ -163,7 +163,11 @@ contract KSAllowanceHubV2 is
       _permitTransferFrom(order.owner, permit, details, permit2Signature);
     } else if (msg.sender == order.relayer || order.relayer == DEAD_ADDRESS) {
       bytes32 witness = ExecutionWitnessLib.hash(
-        order.relayer, order.erc20Transfers.targetsHash(), order.erc721Transfers, order.genericCalls
+        order.relayer,
+        order.erc20Transfers.targetsHash(),
+        order.erc721Transfers,
+        order.genericCalls,
+        order.metadata
       );
 
       _permitWitnessTransferFrom(
@@ -268,7 +272,8 @@ contract KSAllowanceHubV2 is
         order.erc721Approvals,
         order.ownerCalls,
         order.validationParams,
-        order.solutionApprover
+        order.solutionApprover,
+        order.metadata
       );
 
       _permitWitnessTransferFrom(

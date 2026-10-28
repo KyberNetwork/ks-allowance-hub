@@ -13,16 +13,16 @@ import {
 } from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
 import {IAuthDelegator} from 'src/v2/interfaces/IAuthDelegator.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
+import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
 
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
-import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
 
 /**
- * @notice `AUTH-01..13`, `ORD-01..02` and the two execute-rail fuzz properties — every
+ * @notice `AUTH-01..15`, `ORD-01..02` and the two execute-rail fuzz properties — every
  * authentication route into {KSAllowanceHubV2-executeOrderWithPermit2Signature} and
  * {KSAllowanceHubV2-executeOrderWithDelegatedAuthentication}.
  * @dev The two rails are separate functions now, so the differences are per entry point rather than
@@ -402,6 +402,71 @@ contract ExecuteOrderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(SLICE_OUT_OF_BOUNDS);
     hub.executeOrderWithDelegatedAuthentication(order, address(authenticator), truncated, false);
+  }
+
+  /**
+   * AUTH-14 — the authenticator's signature covers the order's metadata
+   * @dev The first leg is the control: an order carrying metadata A settles. The second leg is
+   * submitted with metadata B under the signature made for A, and the order hash it is checked
+   * against differs.
+   */
+  function test_AUTH_14_authenticationBindsMetadata() public {
+    _delegateKeyThroughHub(key);
+
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
+    uint256 deadline = block.timestamp + 1 hours;
+
+    ExecutionOrder memory control = _openExecutionOrder(erc20s, new GenericCall[](0), 80, deadline);
+    control.metadata = 'ref:A';
+    bytes memory controlAuth = _executionAuthData(control, key, masterKeyPk);
+
+    uint256 before = IERC20(token18).balanceOf(address(router));
+
+    vm.prank(relayer);
+    hub.executeOrderWithDelegatedAuthentication(control, address(authenticator), controlAuth, false);
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'metadata A settled');
+
+    ExecutionOrder memory signed = _openExecutionOrder(erc20s, new GenericCall[](0), 81, deadline);
+    signed.metadata = 'ref:A';
+    bytes memory signedAuth = _executionAuthData(signed, key, masterKeyPk);
+
+    ExecutionOrder memory tampered = _openExecutionOrder(erc20s, new GenericCall[](0), 81, deadline);
+    tampered.metadata = 'ref:B';
+
+    vm.prank(relayer);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
+    hub.executeOrderWithDelegatedAuthentication(tampered, address(authenticator), signedAuth, false);
+  }
+
+  /**
+   * AUTH-15 — the witness covers the order's metadata
+   * @dev As AUTH-14 on the Permit2 rail, with a relayer submitting: the permit made for metadata A
+   * settles with A and is refused by Permit2 with B.
+   */
+  function test_AUTH_15_witnessPinsMetadata() public {
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
+    uint256 deadline = block.timestamp + 1 hours;
+
+    ExecutionOrder memory control = _openExecutionOrder(erc20s, new GenericCall[](0), 82, deadline);
+    control.metadata = 'ref:A';
+    bytes memory controlSig = _signExecutionWitness(control);
+
+    uint256 before = IERC20(token18).balanceOf(address(router));
+
+    vm.prank(relayer);
+    hub.executeOrderWithPermit2Signature(control, controlSig);
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'metadata A settled');
+
+    ExecutionOrder memory signed = _openExecutionOrder(erc20s, new GenericCall[](0), 83, deadline);
+    signed.metadata = 'ref:A';
+    bytes memory signedSig = _signExecutionWitness(signed);
+
+    ExecutionOrder memory tampered = _openExecutionOrder(erc20s, new GenericCall[](0), 83, deadline);
+    tampered.metadata = 'ref:B';
+
+    vm.prank(relayer);
+    vm.expectRevert(PERMIT2_INVALID_SIGNER);
+    hub.executeOrderWithPermit2Signature(tampered, signedSig);
   }
 
   // -------------------------------------------------------------------------------------------

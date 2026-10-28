@@ -28,6 +28,8 @@ import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
  * them, which a typehash comparison alone does not reach.
  */
 contract Eip712Test is V2TestBase {
+  string internal constant METADATA = 'order-ref:7f3a';
+
   // -------------------------------------------------------------------------------------------
   // T712-08b..12 — struct and array encodings, against the schemas the structs declare
   // -------------------------------------------------------------------------------------------
@@ -106,8 +108,8 @@ contract Eip712Test is V2TestBase {
     (address[] memory targets, ERC721Transfer[] memory nfts, GenericCall[] memory calls) = _sample();
 
     assertEq(
-      ExecutionWitnessLib.hashMemory(ANY, targets, nfts, calls),
-      lExecutionWitness(ANY, targets, nfts, calls)
+      ExecutionWitnessLib.hashMemory(ANY, targets, nfts, calls, ''),
+      lExecutionWitness(ANY, targets, nfts, calls, '')
     );
   }
 
@@ -118,8 +120,64 @@ contract Eip712Test is V2TestBase {
     ValidationParams[] memory vs = _sampleValidations();
 
     assertEq(
-      FulfillmentWitnessLib.hashMemory(ANY, nfts, ownerCalls, vs, address(0xBEEF)),
-      lFulfillmentWitness(ANY, nfts, ownerCalls, vs, address(0xBEEF))
+      FulfillmentWitnessLib.hashMemory(ANY, nfts, ownerCalls, vs, address(0xBEEF), ''),
+      lFulfillmentWitness(ANY, nfts, ownerCalls, vs, address(0xBEEF), '')
+    );
+  }
+
+  /// @dev A non-empty metadata is encoded by both hashers of the execution witness and moves the
+  /// hash
+  function test_T712_executionWitnessMetadataStructHash() public view {
+    (address[] memory targets, ERC721Transfer[] memory nfts, GenericCall[] memory calls) = _sample();
+    bytes32 expected = lExecutionWitness(ANY, targets, nfts, calls, METADATA);
+
+    assertEq(
+      ExecutionWitnessLib.hashMemory(ANY, targets, nfts, calls, METADATA), expected, 'memory'
+    );
+    assertEq(this.extHashExecutionWitness(targets, nfts, calls, METADATA), expected, 'calldata');
+    assertTrue(expected != lExecutionWitness(ANY, targets, nfts, calls, ''), 'metadata is signed');
+  }
+
+  /// @dev The fulfillment counterpart of {test_T712_executionWitnessMetadataStructHash}
+  function test_T712_fulfillmentWitnessMetadataStructHash() public view {
+    (,, GenericCall[] memory ownerCalls) = _sample();
+    ERC721Approval[] memory nfts = _sampleApprovals();
+    ValidationParams[] memory vs = _sampleValidations();
+    address approver = address(0xBEEF);
+    bytes32 expected = lFulfillmentWitness(ANY, nfts, ownerCalls, vs, approver, METADATA);
+
+    assertEq(
+      FulfillmentWitnessLib.hashMemory(ANY, nfts, ownerCalls, vs, approver, METADATA),
+      expected,
+      'memory'
+    );
+    assertEq(this.extHashFulfillmentWitness(nfts, ownerCalls, vs, approver, METADATA), expected);
+    assertTrue(
+      expected != lFulfillmentWitness(ANY, nfts, ownerCalls, vs, approver, ''), 'metadata is signed'
+    );
+  }
+
+  /// @dev Both order hashers with a non-empty metadata, and the metadata moves the hash
+  function test_T712_ordersMetadataStructHash() public view {
+    ExecutionOrder memory execution = _sampleExecutionOrder();
+    FulfillmentOrder memory fulfillment = _sampleFulfillmentOrder();
+    assertEq(execution.metadata, METADATA);
+    assertEq(fulfillment.metadata, METADATA);
+
+    bytes32 executionExpected = SchemaHash.executionOrder(execution);
+    bytes32 fulfillmentExpected = SchemaHash.fulfillmentOrder(fulfillment);
+    assertEq(execution.hashMemory(), executionExpected, 'execution memory');
+    assertEq(this.extHashExecutionOrder(execution), executionExpected, 'execution calldata');
+    assertEq(fulfillment.hashMemory(), fulfillmentExpected, 'fulfillment memory');
+    assertEq(this.extHashFulfillmentOrder(fulfillment), fulfillmentExpected, 'fulfillment calldata');
+
+    execution.metadata = '';
+    fulfillment.metadata = '';
+    assertEq(this.extHashExecutionOrder(execution), SchemaHash.executionOrder(execution));
+    assertEq(this.extHashFulfillmentOrder(fulfillment), SchemaHash.fulfillmentOrder(fulfillment));
+    assertTrue(SchemaHash.executionOrder(execution) != executionExpected, 'execution metadata');
+    assertTrue(
+      SchemaHash.fulfillmentOrder(fulfillment) != fulfillmentExpected, 'fulfillment metadata'
     );
   }
 
@@ -299,6 +357,25 @@ contract Eip712Test is V2TestBase {
     return o.hash();
   }
 
+  function extHashExecutionWitness(
+    address[] calldata targets,
+    ERC721Transfer[] calldata nfts,
+    GenericCall[] calldata calls,
+    string calldata metadata
+  ) external pure returns (bytes32) {
+    return ExecutionWitnessLib.hash(ANY, EfficientHashLibExt.hash(targets), nfts, calls, metadata);
+  }
+
+  function extHashFulfillmentWitness(
+    ERC721Approval[] calldata nfts,
+    GenericCall[] calldata ownerCalls,
+    ValidationParams[] calldata vs,
+    address approver,
+    string calldata metadata
+  ) external pure returns (bytes32) {
+    return FulfillmentWitnessLib.hash(ANY, nfts, ownerCalls, vs, approver, metadata);
+  }
+
   function extHashSolution(FulfillmentSolution calldata s) external pure returns (bytes32) {
     return s.hash();
   }
@@ -363,7 +440,8 @@ contract Eip712Test is V2TestBase {
       erc721Transfers: nfts,
       genericCalls: calls,
       nonce: 11,
-      deadline: 1234
+      deadline: 1234,
+      metadata: METADATA
     });
   }
 
@@ -389,7 +467,8 @@ contract Eip712Test is V2TestBase {
       ownerCalls: ownerCalls,
       solutionApprover: address(0xBEEF),
       nonce: 12,
-      deadline: 5678
+      deadline: 5678,
+      metadata: METADATA
     });
   }
 

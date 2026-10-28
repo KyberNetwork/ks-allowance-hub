@@ -27,8 +27,8 @@ import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessCon
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 /**
- * @notice `AUTH-01b`, `AUTH-07..07b`, `SOL-01..04`, `OWN-01..06` and `VAL-01..04` — both
- * fulfillment rails, the solution approval and the validator bracket.
+ * @notice `AUTH-01b`, `AUTH-07..07b`, `AUTH-16..17`, `SOL-01..04`, `OWN-01..06` and `VAL-01..04` —
+ * both fulfillment rails, the solution approval and the validator bracket.
  * @dev A fulfillment splits in two: the owner fixes `ownerCalls` and the validators, a solver
  * supplies the {FulfillmentSolution}, and the `solutionApprover` the order names is who may approve
  * that route. The validators run between the two call lists.
@@ -180,6 +180,81 @@ contract FulfillOrderTest is AuthenticatorBase {
     vm.prank(solver);
     vm.expectRevert(PERMIT2_INVALID_SIGNER);
     hub.fulfillOrderWithPermit2Signature(swapped, openWitness, route2, approval2);
+  }
+
+  /**
+   * AUTH-16 — the witness covers the order's metadata
+   * @dev The first leg is the control: a solver settles an order carrying metadata A. The second
+   * submits metadata B under the witness made for A, and Permit2 refuses it.
+   */
+  function test_AUTH_16_witnessPinsMetadata() public {
+    ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
+    GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
+    uint256 deadline = block.timestamp + 1 hours;
+
+    FulfillmentOrder memory control =
+      _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 33, deadline);
+    control.metadata = 'ref:A';
+    bytes memory controlSig = _signFulfillmentWitness(control);
+
+    uint256 before = IERC20(token18).balanceOf(address(router));
+
+    vm.prank(solver);
+    hub.fulfillOrderWithPermit2Signature(control, controlSig, _route(control, solverCalls), '');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'metadata A settled');
+
+    FulfillmentOrder memory signed =
+      _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 34, deadline);
+    signed.metadata = 'ref:A';
+    bytes memory signedSig = _signFulfillmentWitness(signed);
+
+    FulfillmentOrder memory tampered =
+      _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 34, deadline);
+    tampered.metadata = 'ref:B';
+
+    vm.prank(solver);
+    vm.expectRevert(PERMIT2_INVALID_SIGNER);
+    hub.fulfillOrderWithPermit2Signature(tampered, signedSig, _route(tampered, solverCalls), '');
+  }
+
+  /**
+   * AUTH-17 — the authenticator's signature covers the order's metadata
+   * @dev As AUTH-16 on the delegated rail.
+   */
+  function test_AUTH_17_authenticationBindsMetadata() public {
+    _delegateKeyThroughHub(key);
+
+    ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
+    GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
+    uint256 deadline = block.timestamp + 1 hours;
+
+    FulfillmentOrder memory control =
+      _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 35, deadline);
+    control.metadata = 'ref:A';
+    bytes memory controlAuth = _fulfillmentAuthData(control, key, masterKeyPk);
+
+    uint256 before = IERC20(token18).balanceOf(address(router));
+
+    vm.prank(relayer);
+    hub.fulfillOrderWithDelegatedAuthentication(
+      control, address(authenticator), controlAuth, _route(control, solverCalls), '', false
+    );
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'metadata A settled');
+
+    FulfillmentOrder memory signed =
+      _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 36, deadline);
+    signed.metadata = 'ref:A';
+    bytes memory signedAuth = _fulfillmentAuthData(signed, key, masterKeyPk);
+
+    FulfillmentOrder memory tampered =
+      _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 36, deadline);
+    tampered.metadata = 'ref:B';
+
+    vm.prank(relayer);
+    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
+    hub.fulfillOrderWithDelegatedAuthentication(
+      tampered, address(authenticator), signedAuth, _route(tampered, solverCalls), '', false
+    );
   }
 
   /**

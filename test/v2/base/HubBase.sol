@@ -214,7 +214,8 @@ abstract contract HubBase is V2TestBase {
       erc721Transfers: erc721Transfers,
       genericCalls: genericCalls,
       nonce: nonce,
-      deadline: deadline
+      deadline: deadline,
+      metadata: ''
     });
   }
 
@@ -249,7 +250,8 @@ abstract contract HubBase is V2TestBase {
       ownerCalls: ownerCalls,
       solutionApprover: solutionApprover,
       nonce: nonce,
-      deadline: deadline
+      deadline: deadline,
+      metadata: ''
     });
   }
 
@@ -337,7 +339,8 @@ abstract contract HubBase is V2TestBase {
       relayer: witnessRelayer,
       erc20Targets: _targets(order.erc20Transfers),
       erc721Transfers: order.erc721Transfers,
-      genericCalls: order.genericCalls
+      genericCalls: order.genericCalls,
+      metadata: order.metadata
     });
 
     (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(order.erc20Transfers);
@@ -367,7 +370,8 @@ abstract contract HubBase is V2TestBase {
       erc721Approvals: order.erc721Approvals,
       ownerCalls: witnessOwnerCalls,
       validationParams: order.validationParams,
-      callsSigner: witnessApprover
+      callsSigner: witnessApprover,
+      metadata: order.metadata
     });
 
     (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(order.erc20Allowances);

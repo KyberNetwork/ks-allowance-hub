@@ -1260,3 +1260,29 @@ Scope: `EIP712Base` and `IEIP712Base` are removed. `AuthDelegator` and
 
 `DOM-01` is rewritten: it read `DOMAIN_SEPARATOR()` and now observes the separator through the
 signatures it accepts. The hub is 22,994 bytes and the authenticator 12,029.
+
+## Run `20261029T120000Z`
+
+Scope: `ExecutionOrder`, `FulfillmentOrder`, `ExecutionWitness` and `FulfillmentWitness` gain a
+last member `string metadata`, encoded as `keccak256(bytes(metadata))`. The hub passes
+`order.metadata` to both witness hashers. The `SolutionApproval` type string carries the new
+`FulfillmentOrder` definition.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261029T120000Z/META-01` | An execution order authenticated for metadata A settles; the same signature with metadata B is refused by the authenticator | `AUTH-14` `test_AUTH_14_authenticationBindsMetadata` — `test/v2/ExecuteOrder.t.sol` | `forge test --isolate` — 261 passed |
+| - [x] | - [ ] | `20261029T120000Z/META-02` | A Permit2 execution witness signed with metadata A settles with a relayer; submitted with metadata B, Permit2 refuses it | `AUTH-15` `test_AUTH_15_witnessPinsMetadata` — `test/v2/ExecuteOrder.t.sol` | same |
+| - [x] | - [ ] | `20261029T120000Z/META-03` | A Permit2 fulfillment witness signed with metadata A settles with a solver; submitted with metadata B, Permit2 refuses it | `AUTH-16` `test_AUTH_16_witnessPinsMetadata` — `test/v2/FulfillOrder.t.sol` | same |
+| - [x] | - [ ] | `20261029T120000Z/META-04` | A fulfillment authenticated for metadata A settles; the same signature with metadata B is refused by the authenticator | `AUTH-17` `test_AUTH_17_authenticationBindsMetadata` — `test/v2/FulfillOrder.t.sol` | same |
+| - [x] | - [ ] | `20261029T120000Z/META-05` | Both hashers of each order and each witness, with non-empty metadata, equal the bind-json oracle, and empty metadata gives a different hash | `T712-metadata` `test_T712_executionWitnessMetadataStructHash`, `test_T712_fulfillmentWitnessMetadataStructHash`, `test_T712_ordersMetadataStructHash` — `test/v2/types/Eip712.t.sol` | same |
+
+### Notes for this run
+
+The sample orders in `Eip712.t.sol` carry non-empty metadata; the default orders in the hub suites
+carry `''`. Mutations, each failing exactly its cases: dropping `keccak256(bytes(order.metadata))`
+from `ExecutionOrderLib.hash` (`AUTH-14`, `test_T712_executionOrderStructHash`,
+`test_T712_ordersMetadataStructHash`, `testFuzz_T712_DIFF_executionOrder`), the same in
+`FulfillmentOrderLib.hash` (`AUTH-17`, `test_T712_fulfillmentOrderStructHash`,
+`test_T712_ordersMetadataStructHash`, `testFuzz_T712_DIFF_fulfillmentOrder`), the hub passing an
+empty string to `ExecutionWitnessLib.hash` (`AUTH-15`) and to `FulfillmentWitnessLib.hash`
+(`AUTH-16`). The hub is 23,092 bytes and the authenticator 12,030.

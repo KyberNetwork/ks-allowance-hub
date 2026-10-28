@@ -17,12 +17,14 @@ import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer
  * @param erc20Targets Target of each ERC20 leg, in order
  * @param erc721Transfers ERC721 legs
  * @param genericCalls Router calls
+ * @param metadata The order's metadata
  */
 struct ExecutionWitness {
   address relayer;
   address[] erc20Targets;
   ERC721Transfer[] erc721Transfers;
   GenericCall[] genericCalls;
+  string metadata;
 }
 
 /**
@@ -50,12 +52,12 @@ library ExecutionWitnessLib {
 
   string internal constant EXECUTION_WITNESS_PERMIT2_TYPE_STRING = 'ExecutionWitness witness)'
     'ERC721Transfer(address token,uint256 tokenId,address target)'
-    'ExecutionWitness(address relayer,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls)'
+    'ExecutionWitness(address relayer,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,string metadata)'
     'GenericCall(address router,uint256 value,bytes data)'
     'TokenPermissions(address token,uint256 amount)';
 
   bytes32 internal constant EXECUTION_WITNESS_TYPEHASH = keccak256(
-    'ExecutionWitness(address relayer,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls)'
+    'ExecutionWitness(address relayer,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,string metadata)'
     'ERC721Transfer(address token,uint256 tokenId,address target)'
     'GenericCall(address router,uint256 value,bytes data)'
   );
@@ -65,7 +67,8 @@ library ExecutionWitnessLib {
     address relayer,
     bytes32 erc20TargetsHash,
     ERC721Transfer[] calldata erc721Transfers,
-    GenericCall[] calldata genericCalls
+    GenericCall[] calldata genericCalls,
+    string calldata metadata
   ) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(
@@ -73,7 +76,8 @@ library ExecutionWitnessLib {
         relayer,
         erc20TargetsHash,
         erc721Transfers.hash(),
-        genericCalls.hash()
+        genericCalls.hash(),
+        keccak256(bytes(metadata))
       )
     );
   }
@@ -83,7 +87,8 @@ library ExecutionWitnessLib {
     address relayer,
     address[] memory erc20Targets,
     ERC721Transfer[] memory erc721Transfers,
-    GenericCall[] memory genericCalls
+    GenericCall[] memory genericCalls,
+    string memory metadata
   ) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(
@@ -91,7 +96,8 @@ library ExecutionWitnessLib {
         relayer,
         erc20Targets.hashMemory(),
         erc721Transfers.hashMemory(),
-        genericCalls.hashMemory()
+        genericCalls.hashMemory(),
+        keccak256(bytes(metadata))
       )
     );
   }

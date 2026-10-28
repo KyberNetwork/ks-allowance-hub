@@ -3,11 +3,10 @@ pragma solidity 0.8.36;
 
 import {Test} from 'forge-std/Test.sol';
 
-import {PermitHash} from 'test/libraries/PermitHash.sol';
-
 import {SchemaHash} from 'test/base/SchemaHash.sol';
 
-import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
+import {PermitHash} from 'test/libraries/PermitHash.sol';
+
 import {
   PermitBatchWitnessTransferFrom as Permit2ExecutionWitness
 } from 'src/v2/types/ExecutionWitness.sol';
@@ -32,6 +31,8 @@ import {FulfillmentWitness} from 'src/v2/types/FulfillmentWitness.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
 import {SolutionApproval} from 'src/v2/types/SolutionApproval.sol';
 import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
+
+import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 
 /**
  * @title V2TestBase
@@ -96,14 +97,16 @@ abstract contract V2TestBase is Test {
     address signedCaller,
     address[] memory targets,
     ERC721Transfer[] memory erc721Transfers,
-    GenericCall[] memory genericCalls
+    GenericCall[] memory genericCalls,
+    string memory metadata
   ) internal pure returns (bytes32) {
     return SchemaHash.executionWitness(
       ExecutionWitness({
         relayer: signedCaller,
         erc20Targets: targets,
         erc721Transfers: erc721Transfers,
-        genericCalls: genericCalls
+        genericCalls: genericCalls,
+        metadata: metadata
       })
     );
   }
@@ -113,7 +116,8 @@ abstract contract V2TestBase is Test {
     ERC721Approval[] memory erc721Approvals,
     GenericCall[] memory ownerCalls,
     ValidationParams[] memory validationParams,
-    address callsSigner
+    address callsSigner,
+    string memory metadata
   ) internal pure returns (bytes32) {
     return SchemaHash.fulfillmentWitness(
       FulfillmentWitness({
@@ -121,7 +125,8 @@ abstract contract V2TestBase is Test {
         erc721Approvals: erc721Approvals,
         ownerCalls: ownerCalls,
         validationParams: validationParams,
-        callsSigner: callsSigner
+        callsSigner: callsSigner,
+        metadata: metadata
       })
     );
   }
