@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.36;
 
+import {Vm} from 'forge-std/Vm.sol';
+
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
 import {AuthKey} from 'src/base/types/AuthKey.sol';
@@ -19,8 +21,6 @@ import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessCon
 import {Ownable} from 'openzeppelin-contracts/contracts/access/Ownable.sol';
 import {IERC20Errors} from 'openzeppelin-contracts/contracts/interfaces/draft-IERC6093.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
-
-import {Vm} from 'forge-std/Vm.sol';
 
 /**
  * @title ManagementTest

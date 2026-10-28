@@ -10,9 +10,9 @@ import {HubBase} from 'test/v2/base/HubBase.sol';
 import {EchoRouterMock, ReentrantRouterMock, RouterMock} from 'test/v2/mocks/RouterMock.sol';
 import {ReentrantReceiverMock} from 'test/v2/mocks/TokenMocks.sol';
 
+import {IKSGenericRouter} from 'src/base/interfaces/IKSGenericRouter.sol';
 import {IMsgSender} from 'src/base/interfaces/IMsgSender.sol';
 import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
-
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
 import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
@@ -25,7 +25,6 @@ import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
 import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
-import {IKSGenericRouter} from 'src/base/interfaces/IKSGenericRouter.sol';
 
 /**
  * @notice `SET-01..04`, `OWN-07`, `ROUTER-01..03` and `LOCK-01..04` — the settlement tail shared by
