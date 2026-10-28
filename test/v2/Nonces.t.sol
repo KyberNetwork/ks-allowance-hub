@@ -3,7 +3,7 @@ pragma solidity 0.8.36;
 
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
-import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
+import {AuthKey} from 'src/base/types/AuthKey.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
 

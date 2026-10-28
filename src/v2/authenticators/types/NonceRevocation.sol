@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {AuthKey} from './AuthKey.sol';
+import {AuthKey} from '../../../base/types/AuthKey.sol';
 
 /**
  * @notice A key's signed decision to spend one of its nonces, invalidating its unused signature

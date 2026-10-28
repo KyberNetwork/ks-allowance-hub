@@ -5,9 +5,9 @@ import {SchemaHash} from 'test/base/SchemaHash.sol';
 
 import {HubBase} from 'test/v2/base/HubBase.sol';
 
+import {AuthKey} from 'src/base/types/AuthKey.sol';
+import {KeyType} from 'src/base/types/KeyType.sol';
 import {SessionOrderAuthenticator} from 'src/v2/authenticators/SessionOrderAuthenticator.sol';
-import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
-import {KeyType} from 'src/v2/authenticators/types/KeyType.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
 

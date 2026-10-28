@@ -12,10 +12,10 @@ import {
 
 import {ERC20Mock} from 'test/v2/mocks/TokenMocks.sol';
 
+import {AuthKey} from 'src/base/types/AuthKey.sol';
 import {
   ISessionOrderAuthenticator
 } from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
-import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 
 import {PackedBits} from 'src/base/types/PackedBits.sol';
 

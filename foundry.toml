@@ -9,11 +9,11 @@ ffi = true
 bytecode_hash = "none"
 
 additional_compiler_profiles = [
-    { name = "runs-15000", via_ir = true, optimizer_runs = 15000 },
+    { name = "runs-20000", via_ir = true, optimizer_runs = 20000 },
 ]
 
 compilation_restrictions = [
-    { paths = "src/v2/KSAllowanceHubV2.sol", optimizer_runs = 15000 },
+    { paths = "src/v2/KSAllowanceHubV2.sol", optimizer_runs = 20000 },
 ]
 
 
@@ -57,4 +57,4 @@ monad_mainnet = "${RPC_143}"
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 
 [bind_json]
-include = ['**/src/v2/types/*.sol', '**/src/v2/authenticators/types/*.sol']
+include = ['**/src/v2/types/*.sol', '**/src/v2/authenticators/types/*.sol', '**/src/base/types/*.sol']

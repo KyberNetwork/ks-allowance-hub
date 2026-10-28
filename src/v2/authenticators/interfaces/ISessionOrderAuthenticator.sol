@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {AuthKey} from '../types/AuthKey.sol';
+import {AuthKey} from '../../../base/types/AuthKey.sol';
 
 /// @title ISessionOrderAuthenticator
 /// @notice Interface of {SessionOrderAuthenticator}

@@ -3,6 +3,7 @@ pragma solidity 0.8.36;
 
 import {DeadlineChecker} from '../../base/DeadlineChecker.sol';
 import {UnorderedNonce} from '../../base/UnorderedNonce.sol';
+import {AuthKey} from '../../base/types/AuthKey.sol';
 
 import {IOrderAuthenticator} from '../interfaces/IOrderAuthenticator.sol';
 
@@ -13,7 +14,6 @@ import {OrderAuthenticatorBase} from './OrderAuthenticatorBase.sol';
 
 import {ISessionOrderAuthenticator} from './interfaces/ISessionOrderAuthenticator.sol';
 
-import {AuthKey} from './types/AuthKey.sol';
 import {MasterKeyApprovalLib} from './types/MasterKeyApproval.sol';
 import {NonceRevocationLib} from './types/NonceRevocation.sol';
 import {SessionKeyApprovalLib} from './types/SessionKeyApproval.sol';

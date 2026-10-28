@@ -3,7 +3,7 @@
 pragma solidity >=0.6.2 <0.9.0;
 pragma experimental ABIEncoderV2;
 
-import {AuthKey} from "src/v2/authenticators/types/AuthKey.sol";
+import {AuthKey} from "src/base/types/AuthKey.sol";
 import {MasterKeyApproval} from "src/v2/authenticators/types/MasterKeyApproval.sol";
 import {NonceRevocation} from "src/v2/authenticators/types/NonceRevocation.sol";
 import {SessionKeyApproval} from "src/v2/authenticators/types/SessionKeyApproval.sol";

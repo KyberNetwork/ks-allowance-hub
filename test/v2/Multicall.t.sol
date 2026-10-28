@@ -5,10 +5,10 @@ import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.s
 
 import {RouterMock} from 'test/v2/mocks/RouterMock.sol';
 
+import {AuthKey} from 'src/base/types/AuthKey.sol';
 import {
   ISessionOrderAuthenticator
 } from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
-import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 
 import {NativeSpendGuard} from 'src/base/NativeSpendGuard.sol';
 import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';

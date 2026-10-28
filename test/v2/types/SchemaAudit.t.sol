@@ -7,7 +7,7 @@ import {JsonBindings} from 'utils/JsonBindings.sol';
 
 import {PermitHash} from 'test/libraries/PermitHash.sol';
 
-import {AuthKeyLib} from 'src/v2/authenticators/types/AuthKey.sol';
+import {AuthKeyLib} from 'src/base/types/AuthKey.sol';
 import {MasterKeyApprovalLib} from 'src/v2/authenticators/types/MasterKeyApproval.sol';
 import {NonceRevocationLib} from 'src/v2/authenticators/types/NonceRevocation.sol';
 import {SessionKeyApprovalLib} from 'src/v2/authenticators/types/SessionKeyApproval.sol';

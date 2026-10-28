@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {AuthKey} from './AuthKey.sol';
+import {AuthKey} from '../../../base/types/AuthKey.sol';
 
 /**
  * @notice An owner's signed decision to approve or revoke one master key, required when the

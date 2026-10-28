@@ -3,7 +3,7 @@ pragma solidity 0.8.36;
 
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
-import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
+import {AuthKey} from 'src/base/types/AuthKey.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
 import {ERC721Approval} from 'src/v2/types/ERC721Approval.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';

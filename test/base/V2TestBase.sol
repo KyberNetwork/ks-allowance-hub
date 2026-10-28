@@ -15,8 +15,8 @@ import {
   PermitBatchWitnessTransferFrom as Permit2FulfillmentWitness
 } from 'src/v2/types/FulfillmentWitness.sol';
 
-import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
-import {KeyType} from 'src/v2/authenticators/types/KeyType.sol';
+import {AuthKey} from 'src/base/types/AuthKey.sol';
+import {KeyType} from 'src/base/types/KeyType.sol';
 import {MasterKeyApproval} from 'src/v2/authenticators/types/MasterKeyApproval.sol';
 import {NonceRevocation} from 'src/v2/authenticators/types/NonceRevocation.sol';
 import {SessionKeyApproval} from 'src/v2/authenticators/types/SessionKeyApproval.sol';

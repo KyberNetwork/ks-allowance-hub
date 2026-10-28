@@ -10,10 +10,10 @@ import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.s
 import {EchoRouterMock, ObservingRouterMock, RouterMock} from 'test/v2/mocks/RouterMock.sol';
 
 import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
+import {AuthKey} from 'src/base/types/AuthKey.sol';
 import {
   ISessionOrderAuthenticator
 } from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
-import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
 import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';

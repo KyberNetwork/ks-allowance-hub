@@ -6,11 +6,11 @@ import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.s
 import {KeyFixtures} from 'test/v2/authenticators/mocks/KeyFixtures.sol';
 
 import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
+import {AuthKey} from 'src/base/types/AuthKey.sol';
+import {KeyType} from 'src/base/types/KeyType.sol';
 import {
   ISessionOrderAuthenticator
 } from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
-import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
-import {KeyType} from 'src/v2/authenticators/types/KeyType.sol';
 import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
 import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';

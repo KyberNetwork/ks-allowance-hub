@@ -3,8 +3,8 @@ pragma solidity 0.8.36;
 
 import {V2TestBase} from 'test/base/V2TestBase.sol';
 
-import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
-import {KeyType} from 'src/v2/authenticators/types/KeyType.sol';
+import {AuthKey} from 'src/base/types/AuthKey.sol';
+import {KeyType} from 'src/base/types/KeyType.sol';
 import {MasterKeyApprovalLib} from 'src/v2/authenticators/types/MasterKeyApproval.sol';
 import {NonceRevocationLib} from 'src/v2/authenticators/types/NonceRevocation.sol';
 import {SessionKeyApprovalLib} from 'src/v2/authenticators/types/SessionKeyApproval.sol';

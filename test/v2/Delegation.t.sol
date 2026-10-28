@@ -6,7 +6,7 @@ import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.s
 import {ERC1271WalletMock} from 'test/v2/mocks/TokenMocks.sol';
 
 import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
-import {AuthKey} from 'src/v2/authenticators/types/AuthKey.sol';
+import {AuthKey} from 'src/base/types/AuthKey.sol';
 import {IAuthDelegator} from 'src/v2/interfaces/IAuthDelegator.sol';
 import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
