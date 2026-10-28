@@ -9,8 +9,8 @@ import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
 import {AuthKey} from 'src/base/types/AuthKey.sol';
 import {KeyType} from 'src/base/types/KeyType.sol';
 import {
-  ISessionOrderAuthenticator
-} from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
+  ITwoTiersOrderAuthenticator
+} from 'src/v2/authenticators/interfaces/ITwoTiersOrderAuthenticator.sol';
 import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
 import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
@@ -26,7 +26,7 @@ import {
 } from 'openzeppelin-contracts/contracts/utils/cryptography/verifiers/ERC7913P256Verifier.sol';
 
 /// @notice `SV-*` — session key approval, the hub-only gate, expiry, replay and every key scheme.
-contract SessionOrderAuthenticatorTest is AuthenticatorBase {
+contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   /// @dev One struct per entry-point domain, per the frozen plan's fuzz contract
   struct SessionFuzz {
     uint8 keyType;
@@ -107,7 +107,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidApprovalSignature.selector);
     authenticator.updateAuthentication(owner, _approveKey(fresh), 0, block.timestamp + 1 days, '');
   }
 
@@ -121,7 +121,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory sig = _sign(masterKeyPk, digest); // the session key, not the owner
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidApprovalSignature.selector);
     authenticator.updateAuthentication(owner, _approveKey(fresh), 4, deadline, sig);
   }
 
@@ -185,7 +185,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     // an approval, submitted as a revocation
     bytes memory approval = _signMasterKeyApproval(fresh, true, 33, deadline);
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidApprovalSignature.selector);
     authenticator.updateAuthentication(owner, _revokeKey(fresh), 33, deadline, approval);
     assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'a refused update burns nothing');
 
@@ -197,7 +197,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     // and the mirror: a revocation, submitted as an approval
     bytes memory revocation = _signMasterKeyApproval(key, false, 34, deadline);
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidApprovalSignature.selector);
     authenticator.updateAuthentication(owner, _approveKey(key), 34, deadline, revocation);
     assertTrue(authenticator.masterKeys(owner, _keyHash(key)), 'still approved after the refusal');
 
@@ -272,7 +272,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory approve = _approveKey(fresh);
 
     vm.prank(owner);
-    vm.expectRevert(ISessionOrderAuthenticator.UnexpectedSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.UnexpectedSignature.selector);
     authenticator.updateAuthentication(owner, approve, nonce, deadline, sig);
 
     vm.prank(owner);
@@ -340,7 +340,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     vm.warp(t + 1);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ISessionOrderAuthenticator.AuthKeyExpired.selector, t, vm.getBlockTimestamp()
+        ITwoTiersOrderAuthenticator.AuthKeyExpired.selector, t, vm.getBlockTimestamp()
       )
     );
     _executeViaAuthenticator(expiring, masterKeyPk, 10, t + 1 hours, false);
@@ -352,7 +352,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
     (, uint256 impostorKey) = makeAddrAndKey('impostor');
 
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
     _executeViaAuthenticator(key, impostorKey, 11, block.timestamp + 1 hours, false);
   }
 
@@ -396,7 +396,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory sig = _sign(masterKeyPk, _executionDigest(_standardOrder(nonce, deadline)));
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
       fulfillOrder,
       address(authenticator),
@@ -478,7 +478,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     vm.warp(t + 1);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ISessionOrderAuthenticator.AuthKeyExpired.selector, t, vm.getBlockTimestamp()
+        ITwoTiersOrderAuthenticator.AuthKeyExpired.selector, t, vm.getBlockTimestamp()
       )
     );
     _fulfillViaAuthenticator(expiring, masterKeyPk, 63, t + 1 hours);
@@ -516,7 +516,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     );
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidApprovalSignature.selector);
     authenticator.updateAuthentication(walletB, _approveKey(fresh), 8, deadline, sig);
     assertFalse(authenticator.masterKeys(walletB, _keyHash(fresh)), 'B has no master key');
 
@@ -603,7 +603,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'ERC7913 accepted');
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
     _submitExecutionRaw(verifierKey, signature, 20, deadline);
   }
 
@@ -663,7 +663,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     assertGt(KeyFixtures.sOf(malleable), KeyFixtures.P256_HALF_N, 'twin is non-canonical');
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
     _submitExecutionRaw(p256, malleable, 18, deadline);
   }
 
@@ -691,12 +691,12 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory upOnly = KeyFixtures.webAuthnAssertion(digest2, false);
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
     _submitExecutionRaw(wa, upOnly, 20, deadline);
 
     // -03 an assertion that does not decode at all is rejected rather than reverting oddly
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
     _submitExecutionRaw(wa, hex'deadbeef', 21, deadline);
   }
 
@@ -763,7 +763,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory forged = _authDataWithKeyTail(empty, abi.encode(attacker), sig);
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
     hub.executeOrderWithDelegatedAuthentication(
       _standardOrder(nonce, deadline), address(authenticator), forged, false
     );
@@ -946,7 +946,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
       authenticator.eip712Domain();
 
-    assertEq(name, 'KyberSwap Session Order Authenticator');
+    assertEq(name, 'KyberSwap Two Tiers Order Authenticator');
     assertEq(version, '1.0.0');
     assertEq(chainId, block.chainid);
     assertEq(verifyingContract, address(authenticator));
@@ -1160,7 +1160,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ISessionOrderAuthenticator.SessionKeyOutlivesMasterKey.selector,
+        ITwoTiersOrderAuthenticator.SessionKeyOutlivesMasterKey.selector,
         tooLong.expiration,
         key.expiration
       )
@@ -1197,7 +1197,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory sig = _signSessionKeyApproval(key, sessionKey, true, 21, deadline, sessionKeyPk);
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidApprovalSignature.selector);
     authenticator.updateAuthentication(
       owner, _sessionKeyData(sessionKey, key, true), 21, deadline, sig
     );
@@ -1221,7 +1221,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
       _signSessionKeyApproval(recipient, key, sessionKey, true, 22, deadline, masterKeyPk);
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidApprovalSignature.selector);
     authenticator.updateAuthentication(
       owner, _sessionKeyData(sessionKey, key, true), 22, deadline, sig
     );
@@ -1402,7 +1402,9 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     vm.prank(owner);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ISessionOrderAuthenticator.AuthKeyExpired.selector, stale.expiration, vm.getBlockTimestamp()
+        ITwoTiersOrderAuthenticator.AuthKeyExpired.selector,
+        stale.expiration,
+        vm.getBlockTimestamp()
       )
     );
     authenticator.updateAuthentication(owner, _approveKey(stale), 0, deadline, '');
@@ -1415,7 +1417,9 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     vm.prank(owner);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ISessionOrderAuthenticator.AuthKeyExpired.selector, stale.expiration, vm.getBlockTimestamp()
+        ITwoTiersOrderAuthenticator.AuthKeyExpired.selector,
+        stale.expiration,
+        vm.getBlockTimestamp()
       )
     );
     hub.updateDelegation(owner, address(authenticator), true, _encodeKey(stale), 0, deadline, '');
@@ -1442,7 +1446,9 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ISessionOrderAuthenticator.AuthKeyExpired.selector, stale.expiration, vm.getBlockTimestamp()
+        ITwoTiersOrderAuthenticator.AuthKeyExpired.selector,
+        stale.expiration,
+        vm.getBlockTimestamp()
       )
     );
     authenticator.updateAuthentication(
@@ -1454,7 +1460,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ISessionOrderAuthenticator.SessionKeyOutlivesMasterKey.selector,
+        ITwoTiersOrderAuthenticator.SessionKeyOutlivesMasterKey.selector,
         fresh.expiration,
         master.expiration
       )
@@ -1495,7 +1501,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     _approveSessionKey(key, sessionKey, 80, deadline, masterKeyPk);
 
     bytes memory expected = abi.encodeWithSelector(
-      ISessionOrderAuthenticator.SessionKeyAlreadyApproved.selector,
+      ITwoTiersOrderAuthenticator.SessionKeyAlreadyApproved.selector,
       _keyHash(sessionKey),
       _keyHash(other),
       _keyHash(key)
@@ -1552,13 +1558,15 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ISessionOrderAuthenticator.AuthKeyExpired.selector, stale.expiration, vm.getBlockTimestamp()
+        ITwoTiersOrderAuthenticator.AuthKeyExpired.selector,
+        stale.expiration,
+        vm.getBlockTimestamp()
       )
     );
     authenticator.updateAuthentication(owner, _approveKey(stale), 90, deadline, hex'00');
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidApprovalSignature.selector);
     authenticator.updateAuthentication(owner, _approveKey(live), 90, deadline, hex'00');
   }
 
@@ -1578,7 +1586,9 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ISessionOrderAuthenticator.AuthKeyExpired.selector, stale.expiration, vm.getBlockTimestamp()
+        ITwoTiersOrderAuthenticator.AuthKeyExpired.selector,
+        stale.expiration,
+        vm.getBlockTimestamp()
       )
     );
     authenticator.updateAuthentication(
@@ -1589,7 +1599,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ISessionOrderAuthenticator.MasterKeyNotApproved.selector, _keyHash(key)
+        ITwoTiersOrderAuthenticator.MasterKeyNotApproved.selector, _keyHash(key)
       )
     );
     authenticator.updateAuthentication(
@@ -1612,7 +1622,9 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
 
     vm.expectRevert(
       abi.encodeWithSelector(
-        ISessionOrderAuthenticator.AuthKeyExpired.selector, stale.expiration, vm.getBlockTimestamp()
+        ITwoTiersOrderAuthenticator.AuthKeyExpired.selector,
+        stale.expiration,
+        vm.getBlockTimestamp()
       )
     );
     _executeViaAuthenticator(stale, sessionKeyPk, 92, deadline, false, false);
@@ -1743,23 +1755,23 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     uint256 nonce = 90;
     uint256 deadline = block.timestamp + 1 hours;
 
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidRevocationSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidRevocationSignature.selector);
     authenticator.revokeNonce(
       key, nonce, deadline, _signNonceRevocation(key, nonce, deadline, sessionKeyPk)
     );
 
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidRevocationSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidRevocationSignature.selector);
     authenticator.revokeNonce(
       key, nonce, deadline, _signNonceRevocation(key, nonce + 1, deadline, masterKeyPk)
     );
 
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidRevocationSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidRevocationSignature.selector);
     authenticator.revokeNonce(
       key, nonce, deadline, _signNonceRevocation(key, nonce, deadline + 1, masterKeyPk)
     );
 
     AuthKey memory other = _secpKey(masterSigner, key.expiration + 1);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidRevocationSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidRevocationSignature.selector);
     authenticator.revokeNonce(
       key, nonce, deadline, _signNonceRevocation(other, nonce, deadline, masterKeyPk)
     );
@@ -1819,7 +1831,7 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
     uint256 nonce = 110;
     uint256 deadline = block.timestamp + 1 hours;
 
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidRevocationSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidRevocationSignature.selector);
     authenticator.revokeNonce(
       p256,
       nonce,
@@ -1986,14 +1998,14 @@ contract SessionOrderAuthenticatorTest is AuthenticatorBase {
   /// and all
   function _masterKeyNotApproved(AuthKey memory masterKey) private view returns (bytes memory) {
     return abi.encodeWithSelector(
-      ISessionOrderAuthenticator.MasterKeyNotApproved.selector, _keyHash(masterKey)
+      ITwoTiersOrderAuthenticator.MasterKeyNotApproved.selector, _keyHash(masterKey)
     );
   }
 
   /// @dev The error for a session key with no master key the owner still holds behind it
   function _sessionKeyNotApproved(AuthKey memory sessionKey) private view returns (bytes memory) {
     return abi.encodeWithSelector(
-      ISessionOrderAuthenticator.SessionKeyNotApproved.selector, _keyHash(sessionKey)
+      ITwoTiersOrderAuthenticator.SessionKeyNotApproved.selector, _keyHash(sessionKey)
     );
   }
 

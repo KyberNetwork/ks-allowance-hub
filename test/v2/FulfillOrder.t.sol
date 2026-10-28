@@ -12,8 +12,8 @@ import {EchoRouterMock, ObservingRouterMock, RouterMock} from 'test/v2/mocks/Rou
 import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
 import {AuthKey} from 'src/base/types/AuthKey.sol';
 import {
-  ISessionOrderAuthenticator
-} from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
+  ITwoTiersOrderAuthenticator
+} from 'src/v2/authenticators/interfaces/ITwoTiersOrderAuthenticator.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
 import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
@@ -251,7 +251,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     tampered.metadata = 'ref:B';
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
       tampered, address(authenticator), signedAuth, _route(tampered, solverCalls), '', false
     );
@@ -722,7 +722,7 @@ contract FulfillOrderTest is AuthenticatorBase {
       _fulfillmentOrder(ANY, erc20s, new ERC721Approval[](0), vs, swappedTail, ANY, 73, deadline);
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
       tampered, address(authenticator), signedAuth, _route(tampered, solverCalls), '', false
     );

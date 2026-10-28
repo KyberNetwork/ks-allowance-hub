@@ -7,19 +7,19 @@ import {HubBase} from 'test/v2/base/HubBase.sol';
 
 import {AuthKey} from 'src/base/types/AuthKey.sol';
 import {KeyType} from 'src/base/types/KeyType.sol';
-import {SessionOrderAuthenticator} from 'src/v2/authenticators/SessionOrderAuthenticator.sol';
+import {TwoTiersOrderAuthenticator} from 'src/v2/authenticators/TwoTiersOrderAuthenticator.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
 
 /**
  * @title AuthenticatorBase
- * @notice Contract base for the {SessionOrderAuthenticator} batches and for every hub batch that
+ * @notice Contract base for the {TwoTiersOrderAuthenticator} batches and for every hub batch that
  * reaches the hub over the delegated-authentication rail: deploys the authenticator against the
  * hub and builds both tiers of key, their approvals and the order signatures they carry.
  * @dev As in {HubBase}, every digest is assembled from the literals in {V2TestBase}.
  */
 abstract contract AuthenticatorBase is HubBase {
-  SessionOrderAuthenticator internal authenticator;
+  TwoTiersOrderAuthenticator internal authenticator;
 
   address internal masterSigner;
   uint256 internal masterKeyPk;
@@ -30,7 +30,7 @@ abstract contract AuthenticatorBase is HubBase {
   function setUp() public virtual override {
     super.setUp();
 
-    authenticator = new SessionOrderAuthenticator(address(hub));
+    authenticator = new TwoTiersOrderAuthenticator(address(hub));
     vm.label(address(authenticator), 'authenticator');
 
     (masterSigner, masterKeyPk) = makeAddrAndKey('master signer');
@@ -79,7 +79,7 @@ abstract contract AuthenticatorBase is HubBase {
 
   function _authenticatorDomain() internal view returns (bytes32) {
     return
-      lDomainSeparator('KyberSwap Session Order Authenticator', '1.0.0', address(authenticator));
+      lDomainSeparator('KyberSwap Two Tiers Order Authenticator', '1.0.0', address(authenticator));
   }
 
   /// @dev Approves a key through the hub, which reaches the authenticator as `initAuthentication`

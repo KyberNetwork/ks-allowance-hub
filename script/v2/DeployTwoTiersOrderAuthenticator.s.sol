@@ -2,9 +2,9 @@
 pragma solidity ^0.8.0;
 
 import 'ks-common-sc/script/Base.s.sol';
-import 'src/v2/authenticators/SessionOrderAuthenticator.sol';
+import 'src/v2/authenticators/TwoTiersOrderAuthenticator.sol';
 
-contract DeploySessionOrderAuthenticatorScript is BaseScript {
+contract DeployTwoTiersOrderAuthenticatorScript is BaseScript {
   /// @dev Part of the CREATE3 salt, so changing it changes the deployed address on every chain
   string salt = '261020_1';
 
@@ -12,13 +12,13 @@ contract DeploySessionOrderAuthenticatorScript is BaseScript {
     address allowanceHubV2 = _readAddress('allowance-hub-v2');
 
     bytes memory creationCode =
-      abi.encodePacked(type(SessionOrderAuthenticator).creationCode, abi.encode(allowanceHubV2));
+      abi.encodePacked(type(TwoTiersOrderAuthenticator).creationCode, abi.encode(allowanceHubV2));
 
     (address authenticator,) = _create3Deploy(
-      keccak256(bytes(string.concat('SessionOrderAuthenticator_', salt))), creationCode
+      keccak256(bytes(string.concat('TwoTiersOrderAuthenticator_', salt))), creationCode
     );
     if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) {
-      _writeAddress('session-order-authenticator', authenticator);
+      _writeAddress('two-tiers-order-authenticator', authenticator);
     }
   }
 }

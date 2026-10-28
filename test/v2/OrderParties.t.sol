@@ -5,8 +5,8 @@ import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.s
 
 import {AuthKey} from 'src/base/types/AuthKey.sol';
 import {
-  ISessionOrderAuthenticator
-} from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
+  ITwoTiersOrderAuthenticator
+} from 'src/v2/authenticators/interfaces/ITwoTiersOrderAuthenticator.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
 import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
@@ -118,7 +118,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     // the signature check, leaving the second leg the same number to spend
     order.owner = other;
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidOrderSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
     hub.executeOrderWithDelegatedAuthentication(order, address(authenticator), authData, false);
 
     order.owner = owner;

@@ -3,9 +3,9 @@ pragma solidity ^0.8.0;
 
 import {AuthKey} from '../../../base/types/AuthKey.sol';
 
-/// @title ISessionOrderAuthenticator
-/// @notice Interface of {SessionOrderAuthenticator}
-interface ISessionOrderAuthenticator {
+/// @title ITwoTiersOrderAuthenticator
+/// @notice Interface of {TwoTiersOrderAuthenticator}
+interface ITwoTiersOrderAuthenticator {
   /// @notice The signature is not a valid approval of this key by the required signer
   error InvalidApprovalSignature();
 

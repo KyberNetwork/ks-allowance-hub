@@ -1286,3 +1286,12 @@ from `ExecutionOrderLib.hash` (`AUTH-14`, `test_T712_executionOrderStructHash`,
 `test_T712_ordersMetadataStructHash`, `testFuzz_T712_DIFF_fulfillmentOrder`), the hub passing an
 empty string to `ExecutionWitnessLib.hash` (`AUTH-15`) and to `FulfillmentWitnessLib.hash`
 (`AUTH-16`). The hub is 23,092 bytes and the authenticator 12,030.
+
+## Run `20261029T150000Z`
+
+Scope: `SessionOrderAuthenticator` is renamed `TwoTiersOrderAuthenticator`, with its interface,
+suite, deploy script and EIP-712 domain name (`KyberSwap Two Tiers Order Authenticator`). The
+deploy script's CREATE3 salt prefix and config key change with it. No behaviour changes.
+
+- `forge test --isolate`: 261 passed, 0 failed.
+- `DOM-01` and the authenticator's `eip712Domain` case assert the new domain name.

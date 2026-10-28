@@ -110,7 +110,7 @@ An authenticator has two update functions:
   and `forwardCalls` relays it with the hub as `msg.sender`. An authenticator must therefore accept
   only `msg.sender == owner` without a signature.
 
-### SessionOrderAuthenticator
+### TwoTiersOrderAuthenticator
 
 The reference authenticator. The owner approves keys, and the keys sign orders without the owner's
 wallet.
@@ -201,7 +201,7 @@ token of `0xEeee…EEeE` or the zero address transfers native value.
 | Contract | EIP-712 name | Version |
 |---|---|---|
 | `KSAllowanceHubV2` | `KyberSwap Allowance Hub` | `2.0.0` |
-| `SessionOrderAuthenticator` | `KyberSwap Session Order Authenticator` | `1.0.0` |
+| `TwoTiersOrderAuthenticator` | `KyberSwap Two Tiers Order Authenticator` | `1.0.0` |
 
 Each domain is published through ERC-5267's `eip712Domain()`.
 
@@ -212,11 +212,11 @@ src/
   base/            contracts shared by both hubs
   v1/              KSAllowanceHub
   v2/              KSAllowanceHubV2, its delegator, forwarder, types and libraries
-  v2/authenticators/  SessionOrderAuthenticator and its key types
+  v2/authenticators/  TwoTiersOrderAuthenticator and its key types
 test/
   base/            shared test base, EIP-712 oracles and the Permit2 artifact check
   v1/              KSAllowanceHub suite, on a mainnet fork
-  v2/              KSAllowanceHubV2 and SessionOrderAuthenticator suites, on a local chain
+  v2/              KSAllowanceHubV2 and TwoTiersOrderAuthenticator suites, on a local chain
   libraries/       Permit2 hashing and array helpers
   artifacts/       Permit2 creation code
 script/
@@ -280,12 +280,12 @@ forge script script/v1/DeployKSAllowanceHub.s.sol             --sig 'run(string[
 forge script script/v1/AddWhitelistedRouters.s.sol            --sig 'run(string[])' '[1,56]' --broadcast
 
 forge script script/v2/DeployKSAllowanceHubV2.s.sol           --sig 'run(string[])' '[1,56]' --broadcast
-forge script script/v2/DeploySessionOrderAuthenticator.s.sol  --sig 'run(string[])' '[1,56]' --broadcast
+forge script script/v2/DeployTwoTiersOrderAuthenticator.s.sol  --sig 'run(string[])' '[1,56]' --broadcast
 forge script script/v2/AddWhitelistedRoutersV2.s.sol          --sig 'run(string[])' '[1,56]' --broadcast
 ```
 
 `DeployKSAllowanceHubV2` writes the hub's address to `allowance-hub-v2.json`, which
-`DeploySessionOrderAuthenticator` and `AddWhitelistedRoutersV2` read, so the hub is deployed first.
+`DeployTwoTiersOrderAuthenticator` and `AddWhitelistedRoutersV2` read, so the hub is deployed first.
 `AddWhitelistedRoutersV2` grants the missing routers in one transaction through the hub's
 `multicall`.
 

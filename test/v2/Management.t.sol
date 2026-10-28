@@ -8,8 +8,8 @@ import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.s
 import {AuthKey} from 'src/base/types/AuthKey.sol';
 import {KSAllowanceHubV2} from 'src/v2/KSAllowanceHubV2.sol';
 import {
-  ISessionOrderAuthenticator
-} from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
+  ITwoTiersOrderAuthenticator
+} from 'src/v2/authenticators/interfaces/ITwoTiersOrderAuthenticator.sol';
 import {IAuthDelegator} from 'src/v2/interfaces/IAuthDelegator.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
@@ -69,7 +69,7 @@ contract ManagementTest is AuthenticatorBase {
     hub.updateDelegation(owner, address(authenticator), true, '', 1, deadline, delegationSig);
 
     vm.prank(relayer);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidApprovalSignature.selector);
     authenticator.updateAuthentication(owner, _approveKey(fresh), 1, deadline, approvalSig);
 
     delegationSig =

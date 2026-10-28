@@ -13,7 +13,7 @@ import {FulfillmentOrder} from '../types/FulfillmentOrder.sol';
 
 import {OrderAuthenticatorBase} from './OrderAuthenticatorBase.sol';
 
-import {ISessionOrderAuthenticator} from './interfaces/ISessionOrderAuthenticator.sol';
+import {ITwoTiersOrderAuthenticator} from './interfaces/ITwoTiersOrderAuthenticator.sol';
 
 import {MasterKeyApprovalLib} from './types/MasterKeyApproval.sol';
 import {NonceRevocationLib} from './types/NonceRevocation.sol';
@@ -27,7 +27,7 @@ import {
 } from 'openzeppelin-contracts/contracts/utils/cryptography/SignatureChecker.sol';
 
 /**
- * @title SessionOrderAuthenticator
+ * @title TwoTiersOrderAuthenticator
  * @notice Authenticates allowance-hub orders signed by keys the owner has approved, so that orders
  * can be signed without the owner's wallet. A key has an expiry and is a Secp256k1, P256,
  * WebAuthn, RSA, ERC-1271 or ERC-7913 key.
@@ -40,8 +40,8 @@ import {
  * address for the owner's approvals, and the key's credential hash for anything a key signs. The
  * credential hash excludes the expiry, so all approvals of one credential share its nonces.
  */
-contract SessionOrderAuthenticator is
-  ISessionOrderAuthenticator,
+contract TwoTiersOrderAuthenticator is
+  ITwoTiersOrderAuthenticator,
   OrderAuthenticatorBase,
   DeadlineChecker,
   UnorderedNonce,
@@ -49,16 +49,16 @@ contract SessionOrderAuthenticator is
 {
   using CalldataDecoder for bytes;
 
-  /// @inheritdoc ISessionOrderAuthenticator
+  /// @inheritdoc ITwoTiersOrderAuthenticator
   mapping(address owner => mapping(bytes32 keyHash => bool)) public masterKeys;
 
-  /// @inheritdoc ISessionOrderAuthenticator
+  /// @inheritdoc ITwoTiersOrderAuthenticator
   mapping(address owner => mapping(bytes32 keyHash => bytes32)) public sessionKeyMaster;
 
   /// @param allowanceHub The only hub whose authentication requests this one answers
   constructor(address allowanceHub)
     OrderAuthenticatorBase(allowanceHub)
-    EIP712('KyberSwap Session Order Authenticator', '1.0.0')
+    EIP712('KyberSwap Two Tiers Order Authenticator', '1.0.0')
   {}
 
   /**
@@ -186,7 +186,7 @@ contract SessionOrderAuthenticator is
   }
 
   /**
-   * @inheritdoc ISessionOrderAuthenticator
+   * @inheritdoc ITwoTiersOrderAuthenticator
    * @dev Neither the key's expiry nor its approval is checked, so an expired or revoked key can
    * still cancel its unused signatures.
    */

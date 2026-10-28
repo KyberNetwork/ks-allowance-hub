@@ -14,8 +14,8 @@ import {ERC20Mock} from 'test/v2/mocks/TokenMocks.sol';
 import {AuthKey} from 'src/base/types/AuthKey.sol';
 import {PackedBits} from 'src/base/types/PackedBits.sol';
 import {
-  ISessionOrderAuthenticator
-} from 'src/v2/authenticators/interfaces/ISessionOrderAuthenticator.sol';
+  ITwoTiersOrderAuthenticator
+} from 'src/v2/authenticators/interfaces/ITwoTiersOrderAuthenticator.sol';
 import {IAuthDelegator} from 'src/v2/interfaces/IAuthDelegator.sol';
 import {ICallsForwarder} from 'src/v2/interfaces/ICallsForwarder.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
@@ -525,7 +525,7 @@ contract ForwarderTest is AuthenticatorBase {
     address[] memory targets = _one(address(authenticator));
 
     vm.prank(owner);
-    vm.expectRevert(ISessionOrderAuthenticator.InvalidApprovalSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidApprovalSignature.selector);
     hub.forwardCalls(targets, data, _bits(0));
 
     assertFalse(authenticator.masterKeys(owner, freshHash), 'nothing was approved');
