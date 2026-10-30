@@ -60,7 +60,7 @@ contract ManagementTest is AuthenticatorBase {
     uint256 deadline = block.timestamp + 1 days;
     bytes memory delegationSig =
       _signAuthDelegation(ownerKey, owner, address(authenticator), true, '', 1, deadline);
-    bytes memory approvalSig = _signMasterKeyApproval(fresh, true, 1, deadline);
+    bytes memory approvalSig = _signMasterKeyUpdate(fresh, true, 1, deadline);
 
     vm.chainId(block.chainid + 1);
 
@@ -69,7 +69,7 @@ contract ManagementTest is AuthenticatorBase {
     hub.updateDelegation(owner, address(authenticator), true, '', 1, deadline, delegationSig);
 
     vm.prank(relayer);
-    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidApprovalSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidUpdateSignature.selector);
     authenticator.updateAuthentication(owner, _approveKey(fresh), 1, deadline, approvalSig);
 
     delegationSig =
@@ -78,7 +78,7 @@ contract ManagementTest is AuthenticatorBase {
     hub.updateDelegation(owner, address(authenticator), true, '', 1, deadline, delegationSig);
     assertTrue(hub.authDelegated(owner, address(authenticator)), "the new chain's delegation");
 
-    approvalSig = _signMasterKeyApproval(fresh, true, 1, deadline);
+    approvalSig = _signMasterKeyUpdate(fresh, true, 1, deadline);
     vm.prank(relayer);
     authenticator.updateAuthentication(owner, _approveKey(fresh), 1, deadline, approvalSig);
     assertTrue(authenticator.masterKeys(owner, _keyHash(fresh)), "the new chain's approval");

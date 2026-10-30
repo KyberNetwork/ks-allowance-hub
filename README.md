@@ -117,8 +117,8 @@ wallet.
 
 ```
 AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)
-MasterKeyApproval(address owner,AuthKey masterKey,bool approved,uint256 nonce,uint256 deadline)
-SessionKeyApproval(address owner,AuthKey masterKey,AuthKey sessionKey,bool approved,uint256 nonce,uint256 deadline)
+MasterKeyUpdate(address owner,AuthKey masterKey,bool approved,uint256 nonce,uint256 deadline)
+SessionKeyUpdate(address owner,AuthKey masterKey,AuthKey sessionKey,bool approved,uint256 nonce,uint256 deadline)
 NonceRevocation(AuthKey key,uint256 nonce,uint256 deadline)
 ```
 

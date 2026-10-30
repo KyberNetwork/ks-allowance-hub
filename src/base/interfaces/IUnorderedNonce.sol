@@ -7,6 +7,9 @@ interface IUnorderedNonce {
   /// @notice The nonce has already been spent in this namespace
   error NonceAlreadyUsed(bytes32 namespace, uint256 nonce);
 
+  /// @notice Emitted when a nonce is revoked in `namespace` without being used by a signature
+  event RevokeNonce(bytes32 indexed namespace, uint256 nonce);
+
   /**
    * @notice One word of the spent-nonce bitmap of a namespace
    * @param namespace An account's address as a 32-byte word, or a key's credential hash

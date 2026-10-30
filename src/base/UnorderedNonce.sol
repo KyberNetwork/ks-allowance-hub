@@ -33,5 +33,7 @@ abstract contract UnorderedNonce is IUnorderedNonce {
   /// @inheritdoc IUnorderedNonce
   function revokeNonce(uint256 nonce) external payable {
     _useUnorderedNonce(msg.sender, nonce);
+
+    emit RevokeNonce(bytes32(uint256(uint160(msg.sender))), nonce);
   }
 }

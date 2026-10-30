@@ -100,8 +100,8 @@ abstract contract AuthenticatorBase is HubBase {
     return abi.encode(sessionKey, masterKey, approved);
   }
 
-  /// @dev As {_signSessionKeyApproval}, for this base's own `owner`
-  function _signSessionKeyApproval(
+  /// @dev As {_signSessionKeyUpdate}, for this base's own `owner`
+  function _signSessionKeyUpdate(
     AuthKey memory masterKey,
     AuthKey memory sessionKey,
     bool approved,
@@ -109,13 +109,11 @@ abstract contract AuthenticatorBase is HubBase {
     uint256 deadline,
     uint256 signerPk
   ) internal returns (bytes memory) {
-    return _signSessionKeyApproval(
-      owner, masterKey, sessionKey, approved, nonce, deadline, signerPk
-    );
+    return _signSessionKeyUpdate(owner, masterKey, sessionKey, approved, nonce, deadline, signerPk);
   }
 
   /// @dev A master key's decision about one session key, signed by `signerPk`
-  function _signSessionKeyApproval(
+  function _signSessionKeyUpdate(
     address keyOwner,
     AuthKey memory masterKey,
     AuthKey memory sessionKey,
@@ -126,7 +124,7 @@ abstract contract AuthenticatorBase is HubBase {
   ) internal returns (bytes memory) {
     bytes32 digest = lTypedDataHash(
       _authenticatorDomain(),
-      lSessionKeyApproval(keyOwner, masterKey, sessionKey, approved, nonce, deadline)
+      lSessionKeyUpdate(keyOwner, masterKey, sessionKey, approved, nonce, deadline)
     );
     return _sign(signerPk, digest);
   }
@@ -144,7 +142,7 @@ abstract contract AuthenticatorBase is HubBase {
       _sessionKeyData(sessionKey, masterKey, true),
       nonce,
       deadline,
-      _signSessionKeyApproval(masterKey, sessionKey, true, nonce, deadline, signerPk)
+      _signSessionKeyUpdate(masterKey, sessionKey, true, nonce, deadline, signerPk)
     );
   }
 
@@ -160,14 +158,12 @@ abstract contract AuthenticatorBase is HubBase {
     );
   }
 
-  function _signMasterKeyApproval(
-    AuthKey memory key,
-    bool approved,
-    uint256 nonce,
-    uint256 deadline
-  ) internal returns (bytes memory) {
+  function _signMasterKeyUpdate(AuthKey memory key, bool approved, uint256 nonce, uint256 deadline)
+    internal
+    returns (bytes memory)
+  {
     bytes32 digest = lTypedDataHash(
-      _authenticatorDomain(), lMasterKeyApproval(owner, key, approved, nonce, deadline)
+      _authenticatorDomain(), lMasterKeyUpdate(owner, key, approved, nonce, deadline)
     );
     return _sign(ownerKey, digest);
   }

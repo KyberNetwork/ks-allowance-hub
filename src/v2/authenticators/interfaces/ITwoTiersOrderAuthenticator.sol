@@ -6,8 +6,8 @@ import {AuthKey} from '../../../base/types/AuthKey.sol';
 /// @title ITwoTiersOrderAuthenticator
 /// @notice Interface of {TwoTiersOrderAuthenticator}
 interface ITwoTiersOrderAuthenticator {
-  /// @notice The signature is not a valid approval of this key by the required signer
-  error InvalidApprovalSignature();
+  /// @notice The signature is not a valid update of this key by the required signer
+  error InvalidUpdateSignature();
 
   /// @notice The owner called directly, which takes an empty signature, and gave a signature
   error UnexpectedSignature();
@@ -34,6 +34,20 @@ interface ITwoTiersOrderAuthenticator {
 
   /// @notice The session key expires after the master key that approves it
   error SessionKeyOutlivesMasterKey(uint256 sessionKeyExpiration, uint256 masterKeyExpiration);
+
+  /// @notice Emitted when `owner` approves or revokes a master key
+  event UpdateMasterKey(
+    address indexed owner, bytes32 indexed masterKeyHash, AuthKey masterKey, bool approved
+  );
+
+  /// @notice Emitted when a master key of `owner` approves or revokes a session key
+  event UpdateSessionKey(
+    address indexed owner,
+    bytes32 indexed sessionKeyHash,
+    bytes32 indexed masterKeyHash,
+    AuthKey sessionKey,
+    bool approved
+  );
 
   /**
    * @notice Whether `owner` has approved the key with this hash as a master key

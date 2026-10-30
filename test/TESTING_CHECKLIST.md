@@ -1385,3 +1385,26 @@ Scope: wording of the test documentation added or changed in runs `20261030T1054
 
 References to `test_PF_06_relayedCallWithoutAuthorityFailsOnTheTargetsTerms` in earlier runs name
 the test now called `test_PF_06_relayedCallWithoutAuthorityIsRefusedByItsTarget`.
+
+## Run `20261030T194233Z`
+
+Scope: events on four state-changing functions that emitted none (`AuthDelegator.updateDelegation`,
+both `revokeNonce` forms, and the authenticator's master-key and session-key updates), and the
+rename of two EIP-712 types and one error. Events are emitted on every successful call, including a
+call that writes the value already stored. A nonce spent by a signature emits nothing.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261030T194233Z/EVT-01` | `UpdateDelegation(owner, authenticator, delegated)` from the hub: owner path delegating with init data, preceded by the authenticator's `UpdateMasterKey`; signed path; withdrawal; fuzzed signed path | `DEL-01` `test_DEL_01_selfDelegationSpendsNoNonce`, `DEL-02` `test_DEL_02_relayedDelegationConsumesNonce`, `DEL-06` `test_DEL_06_withdrawDelegation`, `DEL-FUZZ` `testFuzz_DEL_FUZZ_relayedDelegation` — `test/v2/Delegation.t.sol` | `forge test --isolate` — 265 passed |
+| - [x] | - [ ] | `20261030T194233Z/EVT-02` | `RevokeNonce(namespace, nonce)`: the hub's `revokeNonce(uint256)` in the caller's address namespace, the authenticator's inherited `revokeNonce(uint256)`, and the authenticator's `revokeNonce(AuthKey, ...)` in the key's credential-hash namespace | `NONCE-FUZZ` `testFuzz_NONCE_FUZZ_revokeSetsExactlyOneBit`, `NONCE-05` `test_NONCE_05_hubAndAuthenticatorAreIndependent` — `test/v2/Nonces.t.sol`; `SV-FUZZ-NREV` `testFuzz_SV_FUZZ_NREV_revokeNonce` — `test/v2/authenticators/TwoTiersOrderAuthenticator.t.sol` | same |
+| - [x] | - [ ] | `20261030T194233Z/EVT-03` | `UpdateMasterKey(owner, masterKeyHash, masterKey, approved)`: `initAuthentication` through the hub (approved), owner-direct approve and revoke, signed approve and revoke, a write of the stored value, and the fuzzed owner and signed rails | `DEL-01` — `test/v2/Delegation.t.sol`; `SV-02` `test_SV_02_ownerApprovesDirectlyWithoutSignature`, `SV-REV-01` `test_SV_REV_01_ownerRevokesDirectly`, `SV-REV-02` `test_SV_REV_02_relayedRevocation`, `SV-REV-03` `test_SV_REV_03_directionCannotBeFlipped`, `SV-UPD-02` `test_SV_UPD_02_anUnchangedWriteStillEmits`, `SV-FUZZ-UPD` `testFuzz_SV_FUZZ_UPD_directUpdate` — `test/v2/authenticators/TwoTiersOrderAuthenticator.t.sol` | same |
+| - [x] | - [ ] | `20261030T194233Z/EVT-04` | `UpdateSessionKey(owner, sessionKeyHash, masterKeyHash, sessionKey, approved)`: approve, revoke, a revoke of a key no master key approved, and the fuzzed master-key rail | `SV-TIER-01` `test_SV_TIER_01_masterKeyApprovesASessionKeyThatSignsAnOrder`, `SV-TIER-09` `test_SV_TIER_09_aMasterKeyRevokesItsSessionKey`, `SV-UPD-02`, `SV-FUZZ-TIER` `testFuzz_SV_FUZZ_TIER_masterKeyRail` — `test/v2/authenticators/TwoTiersOrderAuthenticator.t.sol` | same |
+| - [x] | - [ ] | `20261030T194233Z/EVT-05` | A nonce spent by a signature emits no `RevokeNonce`: an order authenticated by a key, a signed master-key update, and a signed delegation at the hub; the check reads the recorded logs for the topic of `RevokeNonce(bytes32,uint256)` | `SV-01` `test_SV_01_sessionKeyAuthenticatesRelayedOrder`, `SV-REV-02` — `test/v2/authenticators/TwoTiersOrderAuthenticator.t.sol`; `DEL-02` — `test/v2/Delegation.t.sol` | same |
+| - [x] | - [ ] | `20261030T194233Z/RENAME-01` | `MasterKeyApproval` becomes `MasterKeyUpdate` and `SessionKeyApproval` becomes `SessionKeyUpdate` (libraries, typehash constants, type strings, bindings, test helpers); error `InvalidApprovalSignature` becomes `InvalidUpdateSignature`. Members, including `approved`, are unchanged | `T712-10` `test_T712_10_masterKeyUpdateStructHash`, `T712-11` `test_T712_11_sessionKeyUpdateStructHash` — `test/v2/authenticators/types/AuthenticatorEip712.t.sol`; `T712-SCHEMA` `test_T712_SCHEMA_typehashesMatchTheirStructs` — `test/v2/types/SchemaAudit.t.sol`; `SV-13` `test_SV_13_masterKeyUpdateIsBoundToItsOwner` and the `InvalidUpdateSignature` expectations — `test/v2/authenticators/TwoTiersOrderAuthenticator.t.sol` | same |
+
+### Notes for this run
+
+Earlier runs refer to `MasterKeyApproval` and `SessionKeyApproval` by their former names, and to the
+error `InvalidApprovalSignature` as such. The new case `SV-UPD-02` continues the `SV-UPD` family.
+`DEL-01` covers `initAuthentication`'s `UpdateMasterKey` and its order before `UpdateDelegation`; no
+case in the authenticator file repeats it. The hub is 22,929 bytes and the authenticator 12,631.

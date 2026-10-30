@@ -457,7 +457,7 @@ contract ForwarderTest is AuthenticatorBase {
     assertFalse(hub.authDelegated(owner, address(authenticator)), 'the owner never delegated it');
 
     bytes32 freshHash = _keyHash(fresh);
-    bytes memory approvalSig = _signMasterKeyApproval(fresh, true, nonce, deadline);
+    bytes memory approvalSig = _signMasterKeyUpdate(fresh, true, nonce, deadline);
 
     bytes[] memory data = new bytes[](1);
     data[0] = abi.encodeCall(
@@ -495,7 +495,7 @@ contract ForwarderTest is AuthenticatorBase {
     uint256 nonce = 310;
     uint256 deadline = block.timestamp + 1 hours;
     bytes memory approvalSig =
-      _signSessionKeyApproval(masterKey, ephemeral, true, nonce, deadline, masterKeyPk);
+      _signSessionKeyUpdate(masterKey, ephemeral, true, nonce, deadline, masterKeyPk);
 
     bytes[] memory data = new bytes[](1);
     data[0] = abi.encodeCall(
@@ -544,7 +544,7 @@ contract ForwarderTest is AuthenticatorBase {
     address[] memory targets = _one(address(authenticator));
 
     vm.prank(owner);
-    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidApprovalSignature.selector);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidUpdateSignature.selector);
     hub.forwardCalls(targets, data, _bits(0));
 
     assertFalse(authenticator.masterKeys(owner, freshHash), 'nothing was approved');

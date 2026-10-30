@@ -13,6 +13,9 @@ interface IAuthDelegator {
   /// @notice The order's owner has not delegated this authenticator
   error AuthenticatorNotDelegated(address authenticator);
 
+  /// @notice Emitted when `owner` delegates `authenticator` or withdraws its delegation
+  event UpdateDelegation(address indexed owner, address indexed authenticator, bool delegated);
+
   /**
    * @notice Whether `owner` has delegated `authenticator` to authenticate their orders
    * @param owner Account whose orders the authenticator may authenticate

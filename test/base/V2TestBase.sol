@@ -16,9 +16,9 @@ import {
 
 import {AuthKey} from 'src/base/types/AuthKey.sol';
 import {KeyType} from 'src/base/types/KeyType.sol';
-import {MasterKeyApproval} from 'src/v2/authenticators/types/MasterKeyApproval.sol';
+import {MasterKeyUpdate} from 'src/v2/authenticators/types/MasterKeyUpdate.sol';
 import {NonceRevocation} from 'src/v2/authenticators/types/NonceRevocation.sol';
-import {SessionKeyApproval} from 'src/v2/authenticators/types/SessionKeyApproval.sol';
+import {SessionKeyUpdate} from 'src/v2/authenticators/types/SessionKeyUpdate.sol';
 import {AuthDelegation} from 'src/v2/types/AuthDelegation.sol';
 import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
@@ -161,21 +161,21 @@ abstract contract V2TestBase is Test {
     );
   }
 
-  function lMasterKeyApproval(
+  function lMasterKeyUpdate(
     address keyOwner,
     AuthKey memory masterKey,
     bool approved,
     uint256 nonce,
     uint256 deadline
   ) internal pure returns (bytes32) {
-    return SchemaHash.masterKeyApproval(
-      MasterKeyApproval({
+    return SchemaHash.masterKeyUpdate(
+      MasterKeyUpdate({
         owner: keyOwner, masterKey: masterKey, approved: approved, nonce: nonce, deadline: deadline
       })
     );
   }
 
-  function lSessionKeyApproval(
+  function lSessionKeyUpdate(
     address keyOwner,
     AuthKey memory masterKey,
     AuthKey memory sessionKey,
@@ -183,8 +183,8 @@ abstract contract V2TestBase is Test {
     uint256 nonce,
     uint256 deadline
   ) internal pure returns (bytes32) {
-    return SchemaHash.sessionKeyApproval(
-      SessionKeyApproval({
+    return SchemaHash.sessionKeyUpdate(
+      SessionKeyUpdate({
         owner: keyOwner,
         masterKey: masterKey,
         sessionKey: sessionKey,

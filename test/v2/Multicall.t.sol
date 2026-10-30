@@ -325,7 +325,7 @@ contract MulticallTest is AuthenticatorBase {
     GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
 
     ExecutionOrder memory order = _openExecutionOrder(erc20s, calls, orderNonce, deadline);
-    bytes memory approvalSig = _signMasterKeyApproval(key, true, approvalNonce, deadline);
+    bytes memory approvalSig = _signMasterKeyUpdate(key, true, approvalNonce, deadline);
     bytes memory orderAuth = _executionAuthData(order, key, masterKeyPk);
 
     address[] memory targets = new address[](1);
@@ -410,7 +410,7 @@ contract MulticallTest is AuthenticatorBase {
       _erc20s(_tokenTransfer(AMOUNT)), _calls(_routerCall(0, hex'01')), orderNonce, deadline
     );
     bytes memory approvalSig =
-      _signSessionKeyApproval(masterKey, ephemeral, true, approvalNonce, deadline, masterKeyPk);
+      _signSessionKeyUpdate(masterKey, ephemeral, true, approvalNonce, deadline, masterKeyPk);
     bytes memory orderAuth = _executionAuthData(order, ephemeral, sessionKeyPk, true);
 
     address[] memory targets = new address[](1);

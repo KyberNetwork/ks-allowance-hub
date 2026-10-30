@@ -72,5 +72,7 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
       IOrderAuthenticator(authenticator).initAuthentication(owner, data);
     }
     authDelegated[owner][authenticator] = delegated;
+
+    emit UpdateDelegation(owner, authenticator, delegated);
   }
 }

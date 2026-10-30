@@ -12,7 +12,7 @@ import {AuthKey} from '../../../base/types/AuthKey.sol';
  * @param nonce Nonce spent in the owner's namespace
  * @param deadline Last timestamp at which the decision may be submitted
  */
-struct MasterKeyApproval {
+struct MasterKeyUpdate {
   address owner;
   AuthKey masterKey;
   bool approved;
@@ -20,9 +20,9 @@ struct MasterKeyApproval {
   uint256 deadline;
 }
 
-library MasterKeyApprovalLib {
-  bytes32 internal constant MASTER_KEY_APPROVAL_TYPEHASH = keccak256(
-    'MasterKeyApproval(address owner,AuthKey masterKey,bool approved,uint256 nonce,uint256 deadline)'
+library MasterKeyUpdateLib {
+  bytes32 internal constant MASTER_KEY_UPDATE_TYPEHASH = keccak256(
+    'MasterKeyUpdate(address owner,AuthKey masterKey,bool approved,uint256 nonce,uint256 deadline)'
     'AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)'
   );
 
@@ -35,7 +35,7 @@ library MasterKeyApprovalLib {
     uint256 deadline
   ) internal pure returns (bytes32) {
     return keccak256(
-      abi.encode(MASTER_KEY_APPROVAL_TYPEHASH, owner, masterKeyHash, approved, nonce, deadline)
+      abi.encode(MASTER_KEY_UPDATE_TYPEHASH, owner, masterKeyHash, approved, nonce, deadline)
     );
   }
 }

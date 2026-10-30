@@ -13,9 +13,9 @@ import {
 } from 'src/v2/types/FulfillmentWitness.sol';
 
 import {AuthKey} from 'src/base/types/AuthKey.sol';
-import {MasterKeyApproval} from 'src/v2/authenticators/types/MasterKeyApproval.sol';
+import {MasterKeyUpdate} from 'src/v2/authenticators/types/MasterKeyUpdate.sol';
 import {NonceRevocation} from 'src/v2/authenticators/types/NonceRevocation.sol';
-import {SessionKeyApproval} from 'src/v2/authenticators/types/SessionKeyApproval.sol';
+import {SessionKeyUpdate} from 'src/v2/authenticators/types/SessionKeyUpdate.sol';
 import {AuthDelegation} from 'src/v2/types/AuthDelegation.sol';
 import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC721Approval} from 'src/v2/types/ERC721Approval.sol';
@@ -78,12 +78,12 @@ library SchemaHash {
     return VM.eip712HashStruct(JsonBindings.schema_AuthKey, abi.encode(k));
   }
 
-  function masterKeyApproval(MasterKeyApproval memory a) internal pure returns (bytes32) {
-    return VM.eip712HashStruct(JsonBindings.schema_MasterKeyApproval, abi.encode(a));
+  function masterKeyUpdate(MasterKeyUpdate memory a) internal pure returns (bytes32) {
+    return VM.eip712HashStruct(JsonBindings.schema_MasterKeyUpdate, abi.encode(a));
   }
 
-  function sessionKeyApproval(SessionKeyApproval memory a) internal pure returns (bytes32) {
-    return VM.eip712HashStruct(JsonBindings.schema_SessionKeyApproval, abi.encode(a));
+  function sessionKeyUpdate(SessionKeyUpdate memory a) internal pure returns (bytes32) {
+    return VM.eip712HashStruct(JsonBindings.schema_SessionKeyUpdate, abi.encode(a));
   }
 
   function nonceRevocation(NonceRevocation memory r) internal pure returns (bytes32) {

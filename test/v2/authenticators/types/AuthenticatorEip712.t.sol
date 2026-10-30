@@ -5,9 +5,9 @@ import {V2TestBase} from 'test/base/V2TestBase.sol';
 
 import {AuthKey} from 'src/base/types/AuthKey.sol';
 import {KeyType} from 'src/base/types/KeyType.sol';
-import {MasterKeyApprovalLib} from 'src/v2/authenticators/types/MasterKeyApproval.sol';
+import {MasterKeyUpdateLib} from 'src/v2/authenticators/types/MasterKeyUpdate.sol';
 import {NonceRevocationLib} from 'src/v2/authenticators/types/NonceRevocation.sol';
-import {SessionKeyApprovalLib} from 'src/v2/authenticators/types/SessionKeyApproval.sol';
+import {SessionKeyUpdateLib} from 'src/v2/authenticators/types/SessionKeyUpdate.sol';
 
 /**
  * @notice T712-09..12 — the four authenticator-side EIP-712 types.
@@ -30,42 +30,42 @@ contract AuthenticatorEip712Test is V2TestBase {
   }
 
   // -------------------------------------------------------------------------------------------
-  // T712-10 — MasterKeyApproval
+  // T712-10 — MasterKeyUpdate
   // -------------------------------------------------------------------------------------------
 
-  function test_T712_10_masterKeyApprovalStructHash() public pure {
+  function test_T712_10_masterKeyUpdateStructHash() public pure {
     address keyOwner = address(0xA11CE);
     AuthKey memory key = _sampleKey();
     bytes32 keyHash = key.hashMemory();
 
     assertEq(
-      MasterKeyApprovalLib.hash(keyOwner, keyHash, true, 7, 99),
-      lMasterKeyApproval(keyOwner, key, true, 7, 99),
+      MasterKeyUpdateLib.hash(keyOwner, keyHash, true, 7, 99),
+      lMasterKeyUpdate(keyOwner, key, true, 7, 99),
       'approval struct hash'
     );
     assertEq(
-      MasterKeyApprovalLib.hash(keyOwner, keyHash, false, 7, 99),
-      lMasterKeyApproval(keyOwner, key, false, 7, 99),
+      MasterKeyUpdateLib.hash(keyOwner, keyHash, false, 7, 99),
+      lMasterKeyUpdate(keyOwner, key, false, 7, 99),
       'revocation struct hash'
     );
     assertTrue(
-      MasterKeyApprovalLib.hash(keyOwner, keyHash, true, 7, 99)
-        != MasterKeyApprovalLib.hash(keyOwner, keyHash, false, 7, 99),
+      MasterKeyUpdateLib.hash(keyOwner, keyHash, true, 7, 99)
+        != MasterKeyUpdateLib.hash(keyOwner, keyHash, false, 7, 99),
       'the direction changes the digest'
     );
     assertTrue(
-      MasterKeyApprovalLib.hash(keyOwner, keyHash, true, 7, 99)
-        != MasterKeyApprovalLib.hash(address(0xB0B), keyHash, true, 7, 99),
+      MasterKeyUpdateLib.hash(keyOwner, keyHash, true, 7, 99)
+        != MasterKeyUpdateLib.hash(address(0xB0B), keyHash, true, 7, 99),
       'the owner changes the digest'
     );
   }
 
   // -------------------------------------------------------------------------------------------
-  // T712-11 — SessionKeyApproval
+  // T712-11 — SessionKeyUpdate
   // -------------------------------------------------------------------------------------------
 
   /// @dev The two keys and the account are all distinct members, so each must move the digest
-  function test_T712_11_sessionKeyApprovalStructHash() public pure {
+  function test_T712_11_sessionKeyUpdateStructHash() public pure {
     AuthKey memory masterKey = _sampleKey();
     AuthKey memory sessionKey = _otherKey();
     bytes32 masterKeyHash = masterKey.hashMemory();
@@ -74,28 +74,28 @@ contract AuthenticatorEip712Test is V2TestBase {
     address otherOwner = address(uint160(uint256(keccak256('a different owner'))));
 
     assertEq(
-      SessionKeyApprovalLib.hash(keyOwner, masterKeyHash, sessionKeyHash, true, 7, 99),
-      lSessionKeyApproval(keyOwner, masterKey, sessionKey, true, 7, 99),
+      SessionKeyUpdateLib.hash(keyOwner, masterKeyHash, sessionKeyHash, true, 7, 99),
+      lSessionKeyUpdate(keyOwner, masterKey, sessionKey, true, 7, 99),
       'approval struct hash'
     );
     assertEq(
-      SessionKeyApprovalLib.hash(keyOwner, masterKeyHash, sessionKeyHash, false, 7, 99),
-      lSessionKeyApproval(keyOwner, masterKey, sessionKey, false, 7, 99),
+      SessionKeyUpdateLib.hash(keyOwner, masterKeyHash, sessionKeyHash, false, 7, 99),
+      lSessionKeyUpdate(keyOwner, masterKey, sessionKey, false, 7, 99),
       'revocation struct hash'
     );
     assertTrue(
-      SessionKeyApprovalLib.hash(keyOwner, masterKeyHash, sessionKeyHash, true, 7, 99)
-        != SessionKeyApprovalLib.hash(keyOwner, masterKeyHash, sessionKeyHash, false, 7, 99),
+      SessionKeyUpdateLib.hash(keyOwner, masterKeyHash, sessionKeyHash, true, 7, 99)
+        != SessionKeyUpdateLib.hash(keyOwner, masterKeyHash, sessionKeyHash, false, 7, 99),
       'the direction changes the digest'
     );
     assertTrue(
-      SessionKeyApprovalLib.hash(keyOwner, masterKeyHash, sessionKeyHash, true, 7, 99)
-        != SessionKeyApprovalLib.hash(otherOwner, masterKeyHash, sessionKeyHash, true, 7, 99),
+      SessionKeyUpdateLib.hash(keyOwner, masterKeyHash, sessionKeyHash, true, 7, 99)
+        != SessionKeyUpdateLib.hash(otherOwner, masterKeyHash, sessionKeyHash, true, 7, 99),
       'the account changes the digest'
     );
     assertTrue(
-      SessionKeyApprovalLib.hash(keyOwner, masterKeyHash, sessionKeyHash, true, 7, 99)
-        != SessionKeyApprovalLib.hash(keyOwner, sessionKeyHash, masterKeyHash, true, 7, 99),
+      SessionKeyUpdateLib.hash(keyOwner, masterKeyHash, sessionKeyHash, true, 7, 99)
+        != SessionKeyUpdateLib.hash(keyOwner, sessionKeyHash, masterKeyHash, true, 7, 99),
       'the two keys are not interchangeable'
     );
   }

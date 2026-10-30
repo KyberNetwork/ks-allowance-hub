@@ -14,7 +14,7 @@ import {AuthKey} from '../../../base/types/AuthKey.sol';
  * @param nonce Nonce spent under the master key's credential
  * @param deadline Last timestamp at which the decision may be submitted
  */
-struct SessionKeyApproval {
+struct SessionKeyUpdate {
   address owner;
   AuthKey masterKey;
   AuthKey sessionKey;
@@ -23,9 +23,9 @@ struct SessionKeyApproval {
   uint256 deadline;
 }
 
-library SessionKeyApprovalLib {
-  bytes32 internal constant SESSION_KEY_APPROVAL_TYPEHASH = keccak256(
-    'SessionKeyApproval(address owner,AuthKey masterKey,AuthKey sessionKey,bool approved,'
+library SessionKeyUpdateLib {
+  bytes32 internal constant SESSION_KEY_UPDATE_TYPEHASH = keccak256(
+    'SessionKeyUpdate(address owner,AuthKey masterKey,AuthKey sessionKey,bool approved,'
     'uint256 nonce,uint256 deadline)' 'AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)'
   );
 
@@ -40,13 +40,7 @@ library SessionKeyApprovalLib {
   ) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(
-        SESSION_KEY_APPROVAL_TYPEHASH,
-        owner,
-        masterKeyHash,
-        sessionKeyHash,
-        approved,
-        nonce,
-        deadline
+        SESSION_KEY_UPDATE_TYPEHASH, owner, masterKeyHash, sessionKeyHash, approved, nonce, deadline
       )
     );
   }

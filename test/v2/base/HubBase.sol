@@ -54,6 +54,9 @@ abstract contract HubBase is V2TestBase {
     'TransferTokens(address,address,bytes32,(address,address,uint160)[],(address,uint256,address)[],(address,uint256)[])'
   );
 
+  /// @dev Transcribed from {IUnorderedNonce-RevokeNonce}, never imported
+  bytes32 internal constant REVOKE_NONCE_TOPIC = keccak256('RevokeNonce(bytes32,uint256)');
+
   function setUp() public virtual {
     permit2 = _deployPermit2();
     token18 = address(new ERC20Mock('Token Eighteen', 'T18', 18));
@@ -155,6 +158,16 @@ abstract contract HubBase is V2TestBase {
     }
 
     assertEq(found, 1, 'exactly one TransferTokens per order');
+  }
+
+  /// @dev Asserts that none of `entries` is a `RevokeNonce`, which only an explicit revocation emits
+  function _assertNoRevokeNonce(Vm.Log[] memory entries) internal pure {
+    for (uint256 i = 0; i < entries.length; i++) {
+      if (entries[i].topics.length == 0) continue;
+      assertTrue(
+        entries[i].topics[0] != REVOKE_NONCE_TOPIC, 'a spent signature emitted RevokeNonce'
+      );
+    }
   }
 
   function _topicAddress(bytes32 topic) internal pure returns (address) {

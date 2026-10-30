@@ -62,6 +62,8 @@ contract NoncesTest is AuthenticatorBase {
 
   /// NONCE-01 / NONCE-FUZZ — a nonce lands on exactly one bit, at the position it names
   function testFuzz_NONCE_FUZZ_revokeSetsExactlyOneBit(uint256 nonce) public {
+    vm.expectEmit(address(hub));
+    emit IUnorderedNonce.RevokeNonce(lNonceKey(owner), nonce);
     vm.prank(owner);
     hub.revokeNonce(nonce);
 
@@ -101,9 +103,13 @@ contract NoncesTest is AuthenticatorBase {
 
   /// NONCE-05 — the hub and the authenticator keep separate bitmaps
   function test_NONCE_05_hubAndAuthenticatorAreIndependent() public {
+    vm.expectEmit(address(hub));
+    emit IUnorderedNonce.RevokeNonce(lNonceKey(owner), 3);
     vm.prank(owner);
     hub.revokeNonce(3);
 
+    vm.expectEmit(address(authenticator));
+    emit IUnorderedNonce.RevokeNonce(lNonceKey(owner), 3);
     vm.prank(owner);
     authenticator.revokeNonce(3);
 

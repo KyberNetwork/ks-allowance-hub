@@ -15,9 +15,9 @@ import {OrderAuthenticatorBase} from './OrderAuthenticatorBase.sol';
 
 import {ITwoTiersOrderAuthenticator} from './interfaces/ITwoTiersOrderAuthenticator.sol';
 
-import {MasterKeyApprovalLib} from './types/MasterKeyApproval.sol';
+import {MasterKeyUpdateLib} from './types/MasterKeyUpdate.sol';
 import {NonceRevocationLib} from './types/NonceRevocation.sol';
-import {SessionKeyApprovalLib} from './types/SessionKeyApproval.sol';
+import {SessionKeyUpdateLib} from './types/SessionKeyUpdate.sol';
 
 import {CalldataDecoder} from 'ks-common-sc/src/libraries/calldata/CalldataDecoder.sol';
 
@@ -69,7 +69,10 @@ contract TwoTiersOrderAuthenticator is
     AuthKey calldata masterKey = _decodeKey(data, 0);
     _checkNotExpired(masterKey);
 
-    masterKeys[owner][masterKey.hash()] = true;
+    bytes32 masterKeyHash = masterKey.hash();
+    masterKeys[owner][masterKeyHash] = true;
+
+    emit UpdateMasterKey(owner, masterKeyHash, masterKey, true);
   }
 
   /**
@@ -78,10 +81,10 @@ contract TwoTiersOrderAuthenticator is
    *
    * - `abi.encode(AuthKey masterKey, bool approved)` approves or revokes a master key. When the
    *   caller is `owner`, `signature` must be empty and no nonce is spent; otherwise `signature`
-   *   must be the owner's signature over a {MasterKeyApproval}, which spends `nonce` in the owner's
+   *   must be the owner's signature over a {MasterKeyUpdate}, which spends `nonce` in the owner's
    *   namespace.
    * - `abi.encode(AuthKey sessionKey, AuthKey masterKey, bool approved)` approves or revokes a
-   *   session key. `signature` must be the master key's signature over a {SessionKeyApproval},
+   *   session key. `signature` must be the master key's signature over a {SessionKeyUpdate},
    *   which spends `nonce` under the master key's credential, whoever the caller is. The master key
    *   must be approved, and may act only on a session key that it approved or that no master key
    *   has approved.
@@ -110,16 +113,18 @@ contract TwoTiersOrderAuthenticator is
         _useUnorderedNonce(owner, nonce);
 
         bytes32 digest = _hashTypedDataV4(
-          MasterKeyApprovalLib.hash(owner, masterKeyHash, approved, nonce, deadline)
+          MasterKeyUpdateLib.hash(owner, masterKeyHash, approved, nonce, deadline)
         );
         if (!SignatureChecker.isValidSignatureNow(owner, digest, signature)) {
-          revert InvalidApprovalSignature();
+          revert InvalidUpdateSignature();
         }
       } else if (signature.length != 0) {
         revert UnexpectedSignature();
       }
 
       masterKeys[owner][masterKeyHash] = approved;
+
+      emit UpdateMasterKey(owner, masterKeyHash, masterKey, approved);
     } else {
       AuthKey calldata sessionKey = _decodeKey(data, 0);
       AuthKey calldata masterKey = _decodeKey(data, 1);
@@ -149,13 +154,15 @@ contract TwoTiersOrderAuthenticator is
       _useUnorderedNonce(masterKey.credentialHash(), nonce);
 
       bytes32 digest = _hashTypedDataV4(
-        SessionKeyApprovalLib.hash(owner, masterKeyHash, sessionKeyHash, approved, nonce, deadline)
+        SessionKeyUpdateLib.hash(owner, masterKeyHash, sessionKeyHash, approved, nonce, deadline)
       );
       if (!masterKey.verify(digest, signature)) {
-        revert InvalidApprovalSignature();
+        revert InvalidUpdateSignature();
       }
 
       sessionKeyMaster[owner][sessionKeyHash] = approved ? masterKeyHash : bytes32(0);
+
+      emit UpdateSessionKey(owner, sessionKeyHash, masterKeyHash, sessionKey, approved);
     }
   }
 
@@ -196,12 +203,15 @@ contract TwoTiersOrderAuthenticator is
     uint256 deadline,
     bytes calldata signature
   ) external checkDeadline(deadline) {
-    _useUnorderedNonce(key.credentialHash(), nonce);
+    bytes32 credentialHash = key.credentialHash();
+    _useUnorderedNonce(credentialHash, nonce);
 
     bytes32 digest = _hashTypedDataV4(NonceRevocationLib.hash(key, nonce, deadline));
     if (!key.verify(digest, signature)) {
       revert InvalidRevocationSignature();
     }
+
+    emit RevokeNonce(credentialHash, nonce);
   }
 
   /**

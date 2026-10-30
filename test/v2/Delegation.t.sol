@@ -7,6 +7,9 @@ import {ERC1271WalletMock} from 'test/v2/mocks/TokenMocks.sol';
 
 import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
 import {AuthKey} from 'src/base/types/AuthKey.sol';
+import {
+  ITwoTiersOrderAuthenticator
+} from 'src/v2/authenticators/interfaces/ITwoTiersOrderAuthenticator.sol';
 import {IAuthDelegator} from 'src/v2/interfaces/IAuthDelegator.sol';
 import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
@@ -69,11 +72,19 @@ contract DelegationTest is AuthenticatorBase {
   // DEL — delegating an authenticator
   // -------------------------------------------------------------------------------------------
 
-  /// DEL-01 — the owner delegates for themselves: no nonce is spent and the authenticator is
-  /// trusted
+  /**
+   * DEL-01 — the owner delegates for themselves: no nonce is spent and the authenticator is
+   * trusted
+   * @dev The authenticator's `UpdateMasterKey` precedes the hub's `UpdateDelegation`, since the
+   * hub emits after the authenticator returns.
+   */
   function test_DEL_01_selfDelegationSpendsNoNonce() public {
     uint256 word = 0;
 
+    vm.expectEmit(address(authenticator));
+    emit ITwoTiersOrderAuthenticator.UpdateMasterKey(owner, _keyHash(key), key, true);
+    vm.expectEmit(address(hub));
+    emit IAuthDelegator.UpdateDelegation(owner, address(authenticator), true);
     vm.prank(owner);
     hub.updateDelegation(
       owner, address(authenticator), true, _encodeKey(key), 0, block.timestamp + 1 days, ''
@@ -92,8 +103,12 @@ contract DelegationTest is AuthenticatorBase {
       ownerKey, owner, address(authenticator), true, _encodeKey(key), nonce, deadline
     );
 
+    vm.recordLogs();
+    vm.expectEmit(address(hub));
+    emit IAuthDelegator.UpdateDelegation(owner, address(authenticator), true);
     vm.prank(relayer);
     hub.updateDelegation(owner, address(authenticator), true, _encodeKey(key), nonce, deadline, sig);
+    _assertNoRevokeNonce(vm.getRecordedLogs());
 
     assertTrue(hub.authDelegated(owner, address(authenticator)));
     assertEq(hub.nonces(lNonceKey(owner), nonce >> 8), 1 << (nonce & 0xff), 'exact bit set');
@@ -172,6 +187,8 @@ contract DelegationTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
     assertTrue(hub.authDelegated(owner, address(authenticator)));
 
+    vm.expectEmit(address(hub));
+    emit IAuthDelegator.UpdateDelegation(owner, address(authenticator), false);
     vm.prank(owner);
     hub.updateDelegation(owner, address(authenticator), false, '', 0, block.timestamp + 1 days, '');
     assertFalse(hub.authDelegated(owner, address(authenticator)));
@@ -473,6 +490,8 @@ contract DelegationTest is AuthenticatorBase {
       ownerKey, owner, address(authenticator), true, _encodeKey(key), nonce, deadline
     );
 
+    vm.expectEmit(address(hub));
+    emit IAuthDelegator.UpdateDelegation(owner, address(authenticator), true);
     vm.prank(relayer);
     hub.updateDelegation(owner, address(authenticator), true, _encodeKey(key), nonce, deadline, sig);
 
