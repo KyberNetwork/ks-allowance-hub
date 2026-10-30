@@ -1295,3 +1295,32 @@ deploy script's CREATE3 salt prefix and config key change with it. No behaviour 
 
 - `forge test --isolate`: 261 passed, 0 failed.
 - `DOM-01` and the authenticator's `eip712Domain` case assert the new domain name.
+
+## Run `20261030T043718Z`
+
+Scope: `MsgSender` sets the account an order acts for with `setMsgSender` (executions) or
+`setMsgSenderAndLock` (fulfillments), in one transient slot whose bit 160 is the lock. An order may
+settle inside a router call of an execution, and `msgSender()` is restored when it returns. No order
+may settle inside a fulfillment, at any depth.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261030T043718Z/NEST-01` | Chains of 1 to 6 nested orders under a top-level execution on either rail, innermost an execution or a fulfillment: every router sees its own level's owner before and after the nested order, `TransferTokens` is emitted once per level in level order, `msgSender()` is zero afterwards | `LOCK-02` `testFuzz_LOCK_02_nestedOrdersRestoreEachOwner` — `test/v2/Settlement.t.sol` | `forge test --isolate` — 264 passed; `deep` profile 10,000 runs |
+| - [x] | - [ ] | `20261030T043718Z/NEST-02` | A fulfillment nested in an execution releases the lock on return, so a later router call of the same execution settles another order | `LOCK-05` `test_LOCK_05_fulfillmentLockIsReleasedForTheNextSibling` — `test/v2/Settlement.t.sol` | same |
+| - [x] | - [ ] | `20261030T043718Z/REFUSE-01` | Inside a fulfillment, each of the four settlement entry points reverts `AlreadyLocked(<fulfillment owner>)`, reached from a solver call directly or through an execution, and from an ERC721 receiver hook | `LOCK-03` `test_LOCK_03_receiverHookIsRefusedInsideAFulfillment`, `LOCK-06` `testFuzz_LOCK_06_noOrderSettlesInsideAFulfillment` — `test/v2/Settlement.t.sol` | same; `deep` profile 10,000 runs |
+| - [x] | - [ ] | `20261030T043718Z/NATIVE-01` | An execution spends its value after a nested order returns; a nested zero-value order cannot spend the outer order's unspent value (`NativeOverspent(VALUE, 0)`) | `LOCK-07` `test_LOCK_07_nestedOrderCannotSpendTheOuterValue` — `test/v2/Settlement.t.sol` | same |
+
+### Notes for this run
+
+`test_LOCK_02_routerReentryIsLocked` and `test_LOCK_03_erc721ReceiverReentryIsLocked` are replaced:
+an order settling inside an execution's router call now succeeds, so the refusal is asserted inside
+a fulfillment instead. The receiver-hook path inside an execution goes through the same
+`setMsgSender` as LOCK-02 and has no case of its own. Under `--isolate` the closing
+`msgSender() == address(0)` assertions hold trivially; the restoration oracles are the readings
+taken inside the call (`seenBefore`, `seenAfter`, `router2`).
+
+Mutations, each failing the listed cases: dropping `LOCKED_FLAG` (`GATE-01`, `LOCK-03`, `LOCK-06`);
+`setMsgSender` storing zero on exit (`LOCK-02`, `LOCK-05`); `setMsgSenderAndLock` storing zero on
+exit (`LOCK-02`, `LOCK-05`); `AlreadyLocked` naming the new sender (`LOCK-03`, `LOCK-06`); the
+execution rails using `setMsgSenderAndLock` (`LOCK-02`, `LOCK-05`, `LOCK-06`, `LOCK-07`); the
+Permit2 execution rail alone using it (`LOCK-02`). The hub is 23,277 bytes.

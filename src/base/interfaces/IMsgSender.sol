@@ -4,12 +4,13 @@ pragma solidity ^0.8.0;
 /// @title IMsgSender
 /// @notice Interface of {MsgSender}
 interface IMsgSender {
-  /// @notice A locked call was made while another was in progress
-  error AlreadyLocked(address locker);
+  /// @notice {msgSender} was set while the lock was held
+  error AlreadyLocked(address sender);
 
   /**
-   * @notice The account the current locked call is acting for
-   * @return The owner of the order being settled, or the zero address outside a locked call
+   * @notice The account the current call is acting for
+   * @return The owner of the innermost order being settled, or the zero address when no order is
+   * being settled
    */
   function msgSender() external view returns (address);
 }

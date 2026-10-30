@@ -351,10 +351,10 @@ contract GuardsTest is AuthenticatorBase {
   /**
    * GATE-02 — the modifier applications no other case watches
    * @dev One leg each for `guardNativeSpend` on `executeOrderWithPermit2Signature`, and for the
-   * lock, the native guard and `checkDelegation` on `fulfillOrderWithDelegatedAuthentication`. Each
-   * leg is written so that only its own modifier can produce the result; the lock is observed
-   * through what the router saw, because an absent lock leaves `msgSender()` empty rather than
-   * reverting.
+   * `setMsgSenderAndLock`, the native guard and `checkDelegation` on
+   * `fulfillOrderWithDelegatedAuthentication`. Each leg is written so that only its own modifier
+   * can produce the result; `setMsgSenderAndLock` is observed through what the router saw, because
+   * its absence leaves `msgSender()` empty rather than reverting.
    */
   function test_GATE_02_theUnwatchedModifierApplications() public {
     uint256 deadline = block.timestamp + 1 hours;
@@ -416,7 +416,7 @@ contract GuardsTest is AuthenticatorBase {
 
     assertEq(address(hub).balance, PREFUND, "the fulfill rail kept the hub's float");
 
-    // lock(owner) on fulfillOrderWithDelegatedAuthentication, seen from inside the route
+    // setMsgSenderAndLock on fulfillOrderWithDelegatedAuthentication, seen from inside the route
     FulfillmentOrder memory locked = _openFulfillmentOrder(
       allowances, new ValidationParams[](0), new GenericCall[](0), 113, deadline
     );

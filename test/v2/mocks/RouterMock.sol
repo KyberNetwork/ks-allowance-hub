@@ -9,7 +9,7 @@ import {ERC721Holder} from 'openzeppelin-contracts/contracts/token/ERC721/utils/
 
 /// @notice Router that records what the hub passed it, so tests can assert identity and ordering.
 contract RouterMock is IKSGenericRouter, ERC721Holder {
-  /// @dev Read inside `ksExecute`, which is the only point where the hub's lock is still held
+  /// @dev Read inside `ksExecute`, where {msgSender} still names the owner of the order settling
   address public seenMsgSender;
   uint256 public callCount;
   uint256 public lastValue;
@@ -42,10 +42,15 @@ contract RouterMock is IKSGenericRouter, ERC721Holder {
   }
 }
 
-/// @notice Router that calls back into the hub, to prove the reentrancy lock holds.
+/// @notice Router that calls back into the hub, and records {msgSender} on either side of the call.
 contract ReentrantRouterMock is IKSGenericRouter, ERC721Holder {
   address public immutable HUB;
   bytes public reentryCalldata;
+
+  /// @dev {msgSender} on entry to `ksExecute`
+  address public seenBefore;
+  /// @dev {msgSender} after the reentry call has returned
+  address public seenAfter;
 
   constructor(address hub) {
     HUB = hub;
@@ -58,7 +63,9 @@ contract ReentrantRouterMock is IKSGenericRouter, ERC721Holder {
   }
 
   function ksExecute(bytes calldata) external payable returns (bytes memory) {
+    seenBefore = IMsgSender(HUB).msgSender();
     (bool ok, bytes memory ret) = HUB.call(reentryCalldata);
+    seenAfter = IMsgSender(HUB).msgSender();
     if (!ok) {
       assembly ('memory-safe') {
         revert(add(ret, 0x20), mload(ret))

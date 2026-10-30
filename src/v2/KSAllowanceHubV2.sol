@@ -51,7 +51,9 @@ import {
  * witness, or by an {IOrderAuthenticator} the owner has delegated through {AuthDelegator}. An
  * owner who submits their own order needs no witness and no authenticator.
  *
- * While an order settles, {msgSender} returns its owner, and no other order may settle.
+ * While an order settles, {msgSender} returns its owner. A router call of an execution may settle
+ * other orders, and {msgSender} returns the execution's owner again once each returns. No order may
+ * settle while a fulfillment is in progress, so its validators observe that fulfillment alone.
  */
 contract KSAllowanceHubV2 is
   IKSAllowanceHubV2,
@@ -118,7 +120,7 @@ contract KSAllowanceHubV2 is
     payable
     whenNotPaused
     checkDeadline(order.deadline)
-    lock(order.owner)
+    setMsgSender(order.owner)
     checkDelegation(order.owner, authenticator)
     guardNativeSpend
     returns (bytes[] memory results)
@@ -147,7 +149,7 @@ contract KSAllowanceHubV2 is
     payable
     whenNotPaused
     checkDeadline(order.deadline)
-    lock(order.owner)
+    setMsgSender(order.owner)
     guardNativeSpend
     returns (bytes[] memory results)
   {
@@ -201,7 +203,7 @@ contract KSAllowanceHubV2 is
     checkDeadline(solution.deadline)
     checkLengths(solution.erc20Targets.length, order.erc20Allowances.length)
     checkLengths(solution.erc721Targets.length, order.erc721Approvals.length)
-    lock(order.owner)
+    setMsgSenderAndLock(order.owner)
     checkDelegation(order.owner, authenticator)
     guardNativeSpend
     returns (bytes[] memory results)
@@ -243,7 +245,7 @@ contract KSAllowanceHubV2 is
     checkDeadline(solution.deadline)
     checkLengths(solution.erc20Targets.length, order.erc20Allowances.length)
     checkLengths(solution.erc721Targets.length, order.erc721Approvals.length)
-    lock(order.owner)
+    setMsgSenderAndLock(order.owner)
     guardNativeSpend
     returns (bytes[] memory results)
   {

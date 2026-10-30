@@ -184,7 +184,9 @@ hub.multicall([
 ### Routers and native value
 
 While an order settles, `msgSender()` returns its owner, so a router called by the hub can identify
-the owner. No other order may settle until it completes. Each router call may spend native value
+the owner. A router call of an execution may settle other orders, and `msgSender()` returns the
+execution's owner again once each returns. No order may settle while a fulfillment is in progress,
+so its validators observe that fulfillment alone. Each router call may spend native value
 only from the `msg.value` sent with the order. The hub has no `receive` function, so a router cannot
 refund native value to it; unspent `msg.value` remains in the hub.
 
