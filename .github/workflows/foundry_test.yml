@@ -1,0 +1,51 @@
+name: Run Foundry Test
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+env:
+  RPC_137: ${{ secrets.RPC_137 }}
+  RPC_1: ${{ secrets.RPC_1 }}
+  RPC_42161: ${{ secrets.RPC_42161 }}
+  RPC_10: ${{ secrets.RPC_10 }}
+  RPC_43114: ${{ secrets.RPC_43114 }}
+  RPC_56: ${{ secrets.RPC_56 }}
+  RPC_59144: ${{ secrets.RPC_59144 }}
+  RPC_8453: ${{ secrets.RPC_8453 }}
+  RPC_146: ${{ secrets.RPC_146 }}
+  RPC_80094: ${{ secrets.RPC_80094 }}
+  RPC_2020: ${{ secrets.RPC_2020 }}
+  RPC_5000: ${{ secrets.RPC_5000 }}
+  RPC_143: ${{ secrets.RPC_143 }}
+
+jobs:
+  test:
+    name: Run Foundry Test
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: true
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Install Foundry
+        uses: KyberNetwork/foundry-toolchain@master
+        with:
+          version: v1.8.3
+
+      - name: Run Forge Test
+        id: test
+        run: forge test -vvv --isolate
