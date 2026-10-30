@@ -30,7 +30,7 @@ import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessCon
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 /**
- * @notice `SET-01..04`, `OWN-07`, `ROUTER-01..03` and `LOCK-01..07` — the settlement tail shared by
+ * @notice `SET-01..04`, `OWN-07`, `ROUTER-01..03` and `LOCK-02..07` — the settlement tail shared by
  * all four entry points.
  * @dev The role constant, the `TransferTokens` topic and the router's own function signature are
  * written out rather than imported: an expected value taken from the contract under test would
@@ -310,29 +310,6 @@ contract SettlementTest is HubBase {
   // -----------------------------------------------------------------------------------------
   // LOCK — the transient msg sender, which is both the identity channel and the fulfillment lock
   // -----------------------------------------------------------------------------------------
-
-  /**
-   * LOCK-01 — a router sees the asset owner, not the submitter, and only while the order runs
-   * @dev The inside-the-call reading is taken from {RouterMock-seenMsgSender} rather than from a
-   * second transaction, because CI runs `--isolate` and transient storage does not survive one.
-   */
-  function test_LOCK_01_routerSeesTheOwner() public {
-    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
-    GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
-    uint256 deadline = block.timestamp + 1 hours;
-
-    ExecutionOrder memory order = _openExecutionOrder(erc20s, calls, 12, deadline);
-    bytes memory signature = _signExecutionWitness(order);
-
-    assertEq(hub.msgSender(), address(0), 'no sender before the order');
-
-    vm.prank(relayer);
-    hub.executeOrderWithPermit2Signature(order, signature);
-
-    assertEq(router.seenMsgSender(), owner, 'the router was shown the owner');
-    assertTrue(router.seenMsgSender() != relayer, 'and not the relayer that submitted');
-    assertEq(hub.msgSender(), address(0), 'the sender is cleared again');
-  }
 
   /**
    * LOCK-02 — orders nested inside execution router calls settle, and each level sees its owner

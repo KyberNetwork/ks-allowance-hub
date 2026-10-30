@@ -1353,3 +1353,21 @@ describe code that is gone. The cases that asserted them are rewritten in place 
 dropped). The relays of permits, delegations and authenticator updates (`PF-01..05`,
 `FWD-13`, `FWD-15`, `FWD-17`, `FWD-20`, `FWD-21`) are unchanged apart from wording. The hub is
 22,793 bytes and the forwarder 919.
+
+## Run `20261030T112203Z`
+
+Scope: removal of test cases that another case already covers, found by a semantic overlap review
+of the tests added or changed in runs `20261030T043718Z` and `20261030T105453Z` against the rest
+of `test/v2`.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261030T112203Z/DEDUP-01` | `FWD-13` also asserts the authenticator stays undelegated before and after the relayed approval; `FWD-15`, which asserted only that, is deleted | `FWD-13` `test_FWD_13_updateAuthenticationIsRelayedAndApprovesTheKey` — `test/v2/Forwarder.t.sol` | `forge test --isolate` — 264 passed |
+| - [x] | - [ ] | `20261030T112203Z/DEDUP-02` | Deleted outright: `FWD-19` (a failure bit on a succeeding or failing permit; `PF-FUZZ` generates both) and `LOCK-01` (the router sees the owner on the Permit2 execution rail; `LOCK-02` covers that rail with depth and restoration) | `PF-FUZZ` `testFuzz_PF_FUZZ_allowFailureBits` — `test/v2/Forwarder.t.sol`; `LOCK-02` `testFuzz_LOCK_02_nestedOrdersRestoreEachOwner` — `test/v2/Settlement.t.sol` | same |
+| - [x] | - [ ] | `20261030T112203Z/DEDUP-03` | Legs removed from tests that keep their own subject: the signed `updateAuthentication` control in `FWD-16` (same as `FWD-13`), the paused order entry in `FWD-PAUSE-01` (same as `GUARD-02`, `GUARD-05`), and the `setMsgSenderAndLock` leg in `GATE-02`, whose router reading could not tell the lock from `setMsgSender` (the lock is `LOCK-03`, `LOCK-06`) | `FWD-16`, `FWD-PAUSE-01` — `test/v2/Forwarder.t.sol`; `GATE-02` `test_GATE_02_theUnwatchedModifierApplications` — `test/v2/Guards.t.sol` | same |
+
+### Notes for this run
+
+References to `FWD-15`, `FWD-19` and `LOCK-01` in earlier runs name deleted cases. `PF-08` and
+`PF-09` are also covered by `PF-FUZZ` and are kept as the fixed examples of a failure that bubbles
+and one that is skipped, since the fuzz does not guarantee that exact batch.

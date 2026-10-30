@@ -34,14 +34,13 @@ import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
 import {IERC20Errors} from 'openzeppelin-contracts/contracts/interfaces/draft-IERC6093.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 import {ERC20Permit} from 'openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Permit.sol';
-import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
 
 /**
  * @title ForwarderTest
- * @notice `PF-01..09`, `PF-FUZZ` and `FWD-13..19` plus `FWD-PAUSE/VALUE/REENTRY`: the
- * calls {ICallsForwarder-forwardCalls} relays that carry their own authorisation, its per-entry
- * failure bits, the calls that fail on their target's own terms and the things it deliberately
- * does not guard.
+ * @notice `PF-01..09`, `PF-FUZZ`, `FWD-13`, `FWD-14`, `FWD-16..18`, `FWD-20..25` and
+ * `FWD-PAUSE/VALUE/REENTRY`: the calls {ICallsForwarder-forwardCalls} relays that carry their own
+ * authorisation, its per-entry failure bits, the calls that fail on their target's own terms and
+ * the things it deliberately does not guard.
  * @dev `forwardCalls` makes a plain `call` per entry, so the observable oracle is never the return
  * value: it is the allowance, approval or nonce the target holds afterwards. Every digest here is
  * built from a type string written out in this file from EIP-2612, the DAI permit and the ERC-721
@@ -436,8 +435,8 @@ contract ForwarderTest is AuthenticatorBase {
   }
 
   // -----------------------------------------------------------------------------------------------
-  // FWD-13..16 — a relayed `updateAuthentication`, and the authenticator calls that refuse the
-  // forwarder as caller
+  // FWD-13, FWD-14, FWD-16 — a relayed `updateAuthentication`, and the authenticator calls that
+  // refuse the forwarder as caller
   // -----------------------------------------------------------------------------------------------
 
   /**
@@ -446,12 +445,16 @@ contract ForwarderTest is AuthenticatorBase {
    * authenticator which credential may sign for them, relayed so the approval and the order that
    * uses it fit in one transaction. The authenticator owns the replay protection for it, so its
    * bitmap moves and the hub's does not: the hub only relays the call and spends nothing of its
-   * own.
+   * own. The forwarder reaches an authenticator the owner never delegated, and the relay leaves it
+   * undelegated: the order rails gate on the delegation, but `updateAuthentication` carries the
+   * owner's own signature, so the forwarder needs no such gate.
    */
   function test_FWD_13_updateAuthenticationIsRelayedAndApprovesTheKey() public {
     AuthKey memory fresh = _secpKey(masterSigner, block.timestamp + 30 days);
     uint256 nonce = 300;
     uint256 deadline = block.timestamp + 1 hours;
+
+    assertFalse(hub.authDelegated(owner, address(authenticator)), 'the owner never delegated it');
 
     bytes32 freshHash = _keyHash(fresh);
     bytes memory approvalSig = _signMasterKeyApproval(fresh, true, nonce, deadline);
@@ -475,6 +478,7 @@ contract ForwarderTest is AuthenticatorBase {
       hub.nonces(lNonceKey(owner), nonce >> 8), 0, 'and the hub burned nothing on this route'
     );
     assertEq(results[0].length, 0, 'updateAuthentication returns nothing');
+    assertFalse(hub.authDelegated(owner, address(authenticator)), 'and still nothing is delegated');
   }
 
   /**
@@ -594,36 +598,6 @@ contract ForwarderTest is AuthenticatorBase {
   }
 
   /**
-   * FWD-15 — `forwardCalls` reaches an authenticator the owner never delegated
-   * @dev Deliberate, and worth pinning because the order rails do gate on the delegation:
-   * `checkDelegation` refuses an undelegated authenticator outright. The forwarder has no such gate
-   * and needs none — `updateAuthentication` carries the owner's own signature, so an authenticator
-   * the owner has not delegated is simply one whose opinion the hub will never ask for.
-   */
-  function test_FWD_15_forwardReachesAnUndelegatedAuthenticator() public {
-    AuthKey memory fresh = _secpKey(masterSigner, block.timestamp + 30 days);
-    uint256 nonce = 302;
-    uint256 deadline = block.timestamp + 1 hours;
-
-    assertFalse(hub.authDelegated(owner, address(authenticator)), 'the owner never delegated it');
-
-    bytes32 freshHash = _keyHash(fresh);
-    bytes memory approvalSig = _signMasterKeyApproval(fresh, true, nonce, deadline);
-
-    bytes[] memory data = new bytes[](1);
-    data[0] = abi.encodeCall(
-      IOrderAuthenticator.updateAuthentication,
-      (owner, _approveKey(fresh), nonce, deadline, approvalSig)
-    );
-
-    vm.prank(relayer);
-    hub.forwardCalls(_one(address(authenticator)), data, _bits(0));
-
-    assertTrue(authenticator.masterKeys(owner, freshHash), 'the key was approved anyway');
-    assertFalse(hub.authDelegated(owner, address(authenticator)), 'and still nothing is delegated');
-  }
-
-  /**
    * FWD-16 — the forwarder relays `initAuthentication` and the `authenticate*` calls, and the
    * authenticator refuses it as the caller because it is not the hub
    * @dev `initAuthentication`, `authenticateExecution` and `authenticateFulfillment` trust only the
@@ -685,28 +659,10 @@ contract ForwarderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(refusal);
     hub.forwardCalls(targets, fulfillmentData, _bits(0));
-
-    // the control: on the same target, in the same shape, `updateAuthentication` carries the
-    // owner's signature and goes through
-    uint256 nonce = 303;
-    uint256 deadline = block.timestamp + 1 hours;
-    bytes memory approvalSig = _signMasterKeyApproval(victimKey, true, nonce, deadline);
-
-    bytes[] memory updateData = new bytes[](1);
-    updateData[0] = abi.encodeCall(
-      IOrderAuthenticator.updateAuthentication,
-      (owner, _approveKey(victimKey), nonce, deadline, approvalSig)
-    );
-
-    vm.prank(relayer);
-    hub.forwardCalls(targets, updateData, _bits(0));
-    assertTrue(
-      authenticator.masterKeys(owner, victimHash), 'updateAuthentication proves its own authority'
-    );
   }
 
   // -----------------------------------------------------------------------------------------------
-  // FWD-17..19 — Permit2's single permit, and the shape of a batch
+  // FWD-17..18 — Permit2's single permit, and the shape of a batch
   // -----------------------------------------------------------------------------------------------
 
   /**
@@ -758,45 +714,6 @@ contract ForwarderTest is AuthenticatorBase {
     assertEq(withBits.length, 0, 'and the bits change nothing about that');
   }
 
-  /**
-   * FWD-19 — a failure bit set on a call that succeeds is inert
-   * @dev The bit is only ever read after the call returns, so setting it on an entry that works
-   * must not skip it, soften it or replace what it returned. The second leg is what gives the
-   * zero-length result its meaning: revert data under the same bit is never empty, so the two
-   * cases are distinguishable and the first assertion is not simply reading an unset array slot.
-   */
-  function test_FWD_19_failureBitOnASucceedingCallIsInert() public {
-    uint256 value = 19 ether;
-    uint256 deadline = block.timestamp + 1 hours;
-
-    bytes[] memory data = new bytes[](1);
-    data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
-
-    vm.prank(relayer);
-    bytes[] memory results =
-      hub.forwardCalls(_one(address(permitToken)), data, _bits(type(uint256).max));
-
-    assertEq(permitToken.allowance(owner, address(hub)), value, 'the state change still landed');
-    assertEq(permitToken.nonces(owner), 1, 'and the nonce was still consumed');
-    assertEq(results[0].length, 0, "results[0] is the permit's own empty return");
-
-    uint256 expired = block.timestamp - 1;
-    bytes[] memory failing = new bytes[](1);
-    failing[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 1, expired);
-
-    vm.prank(relayer);
-    bytes[] memory failedResults =
-      hub.forwardCalls(_one(address(permitToken)), failing, _bits(type(uint256).max));
-
-    assertEq(
-      failedResults[0],
-      abi.encodeWithSelector(ERC20Permit.ERC2612ExpiredSignature.selector, expired),
-      'a skipped entry carries revert data, which is never empty'
-    );
-    assertEq(permitToken.allowance(owner, address(hub)), value, 'and it changed nothing');
-    assertEq(permitToken.nonces(owner), 1, 'nor burned a nonce');
-  }
-
   // -----------------------------------------------------------------------------------------------
   // FWD-PAUSE / FWD-VALUE / FWD-REENTRY — the guards `forwardCalls` deliberately does without
   // -----------------------------------------------------------------------------------------------
@@ -804,10 +721,8 @@ contract ForwarderTest is AuthenticatorBase {
   /**
    * FWD-PAUSE-01 — a pause does not close the forwarder
    * @dev Intended: relaying a permit moves nobody's assets, it only records an allowance, and an
-   * allowance granted during a pause cannot be spent while the pause holds — the order entry points
-   * are shut, which the second half of this case shows on the same paused hub. Keeping
-   * `forwardCalls` open means a user mid-flow can still land the approval half of their
-   * transaction.
+   * allowance granted during a pause cannot be spent while the pause holds. Keeping `forwardCalls`
+   * open means a user mid-flow can still land the approval half of their transaction.
    */
   function test_FWD_PAUSE_01_forwardStillWorksWhilePaused() public {
     uint256 value = 5 ether;
@@ -824,18 +739,6 @@ contract ForwarderTest is AuthenticatorBase {
 
     assertTrue(hub.paused(), 'the hub is still paused');
     assertEq(permitToken.allowance(owner, address(hub)), value, 'and the permit was relayed');
-
-    // the allowance it granted is unspendable until the pause lifts
-    vm.prank(owner);
-    vm.expectRevert(Pausable.EnforcedPause.selector);
-    hub.executeOrderWithDelegatedAuthentication(
-      _openExecutionOrder(
-        _erc20s(_tokenTransfer(1 ether)), new GenericCall[](0), 0, block.timestamp
-      ),
-      address(0),
-      '',
-      false
-    );
   }
 
   /**

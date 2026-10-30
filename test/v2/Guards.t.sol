@@ -350,15 +350,13 @@ contract GuardsTest is AuthenticatorBase {
 
   /**
    * GATE-02 — the modifier applications no other case watches
-   * @dev One leg each for `guardNativeSpend` on `executeOrderWithPermit2Signature`, and for the
-   * `setMsgSenderAndLock`, the native guard and `checkDelegation` on
-   * `fulfillOrderWithDelegatedAuthentication`. Each leg is written so that only its own modifier
-   * can produce the result; `setMsgSenderAndLock` is observed through what the router saw, because
-   * its absence leaves `msgSender()` empty rather than reverting.
+   * @dev One leg each for `guardNativeSpend` on `executeOrderWithPermit2Signature`, and for
+   * `checkDelegation` and the native guard on `fulfillOrderWithDelegatedAuthentication`. Each leg
+   * is written so that only its own modifier can produce the result. The lock on the fulfillment
+   * rails is covered by LOCK-03 and LOCK-06.
    */
   function test_GATE_02_theUnwatchedModifierApplications() public {
     uint256 deadline = block.timestamp + 1 hours;
-    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC20Allowance[] memory allowances = _allowances(_tokenAllowance(AMOUNT));
 
     // guardNativeSpend on executeOrderWithPermit2Signature
@@ -415,19 +413,6 @@ contract GuardsTest is AuthenticatorBase {
     );
 
     assertEq(address(hub).balance, PREFUND, "the fulfill rail kept the hub's float");
-
-    // setMsgSenderAndLock on fulfillOrderWithDelegatedAuthentication, seen from inside the route
-    FulfillmentOrder memory locked = _openFulfillmentOrder(
-      allowances, new ValidationParams[](0), new GenericCall[](0), 113, deadline
-    );
-
-    vm.prank(owner);
-    hub.fulfillOrderWithDelegatedAuthentication(
-      locked, address(0), '', _route(locked, _calls(_routerCall(0, hex'01'))), '', false
-    );
-
-    assertEq(router.seenMsgSender(), owner, 'the route ran under a lock naming the owner');
-    assertEq(hub.msgSender(), address(0), 'and the lock was released afterwards');
   }
 
   function _executeAtDeadline(uint256 deadline, bool shouldSettle) internal {
