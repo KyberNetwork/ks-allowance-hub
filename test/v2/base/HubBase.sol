@@ -10,6 +10,7 @@ import {ERC20Mock, ERC721Mock} from 'test/v2/mocks/TokenMocks.sol';
 import {ValidatorMock} from 'test/v2/mocks/ValidatorMock.sol';
 
 import {DeadlineChecker} from 'src/base/DeadlineChecker.sol';
+import {CallsForwarder} from 'src/v2/CallsForwarder.sol';
 import {KSAllowanceHubV2} from 'src/v2/KSAllowanceHubV2.sol';
 import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
@@ -35,6 +36,7 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  */
 abstract contract HubBase is V2TestBase {
   KSAllowanceHubV2 internal hub;
+  CallsForwarder internal callsForwarder;
 
   RouterMock internal router;
   RouterMock internal router2;
@@ -73,11 +75,14 @@ abstract contract HubBase is V2TestBase {
     routers[0] = address(router);
     routers[1] = address(router2);
 
-    hub = new KSAllowanceHubV2(admin, guardians, rescuers, routers, permit2);
+    callsForwarder = new CallsForwarder();
+    hub =
+      new KSAllowanceHubV2(admin, guardians, rescuers, routers, permit2, address(callsForwarder));
 
     _fundOwner();
 
     vm.label(address(hub), 'hub');
+    vm.label(address(callsForwarder), 'callsForwarder');
     vm.label(address(router), 'router');
     vm.label(permit2, 'permit2');
     vm.label(token18, 'token18');

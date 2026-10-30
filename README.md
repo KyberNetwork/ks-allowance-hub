@@ -104,11 +104,11 @@ calls no authenticator and leaves the authenticator's own state unchanged.
 
 An authenticator has two update functions:
 
-- `initAuthentication(owner, data)` takes no signature. Only the hub may call it, from
-  `updateDelegation`, and `forwardCalls` does not relay it.
+- `initAuthentication(owner, data)` takes no signature. Only the hub may call it, and the hub
+  calls it only from `updateDelegation`.
 - `updateAuthentication(owner, data, nonce, deadline, signature)` can be called by any account,
-  and `forwardCalls` relays it with the hub as `msg.sender`. An authenticator must therefore accept
-  only `msg.sender == owner` without a signature.
+  including the calls forwarder. An authenticator must therefore accept only `msg.sender == owner`
+  without a signature.
 
 ### TwoTiersOrderAuthenticator
 
@@ -156,23 +156,17 @@ signature, whether or not the key is still approved or unexpired.
 
 ### Relayed approvals
 
-`forwardCalls(targets, data, allowFailure)` relays calls that carry their own authorisation:
+`CallsForwarder` is a separate contract whose `forwardCalls(targets, data, allowFailure)` relays
+any call. It holds no allowance, role or asset, so a relayed call carries no authority beyond what
+its own payload proves: a token permit, a signed delegation, a signed authenticator update. No
+contract may grant the forwarder authority.
 
-- Permit2 `permit`, both overloads;
-- ERC-2612 `permit` and the DAI-style `permit`;
-- ERC-721 `permit`, both variants;
-- the hub's `updateDelegation`;
-- an authenticator's `updateAuthentication`.
-
-Every target sees the hub as `msg.sender`, so any other selector reverts with
-`UnsupportedSelector`. A reverting call reverts the batch unless its bit in `allowFailure` is set.
-A relayer that batches a signed permit or delegation with the order using it should set that bit,
-so that another account submitting the same signature first does not revert the batch. Native
-value sent with `forwardCalls` is not forwarded and remains in the hub.
-
-`multicall` runs several hub calls in one transaction with `delegatecall`, so each keeps the
-original `msg.sender` and `msg.value`. The native value spent by the whole batch is limited to
-`msg.value`.
+The hub's `forwardCalls` calls the forwarder set at deployment, so that the relayed calls can run
+in a hub `multicall` beside the order that uses them, with the relayer still the order's
+`msg.sender`. A reverting call reverts the batch unless its bit in `allowFailure` is set. A relayer
+that batches a signed permit or delegation with the order using it should set that bit, so that
+another account submitting the same signature first does not revert the batch. Native value sent
+with `forwardCalls` is not forwarded and remains in the hub.
 
 ```solidity
 hub.multicall([
@@ -213,7 +207,7 @@ Each domain is published through ERC-5267's `eip712Domain()`.
 src/
   base/            contracts shared by both hubs
   v1/              KSAllowanceHub
-  v2/              KSAllowanceHubV2, its delegator, forwarder, types and libraries
+  v2/              KSAllowanceHubV2, its delegator and multicall, CallsForwarder, types and libraries
   v2/authenticators/  TwoTiersOrderAuthenticator and its key types
 test/
   base/            shared test base, EIP-712 oracles and the Permit2 artifact check
@@ -281,13 +275,16 @@ The scripts deploy with CREATE3 and read `script/config/*.json` per chain.
 forge script script/v1/DeployKSAllowanceHub.s.sol             --sig 'run(string[])' '[1,56]' --broadcast
 forge script script/v1/AddWhitelistedRouters.s.sol            --sig 'run(string[])' '[1,56]' --broadcast
 
+forge script script/v2/DeployCallsForwarder.s.sol             --sig 'run(string[])' '[1,56]' --broadcast
 forge script script/v2/DeployKSAllowanceHubV2.s.sol           --sig 'run(string[])' '[1,56]' --broadcast
 forge script script/v2/DeployTwoTiersOrderAuthenticator.s.sol  --sig 'run(string[])' '[1,56]' --broadcast
 forge script script/v2/AddWhitelistedRoutersV2.s.sol          --sig 'run(string[])' '[1,56]' --broadcast
 ```
 
-`DeployKSAllowanceHubV2` writes the hub's address to `allowance-hub-v2.json`, which
-`DeployTwoTiersOrderAuthenticator` and `AddWhitelistedRoutersV2` read, so the hub is deployed first.
+`DeployCallsForwarder` writes the forwarder's address to `calls-forwarder.json`, which
+`DeployKSAllowanceHubV2` reads, so the forwarder is deployed first. `DeployKSAllowanceHubV2` writes
+the hub's address to `allowance-hub-v2.json`, which `DeployTwoTiersOrderAuthenticator` and
+`AddWhitelistedRoutersV2` read.
 `AddWhitelistedRoutersV2` grants the missing routers in one transaction through the hub's
 `multicall`.
 

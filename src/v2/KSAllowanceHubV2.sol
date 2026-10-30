@@ -3,9 +3,12 @@ pragma solidity 0.8.36;
 
 import {MsgSender} from '../base/MsgSender.sol';
 
-import {AuthDelegator} from './AuthDelegator.sol';
-import {CallsForwarder} from './CallsForwarder.sol';
+import {PackedBits} from '../base/types/PackedBits.sol';
 
+import {AuthDelegator} from './AuthDelegator.sol';
+import {Multicall} from './Multicall.sol';
+
+import {ICallsForwarder} from './interfaces/ICallsForwarder.sol';
 import {IKSAllowanceHubV2} from './interfaces/IKSAllowanceHubV2.sol';
 import {IOrderAuthenticator} from './interfaces/IOrderAuthenticator.sol';
 
@@ -59,7 +62,7 @@ contract KSAllowanceHubV2 is
   IKSAllowanceHubV2,
   ManagementSimple,
   AuthDelegator,
-  CallsForwarder,
+  Multicall,
   MsgSender
 {
   using CalldataDecoder for bytes;
@@ -83,19 +86,23 @@ contract KSAllowanceHubV2 is
 
   address internal immutable PERMIT2;
 
+  address internal immutable CALLS_FORWARDER;
+
   /**
    * @param initialAdmin Holder of the default admin role
    * @param initialGuardians Accounts that may pause the hub and revoke routers
    * @param initialRescuers Accounts that may transfer assets held by the hub
    * @param initialWhitelistedRouters Routers callable from the start
    * @param permit2 The canonical Permit2 deployment
+   * @param callsForwarder The {CallsForwarder} that {forwardCalls} relays through
    */
   constructor(
     address initialAdmin,
     address[] memory initialGuardians,
     address[] memory initialRescuers,
     address[] memory initialWhitelistedRouters,
-    address permit2
+    address permit2,
+    address callsForwarder
   )
     ManagementSimple(initialAdmin, initialGuardians)
     AuthDelegator('KyberSwap Allowance Hub', '2.0.0')
@@ -107,6 +114,7 @@ contract KSAllowanceHubV2 is
     _setRoleRevoker(WHITELISTED_ROUTER_ROLE, KSRoles.GUARDIAN_ROLE);
 
     PERMIT2 = permit2;
+    CALLS_FORWARDER = callsForwarder;
   }
 
   /// @inheritdoc IKSAllowanceHubV2
@@ -291,6 +299,15 @@ contract KSAllowanceHubV2 is
     }
 
     return _settleFulfillment(order, solution, beforeExecutionOutputs);
+  }
+
+  /// @inheritdoc IKSAllowanceHubV2
+  function forwardCalls(address[] calldata targets, bytes[] calldata data, PackedBits allowFailure)
+    external
+    payable
+    returns (bytes[] memory results)
+  {
+    return ICallsForwarder(CALLS_FORWARDER).forwardCalls(targets, data, allowFailure);
   }
 
   /// @inheritdoc IKSAllowanceHubV2

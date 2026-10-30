@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import 'ks-common-sc/script/Base.s.sol';
 import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
-import {ICallsForwarder} from 'src/v2/interfaces/ICallsForwarder.sol';
+import {IMulticall} from 'src/v2/interfaces/IMulticall.sol';
 
 contract AddWhitelistedRoutersV2Script is BaseScript {
   /// @dev Must match KSAllowanceHubV2.WHITELISTED_ROUTER_ROLE, which is NOT v1's
@@ -35,6 +35,6 @@ contract AddWhitelistedRoutersV2Script is BaseScript {
     }
 
     // The hub's multicall delegates each grant to itself, so they all go in one transaction
-    ICallsForwarder(allowanceHubV2).multicall(grants);
+    IMulticall(allowanceHubV2).multicall(grants);
   }
 }

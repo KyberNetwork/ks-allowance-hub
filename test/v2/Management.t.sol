@@ -103,7 +103,9 @@ contract ManagementTest is AuthenticatorBase {
 
     // The construction event is only observable on a fresh deployment
     vm.recordLogs();
-    new KSAllowanceHubV2(admin, _one(guardian), _one(rescuer), _one(address(router)), permit2);
+    new KSAllowanceHubV2(
+      admin, _one(guardian), _one(rescuer), _one(address(router)), permit2, address(callsForwarder)
+    );
     Vm.Log[] memory logs = vm.getRecordedLogs();
 
     bytes32 topic = keccak256('RoleRevokerChanged(bytes32,bytes32,bytes32)');

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import {PackedBits} from '../../base/types/PackedBits.sol';
+
 import {ERC20Transfer} from '../types/ERC20Transfer.sol';
 import {ERC721Transfer} from '../types/ERC721Transfer.sol';
 import {ExecutionOrder} from '../types/ExecutionOrder.sol';
@@ -140,6 +142,20 @@ interface IKSAllowanceHubV2 {
     FulfillmentSolution calldata solution,
     bytes calldata solutionSignature
   ) external payable returns (bytes[] memory results);
+
+  /**
+   * @notice Calls {ICallsForwarder-forwardCalls} on the forwarder set at deployment, so that it can
+   * run in a {IMulticall-multicall} batch
+   * @dev Native value sent with the call stays in this contract. Accepted while the hub is paused.
+   * @param targets Passed to the forwarder as is
+   * @param data Passed to the forwarder as is
+   * @param allowFailure Passed to the forwarder as is
+   * @return results The forwarder's results
+   */
+  function forwardCalls(address[] calldata targets, bytes[] calldata data, PackedBits allowFailure)
+    external
+    payable
+    returns (bytes[] memory results);
 
   /**
    * @notice Transfers assets held by the hub to the given targets; callable by an account with the

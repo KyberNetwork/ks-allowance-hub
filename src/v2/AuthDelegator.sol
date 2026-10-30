@@ -53,8 +53,7 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
     uint256 deadline,
     bytes calldata signature
   ) external payable checkDeadline(deadline) {
-    // A call relayed by `forwardCalls` has this contract as its caller, which is never an owner
-    if (owner != msg.sender || msg.sender == address(this)) {
+    if (owner != msg.sender) {
       _useUnorderedNonce(owner, nonce);
 
       bytes32 hash = _hashTypedDataV4(

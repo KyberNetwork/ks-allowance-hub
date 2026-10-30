@@ -14,8 +14,8 @@ interface IOrderAuthenticator {
    * @notice Records the owner's initial authentication material when the owner delegates this
    * authenticator
    * @dev Takes no signature, nonce or deadline, so an implementation must accept it only from the
-   * hub. {AuthDelegator-updateDelegation} authenticates the owner before calling it, and
-   * {ICallsForwarder-forwardCalls} does not relay this selector.
+   * hub. The hub calls it only from {AuthDelegator-updateDelegation}, after authenticating the
+   * owner.
    * @param owner Account the material belongs to
    * @param data Implementation-specific payload
    */
@@ -23,11 +23,11 @@ interface IOrderAuthenticator {
 
   /**
    * @notice Records, replaces or withdraws the owner's authentication material
-   * @dev Any account may call this, and {ICallsForwarder-forwardCalls} relays it with the hub as
-   * `msg.sender`. An implementation must therefore accept only `msg.sender == owner` as
-   * authentication without a signature, and must verify `signature` for every other caller,
-   * including the hub. The implementation determines which signer may authorise an update, and
-   * is responsible for replay protection.
+   * @dev Any account may call this, and {ICallsForwarder-forwardCalls} relays it with the
+   * forwarder as `msg.sender`. An implementation must therefore accept only `msg.sender == owner`
+   * as authentication without a signature, and must verify `signature` for every other caller,
+   * including the forwarder and the hub. The implementation determines which signer may authorise
+   * an update, and is responsible for replay protection.
    * @param owner Account the material belongs to
    * @param data Implementation-specific payload
    * @param nonce Nonce of the signature, for the implementation to spend

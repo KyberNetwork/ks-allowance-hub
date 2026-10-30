@@ -1324,3 +1324,32 @@ Mutations, each failing the listed cases: dropping `LOCKED_FLAG` (`GATE-01`, `LO
 exit (`LOCK-02`, `LOCK-05`); `AlreadyLocked` naming the new sender (`LOCK-03`, `LOCK-06`); the
 execution rails using `setMsgSenderAndLock` (`LOCK-02`, `LOCK-05`, `LOCK-06`, `LOCK-07`); the
 Permit2 execution rail alone using it (`LOCK-02`). The hub is 23,277 bytes.
+
+## Run `20261030T105453Z`
+
+Scope: `CallsForwarder` is a standalone contract that relays any call, with no selector
+allowlist. The hub takes it in its constructor, and the hub's `forwardCalls` calls it, so every
+relayed target sees the forwarder as `msg.sender`. `multicall` lives in the abstract `Multicall`,
+which the hub inherits. `AuthDelegator.updateDelegation` takes the owner path whenever
+`owner == msg.sender`.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261030T105453Z/SPLIT-01` | `hub.forwardCalls` reaches its target through the forwarder, which is the caller the target sees; value sent with it stays in the hub and none reaches the forwarder | `FWD-24` `test_FWD_24_hubForwardsThroughTheForwarder`, `FWD-VALUE-01` `test_FWD_VALUE_01_valueSentWithForwardIsStranded` — `test/v2/Forwarder.t.sol` | `forge test --isolate` — 267 passed |
+| - [x] | - [ ] | `20261030T105453Z/RELAY-01` | The forwarder relays when called directly; a relayed call that proves no authority of its own fails on the target's terms (`ERC20InsufficientBalance(forwarder, 0, 1)`, or no data for an empty, short or zero-selector payload), unwinds the batch unless its failure bit is set, and returns the revert data when it is | `FWD-23` `test_FWD_23_forwarderRelaysWhenCalledDirectly`, `PF-06` `test_PF_06_relayedCallWithoutAuthorityFailsOnTheTargetsTerms`, `PF-06b` `test_PF_06b_failingTransferUnwindsTheBatch` — `test/v2/Forwarder.t.sol` | same |
+| - [x] | - [ ] | `20261030T105453Z/REFUSE-01` | The authenticator's hub-only calls (`initAuthentication`, `authenticateExecution`, `authenticateFulfillment`) relayed through the forwarder revert `CallerNotAllowanceHub(forwarder)`, and no key is planted | `FWD-16` `test_FWD_16_authenticatorRefusesTheForwarderOnHubOnlyCalls` — `test/v2/Forwarder.t.sol` | same |
+| - [x] | - [ ] | `20261030T105453Z/DELEG-01` | An owner relaying their own unsigned `updateDelegation` is refused `InvalidDelegationSignature`, because the hub sees the forwarder as the caller | `FWD-22` `test_FWD_22_relayedDelegationNeedsTheOwnersSignature` — `test/v2/Forwarder.t.sol` | same |
+| - [x] | - [ ] | `20261030T105453Z/MC-01` | The forwarder answers no `multicall`; the hub does | `FWD-25` `test_FWD_25_forwarderHasNoMulticall` — `test/v2/Forwarder.t.sol` | same |
+
+### Notes for this run
+
+References in earlier runs to the forwarder's selector allowlist, `UnsupportedSelector`,
+`CallsForwarder.multicall` and the `msg.sender == address(this)` clause in `updateDelegation`
+describe code that is gone. The cases that asserted them are rewritten in place under the same IDs:
+`PF-06` (was `test_PF_06_unsupportedSelectorRefused`), `PF-06b` (was
+`test_PF_06b_unsupportedSelectorUnwindsTheBatch`), `FWD-16` (was
+`test_FWD_16_initAndAuthenticateAreNotForwardable`) and `FWD-22` (was
+`test_FWD_22_theHubNeverAuthenticatesAsAnOwner`, whose half for an owner equal to the hub is
+dropped). The relays of permits, delegations and authenticator updates (`PF-01..05`,
+`FWD-13`, `FWD-15`, `FWD-17`, `FWD-20`, `FWD-21`) are unchanged apart from wording. The hub is
+22,793 bytes and the forwarder 919.

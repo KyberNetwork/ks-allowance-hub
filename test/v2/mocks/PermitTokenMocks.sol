@@ -180,6 +180,20 @@ contract ReentrantPermitMock {
 }
 
 /**
+ * @notice A "token" whose EIP-2612 `permit` records the `msg.sender` it was called by
+ * @dev The permit arguments are ignored, since the subject is the caller a relayed call observes.
+ */
+contract CallerRecorderMock {
+  address public lastCaller;
+  uint256 public permitCount;
+
+  function permit(address, address, uint256, uint256, uint8, bytes32, bytes32) external {
+    lastCaller = msg.sender;
+    permitCount++;
+  }
+}
+
+/**
  * @notice ERC-1155 that can be seeded onto a contract holding no receiver hook
  * @dev {ERC1155-_mint} runs the acceptance check and would revert against the hub, so the only
  * way a balance can become stranded there, and so the only way a rescue path can be reached, is an

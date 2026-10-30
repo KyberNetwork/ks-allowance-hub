@@ -4,6 +4,7 @@ pragma solidity 0.8.36;
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
 import {
+  CallerRecorderMock,
   ERC20DaiPermitMock,
   ERC721PermitV3Mock,
   ERC721PermitV4Mock,
@@ -17,8 +18,8 @@ import {
   ITwoTiersOrderAuthenticator
 } from 'src/v2/authenticators/interfaces/ITwoTiersOrderAuthenticator.sol';
 import {IAuthDelegator} from 'src/v2/interfaces/IAuthDelegator.sol';
-import {ICallsForwarder} from 'src/v2/interfaces/ICallsForwarder.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
+import {IMulticall} from 'src/v2/interfaces/IMulticall.sol';
 import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
 import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
@@ -30,6 +31,7 @@ import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
 import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
 
+import {IERC20Errors} from 'openzeppelin-contracts/contracts/interfaces/draft-IERC6093.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 import {ERC20Permit} from 'openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Permit.sol';
 import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
@@ -37,8 +39,9 @@ import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
 /**
  * @title ForwarderTest
  * @notice `PF-01..09`, `PF-FUZZ` and `FWD-13..19` plus `FWD-PAUSE/VALUE/REENTRY`: the
- * self-authorising calls {ICallsForwarder-forwardCalls} relays, its selector allowlist, its
- * per-entry failure bits and the things it deliberately does not guard.
+ * calls {ICallsForwarder-forwardCalls} relays that carry their own authorisation, its per-entry
+ * failure bits, the calls that fail on their target's own terms and the things it deliberately
+ * does not guard.
  * @dev `forwardCalls` makes a plain `call` per entry, so the observable oracle is never the return
  * value: it is the allowance, approval or nonce the target holds afterwards. Every digest here is
  * built from a type string written out in this file from EIP-2612, the DAI permit and the ERC-721
@@ -61,7 +64,7 @@ contract ForwarderTest is AuthenticatorBase {
     'PermitDetails(address token,uint160 amount,uint48 expiration,uint48 nonce)';
   string internal constant L_PERMIT2_BATCH_STUB =
     'PermitBatch(PermitDetails[] details,address spender,uint256 sigDeadline)';
-  /// @dev The batch stub's sibling, for the other Permit2 overload on the allowlist
+  /// @dev The batch stub's sibling, for the other Permit2 overload
   string internal constant L_PERMIT2_SINGLE_STUB =
     'PermitSingle(PermitDetails details,address spender,uint256 sigDeadline)';
 
@@ -113,7 +116,7 @@ contract ForwarderTest is AuthenticatorBase {
   }
 
   // -----------------------------------------------------------------------------------------------
-  // PF-01..05 — one case per selector on the allowlist that a token or Permit2 answers
+  // PF-01..05 — one case per self-authorising `permit` shape that a token or Permit2 answers
   // -----------------------------------------------------------------------------------------------
 
   /// PF-01 — an EIP-2612 permit is relayed to the token and lands as an allowance
@@ -197,7 +200,7 @@ contract ForwarderTest is AuthenticatorBase {
     assertTrue(nftV4.nonceUsed(owner, nonce), 'nonce consumed');
   }
 
-  /// PF-05 — Permit2's batch `permit`, one of the two overloads written out in the allowlist
+  /// PF-05 — Permit2's batch `permit`, one of the two Permit2 overloads
   function test_PF_05_permit2BatchPermitForwarded() public {
     uint160 amount = 42 ether;
     uint48 expiration = uint48(block.timestamp + 1 days);
@@ -222,49 +225,61 @@ contract ForwarderTest is AuthenticatorBase {
   }
 
   // -----------------------------------------------------------------------------------------------
-  // PF-06..07 — the two guards that refuse a batch outright
+  // PF-06..07 — a relayed call carries no authority of its own, and the length guard
   // -----------------------------------------------------------------------------------------------
 
   /**
-   * PF-06 — a selector outside the allowlist is refused by name, whatever its failure bit says
-   * @dev The allowlist is the whole of the forwarder's safety, because the forwarder is the
-   * `msg.sender` every target sees. So the refusal has to come before the call, and it has to be
-   * unconditional: `allowFailure` only covers a call that was made and reverted.
+   * PF-06 — a relayed call that proves no authority fails on the target's own terms
+   * @dev The forwarder holds no allowance, role or asset, so a call relayed through it carries no
+   * authority beyond what its own payload proves. `transfer` moves the forwarder's own balance,
+   * which is zero, so the token refuses it; a payload too short to hold a selector reaches a
+   * target with no fallback and reverts without data. A set failure bit lets the batch carry on.
    */
-  function test_PF_06_unsupportedSelectorRefused() public {
+  function test_PF_06_relayedCallWithoutAuthorityFailsOnTheTargetsTerms() public {
+    uint256 relayerBalance = permitToken.balanceOf(relayer);
+    bytes memory insufficient = abi.encodeWithSelector(
+      IERC20Errors.ERC20InsufficientBalance.selector, address(callsForwarder), 0, 1
+    );
+
     bytes[] memory data = new bytes[](1);
     data[0] = abi.encodeCall(IERC20.transfer, (relayer, 1));
 
     vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        ICallsForwarder.UnsupportedSelector.selector, 0, IERC20.transfer.selector
-      )
-    );
+    vm.expectRevert(insufficient);
     hub.forwardCalls(_one(address(permitToken)), data, _bits(0));
+    assertEq(permitToken.balanceOf(relayer), relayerBalance, 'the relayer gained nothing');
 
-    // a set failure bit does not turn the refusal into a skipped entry
+    // with the entry's bit set the same refusal is recorded as that entry's result
     vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        ICallsForwarder.UnsupportedSelector.selector, 0, IERC20.transfer.selector
-      )
-    );
-    hub.forwardCalls(_one(address(permitToken)), data, _bits(type(uint256).max));
+    bytes[] memory results = hub.forwardCalls(_one(address(permitToken)), data, _bits(1));
+    assertEq(results[0], insufficient, 'the result holds the token revert data');
+    assertEq(permitToken.balanceOf(relayer), relayerBalance, 'and the relayer still gained nothing');
+    assertEq(permitToken.balanceOf(address(callsForwarder)), 0, 'the forwarder holds nothing');
 
-    // a payload too short to hold a selector reads as zero, which matches nothing
-    bytes[] memory empty = new bytes[](1);
-    empty[0] = '';
+    // an empty payload, a payload shorter than a selector and a zero selector all reach a token
+    // with no fallback, which reverts without data
+    bytes[] memory shapes = new bytes[](3);
+    shapes[0] = '';
+    shapes[1] = hex'010203';
+    shapes[2] = abi.encodePacked(bytes4(0));
 
-    vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(ICallsForwarder.UnsupportedSelector.selector, 0, bytes4(0))
-    );
-    hub.forwardCalls(_one(address(permitToken)), empty, _bits(0));
+    for (uint256 i = 0; i < shapes.length; i++) {
+      bytes[] memory single = new bytes[](1);
+      single[0] = shapes[i];
+
+      vm.prank(relayer);
+      vm.expectRevert(bytes(''));
+      hub.forwardCalls(_one(address(permitToken)), single, _bits(0));
+
+      vm.prank(relayer);
+      results = hub.forwardCalls(_one(address(permitToken)), single, _bits(1));
+      assertEq(results.length, 1, 'the batch carried on');
+      assertEq(results[0].length, 0, 'and the entry returned no data');
+    }
   }
 
-  /// PF-06b — the refusal unwinds the entries that already ran ahead of it
-  function test_PF_06b_unsupportedSelectorUnwindsTheBatch() public {
+  /// PF-06b — a relayed call that fails on its target unwinds the entries that already ran
+  function test_PF_06b_failingTransferUnwindsTheBatch() public {
     uint256 value = 11 ether;
     uint256 deadline = block.timestamp + 1 hours;
 
@@ -279,7 +294,7 @@ contract ForwarderTest is AuthenticatorBase {
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(
-        ICallsForwarder.UnsupportedSelector.selector, 1, IERC20.transfer.selector
+        IERC20Errors.ERC20InsufficientBalance.selector, address(callsForwarder), 0, 1
       )
     );
     hub.forwardCalls(targets, data, _bits(0));
@@ -421,13 +436,13 @@ contract ForwarderTest is AuthenticatorBase {
   }
 
   // -----------------------------------------------------------------------------------------------
-  // FWD-13..16 — the `updateAuthentication` arm of the allowlist, and the neighbours it must not
-  // carry
+  // FWD-13..16 — a relayed `updateAuthentication`, and the authenticator calls that refuse the
+  // forwarder as caller
   // -----------------------------------------------------------------------------------------------
 
   /**
    * FWD-13 — a relayed `updateAuthentication` approves a session key, on the authenticator's nonce
-   * @dev The seventh selector is not a token permit at all: it is the owner telling an
+   * @dev This is not a token permit: it is the owner telling an
    * authenticator which credential may sign for them, relayed so the approval and the order that
    * uses it fit in one transaction. The authenticator owns the replay protection for it, so its
    * bitmap moves and the hub's does not: the hub only relays the call and spends nothing of its
@@ -464,8 +479,8 @@ contract ForwarderTest is AuthenticatorBase {
 
   /**
    * FWD-20 — the same relay carries a master key's approval, not only the owner's
-   * @dev The allowlist matches on the selector and both rails share one, so the second tier is
-   * relayable without the forwarder learning anything about it. What moves is the master key's
+   * @dev Both rails share one selector, so the second tier is relayable without the forwarder
+   * learning anything about it. What moves is the master key's
    * bitmap: the owner neither signed nor submitted, so nothing of theirs is spent.
    */
   function test_FWD_20_updateAuthenticationIsRelayedOnTheMasterKeyRail() public {
@@ -561,31 +576,21 @@ contract ForwarderTest is AuthenticatorBase {
   }
 
   /**
-   * FWD-22 — a relayed `updateDelegation` never takes the hub, its caller, for the owner
-   * @dev Without the signature, the hub would be an account anyone could delegate an authenticator
-   * for, and an order naming the hub as owner would spend what the hub holds. An owner forwarding
-   * their own delegation must sign it too.
+   * FWD-22 — a relayed `updateDelegation` needs the owner's signature even when the owner relays it
+   * @dev The hub sees the forwarder as the caller, never the owner, so an owner forwarding their
+   * own delegation must sign it.
    */
-  function test_FWD_22_theHubNeverAuthenticatesAsAnOwner() public {
+  function test_FWD_22_relayedDelegationNeedsTheOwnersSignature() public {
     uint256 deadline = block.timestamp + 1 hours;
 
     bytes[] memory data = new bytes[](1);
-    data[0] = abi.encodeCall(
-      IAuthDelegator.updateDelegation,
-      (address(hub), address(authenticator), true, '', 0, deadline, '')
-    );
-    vm.prank(relayer);
-    vm.expectRevert(IAuthDelegator.InvalidDelegationSignature.selector);
-    hub.forwardCalls(_one(address(hub)), data, _bits(0));
-    assertFalse(hub.authDelegated(address(hub), address(authenticator)), 'the hub is not delegated');
-
     data[0] = abi.encodeCall(
       IAuthDelegator.updateDelegation, (owner, address(authenticator), true, '', 0, deadline, '')
     );
     vm.prank(owner);
     vm.expectRevert(IAuthDelegator.InvalidDelegationSignature.selector);
     hub.forwardCalls(_one(address(hub)), data, _bits(0));
-    assertFalse(hub.authDelegated(owner, address(authenticator)), 'nor is the owner');
+    assertFalse(hub.authDelegated(owner, address(authenticator)), 'the owner is not delegated');
   }
 
   /**
@@ -619,17 +624,14 @@ contract ForwarderTest is AuthenticatorBase {
   }
 
   /**
-   * FWD-16 — `initAuthentication` and the two `authenticate*` entry points are not forwardable
-   * @dev The security-critical half of the allowlist. `initAuthentication` takes no signature,
-   * nonce or deadline: it trusts its caller absolutely, and the hub is the caller every forwarded
-   * call arrives as. Were its selector relayable, anyone could hand an authenticator an arbitrary
-   * key for an arbitrary owner and then sign that owner's orders with it. `authenticateExecution`
-   * and `authenticateFulfillment` are the same shape of hazard pointed at the order rails, and
-   * there are two of them now where there was one `verifyAuth`. All three selectors are rebuilt
-   * here from signature strings written out by hand, because deriving them from the production
-   * interface would let a wrong signature there agree with a wrong expectation here.
+   * FWD-16 — the forwarder relays `initAuthentication` and the `authenticate*` calls, and the
+   * authenticator refuses it as the caller because it is not the hub
+   * @dev `initAuthentication`, `authenticateExecution` and `authenticateFulfillment` trust only the
+   * hub. A relay makes the forwarder their caller, so each reverts with
+   * {IOrderAuthenticator-CallerNotAllowanceHub} naming the forwarder and the authenticator's state
+   * is unchanged. With the failure bit set the refusal is recorded as that entry's result.
    */
-  function test_FWD_16_initAndAuthenticateAreNotForwardable() public {
+  function test_FWD_16_authenticatorRefusesTheForwarderOnHubOnlyCalls() public {
     AuthKey memory victimKey = _secpKey(relayer, block.timestamp + 30 days);
     bytes32 victimHash = _keyHash(victimKey);
     bytes memory payload = _encodeKey(victimKey);
@@ -654,60 +656,38 @@ contract ForwarderTest is AuthenticatorBase {
       IOrderAuthenticator.authenticateFulfillment, (fulfillOrder, bytes32(0), payload)
     );
 
-    // Sent straight at the authenticator, each of the three reaches its hub-only gate and comes
-    // back with that error, so the refusals below are the forwarder's own and not the authenticator
-    // declining a caller it would have declined anyway.
+    // Sent straight at the authenticator, each of the three reaches its hub-only gate, so the
+    // refusals below are about the caller and not about a malformed payload.
     _assertReachesTheHubOnlyGate(initData[0], 'initAuthentication');
     _assertReachesTheHubOnlyGate(executionData[0], 'authenticateExecution');
     _assertReachesTheHubOnlyGate(fulfillmentData[0], 'authenticateFulfillment');
 
-    vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        ICallsForwarder.UnsupportedSelector.selector,
-        0,
-        IOrderAuthenticator.initAuthentication.selector
-      )
+    bytes memory refusal = abi.encodeWithSelector(
+      IOrderAuthenticator.CallerNotAllowanceHub.selector, address(callsForwarder)
     );
+
+    vm.prank(relayer);
+    vm.expectRevert(refusal);
     hub.forwardCalls(targets, initData, _bits(0));
 
     assertFalse(authenticator.masterKeys(owner, victimHash), 'no key was planted on the owner');
 
-    // a set failure bit does not downgrade the refusal into a skipped entry: the check runs
-    // before the call, and `allowFailure` only ever covers a call that was made and reverted
+    // a set failure bit records the refusal as the entry's result
     vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        ICallsForwarder.UnsupportedSelector.selector,
-        0,
-        IOrderAuthenticator.initAuthentication.selector
-      )
-    );
-    hub.forwardCalls(targets, initData, _bits(type(uint256).max));
+    bytes[] memory results = hub.forwardCalls(targets, initData, _bits(type(uint256).max));
+    assertEq(results[0], refusal, 'the result holds the authenticator refusal');
+    assertFalse(authenticator.masterKeys(owner, victimHash), 'and still no key was planted');
 
-    // and both authentication entry points are refused by the same list
     vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        ICallsForwarder.UnsupportedSelector.selector,
-        0,
-        IOrderAuthenticator.authenticateExecution.selector
-      )
-    );
+    vm.expectRevert(refusal);
     hub.forwardCalls(targets, executionData, _bits(0));
 
     vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        ICallsForwarder.UnsupportedSelector.selector,
-        0,
-        IOrderAuthenticator.authenticateFulfillment.selector
-      )
-    );
+    vm.expectRevert(refusal);
     hub.forwardCalls(targets, fulfillmentData, _bits(0));
 
-    // the control: on the same target, in the same shape, the one selector that IS listed goes
-    // through — so the refusals above are about those selectors and not about the authenticator
+    // the control: on the same target, in the same shape, `updateAuthentication` carries the
+    // owner's signature and goes through
     uint256 nonce = 303;
     uint256 deadline = block.timestamp + 1 hours;
     bytes memory approvalSig = _signMasterKeyApproval(victimKey, true, nonce, deadline);
@@ -721,19 +701,19 @@ contract ForwarderTest is AuthenticatorBase {
     vm.prank(relayer);
     hub.forwardCalls(targets, updateData, _bits(0));
     assertTrue(
-      authenticator.masterKeys(owner, victimHash), 'updateAuthentication is the listed way in'
+      authenticator.masterKeys(owner, victimHash), 'updateAuthentication proves its own authority'
     );
   }
 
   // -----------------------------------------------------------------------------------------------
-  // FWD-17..19 — the rest of the allowlist, and the shape of a batch
+  // FWD-17..19 — Permit2's single permit, and the shape of a batch
   // -----------------------------------------------------------------------------------------------
 
   /**
-   * FWD-17 — Permit2's single `permit`, the other overload written out in the allowlist
+   * FWD-17 — Permit2's single `permit`, the other Permit2 overload
    * @dev The two overloads differ only in whether `details` is an array, so they hash to different
-   * selectors that no `.selector` expression can tell apart. PF-05 covers the batch; this is the
-   * one that would silently drop out of the list if the two strings were ever transposed.
+   * selectors that no `.selector` expression can tell apart. PF-05 covers the batch; this covers
+   * the single form, and fails if the two signature strings are transposed.
    */
   function test_FWD_17_permit2SinglePermitForwarded() public {
     uint160 amount = 17 ether;
@@ -859,9 +839,9 @@ contract ForwarderTest is AuthenticatorBase {
   }
 
   /**
-   * FWD-VALUE-01 — value sent with `forwardCalls` is stranded in the hub
-   * @dev `forwardCalls` is payable and carries no native-spend guard, because none of the seven
-   * calls it relays takes value: it forwards `data` only, never `msg.value`. So anything attached
+   * FWD-VALUE-01 — value sent with `forwardCalls` is stranded in the hub, not the forwarder
+   * @dev `forwardCalls` is payable and carries no native-spend guard, because none of the calls
+   * relayed here takes value: it forwards `data` only, never `msg.value`. So anything attached
    * simply stays, with no `receive` and no refund to send it back. Not a loss of user funds — a
    * rescuer sweeps it — but it is the contract's behaviour and a caller should not expect change.
    */
@@ -879,6 +859,7 @@ contract ForwarderTest is AuthenticatorBase {
     hub.forwardCalls{value: 1 ether}(_one(address(permitToken)), data, _bits(0));
 
     assertEq(address(hub).balance, 1 ether, 'every wei of it stayed behind');
+    assertEq(address(callsForwarder).balance, 0, 'and none reached the forwarder');
     assertEq(relayer.balance, 0, 'and none came back to the sender');
     assertEq(permitToken.allowance(owner, address(hub)), value, 'the permit itself still landed');
   }
@@ -909,7 +890,7 @@ contract ForwarderTest is AuthenticatorBase {
       abi.encodeCall(IKSAllowanceHubV2.executeOrderWithPermit2Signature, (order, permitSig))
     );
 
-    // a well-formed EIP-2612 payload, so the allowlist lets it through; the mock ignores the
+    // a well-formed EIP-2612 payload; the mock ignores the
     // arguments and calls back instead of checking them
     bytes[] memory data = new bytes[](1);
     data[0] = abi.encodeWithSignature(
@@ -929,18 +910,89 @@ contract ForwarderTest is AuthenticatorBase {
     assertEq(router.seenMsgSender(), owner, 'holding the lock for the owner while it did');
   }
 
+  /// FWD-23 — the forwarder relays a permit and a failing call alike when called directly
+  function test_FWD_23_forwarderRelaysWhenCalledDirectly() public {
+    uint256 value = 17 ether;
+    uint256 deadline = block.timestamp + 1 hours;
+
+    bytes[] memory data = new bytes[](1);
+    data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
+
+    vm.prank(relayer);
+    bytes[] memory results = callsForwarder.forwardCalls(_one(address(permitToken)), data, _bits(0));
+
+    assertEq(permitToken.allowance(owner, address(hub)), value, 'allowance');
+    assertEq(permitToken.nonces(owner), 1, 'nonce consumed');
+    assertEq(results.length, 1, 'one result per entry');
+
+    // a permit followed by a transfer of tokens the forwarder does not hold reverts with the
+    // token's own error, whatever ran ahead of it
+    bytes[] memory failing = new bytes[](2);
+    failing[0] =
+      _erc2612Call('Permit Token', address(permitToken), address(hub), value, 1, deadline);
+    failing[1] = abi.encodeCall(IERC20.transfer, (relayer, 1));
+
+    address[] memory targets = new address[](2);
+    targets[0] = address(permitToken);
+    targets[1] = address(permitToken);
+
+    vm.prank(relayer);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IERC20Errors.ERC20InsufficientBalance.selector, address(callsForwarder), 0, 1
+      )
+    );
+    callsForwarder.forwardCalls(targets, failing, _bits(0));
+    assertEq(permitToken.nonces(owner), 1, 'the permit ahead of the failure rolled back');
+  }
+
+  /// FWD-24 — `hub.forwardCalls` reaches the target through the forwarder, which is the caller seen
+  function test_FWD_24_hubForwardsThroughTheForwarder() public {
+    CallerRecorderMock recorder = new CallerRecorderMock();
+
+    bytes[] memory data = new bytes[](1);
+    data[0] = abi.encodeWithSignature(
+      S_EIP2612_PERMIT,
+      owner,
+      address(hub),
+      uint256(1),
+      block.timestamp + 1 hours,
+      uint8(27),
+      bytes32(0),
+      bytes32(0)
+    );
+
+    vm.prank(relayer);
+    hub.forwardCalls(_one(address(recorder)), data, _bits(0));
+
+    assertEq(recorder.permitCount(), 1, 'the target was called once');
+    assertEq(recorder.lastCaller(), address(callsForwarder), 'the forwarder is the caller');
+  }
+
+  /// FWD-25 — the forwarder has no `multicall`, so a batch to it cannot run
+  function test_FWD_25_forwarderHasNoMulticall() public {
+    bytes memory callData = abi.encodeCall(IMulticall.multicall, (new bytes[](0)));
+
+    (bool success,) = address(callsForwarder).call(callData);
+    assertFalse(success, 'the forwarder answers no multicall');
+
+    // the same calldata succeeds on the hub, so the failure above is not a malformed call
+    (success,) = address(hub).call(callData);
+    assertTrue(success, 'the hub answers it');
+  }
+
   // -----------------------------------------------------------------------------------------------
   // Helpers
   // -----------------------------------------------------------------------------------------------
 
-  /// @dev A direct call must reach the authenticator's hub-only gate, proving the selector is real
+  /// @dev A direct call must reach the authenticator's hub-only gate, proving the payload is valid
   function _assertReachesTheHubOnlyGate(bytes memory callData, string memory what) private {
     (bool ok, bytes memory ret) = address(authenticator).call(callData);
     assertFalse(ok, string.concat(what, ' refused the call'));
     assertEq(
       ret,
       abi.encodeWithSelector(IOrderAuthenticator.CallerNotAllowanceHub.selector, address(this)),
-      string.concat('and refused it at the hub-only gate, so the selector reached the real ', what)
+      string.concat('and refused it at the hub-only gate, so the payload reached the real ', what)
     );
   }
 
