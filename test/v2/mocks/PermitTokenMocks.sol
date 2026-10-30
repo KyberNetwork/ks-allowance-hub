@@ -146,7 +146,7 @@ contract ERC721PermitV4Mock is ERC721, EIP712 {
 }
 
 /**
- * @notice A "token" whose EIP-2612 `permit` calls back into the hub before it returns
+ * @notice A token mock whose EIP-2612 `permit` calls back into the hub before it returns
  * @dev {CallsForwarder-forwardCalls} takes no reentrancy lock, so a relayed permit may start an
  * order while the batch that relayed it is still running. That is by design: the forwarder moves
  * no assets of its own and every payload it relays authorises itself. This mock makes it
@@ -180,7 +180,7 @@ contract ReentrantPermitMock {
 }
 
 /**
- * @notice A "token" whose EIP-2612 `permit` records the `msg.sender` it was called by
+ * @notice A token mock whose EIP-2612 `permit` records the `msg.sender` it was called by
  * @dev The permit arguments are ignored, since the subject is the caller a relayed call observes.
  */
 contract CallerRecorderMock {

@@ -39,8 +39,8 @@ import {ERC20Permit} from 'openzeppelin-contracts/contracts/token/ERC20/extensio
  * @title ForwarderTest
  * @notice `PF-01..09`, `PF-FUZZ`, `FWD-13`, `FWD-14`, `FWD-16..18`, `FWD-20..25` and
  * `FWD-PAUSE/VALUE/REENTRY`: the calls {ICallsForwarder-forwardCalls} relays that carry their own
- * authorisation, its per-entry failure bits, the calls that fail on their target's own terms and
- * the things it deliberately does not guard.
+ * authorisation, its per-entry failure bits, the calls their target refuses and the checks it does
+ * not perform.
  * @dev `forwardCalls` makes a plain `call` per entry, so the observable oracle is never the return
  * value: it is the allowance, approval or nonce the target holds afterwards. Every digest here is
  * built from a type string written out in this file from EIP-2612, the DAI permit and the ERC-721
@@ -63,7 +63,7 @@ contract ForwarderTest is AuthenticatorBase {
     'PermitDetails(address token,uint160 amount,uint48 expiration,uint48 nonce)';
   string internal constant L_PERMIT2_BATCH_STUB =
     'PermitBatch(PermitDetails[] details,address spender,uint256 sigDeadline)';
-  /// @dev The batch stub's sibling, for the other Permit2 overload
+  /// @dev The stub of the single-permit Permit2 overload
   string internal constant L_PERMIT2_SINGLE_STUB =
     'PermitSingle(PermitDetails details,address spender,uint256 sigDeadline)';
 
@@ -228,13 +228,13 @@ contract ForwarderTest is AuthenticatorBase {
   // -----------------------------------------------------------------------------------------------
 
   /**
-   * PF-06 — a relayed call that proves no authority fails on the target's own terms
+   * PF-06 — a relayed call that proves no authority is refused by its target
    * @dev The forwarder holds no allowance, role or asset, so a call relayed through it carries no
    * authority beyond what its own payload proves. `transfer` moves the forwarder's own balance,
-   * which is zero, so the token refuses it; a payload too short to hold a selector reaches a
-   * target with no fallback and reverts without data. A set failure bit lets the batch carry on.
+   * which is zero, so the token refuses it; a payload too short to hold a selector reaches a target
+   * with no fallback and reverts without data. A set failure bit lets the batch continue.
    */
-  function test_PF_06_relayedCallWithoutAuthorityFailsOnTheTargetsTerms() public {
+  function test_PF_06_relayedCallWithoutAuthorityIsRefusedByItsTarget() public {
     uint256 relayerBalance = permitToken.balanceOf(relayer);
     bytes memory insufficient = abi.encodeWithSelector(
       IERC20Errors.ERC20InsufficientBalance.selector, address(callsForwarder), 0, 1
@@ -441,11 +441,11 @@ contract ForwarderTest is AuthenticatorBase {
 
   /**
    * FWD-13 — a relayed `updateAuthentication` approves a session key, on the authenticator's nonce
-   * @dev This is not a token permit: it is the owner telling an
-   * authenticator which credential may sign for them, relayed so the approval and the order that
-   * uses it fit in one transaction. The authenticator owns the replay protection for it, so its
-   * bitmap moves and the hub's does not: the hub only relays the call and spends nothing of its
-   * own. The forwarder reaches an authenticator the owner never delegated, and the relay leaves it
+   * @dev This is not a token permit: it is the owner's instruction to an authenticator naming the
+   * credential that may sign for them, relayed so the approval and the order that uses it fit in
+   * one transaction. The authenticator owns the replay protection for it, so its nonce bitmap
+   * changes and the hub's does not: the hub only relays the call and spends nothing of its own. The
+   * forwarder reaches an authenticator the owner never delegated, and the relay leaves it
    * undelegated: the order rails gate on the delegation, but `updateAuthentication` carries the
    * owner's own signature, so the forwarder needs no such gate.
    */
@@ -483,9 +483,9 @@ contract ForwarderTest is AuthenticatorBase {
 
   /**
    * FWD-20 — the same relay carries a master key's approval, not only the owner's
-   * @dev Both rails share one selector, so the second tier is relayable without the forwarder
-   * learning anything about it. What moves is the master key's
-   * bitmap: the owner neither signed nor submitted, so nothing of theirs is spent.
+   * @dev Both rails share one selector, so the second tier is relayable without any change to the
+   * forwarder. The nonce spent is in the master key's bitmap: the owner neither signed nor
+   * submitted, so nothing of theirs is spent.
    */
   function test_FWD_20_updateAuthenticationIsRelayedOnTheMasterKeyRail() public {
     AuthKey memory masterKey = _secpKey(masterSigner, block.timestamp + 30 days);
@@ -715,14 +715,14 @@ contract ForwarderTest is AuthenticatorBase {
   }
 
   // -----------------------------------------------------------------------------------------------
-  // FWD-PAUSE / FWD-VALUE / FWD-REENTRY — the guards `forwardCalls` deliberately does without
+  // FWD-PAUSE / FWD-VALUE / FWD-REENTRY — the guards `forwardCalls` does not apply
   // -----------------------------------------------------------------------------------------------
 
   /**
    * FWD-PAUSE-01 — a pause does not close the forwarder
    * @dev Intended: relaying a permit moves nobody's assets, it only records an allowance, and an
    * allowance granted during a pause cannot be spent while the pause holds. Keeping `forwardCalls`
-   * open means a user mid-flow can still land the approval half of their transaction.
+   * open lets the approval in a user's transaction still be submitted.
    */
   function test_FWD_PAUSE_01_forwardStillWorksWhilePaused() public {
     uint256 value = 5 ether;
@@ -742,11 +742,11 @@ contract ForwarderTest is AuthenticatorBase {
   }
 
   /**
-   * FWD-VALUE-01 — value sent with `forwardCalls` is stranded in the hub, not the forwarder
+   * FWD-VALUE-01 — value sent with `forwardCalls` remains in the hub, not the forwarder
    * @dev `forwardCalls` is payable and carries no native-spend guard, because none of the calls
-   * relayed here takes value: it forwards `data` only, never `msg.value`. So anything attached
-   * simply stays, with no `receive` and no refund to send it back. Not a loss of user funds — a
-   * rescuer sweeps it — but it is the contract's behaviour and a caller should not expect change.
+   * relayed here takes value: it forwards `data` only, never `msg.value`. Value sent with the call
+   * remains in the hub, which has no refund path. A rescuer can recover it, and a caller receives
+   * no refund.
    */
   function test_FWD_VALUE_01_valueSentWithForwardIsStranded() public {
     uint256 value = 5 ether;

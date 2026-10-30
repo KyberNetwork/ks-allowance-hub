@@ -77,7 +77,7 @@ contract GuardsTest is AuthenticatorBase {
   bytes32 internal constant DEFAULT_ADMIN = bytes32(0);
   bytes32 internal constant ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
 
-  /// @dev The float the hub holds before a call, so `msg.value + 1` is payable
+  /// @dev The native balance the hub holds before a call, so `msg.value + 1` is payable
   uint256 internal constant PREFUND = 1 ether;
   uint256 internal constant VALUE = 1 ether;
 
@@ -345,7 +345,7 @@ contract GuardsTest is AuthenticatorBase {
       overSpending, overSpendingSig, greedyRoute, ''
     );
 
-    assertEq(address(hub).balance, PREFUND, "the hub's own float is intact");
+    assertEq(address(hub).balance, PREFUND, "the hub's own native balance is intact");
   }
 
   /**
@@ -374,7 +374,7 @@ contract GuardsTest is AuthenticatorBase {
     );
     hub.executeOrderWithPermit2Signature{value: VALUE}(greedy, greedySig);
 
-    assertEq(address(hub).balance, PREFUND, "the execute rail kept the hub's float");
+    assertEq(address(hub).balance, PREFUND, "the execute rail kept the hub's native balance");
 
     // checkDelegation on fulfillOrderWithDelegatedAuthentication
     FulfillmentOrder memory undelegated = _openFulfillmentOrder(
@@ -412,7 +412,7 @@ contract GuardsTest is AuthenticatorBase {
       false
     );
 
-    assertEq(address(hub).balance, PREFUND, "the fulfill rail kept the hub's float");
+    assertEq(address(hub).balance, PREFUND, "the fulfill rail kept the hub's native balance");
   }
 
   function _executeAtDeadline(uint256 deadline, bool shouldSettle) internal {
@@ -475,10 +475,14 @@ contract GuardsTest is AuthenticatorBase {
 
     if (shouldSettle) {
       assertEq(address(router).balance - routerBefore, spend, 'the router was paid exactly');
-      assertEq(address(hub).balance, PREFUND + VALUE - spend, 'the hub kept float plus change');
+      assertEq(
+        address(hub).balance,
+        PREFUND + VALUE - spend,
+        'the hub kept its native balance plus the unspent value'
+      );
     } else {
       assertEq(address(router).balance, routerBefore, 'nothing left the hub');
-      assertEq(address(hub).balance, PREFUND, 'and its float is intact');
+      assertEq(address(hub).balance, PREFUND, 'and its native balance is intact');
       assertEq(owner.balance, VALUE, 'the value went back to the sender');
     }
   }

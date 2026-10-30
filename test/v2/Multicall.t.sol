@@ -29,16 +29,16 @@ import {
 /**
  * @title MulticallTest
  * @notice MC-01..07 and MC-FUZZ — the batching surface
- * @dev `multicall` runs each entry under the same guards a direct call meets, and bounds the batch
- * as a whole, so one refusal rolls back every entry. The native-value cases are what make that
- * concrete: a batch may spend only what the caller sent, and the hub's own float must survive.
+ * @dev `multicall` runs each entry under the same guards as a direct call and limits the batch as
+ * a whole, so one refusal reverts every entry. The native-value cases test this limit: a batch may
+ * spend only the value the caller sent, and the hub's own native balance must remain unchanged.
  */
 contract MulticallTest is AuthenticatorBase {
   uint160 internal constant AMOUNT = 1 ether;
 
   bytes32 internal constant ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
 
-  /// @dev The float the hub holds before a call, so `msg.value + 1` is payable
+  /// @dev The native balance the hub holds before a call, so `msg.value + 1` is payable
   uint256 internal constant PREFUND = 1 ether;
   uint256 internal constant VALUE = 1 ether;
 
@@ -120,7 +120,7 @@ contract MulticallTest is AuthenticatorBase {
     );
     hub.multicall{value: VALUE}(batch);
 
-    assertEq(address(hub).balance, 2 * VALUE, "the hub's own float is untouched");
+    assertEq(address(hub).balance, 2 * VALUE, "the hub's own native balance is unchanged");
     assertEq(address(router).balance, routerBefore, 'and the router was paid nothing');
     assertEq(router.callCount(), 0, 'the whole batch rolled back');
   }

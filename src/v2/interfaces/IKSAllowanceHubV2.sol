@@ -146,10 +146,10 @@ interface IKSAllowanceHubV2 {
   /**
    * @notice Calls {ICallsForwarder-forwardCalls} on the forwarder set at deployment, so that it can
    * run in a {IMulticall-multicall} batch
-   * @dev Native value sent with the call stays in this contract. Accepted while the hub is paused.
-   * @param targets Passed to the forwarder as is
-   * @param data Passed to the forwarder as is
-   * @param allowFailure Passed to the forwarder as is
+   * @dev Native value sent with the call remains in the hub. Accepted while the hub is paused.
+   * @param targets Passed to the forwarder unchanged
+   * @param data Passed to the forwarder unchanged
+   * @param allowFailure Passed to the forwarder unchanged
    * @return results The forwarder's results
    */
   function forwardCalls(address[] calldata targets, bytes[] calldata data, PackedBits allowFailure)

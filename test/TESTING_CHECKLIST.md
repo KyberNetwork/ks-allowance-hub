@@ -1371,3 +1371,17 @@ of `test/v2`.
 References to `FWD-15`, `FWD-19` and `LOCK-01` in earlier runs name deleted cases. `PF-08` and
 `PF-09` are also covered by `PF-FUZZ` and are kept as the fixed examples of a failure that bubbles
 and one that is skipped, since the fuzz does not guarantee that exact batch.
+
+## Run `20261030T193923Z`
+
+Scope: wording of the test documentation added or changed in runs `20261030T105453Z` and
+`20261030T112203Z`, the term "float" across `test/v2`, and one test rename. No assertion or input domain changes.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261030T193923Z/WORDING-01` | `PF-06` is renamed to state that the target refuses the call; comments in `Forwarder.t.sol`, `Settlement.t.sol` and `PermitTokenMocks.sol` are reworded in a formal register; "float" becomes "native balance" in the comments and assertion messages of `Settlement.t.sol`, `Guards.t.sol` and `Multicall.t.sol` | `PF-06` `test_PF_06_relayedCallWithoutAuthorityIsRefusedByItsTarget` — `test/v2/Forwarder.t.sol`; `test/v2/Settlement.t.sol`; `test/v2/Guards.t.sol`; `test/v2/Multicall.t.sol`; `test/v2/mocks/PermitTokenMocks.sol` | `forge test --isolate` — 264 passed |
+
+### Notes for this run
+
+References to `test_PF_06_relayedCallWithoutAuthorityFailsOnTheTargetsTerms` in earlier runs name
+the test now called `test_PF_06_relayedCallWithoutAuthorityIsRefusedByItsTarget`.

@@ -30,8 +30,8 @@ import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessCon
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 /**
- * @notice `SET-01..04`, `OWN-07`, `ROUTER-01..03` and `LOCK-02..07` — the settlement tail shared by
- * all four entry points.
+ * @notice `SET-01..04`, `OWN-07`, `ROUTER-01..03` and `LOCK-02..07` — the final settlement steps
+ * shared by all four entry points.
  * @dev The role constant, the `TransferTokens` topic and the router's own function signature are
  * written out rather than imported: an expected value taken from the contract under test would
  * agree with a wrong one. The topic lives in {HubBase}, which is where the log picker needs it.
@@ -41,7 +41,8 @@ contract SettlementTest is HubBase {
 
   bytes32 internal constant ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
 
-  /// @dev The float the hub holds before a call, so a nested order has native to over-spend
+  /// @dev The native balance the hub holds before a call, so a nested order has native value to
+  /// overspend
   uint256 internal constant PREFUND = 1 ether;
   uint256 internal constant VALUE = 1 ether;
 
@@ -313,12 +314,12 @@ contract SettlementTest is HubBase {
 
   /**
    * LOCK-02 — orders nested inside execution router calls settle, and each level sees its owner
-   * @dev Level 0 is `owner`'s execution, submitted by `owner` on the delegated rail or by
-   * `relayer` on the Permit2 rail. Level `k` below the innermost calls `evils[k]`, which settles
-   * level `k + 1` as an order it owns. The innermost level is an execution or a fulfillment and
-   * calls `router`. Each `evils[k]` reads {msgSender} before and after its nested order, and level
-   * 0 calls `router2` last, so a level that did not restore its predecessor's sender shows at the
-   * next read.
+   * @dev Level 0 is `owner`'s execution, submitted by `owner` on the delegated rail or by `relayer`
+   * on the Permit2 rail. Level `k` below the innermost calls `evils[k]`, which settles level
+   * `k + 1` as an order it owns. The innermost level is an execution or a fulfillment and calls
+   * `router`. Each `evils[k]` reads {msgSender} before and after its nested order, and level 0
+   * calls `router2` last, so a level that did not restore its predecessor's sender is detected at
+   * the next read.
    */
   function testFuzz_LOCK_02_nestedOrdersRestoreEachOwner(NestingParams memory p) public {
     uint256 depth = bound(p.depth, 1, 6);
@@ -507,8 +508,8 @@ contract SettlementTest is HubBase {
 
   /**
    * LOCK-07 — a nested order spends only value the nested call was sent
-   * @dev With the hub holding a float, the outer execution may spend its own value after a nested
-   * order returned, but a nested order sent no value cannot spend the outer order's.
+   * @dev With the hub holding a native balance, the outer execution may spend its own value after a
+   * nested order returned, but a nested order sent no value cannot spend the outer order's.
    */
   function test_LOCK_07_nestedOrderCannotSpendTheOuterValue() public {
     ReentrantRouterMock evil = _newReentrantRouter();
@@ -530,7 +531,7 @@ contract SettlementTest is HubBase {
     assertEq(router.callCount(), 1, 'the outer router call ran');
     assertEq(router.lastValue(), VALUE, 'with the outer value');
     assertEq(address(router).balance - routerBalanceBefore, VALUE, 'and the value landed');
-    assertEq(address(hub).balance, PREFUND, "the hub's float is intact");
+    assertEq(address(hub).balance, PREFUND, "the hub's native balance is intact");
 
     // (b) the nested order tries to spend the value the outer order was sent
     evil.setReentry(
@@ -545,7 +546,7 @@ contract SettlementTest is HubBase {
     );
 
     assertEq(router.callCount(), 1, 'the nested router call rolled back');
-    assertEq(address(hub).balance, PREFUND, "the hub's float is intact");
+    assertEq(address(hub).balance, PREFUND, "the hub's native balance is intact");
     assertEq(owner.balance, VALUE, 'the value went back to the sender');
   }
 
