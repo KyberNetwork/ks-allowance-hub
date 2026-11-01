@@ -364,11 +364,12 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
   /**
    * AUTH-13 — authentication data too short to settle is rejected, on whichever gate it reaches
-   * @dev Word 1 is the tier and word 2 the signature, so a short payload fails at a different
-   * point depending on how short it is. The key alone reads the key's own first body word as the
-   * tier, lands on the session tier and finds no master key behind it. The key and a tier read a
-   * zero-length signature out of the key's body, which verifies against nothing. Only a payload
-   * whose signature length outruns what follows it reaches the decoder's bounds check.
+   * @dev A short payload fails at a different point depending on how short it is. The key alone
+   * starts with the word `0x20`, as `abi.encode(bytes signature)` does, so it takes the owner rail,
+   * and the key's body read as a signature does not verify for the owner. The key and a tier take
+   * the key rail and read a zero-length signature out of the key's body, which verifies against
+   * nothing. Only a payload whose signature length exceeds what follows it reaches the decoder's
+   * bounds check.
    */
   function test_AUTH_13_malformedAuthenticationDataRejected() public {
     _delegateKeyThroughHub(key);
@@ -378,11 +379,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     );
 
     vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        ITwoTiersOrderAuthenticator.SessionKeyNotApproved.selector, _keyHash(key)
-      )
-    );
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
     hub.executeOrderWithDelegatedAuthentication(
       order, address(authenticator), _encodeKey(key), false
     );

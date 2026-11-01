@@ -12,7 +12,7 @@ interface ITwoTiersOrderAuthenticator {
   /// @notice The owner called directly, which takes an empty signature, and gave a signature
   error UnexpectedSignature();
 
-  /// @notice The key's signature over the order is not valid
+  /// @notice The signature over the order is not valid for the owner or the key presenting it
   error InvalidOrderSignature();
 
   /// @notice The key's signature over the nonce revocation is not valid

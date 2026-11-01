@@ -238,4 +238,38 @@ abstract contract AuthenticatorBase is HubBase {
   ) internal returns (bytes memory) {
     return _authData(key, _sign(signerKey, _fulfillmentDigest(order)), isSessionKey);
   }
+
+  /// @dev The `authenticationData` of the owner's rail: the signature alone, behind one offset word
+  function _ownerAuthData(bytes memory signature) internal pure returns (bytes memory) {
+    return abi.encode(signature);
+  }
+
+  /// @dev The owner's rail for an execution, signed by `signerKey` under the authenticator domain
+  function _executionOwnerAuthData(ExecutionOrder memory order, uint256 signerKey)
+    internal
+    returns (bytes memory)
+  {
+    return _ownerAuthData(_sign(signerKey, _executionDigest(order)));
+  }
+
+  /// @dev As above, signed by this base's own `owner`
+  function _executionOwnerAuthData(ExecutionOrder memory order) internal returns (bytes memory) {
+    return _executionOwnerAuthData(order, ownerKey);
+  }
+
+  /// @dev The owner's rail for a fulfillment, signed by `signerKey` under the authenticator domain
+  function _fulfillmentOwnerAuthData(FulfillmentOrder memory order, uint256 signerKey)
+    internal
+    returns (bytes memory)
+  {
+    return _ownerAuthData(_sign(signerKey, _fulfillmentDigest(order)));
+  }
+
+  /// @dev As above, signed by this base's own `owner`
+  function _fulfillmentOwnerAuthData(FulfillmentOrder memory order)
+    internal
+    returns (bytes memory)
+  {
+    return _fulfillmentOwnerAuthData(order, ownerKey);
+  }
 }

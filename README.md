@@ -144,12 +144,14 @@ orders.
 `updateAuthentication` takes `abi.encode(AuthKey masterKey, bool approved)` for the owner's
 decision, or `abi.encode(AuthKey sessionKey, AuthKey masterKey, bool approved)` for a master key's.
 The owner's decision needs no signature when the owner calls; a master key's decision is always
-signed by the master key. Orders are authenticated with
-`abi.encode(AuthKey key, bool isSessionKey, bytes signature)`, where `signature` is the key's
-signature over the order's EIP-712 digest under the authenticator's domain.
+signed by the master key. Orders are authenticated with one of two encodings, told apart by the
+offset of the first member. `abi.encode(AuthKey key, bool isSessionKey, bytes signature)` carries
+the key's signature over the order's EIP-712 digest under the authenticator's domain.
+`abi.encode(bytes signature)` carries the owner's own signature over the same digest, verified as
+an ECDSA signature or through ERC-1271, and requires no approved key.
 
-Every signature spends a nonce in its signer's namespace: the owner's address for the owner's
-approvals, and the key's credential hash, `keccak256(abi.encodePacked(keyType, publicKey))`, for
+Every signature spends a nonce in its signer's namespace: the owner's address for the owner's own
+signatures, and the key's credential hash, `keccak256(abi.encodePacked(keyType, publicKey))`, for
 anything a key signs. The credential hash excludes the expiry, so all approvals of one key share
 its nonces. `revokeNonce(AuthKey, nonce, deadline, signature)` spends a key's nonce on the key's
 signature, whether or not the key is still approved or unexpired.

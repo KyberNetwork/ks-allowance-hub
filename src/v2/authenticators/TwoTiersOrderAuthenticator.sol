@@ -34,11 +34,12 @@ import {
  * @dev Keys have two tiers. The owner approves master keys, and only a master key may approve
  * other keys. A master key approves session keys for the same owner. Both tiers may sign orders.
  * A session key may not expire after its master key, and is not accepted once its master key is
- * revoked.
+ * revoked. The owner may also sign an order itself, without any key.
  *
  * Every signature this contract verifies spends a nonce in the signer's namespace: the owner's
- * address for the owner's approvals, and the key's credential hash for anything a key signs. The
- * credential hash excludes the expiry, so all approvals of one credential share its nonces.
+ * address for the owner's own signatures, approvals and orders, and the key's credential hash for
+ * anything a key signs. The credential hash excludes the expiry, so all approvals of one
+ * credential share its nonces.
  */
 contract TwoTiersOrderAuthenticator is
   ITwoTiersOrderAuthenticator,
@@ -168,9 +169,14 @@ contract TwoTiersOrderAuthenticator is
 
   /**
    * @inheritdoc IOrderAuthenticator
-   * @dev `data` is `abi.encode(AuthKey key, bool isSessionKey, bytes signature)`. `signature` is
-   * the key's signature over the EIP-712 digest of the order under this contract's domain, and
-   * `order.nonce` is spent under the key's credential.
+   * @dev `data` takes one of two encodings, distinguished by the offset of its first member:
+   *
+   * - `abi.encode(bytes signature)`: `signature` is `order.owner`'s signature over the EIP-712
+   *   digest of the order under this contract's domain, verified as an ECDSA signature or through
+   *   ERC-1271, and `order.nonce` is spent in the owner's address namespace.
+   * - `abi.encode(AuthKey key, bool isSessionKey, bytes signature)`: `signature` is the key's
+   *   signature over the EIP-712 digest of the order under this contract's domain, and
+   *   `order.nonce` is spent under the key's credential.
    */
   function authenticateExecution(
     ExecutionOrder calldata order,
@@ -215,14 +221,25 @@ contract TwoTiersOrderAuthenticator is
   }
 
   /**
-   * @dev Verifies that the key in `data` may sign for `owner` and signed the order with hash
-   * `orderHash`, and spends `nonce` under the key's credential. `isSessionKey` selects the tier the
-   * key is checked under; a key presented under a tier it does not hold has no approval there and
-   * is refused.
+   * @dev Verifies that the order with hash `orderHash` was signed either by `owner`, which spends
+   * `nonce` in the owner's namespace, or by a key in `data` that may sign for `owner`, which spends
+   * `nonce` under the key's credential. `isSessionKey` selects the tier the key is checked under; a
+   * key presented under a tier it does not hold has no approval there and is refused.
    */
   function _authenticate(address owner, uint256 nonce, bytes32 orderHash, bytes calldata data)
     private
   {
+    if (data.decodeUint256(0) <= 0x20) {
+      _useUnorderedNonce(owner, nonce);
+
+      bytes32 ownerDigest = _hashTypedDataV4(orderHash);
+      bytes calldata signature = data.decodeBytes(0);
+      if (!SignatureChecker.isValidSignatureNow(owner, ownerDigest, signature)) {
+        revert InvalidOrderSignature();
+      }
+      return;
+    }
+
     AuthKey calldata key = _decodeKey(data, 0);
     _checkNotExpired(key);
 

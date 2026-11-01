@@ -1408,3 +1408,29 @@ Earlier runs refer to `MasterKeyApproval` and `SessionKeyApproval` by their form
 error `InvalidApprovalSignature` as such. The new case `SV-UPD-02` continues the `SV-UPD` family.
 `DEL-01` covers `initAuthentication`'s `UpdateMasterKey` and its order before `UpdateDelegation`; no
 case in the authenticator file repeats it. The hub is 22,929 bytes and the authenticator 12,631.
+
+## Run `20261101T154715Z`
+
+Scope: an owner-signature rail on `TwoTiersOrderAuthenticator`'s order authentication. `data` is
+`abi.encode(bytes signature)` when its first word is at most `0x20`, and the owner's signature over
+the order's EIP-712 digest under the authenticator's domain spends `order.nonce` in the owner's
+address namespace, with no key consulted. Any other first word takes the key rail, which is
+unchanged. The cases are the family `SV-OWN-*`, in the authenticator file.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261101T154715Z/OWN-01` | The owner rail through both hub entry points, with the authenticator delegated with empty init data and so no master key: the order settles, the exact bit is set in the owner's address namespace, no credential namespace or hub nonce is touched, and no `RevokeNonce` is emitted. An ERC-1271 owner (`ERC1271WalletMock`) authenticates through its wallet, with the nonce in the wallet's namespace | `SV-OWN-01` `test_SV_OWN_01_ownerSignatureAuthenticatesAnExecution`, `SV-OWN-02` `test_SV_OWN_02_ownerSignatureAuthenticatesAFulfillment`, `SV-OWN-03` `test_SV_OWN_03_erc1271OwnerAuthenticatesAndMayRefuse` (first leg) — `test/v2/authenticators/TwoTiersOrderAuthenticator.t.sol`; payload and signing helpers `_ownerAuthData`, `_executionOwnerAuthData`, `_fulfillmentOwnerAuthData` — `test/v2/authenticators/base/AuthenticatorBase.sol` | `forge test --isolate` — 280 passed |
+| - [x] | - [ ] | `20261101T154715Z/OWN-02` | Refusals, each with `InvalidOrderSignature()` and no nonce spent: the wallet returning the wrong magic value, a signature by another account, the signature of an approved key presented on the owner rail, and a signature over the order hash under the hub's domain or under no domain. Each of the last two has a control leg that settles | `SV-OWN-03` (second leg), `SV-OWN-04` `test_SV_OWN_04_anotherAccountsSignatureIsRefused`, `SV-OWN-07` `test_SV_OWN_07_signatureIsBoundToTheAuthenticatorsDomain` — `test/v2/authenticators/TwoTiersOrderAuthenticator.t.sol` | same |
+| - [x] | - [ ] | `20261101T154715Z/OWN-03` | The owner's namespace: replay of an owner-signed order and of its nonce on the other entry point revert with `NonceAlreadyUsed(bytes32(uint256(uint160(owner))), nonce)`; a relayed `MasterKeyUpdate` and an owner-signed order refuse each other's nonce; the owner's `revokeNonce(n)` cancels an outstanding order; a key's nonce, spent under its credential, does not block the owner's | `SV-OWN-05` `test_SV_OWN_05_replayIsRefused`, `SV-OWN-06` `test_SV_OWN_06_ownerNamespaceIsSharedWithMasterKeyUpdates`, `SV-OWN-06b` `test_SV_OWN_06b_ownerRevocationCancelsAnOutstandingOrder`, `SV-OWN-06c` `test_SV_OWN_06c_aKeyNonceDoesNotBlockTheOwnersRail` — `test/v2/authenticators/TwoTiersOrderAuthenticator.t.sol` | same |
+| - [x] | - [ ] | `20261101T154715Z/OWN-04` | The discriminator and malformed payloads. A first word of `0x20` takes the owner rail, with or without padding. A first word of `0x00` takes the owner rail and reads an empty signature, so it reverts with `InvalidOrderSignature()`. A length word exceeding the data, and an empty payload, revert with the decoder's `0x3b99b53d` slice error. A first word of `0x80`, with the key placed after a gap, takes the key rail. After every master key is revoked, the owner rail settles and a key-rail payload carrying the owner's signature reverts with `MasterKeyNotApproved` | `SV-OWN-08` `test_SV_OWN_08_ownerRailConsultsNoKeys`, `SV-OWN-09` `test_SV_OWN_09_firstWord0x20IsTheOwnersRail`, `SV-OWN-09b` `test_SV_OWN_09b_firstWord0x00ReadsAnEmptySignature`, `SV-OWN-09c` `test_SV_OWN_09c_aTruncatedPayloadIsASliceError`, `SV-OWN-09d` `test_SV_OWN_09d_firstWordAbove0x20IsTheKeyRail` — `test/v2/authenticators/TwoTiersOrderAuthenticator.t.sol` | same |
+| - [x] | - [ ] | `20261101T154715Z/OWN-05` | An owner-signed order settles for any private key in the secp256k1 range, nonce, deadline offset and entry point; exactly the bit for `nonce` is set in the signer's namespace, the neighbouring word and the fixed `owner`'s namespace are untouched, and no `RevokeNonce` is emitted | `SV-OWN-FUZZ` `testFuzz_SV_OWN_FUZZ_ownerSignedOrder` — `test/v2/authenticators/TwoTiersOrderAuthenticator.t.sol` | same |
+| - [x] | - [ ] | `20261101T154715Z/OWN-06` | `AUTH-13`'s first leg submits `abi.encode(key)` alone. That payload starts with the word `0x20`, as `abi.encode(bytes)` does, so it takes the owner rail and is refused with `InvalidOrderSignature()` instead of `SessionKeyNotApproved`. The payload is still rejected; only the error changes, as the owner rail's discriminator requires | `AUTH-13` `test_AUTH_13_malformedAuthenticationDataRejected` — `test/v2/ExecuteOrder.t.sol` | same |
+
+### Notes for this run
+
+The authenticator suite has 87 cases, 15 of them new. The expected error of `AUTH-13`'s first leg
+changes with the owner rail's discriminator (`OWN-06`); its other legs are unchanged.
+
+Mutations, each confirmed to fail at least one new case and then restored: the nonce spent in
+`bytes32(0)` (12 of 15 fail), the `_hashTypedDataV4` wrap dropped (11 of 15), and the key rail
+selected by `== 0x60` (`SV-OWN-09d` fails). The authenticator is 12,716 bytes and the hub 22,929.

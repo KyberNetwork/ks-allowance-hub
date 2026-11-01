@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.36;
 
+import {SchemaHash} from 'test/base/SchemaHash.sol';
+
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
 import {KeyFixtures} from 'test/v2/authenticators/mocks/KeyFixtures.sol';
+
+import {ERC1271WalletMock, ERC20Mock} from 'test/v2/mocks/TokenMocks.sol';
 
 import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
 import {AuthKey} from 'src/base/types/AuthKey.sol';
@@ -52,7 +56,23 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     bool approved;
   }
 
+  /// @dev The owner's rail over its whole domain: any account, nonce and deadline, either entry
+  /// point
+  struct OwnerOrderFuzz {
+    uint256 ownerPk;
+    uint256 nonce;
+    uint256 deadlineOffset;
+    bool fulfillment;
+  }
+
   uint160 internal constant AMOUNT = 3 ether;
+
+  /// @dev The order of the secp256k1 group, transcribed from SEC 2; a private key is valid below it
+  uint256 internal constant SECP256K1_N =
+    0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141;
+
+  /// @dev Transcribed from {CalldataDecoder}'s `SliceOutOfBounds()`, never imported
+  bytes4 internal constant SLICE_OUT_OF_BOUNDS = bytes4(keccak256('SliceOutOfBounds()'));
 
   AuthKey internal key;
 
@@ -1951,6 +1971,402 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   // -------------------------------------------------------------------------------------------
+  // SV-OWN-01..09 — the owner signs an order itself, with no key behind it
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * SV-OWN-01 — the owner's signature authenticates an execution relayed through the hub
+   * @dev The authenticator is delegated with empty init data, so the owner has no master key. The
+   * nonce is spent in the owner's address namespace and in no credential namespace, and the hub's
+   * own bitmap is untouched. Nonce 300 sits in word 1, so the word index is part of the assertion.
+   */
+  function test_SV_OWN_01_ownerSignatureAuthenticatesAnExecution() public {
+    _delegateWithoutKey(owner);
+    assertFalse(authenticator.masterKeys(owner, _keyHash(key)), 'the owner holds no master key');
+
+    uint256 nonce = 300;
+    ExecutionOrder memory order = _standardOrder(nonce, block.timestamp + 1 hours);
+    bytes memory data = _executionOwnerAuthData(order);
+    uint256 before = IERC20(token18).balanceOf(address(router));
+
+    vm.recordLogs();
+    _relayExecution(order, data);
+    _assertNoRevokeNonce(vm.getRecordedLogs());
+
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'tokens moved');
+    assertEq(
+      authenticator.nonces(lNonceKey(owner), 1), 1 << 44, 'bit 44 of word 1, owner namespace'
+    );
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'word 0 untouched');
+    assertEq(authenticator.nonces(_credentialHash(key), 1), 0, 'no credential namespace touched');
+    assertEq(hub.nonces(lNonceKey(owner), 1), 0, 'hub nonce untouched on this rail');
+  }
+
+  /// SV-OWN-02 — and the same through the fulfillment entry point
+  function test_SV_OWN_02_ownerSignatureAuthenticatesAFulfillment() public {
+    _delegateWithoutKey(owner);
+
+    uint256 nonce = 301;
+    FulfillmentOrder memory order = _fulfillmentOrderOf(nonce, block.timestamp + 1 hours);
+    bytes memory data = _fulfillmentOwnerAuthData(order);
+    uint256 before = IERC20(token18).balanceOf(address(router));
+
+    vm.recordLogs();
+    _relayFulfillment(order, data);
+    _assertNoRevokeNonce(vm.getRecordedLogs());
+
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'tokens moved');
+    assertEq(
+      authenticator.nonces(lNonceKey(owner), 1), 1 << 45, 'bit 45 of word 1, owner namespace'
+    );
+    assertEq(authenticator.nonces(_credentialHash(key), 1), 0, 'no credential namespace touched');
+  }
+
+  /**
+   * SV-OWN-03 — an ERC-1271 owner authenticates through its wallet, and the wallet may refuse
+   * @dev The order names the wallet as owner, and the wallet's signer signs the digest. The nonce
+   * is spent in the wallet's address namespace. In the second leg the wallet is set to return the
+   * wrong magic value for the same valid signature.
+   */
+  function test_SV_OWN_03_erc1271OwnerAuthenticatesAndMayRefuse() public {
+    (ERC1271WalletMock wallet, uint256 walletSignerPk) = _walletOwner();
+    uint256 deadline = block.timestamp + 1 hours;
+    uint256 before = IERC20(token18).balanceOf(address(router));
+
+    ExecutionOrder memory order = _standardOrder(40, deadline);
+    order.owner = address(wallet);
+    vm.recordLogs();
+    _relayExecution(order, _executionOwnerAuthData(order, walletSignerPk));
+    _assertNoRevokeNonce(vm.getRecordedLogs());
+
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'tokens moved');
+    assertEq(authenticator.nonces(lNonceKey(address(wallet)), 0), 1 << 40, 'wallet namespace');
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'the EOA namespace is untouched');
+
+    wallet.setReturnWrongMagic(true);
+    ExecutionOrder memory refused = _standardOrder(41, deadline);
+    refused.owner = address(wallet);
+    bytes memory data = _executionOwnerAuthData(refused, walletSignerPk);
+
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
+    _relayExecution(refused, data);
+    assertEq(
+      authenticator.nonces(lNonceKey(address(wallet)), 0), 1 << 40, 'a refusal burns nothing'
+    );
+  }
+
+  /**
+   * SV-OWN-04 — a signature by another account is refused, an approved key's included
+   * @dev The master key is approved, so the second leg shows that the owner's rail does not accept
+   * the signature of a key the owner approved.
+   */
+  function test_SV_OWN_04_anotherAccountsSignatureIsRefused() public {
+    _delegateKeyThroughHub(key);
+
+    ExecutionOrder memory order = _standardOrder(50, block.timestamp + 1 hours);
+    (, uint256 impostorPk) = makeAddrAndKey('impostor');
+
+    bytes memory impostorData = _executionOwnerAuthData(order, impostorPk);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
+    _relayExecution(order, impostorData);
+
+    bytes memory keyData = _executionOwnerAuthData(order, masterKeyPk);
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
+    _relayExecution(order, keyData);
+
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'a refusal burns nothing');
+
+    // the owner's own signature on the same order is accepted
+    _relayExecution(order, _executionOwnerAuthData(order));
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 1 << 50, 'the owner settles it');
+  }
+
+  /**
+   * SV-OWN-05 — an owner-signed order cannot be replayed, nor settled again as a fulfillment
+   * @dev The execution and fulfillment entry points share the owner's namespace, so a nonce spent
+   * on one is spent on the other.
+   */
+  function test_SV_OWN_05_replayIsRefused() public {
+    _delegateWithoutKey(owner);
+
+    uint256 nonce = 60;
+    uint256 deadline = block.timestamp + 1 hours;
+    ExecutionOrder memory order = _standardOrder(nonce, deadline);
+    bytes memory data = _executionOwnerAuthData(order);
+    _relayExecution(order, data);
+
+    bytes memory replayed = abi.encodeWithSelector(
+      IUnorderedNonce.NonceAlreadyUsed.selector, bytes32(uint256(uint160(owner))), nonce
+    );
+
+    vm.expectRevert(replayed);
+    _relayExecution(order, data);
+
+    FulfillmentOrder memory fulfillment = _fulfillmentOrderOf(nonce, deadline);
+    bytes memory fulfillmentData = _fulfillmentOwnerAuthData(fulfillment);
+    vm.expectRevert(replayed);
+    _relayFulfillment(fulfillment, fulfillmentData);
+  }
+
+  /**
+   * SV-OWN-06 — the owner's namespace is the one `MasterKeyUpdate` signatures spend
+   * @dev A relayed signed update at nonce `n` makes an owner-signed order at `n` fail, an
+   * owner-signed order at `n` makes a signed update at `n` fail, and the owner's own
+   * `revokeNonce(n)` cancels an outstanding owner-signed order.
+   */
+  function test_SV_OWN_06_ownerNamespaceIsSharedWithMasterKeyUpdates() public {
+    _delegateWithoutKey(owner);
+    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
+    uint256 deadline = block.timestamp + 1 hours;
+
+    // an update spends 70, so an order at 70 is refused
+    bytes memory updateSig = _signMasterKeyUpdate(fresh, true, 70, deadline);
+    vm.prank(relayer);
+    authenticator.updateAuthentication(owner, _approveKey(fresh), 70, deadline, updateSig);
+    assertTrue(authenticator.masterKeys(owner, _keyHash(fresh)), 'the update applied');
+
+    ExecutionOrder memory order = _standardOrder(70, deadline);
+    bytes memory data = _executionOwnerAuthData(order);
+    vm.expectRevert(_nonceAlreadyUsed(lNonceKey(owner), 70));
+    _relayExecution(order, data);
+
+    // an order spends 71, so an update at 71 is refused
+    ExecutionOrder memory second = _standardOrder(71, deadline);
+    _relayExecution(second, _executionOwnerAuthData(second));
+
+    AuthKey memory other = _secpKey(relayer, block.timestamp + 10 days);
+    bytes memory otherSig = _signMasterKeyUpdate(other, true, 71, deadline);
+    vm.prank(relayer);
+    vm.expectRevert(_nonceAlreadyUsed(lNonceKey(owner), 71));
+    authenticator.updateAuthentication(owner, _approveKey(other), 71, deadline, otherSig);
+    assertFalse(authenticator.masterKeys(owner, _keyHash(other)), 'the second update did not apply');
+
+    assertEq(
+      authenticator.nonces(lNonceKey(owner), 0), (1 << 70) | (1 << 71), 'both bits, one word'
+    );
+  }
+
+  /// SV-OWN-06b — the owner revokes the nonce of an outstanding owner-signed order, and it is refused
+  function test_SV_OWN_06b_ownerRevocationCancelsAnOutstandingOrder() public {
+    _delegateWithoutKey(owner);
+
+    uint256 nonce = 72;
+    ExecutionOrder memory order = _standardOrder(nonce, block.timestamp + 1 hours);
+    bytes memory data = _executionOwnerAuthData(order);
+
+    vm.expectEmit(address(authenticator));
+    emit IUnorderedNonce.RevokeNonce(lNonceKey(owner), nonce);
+    vm.prank(owner);
+    authenticator.revokeNonce(nonce);
+
+    vm.expectRevert(_nonceAlreadyUsed(lNonceKey(owner), nonce));
+    _relayExecution(order, data);
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 1 << 72, 'only the revocation spent it');
+  }
+
+  /// SV-OWN-06c — a key's nonce is spent under its credential, so it does not block the owner's
+  function test_SV_OWN_06c_aKeyNonceDoesNotBlockTheOwnersRail() public {
+    _delegateKeyThroughHub(key);
+
+    uint256 nonce = 73;
+    _executeViaAuthenticator(key, masterKeyPk, nonce, block.timestamp + 1 hours, true);
+    assertEq(authenticator.nonces(_credentialHash(key), 0), 1 << 73, 'key namespace');
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'owner namespace');
+
+    ExecutionOrder memory order = _standardOrder(nonce, block.timestamp + 2 hours);
+    _relayExecution(order, _executionOwnerAuthData(order));
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 1 << 73, 'the owner spends its own bit');
+    assertEq(
+      authenticator.nonces(_credentialHash(key), 0), 1 << 73, 'the key namespace is as it was'
+    );
+  }
+
+  /**
+   * SV-OWN-07 — the signature is bound to the authenticator's domain
+   * @dev The same order hash is signed under the hub's domain and with no domain at all; each is
+   * refused. The control leg then settles the order signed under the authenticator's domain.
+   */
+  function test_SV_OWN_07_signatureIsBoundToTheAuthenticatorsDomain() public {
+    _delegateWithoutKey(owner);
+
+    ExecutionOrder memory order = _standardOrder(80, block.timestamp + 1 hours);
+    bytes32 structHash = SchemaHash.executionOrder(order);
+
+    bytes memory hubDomain =
+      _ownerAuthData(_sign(ownerKey, lTypedDataHash(_hubDomain(), structHash)));
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
+    _relayExecution(order, hubDomain);
+
+    bytes memory noDomain = _ownerAuthData(_sign(ownerKey, structHash));
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
+    _relayExecution(order, noDomain);
+
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'a refusal burns nothing');
+
+    _relayExecution(order, _executionOwnerAuthData(order));
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 1 << 80, 'the right domain settles');
+  }
+
+  /**
+   * SV-OWN-08 — the owner's rail consults no key, and the key rail is unchanged
+   * @dev The owner revokes its only master key. A key-rail payload carrying the owner's valid
+   * signature but the revoked key is refused with `MasterKeyNotApproved`, without spending the
+   * nonce, and the owner's rail then settles the same order at the same nonce.
+   */
+  function test_SV_OWN_08_ownerRailConsultsNoKeys() public {
+    _delegateKeyThroughHub(key);
+    vm.prank(owner);
+    authenticator.updateAuthentication(owner, _revokeKey(key), 0, block.timestamp + 1 days, '');
+    assertFalse(authenticator.masterKeys(owner, _keyHash(key)), 'every master key is revoked');
+
+    ExecutionOrder memory order = _standardOrder(90, block.timestamp + 1 hours);
+    bytes memory ownerSig = _sign(ownerKey, _executionDigest(order));
+
+    vm.expectRevert(_masterKeyNotApproved(key));
+    _relayExecution(order, _authData(key, ownerSig));
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'owner namespace untouched');
+    assertEq(authenticator.nonces(_credentialHash(key), 0), 0, 'key namespace untouched');
+
+    uint256 before = IERC20(token18).balanceOf(address(router));
+    _relayExecution(order, _ownerAuthData(ownerSig));
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'tokens moved');
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 1 << 90, 'owner namespace');
+    assertEq(authenticator.nonces(_credentialHash(key), 0), 0, 'key namespace untouched');
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // SV-OWN-09 — the first word tells the two encodings apart
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * SV-OWN-09 — a first word of `0x20` takes the owner's rail, and the signature needs no padding
+   * @dev The payload is written out by hand and equals `abi.encode(bytes)`. A length word that
+   * claims exactly the bytes that follow is accepted without the padding `abi.encode` adds.
+   */
+  function test_SV_OWN_09_firstWord0x20IsTheOwnersRail() public {
+    _delegateWithoutKey(owner);
+
+    ExecutionOrder memory order = _standardOrder(100, block.timestamp + 1 hours);
+    bytes memory sig = _sign(ownerKey, _executionDigest(order));
+
+    bytes memory byHand = abi.encodePacked(uint256(0x20), _blob(sig));
+    assertEq(byHand, _ownerAuthData(sig), 'the hand-written payload is abi.encode(bytes)');
+    _relayExecution(order, byHand);
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 1 << 100, 'padded');
+
+    ExecutionOrder memory unpadded = _standardOrder(101, block.timestamp + 1 hours);
+    bytes memory unpaddedSig = _sign(ownerKey, _executionDigest(unpadded));
+    _relayExecution(unpadded, abi.encodePacked(uint256(0x20), unpaddedSig.length, unpaddedSig));
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), (1 << 100) | (1 << 101), 'unpadded');
+  }
+
+  /**
+   * SV-OWN-09b — a first word of `0x00` is `<= 0x20`, so it takes the owner's rail and reads no
+   * signature
+   * @dev `decodeBytes(0)` follows the offset `0x00` to word 0 itself and reads it as the length,
+   * so the signature is the empty slice that starts at the second word. The valid signature
+   * placed after it is never read. An empty signature is invalid for an EOA owner, so the call
+   * reverts with `InvalidOrderSignature()` and spends no nonce.
+   */
+  function test_SV_OWN_09b_firstWord0x00ReadsAnEmptySignature() public {
+    _delegateWithoutKey(owner);
+
+    ExecutionOrder memory order = _standardOrder(102, block.timestamp + 1 hours);
+    bytes memory sig = _sign(ownerKey, _executionDigest(order));
+
+    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
+    _relayExecution(order, abi.encodePacked(uint256(0), _blob(sig)));
+
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'a refusal burns nothing');
+  }
+
+  /**
+   * SV-OWN-09c — a payload that is too short for its length word reverts with the decoder's
+   * slice error
+   * @dev A length word one above the bytes that follow, a length word far above them, and an
+   * empty payload, whose first word reads as zero and so also takes the owner's rail.
+   */
+  function test_SV_OWN_09c_aTruncatedPayloadIsASliceError() public {
+    _delegateWithoutKey(owner);
+
+    ExecutionOrder memory order = _standardOrder(103, block.timestamp + 1 hours);
+    bytes memory sig = _sign(ownerKey, _executionDigest(order));
+
+    vm.expectRevert(abi.encodePacked(SLICE_OUT_OF_BOUNDS));
+    _relayExecution(order, abi.encodePacked(uint256(0x20), sig.length + 1, sig));
+
+    vm.expectRevert(abi.encodePacked(SLICE_OUT_OF_BOUNDS));
+    _relayExecution(order, abi.encodePacked(uint256(0x20), uint256(1 << 64), sig));
+
+    vm.expectRevert(abi.encodePacked(SLICE_OUT_OF_BOUNDS));
+    _relayExecution(order, '');
+
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'a refusal burns nothing');
+  }
+
+  /**
+   * SV-OWN-09d — a first word above `0x20` takes the key rail, wherever the key is placed
+   * @dev The key is written at offset `0x80` after a word of padding, not at the canonical `0x60`.
+   * The first word is `0x80`, so the payload is read as a key rail payload and settles under the
+   * key's credential, not the owner's address.
+   */
+  function test_SV_OWN_09d_firstWordAbove0x20IsTheKeyRail() public {
+    _delegateKeyThroughHub(key);
+
+    ExecutionOrder memory order = _standardOrder(104, block.timestamp + 1 hours);
+    bytes memory sig = _sign(masterKeyPk, _executionDigest(order));
+    bytes memory keyBody = _suffix(abi.encode(key), 0x20);
+
+    bytes memory data = abi.encodePacked(
+      uint256(0x80), uint256(0), uint256(0x80 + keyBody.length), uint256(0), keyBody, _blob(sig)
+    );
+    _relayExecution(order, data);
+
+    assertEq(authenticator.nonces(_credentialHash(key), 0), 1 << 104, 'key namespace');
+    assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'owner namespace untouched');
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // SV-OWN-FUZZ
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * SV-OWN-FUZZ — an owner-signed order settles for any owner, nonce, deadline and entry point
+   * @dev The owner is a fresh account for each run, so the key is a live dimension. Exactly the
+   * bit for `nonce` is set in that account's namespace, the neighbouring word and the fixed
+   * `owner`'s namespace are untouched, and no `RevokeNonce` is emitted.
+   */
+  function testFuzz_SV_OWN_FUZZ_ownerSignedOrder(OwnerOrderFuzz memory f) public {
+    uint256 pk = bound(f.ownerPk, 1, SECP256K1_N - 1);
+    address account = vm.addr(pk);
+    vm.assume(account.code.length == 0 && account != owner);
+
+    uint256 nonce = f.nonce;
+    uint256 deadline = block.timestamp + bound(f.deadlineOffset, 0, 30 days);
+    _fundAndDelegate(account);
+    uint256 before = IERC20(token18).balanceOf(address(router));
+
+    vm.recordLogs();
+    if (f.fulfillment) {
+      FulfillmentOrder memory order = _fulfillmentOrderOf(nonce, deadline);
+      order.owner = account;
+      _relayFulfillment(order, _fulfillmentOwnerAuthData(order, pk));
+    } else {
+      ExecutionOrder memory order = _standardOrder(nonce, deadline);
+      order.owner = account;
+      _relayExecution(order, _executionOwnerAuthData(order, pk));
+    }
+    _assertNoRevokeNonce(vm.getRecordedLogs());
+
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'tokens moved');
+    assertEq(
+      authenticator.nonces(lNonceKey(account), nonce >> 8), 1 << (nonce & 0xff), 'exact nonce bit'
+    );
+    assertEq(authenticator.nonces(lNonceKey(account), (nonce >> 8) ^ 1), 0, 'neighbouring word');
+    assertEq(authenticator.nonces(lNonceKey(owner), nonce >> 8), 0, 'the fixed owner is untouched');
+  }
+
+  // -------------------------------------------------------------------------------------------
   // helpers
   // -------------------------------------------------------------------------------------------
 
@@ -2067,6 +2483,63 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   function _sessionKeyNotApproved(AuthKey memory sessionKey) private view returns (bytes memory) {
     return abi.encodeWithSelector(
       ITwoTiersOrderAuthenticator.SessionKeyNotApproved.selector, _keyHash(sessionKey)
+    );
+  }
+
+  /// @dev Delegates the authenticator for `account` with empty init data, so no master key is set
+  function _delegateWithoutKey(address account) private {
+    vm.prank(account);
+    hub.updateDelegation(account, address(authenticator), true, '', 0, block.timestamp + 1 days, '');
+    assertTrue(hub.authDelegated(account, address(authenticator)), 'delegated');
+  }
+
+  /// @dev Gives `account` tokens and an allowance to the hub, then delegates without a key
+  function _fundAndDelegate(address account) private {
+    ERC20Mock(token18).mint(account, 100 ether);
+    vm.prank(account);
+    IERC20(token18).approve(address(hub), type(uint256).max);
+    _delegateWithoutKey(account);
+  }
+
+  /// @dev An ERC-1271 wallet with funds, delegated without a key, and the key of its signer
+  function _walletOwner() private returns (ERC1271WalletMock wallet, uint256 signerPk) {
+    address signer;
+    (signer, signerPk) = makeAddrAndKey('owner wallet signer');
+    wallet = new ERC1271WalletMock(signer);
+    _fundAndDelegate(address(wallet));
+  }
+
+  /// @dev The error for a nonce that is already spent in `namespace`
+  function _nonceAlreadyUsed(bytes32 namespace, uint256 nonce) private pure returns (bytes memory) {
+    return abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, namespace, nonce);
+  }
+
+  /// @dev The one-allowance fulfillment every SV-OWN case submits, open to any solver
+  function _fulfillmentOrderOf(uint256 nonce, uint256 deadline)
+    private
+    view
+    returns (FulfillmentOrder memory)
+  {
+    return _openFulfillmentOrder(
+      _allowances(_tokenAllowance(AMOUNT)),
+      new ValidationParams[](0),
+      new GenericCall[](0),
+      nonce,
+      deadline
+    );
+  }
+
+  /// @dev Submits `order` through the hub as the relayer, with `data` as the authentication
+  function _relayExecution(ExecutionOrder memory order, bytes memory data) private {
+    vm.prank(relayer);
+    hub.executeOrderWithDelegatedAuthentication(order, address(authenticator), data, false);
+  }
+
+  /// @dev As {_relayExecution}, for a fulfillment along an open route
+  function _relayFulfillment(FulfillmentOrder memory order, bytes memory data) private {
+    vm.prank(relayer);
+    hub.fulfillOrderWithDelegatedAuthentication(
+      order, address(authenticator), data, _route(order, _calls(_routerCall(0, hex'01'))), '', false
     );
   }
 
