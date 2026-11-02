@@ -59,9 +59,9 @@ contract TwoTiersOrderAuthenticator is
   /// @inheritdoc ITwoTiersOrderAuthenticator
   mapping(address owner => mapping(bytes32 keyHash => bytes32)) public sessionKeyMaster;
 
-  /// @param allowanceHub The only hub whose authentication requests this one answers
-  constructor(address allowanceHub)
-    OrderAuthenticatorBase(allowanceHub)
+  /// @param authorizedCaller The only address whose authentication requests this one answers
+  constructor(address authorizedCaller)
+    OrderAuthenticatorBase(authorizedCaller)
     EIP712('KyberSwap Two Tiers Order Authenticator', '1.0.0')
   {}
 
@@ -69,7 +69,7 @@ contract TwoTiersOrderAuthenticator is
    * @inheritdoc IOrderAuthenticator
    * @dev `data` is `abi.encode(AuthKey masterKey)`, which is approved as a master key
    */
-  function initAuthentication(address owner, bytes calldata data) external onlyAllowanceHub {
+  function initAuthentication(address owner, bytes calldata data) external onlyAuthorizedCaller {
     AuthKey calldata masterKey = _decodeKey(data, 0);
     _checkNotExpired(masterKey);
 
@@ -187,7 +187,7 @@ contract TwoTiersOrderAuthenticator is
     ExecutionOrder calldata order,
     bytes32 orderHash,
     bytes calldata data
-  ) external onlyAllowanceHub {
+  ) external onlyAuthorizedCaller {
     _authenticate(order.owner, order.nonce, orderHash, data);
   }
 
@@ -199,7 +199,7 @@ contract TwoTiersOrderAuthenticator is
     FulfillmentOrder calldata order,
     bytes32 orderHash,
     bytes calldata data
-  ) external onlyAllowanceHub {
+  ) external onlyAuthorizedCaller {
     _authenticate(order.owner, order.nonce, orderHash, data);
   }
 

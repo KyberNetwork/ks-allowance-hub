@@ -351,11 +351,11 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   // -------------------------------------------------------------------------------------------
 
   /**
-   * SV-05 — only the hub it was bound to may ask for an authentication, on either entry point
-   * @dev There are two of them now where there was one `verifyAuth`, and the gate is the whole of
-   * their security, so each one is asserted separately.
+   * SV-05 — only the authorized caller, here the hub, may ask for an authentication, on either
+   * entry point
+   * @dev The gate is the whole of their security, so each entry point is asserted separately.
    */
-  function test_SV_05_onlyAllowanceHubMayAuthenticate() public {
+  function test_SV_05_onlyTheAuthorizedCallerMayAuthenticate() public {
     ExecutionOrder memory execOrder = _standardOrder(0, block.timestamp);
     FulfillmentOrder memory fulfillOrder = _openFulfillmentOrder(
       new ERC20Allowance[](0), new ValidationParams[](0), new GenericCall[](0), 0, block.timestamp
@@ -364,13 +364,13 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(IOrderAuthenticator.CallerNotAllowanceHub.selector, relayer)
+      abi.encodeWithSelector(IOrderAuthenticator.CallerNotAuthorized.selector, relayer)
     );
     authenticator.authenticateExecution(execOrder, bytes32(0), data);
 
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(IOrderAuthenticator.CallerNotAllowanceHub.selector, relayer)
+      abi.encodeWithSelector(IOrderAuthenticator.CallerNotAuthorized.selector, relayer)
     );
     authenticator.authenticateFulfillment(fulfillOrder, bytes32(0), data);
   }

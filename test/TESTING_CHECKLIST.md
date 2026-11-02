@@ -1511,3 +1511,15 @@ source was restored and `git diff src/` was empty afterwards.
 
 The description of `20261030T194233Z/EVT-05` refers to the recorded logs; its cases now use the
 expectation of `NOREVOKE-01`.
+
+## Run `20261102T103911Z`
+
+Scope: the address an authenticator accepts on its caller-only functions is no longer named after
+the hub, because an authenticator may also be called by another authenticator in a chain. In
+`OrderAuthenticatorBase`, `ALLOWANCE_HUB` becomes `AUTHORIZED_CALLER` and `onlyAllowanceHub`
+becomes `onlyAuthorizedCaller`; in `IOrderAuthenticator`, `CallerNotAllowanceHub` becomes
+`CallerNotAuthorized`. Behaviour is unchanged, and no case is added or removed.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261102T103911Z/RENAME-01` | The existing expectations name `CallerNotAuthorized(caller)` with the same caller as before, and `SV-05` is renamed to `test_SV_05_onlyTheAuthorizedCallerMayAuthenticate`; the tests deploy the authenticator with the hub as its authorized caller | `SV-05` `test_SV_05_onlyTheAuthorizedCallerMayAuthenticate` — `test/v2/authenticators/TwoTiersOrderAuthenticator.t.sol`; `DEL-12` `test_DEL_12_initAuthenticationIsHubOnly` — `test/v2/Delegation.t.sol`; `FWD-16` `test_FWD_16_authenticatorRefusesTheForwarderOnHubOnlyCalls` — `test/v2/Forwarder.t.sol` | `forge test --isolate --no-match-path 'test/v1/*'` — 292 passed |

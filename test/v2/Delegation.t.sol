@@ -336,14 +336,12 @@ contract DelegationTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(IOrderAuthenticator.CallerNotAllowanceHub.selector, relayer)
+      abi.encodeWithSelector(IOrderAuthenticator.CallerNotAuthorized.selector, relayer)
     );
     authenticator.initAuthentication(owner, payload);
 
     vm.prank(owner);
-    vm.expectRevert(
-      abi.encodeWithSelector(IOrderAuthenticator.CallerNotAllowanceHub.selector, owner)
-    );
+    vm.expectRevert(abi.encodeWithSelector(IOrderAuthenticator.CallerNotAuthorized.selector, owner));
     authenticator.initAuthentication(owner, payload);
 
     assertFalse(authenticator.masterKeys(owner, keyHash), 'nothing was approved either time');

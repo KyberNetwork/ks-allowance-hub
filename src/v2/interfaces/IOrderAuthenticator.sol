@@ -7,8 +7,8 @@ import {FulfillmentOrder} from '../types/FulfillmentOrder.sol';
 /// @title IOrderAuthenticator
 /// @notice Interface an authenticator must implement to be delegated through {AuthDelegator}
 interface IOrderAuthenticator {
-  /// @notice The caller is not the allowance hub this authenticator was deployed for
-  error CallerNotAllowanceHub(address caller);
+  /// @notice The caller is not the address this authenticator was deployed for
+  error CallerNotAuthorized(address caller);
 
   /**
    * @notice Records the owner's initial authentication material when the owner delegates this

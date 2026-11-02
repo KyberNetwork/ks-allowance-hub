@@ -604,7 +604,7 @@ contract ForwarderTest is AuthenticatorBase {
    * authenticator refuses it as the caller because it is not the hub
    * @dev `initAuthentication`, `authenticateExecution` and `authenticateFulfillment` trust only the
    * hub. A relay makes the forwarder their caller, so each reverts with
-   * {IOrderAuthenticator-CallerNotAllowanceHub} naming the forwarder and the authenticator's state
+   * {IOrderAuthenticator-CallerNotAuthorized} naming the forwarder and the authenticator's state
    * is unchanged. With the failure bit set the refusal is recorded as that entry's result.
    */
   function test_FWD_16_authenticatorRefusesTheForwarderOnHubOnlyCalls() public {
@@ -639,7 +639,7 @@ contract ForwarderTest is AuthenticatorBase {
     _assertReachesTheHubOnlyGate(fulfillmentData[0], 'authenticateFulfillment');
 
     bytes memory refusal = abi.encodeWithSelector(
-      IOrderAuthenticator.CallerNotAllowanceHub.selector, address(callsForwarder)
+      IOrderAuthenticator.CallerNotAuthorized.selector, address(callsForwarder)
     );
 
     vm.prank(relayer);
@@ -896,7 +896,7 @@ contract ForwarderTest is AuthenticatorBase {
     assertFalse(ok, string.concat(what, ' refused the call'));
     assertEq(
       ret,
-      abi.encodeWithSelector(IOrderAuthenticator.CallerNotAllowanceHub.selector, address(this)),
+      abi.encodeWithSelector(IOrderAuthenticator.CallerNotAuthorized.selector, address(this)),
       string.concat('and refused it at the hub-only gate, so the payload reached the real ', what)
     );
   }
