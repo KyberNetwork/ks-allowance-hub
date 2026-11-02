@@ -83,7 +83,9 @@ contract MulticallTest is AuthenticatorBase {
     assertEq(
       IERC20(token18).balanceOf(address(router)) - routerWethBefore, AMOUNT, 'the order settled'
     );
-    assertEq(address(router).balance - routerNativeBefore, 0.5 ether, 'the native leg was paid');
+    assertEq(
+      address(router).balance - routerNativeBefore, 0.5 ether, 'the native transfer was paid'
+    );
     assertEq(address(hub).balance, VALUE - 0.5 ether, 'the unspent half stayed behind');
 
     bytes[] memory inner = abi.decode(results[1], (bytes[]));
@@ -165,7 +167,9 @@ contract MulticallTest is AuthenticatorBase {
 
     assertEq(results.length, 2, 'two results');
     assertEq(
-      IERC20(token18).balanceOf(address(router)) - routerWethBefore, 3 ether, 'both legs pulled'
+      IERC20(token18).balanceOf(address(router)) - routerWethBefore,
+      3 ether,
+      'both transfers pulled'
     );
     assertEq(router.callCount(), 2, 'both calls ran');
     assertEq(router.lastData(), hex'b2', 'the second order ran last');
@@ -368,7 +372,7 @@ contract MulticallTest is AuthenticatorBase {
       AMOUNT,
       'and the order spent on it in the same transaction'
     );
-    assertEq(router.callCount(), 1, 'the router leg ran once');
+    assertEq(router.callCount(), 1, 'the router call ran once');
     assertEq(router.seenMsgSender(), owner, 'for the owner, not for the relayer who submitted');
     assertEq(
       authenticator.nonces(lNonceKey(owner), 0),

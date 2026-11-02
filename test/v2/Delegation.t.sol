@@ -21,7 +21,7 @@ contract RevertingAuthenticator is IOrderAuthenticator {
 
   bool public reverting;
 
-  /// @dev Counts the calls that got through, so a leg can be shown never to have made one
+  /// @dev Counts the calls that got through, so a step can be shown never to have made one
   uint256 public initCount;
 
   function setReverting(bool value) external {
@@ -29,7 +29,9 @@ contract RevertingAuthenticator is IOrderAuthenticator {
   }
 
   function initAuthentication(address, bytes calldata) external {
-    if (reverting) revert Nope();
+    if (reverting) {
+      revert Nope();
+    }
     initCount++;
   }
 
@@ -37,18 +39,24 @@ contract RevertingAuthenticator is IOrderAuthenticator {
     external
     view
   {
-    if (reverting) revert Nope();
+    if (reverting) {
+      revert Nope();
+    }
   }
 
   function authenticateExecution(ExecutionOrder calldata, bytes32, bytes calldata) external view {
-    if (reverting) revert Nope();
+    if (reverting) {
+      revert Nope();
+    }
   }
 
   function authenticateFulfillment(FulfillmentOrder calldata, bytes32, bytes calldata)
     external
     view
   {
-    if (reverting) revert Nope();
+    if (reverting) {
+      revert Nope();
+    }
   }
 }
 
@@ -202,7 +210,7 @@ contract DelegationTest is AuthenticatorBase {
    * DEL-08 — a withdrawal never reaches the authenticator, so one that reverts cannot trap the
    * owner
    * @dev Withdrawal must work unconditionally; an authenticator the owner could not
-   * withdraw would keep authenticating orders forever. Every leg carries the same non-empty
+   * withdraw would keep authenticating orders forever. Every step carries the same non-empty
    * `data`, without which the authenticator is not reached at all: with an empty payload
    * `initAuthentication` is skipped on both directions and the contrast would be between two calls
    * that never happened.
@@ -292,7 +300,7 @@ contract DelegationTest is AuthenticatorBase {
    * DEL-11 — both payload shapes name the same key
    * @dev `initAuthentication` follows a relative offset out of word 0 rather than assuming the
    * struct starts at a fixed place, so `abi.encode(key)` and `abi.encode(key, anything)` land on
-   * the same bytes and hash to the same key. The revocation between the two legs is what stops the
+   * the same bytes and hash to the same key. The revocation between the two steps is what stops the
    * second one being a no-op against a key that was already approved.
    */
   function test_DEL_11_bothPayloadShapesNameTheSameKey() public {
@@ -319,7 +327,7 @@ contract DelegationTest is AuthenticatorBase {
   /**
    * DEL-12 — `initAuthentication` answers the hub alone, and being the owner is not a way in
    * @dev It takes no signature, no nonce and no deadline: it trusts its caller completely, so the
-   * caller check is the whole of its security. The owner leg matters as much as the stranger's,
+   * caller check is the whole of its security. The owner step matters as much as the stranger's,
    * because "the owner may do it anyway" is exactly the reasoning that would justify relaxing the
    * modifier — and the owner already has a route, through {AuthDelegator-updateDelegation}.
    */
@@ -376,7 +384,7 @@ contract DelegationTest is AuthenticatorBase {
    * DEL-14 — the guard reads the payload's length, not the direction alone
    * @dev One byte apart from DEL-13, same direction, same authenticator. A single zero byte is
    * enough to cross the guard, which isolates `data.length > 0` from any notion of the payload
-   * being meaningful. The first leg also fixes the exact calldata the hub forwards, whose absence
+   * being meaningful. The first step also fixes the exact calldata the hub forwards, whose absence
    * is what the zero-call expectations in DEL-13 and DEL-15 assert: a signature string
    * that named nothing would make those two pass vacuously, and would fail here.
    */
@@ -401,7 +409,7 @@ contract DelegationTest is AuthenticatorBase {
 
     vm.prank(owner);
     hub.updateDelegation(owner, address(bad), false, '', 0, deadline, '');
-    assertFalse(hub.authDelegated(owner, address(bad)), 'cleared, so the next leg is a transition');
+    assertFalse(hub.authDelegated(owner, address(bad)), 'cleared, so the next step is a transition');
 
     vm.prank(owner);
     vm.expectRevert(RevertingAuthenticator.Nope.selector);

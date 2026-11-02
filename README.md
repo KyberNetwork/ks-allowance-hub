@@ -23,13 +23,13 @@ account that may submit the order.
 
 | Order | The owner signs | The submitter chooses |
 |---|---|---|
-| `ExecutionOrder` | the legs, their targets and the exact router calls | nothing |
-| `FulfillmentOrder` | the legs, the validators and the owner's own router calls | a `FulfillmentSolution`: the target of each leg and the solver's router calls |
+| `ExecutionOrder` | the transfers, their targets and the exact router calls | nothing |
+| `FulfillmentOrder` | the transfers, the validators and the owner's own router calls | a `FulfillmentSolution`: the target and the amount of each ERC20 transfer, the target of each ERC721 transfer and the solver's router calls |
 
 ```
 ExecutionOrder(address owner,address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 deadline,string metadata)
 FulfillmentOrder(address owner,address solver,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,ValidationParams[] validationParams,GenericCall[] ownerCalls,address solutionApprover,uint256 nonce,uint256 deadline,string metadata)
-FulfillmentSolution(address[] erc20Targets,address[] erc721Targets,GenericCall[] solverCalls,uint256 deadline)
+FulfillmentSolution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,GenericCall[] solverCalls,uint256 deadline)
 ```
 
 `relayer` or `solver` is the account that may submit the order besides the owner. The dead address
@@ -39,7 +39,8 @@ A fulfillment settles in this order:
 
 1. the solution approval is checked, unless `solutionApprover` is the dead address;
 2. each validator's `beforeExecution` runs;
-3. each leg is transferred to the target the solution names for it;
+3. each transfer is sent to the target the solution names for it, an ERC20 transfer in the amount
+   the solution names, at most its allowance;
 4. `solution.solverCalls` run;
 5. each validator's `afterExecution` runs;
 6. `order.ownerCalls` run.
@@ -60,9 +61,9 @@ solver: the solver chooses every target and every router call.
 | `fulfillOrderWithPermit2Signature` | the owner's Permit2 signature |
 | `fulfillOrderWithDelegatedAuthentication` | an authenticator the owner delegated |
 
-On the **Permit2 entry points**, the ERC20 legs are transferred through a Permit2 batch permit whose
-nonce is `order.nonce` and whose deadline is `order.deadline`. When another account submits, the
-owner's signature must also cover a witness:
+On the **Permit2 entry points**, the ERC20 transfers are executed through a Permit2 batch permit
+whose nonce is `order.nonce` and whose deadline is `order.deadline`. When another account submits,
+the owner's signature must also cover a witness:
 
 ```
 ExecutionWitness(address relayer,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,string metadata)
@@ -74,9 +75,20 @@ other.
 
 On the **delegated entry points**, the owner must have delegated the authenticator, the caller must
 be the order's submitter, and the authenticator must accept `authenticationData` for the order. The
-hub does not spend `order.nonce`; replay protection is the authenticator's. The ERC20 legs are drawn
-from the owner's allowances to the hub, or from the owner's Permit2 allowances when
+hub does not spend `order.nonce`; replay protection is the authenticator's. The ERC20 transfers are
+drawn from the owner's allowances to the hub, or from the owner's Permit2 allowances when
 `usePermit2Allowances` is set.
+
+### Reusable orders
+
+An order whose nonce is `Constants.REUSABLE_ORDER_NONCE` (0) is reusable: the authenticator spends
+no nonce when it authenticates the order, so the order may be settled until its deadline passes or
+its owner cancels it. The owner cancels a reusable order by calling `cancelReusableExecutionOrder`
+or `cancelReusableFulfillmentOrder`, which records the order hash in `cancelledOrders` and emits
+`CancelOrder`. On the delegated entry points, the hub refuses a cancelled reusable order for any
+caller other than the owner. An order with any other nonce is cancelled by spending its nonce with
+`revokeNonce` on the authenticator or on Permit2. On the Permit2 entry points, Permit2 spends the
+nonce, so such an order settles once there, and the cancellation record does not apply.
 
 ### Orders submitted by the owner
 
@@ -150,11 +162,12 @@ the key's signature over the order's EIP-712 digest under the authenticator's do
 `abi.encode(bytes signature)` carries the owner's own signature over the same digest, verified as
 an ECDSA signature or through ERC-1271, and requires no approved key.
 
-Every signature spends a nonce in its signer's namespace: the owner's address for the owner's own
-signatures, and the key's credential hash, `keccak256(abi.encodePacked(keyType, publicKey))`, for
-anything a key signs. The credential hash excludes the expiry, so all approvals of one key share
-its nonces. `revokeNonce(AuthKey, nonce, deadline, signature)` spends a key's nonce on the key's
-signature, whether or not the key is still approved or unexpired.
+Every signature, except that of a reusable order, spends a nonce in its signer's namespace: the
+owner's address for the owner's own signatures, and the key's credential hash,
+`keccak256(abi.encodePacked(keyType, publicKey))`, for anything a key signs. The credential hash
+excludes the expiry, so all approvals of one key share its nonces.
+`revokeNonce(AuthKey, nonce, deadline, signature)` spends a key's nonce on the key's signature,
+whether or not the key is still approved or unexpired.
 
 ### Relayed approvals
 

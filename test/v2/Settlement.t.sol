@@ -89,7 +89,7 @@ contract SettlementTest is HubBase {
     assertEq(_topicAddress(entry.topics[1]), relayer, 'caller is the submitter, not the owner');
     assertEq(_topicAddress(entry.topics[2]), owner, 'owner is the account the assets came from');
     assertEq(entry.topics[3], SchemaHash.executionOrder(order), 'the order hash the owner signed');
-    // No call carries value, so the native leg is empty
+    // No call carries value, so the native transfers are empty
     assertEq(entry.data, abi.encode(erc20s, nfts, new NativeTransfer[](0)), 'payload');
   }
 
@@ -174,7 +174,7 @@ contract SettlementTest is HubBase {
   }
 
   /**
-   * OWN-07 — the native leg of the event spans both call lists, solver's route first
+   * OWN-07 — the native transfers of the event span both call lists, solver's route first
    * @dev Four calls, two of them valued, one from each list and neither at the end of its own.
    * A merge that reversed the two lists, or that walked one of them only, or that kept the
    * zero-value entries, produces a different array from the one written out here — and the two
@@ -215,7 +215,7 @@ contract SettlementTest is HubBase {
     assertEq(
       entry.data,
       abi.encode(new ERC20Transfer[](0), new ERC721Transfer[](0), expected),
-      'solver leg then owner leg, zero-value calls dropped'
+      'solver calls then owner calls, zero-value calls dropped'
     );
 
     // the listed amounts are what moved, so the event is not a claim about nothing
@@ -252,7 +252,9 @@ contract SettlementTest is HubBase {
     );
 
     assertEq(stranger.callCount(), 0, 'never called');
-    assertEq(IERC20(token18).balanceOf(owner), ownerBalanceBefore, 'the ERC20 leg rolled back too');
+    assertEq(
+      IERC20(token18).balanceOf(owner), ownerBalanceBefore, 'the ERC20 transfer rolled back too'
+    );
     assertEq(IERC20(token18).balanceOf(address(stranger)), 0, 'nothing reached it');
   }
 
@@ -386,8 +388,13 @@ contract SettlementTest is HubBase {
       0,
       block.timestamp + 1 hours
     );
-    FulfillmentSolution memory solution =
-      _solution(new address[](0), erc721Targets, new GenericCall[](0), block.timestamp + 1 hours);
+    FulfillmentSolution memory solution = _solution(
+      new address[](0),
+      new uint160[](0),
+      erc721Targets,
+      new GenericCall[](0),
+      block.timestamp + 1 hours
+    );
 
     vm.prank(owner);
     vm.expectRevert(abi.encodeWithSelector(IMsgSender.AlreadyLocked.selector, owner));
@@ -579,7 +586,7 @@ contract SettlementTest is HubBase {
     order.owner = orderOwner;
   }
 
-  /// @dev As {_ownedExecution}, for a fulfillment order with no legs and no owner calls
+  /// @dev As {_ownedExecution}, for a fulfillment order with no transfers and no owner calls
   function _ownedFulfillment(address orderOwner)
     internal
     view
@@ -622,11 +629,15 @@ contract SettlementTest is HubBase {
     FulfillmentOrder memory fulfillment = _ownedFulfillment(orderOwner);
     FulfillmentSolution memory solution = _route(fulfillment, new GenericCall[](0));
 
-    if (entry == 0) return _executionCall(execution);
+    if (entry == 0) {
+      return _executionCall(execution);
+    }
     if (entry == 1) {
       return abi.encodeCall(IKSAllowanceHubV2.executeOrderWithPermit2Signature, (execution, ''));
     }
-    if (entry == 2) return _fulfillmentCall(fulfillment, new GenericCall[](0));
+    if (entry == 2) {
+      return _fulfillmentCall(fulfillment, new GenericCall[](0));
+    }
     return abi.encodeCall(
       IKSAllowanceHubV2.fulfillOrderWithPermit2Signature, (fulfillment, '', solution, '')
     );
@@ -680,9 +691,15 @@ contract SettlementTest is HubBase {
     uint256 found;
     logs = new Vm.Log[](entries.length);
     for (uint256 i = 0; i < entries.length; i++) {
-      if (entries[i].emitter != address(hub)) continue;
-      if (entries[i].topics.length == 0) continue;
-      if (entries[i].topics[0] != TRANSFER_TOKENS_TOPIC) continue;
+      if (entries[i].emitter != address(hub)) {
+        continue;
+      }
+      if (entries[i].topics.length == 0) {
+        continue;
+      }
+      if (entries[i].topics[0] != TRANSFER_TOKENS_TOPIC) {
+        continue;
+      }
 
       logs[found++] = entries[i];
     }

@@ -11,10 +11,10 @@ import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer
  * @notice Witness the owner's Permit2 signature covers when another account submits
  * {KSAllowanceHubV2-fulfillOrderWithPermit2Signature}
  * @dev Covers the parts of the order the permit does not; the permit covers the ERC20 tokens and
- * amounts. The route and the leg targets are not covered; the witness names the solver, the
- * validators and the solution approver instead.
+ * amounts. The route and the targets of the transfers are not covered; the witness names the
+ * solver, the validators and the solution approver instead.
  * @param solver Account that may submit the order; the dead address allows any account
- * @param erc721Approvals ERC721 legs
+ * @param erc721Approvals ERC721 transfers
  * @param ownerCalls Router calls fixed by the owner
  * @param validationParams Validators of the solution's result
  * @param callsSigner Account whose signature the solution requires; the dead address requires none

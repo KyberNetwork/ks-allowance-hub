@@ -207,7 +207,7 @@ abstract contract V2TestBase is Test {
   // Permit2 digest, rebuilt rather than imported
   // ---------------------------------------------------------------------------------------------
 
-  /// @dev Permit2's `permitted` array, built from the order's ERC-20 legs
+  /// @dev Permit2's `permitted` array, built from the order's ERC-20 transfers
   function lTokenPermissions(address[] memory tokens, uint256[] memory amounts)
     internal
     pure

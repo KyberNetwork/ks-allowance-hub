@@ -66,7 +66,7 @@ contract FulfillOrderTest is AuthenticatorBase {
    * @dev Worth its own case beyond the branch: an owner submitting for themselves skips the witness
    * entirely, so the validators, their own tail and the approver they named are bound by no
    * signature at all — yet the approval is still demanded and still has to be over this order. The
-   * second leg is what says so: the same approval against a route the approver did not sign is
+   * second step is what says so: the same approval against a route the approver did not sign is
    * refused even though the owner is the caller.
    */
   function test_AUTH_01b_fulfillmentPermit2SelfSubmitted() public {
@@ -87,7 +87,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     vm.prank(owner);
     bytes[] memory results = hub.fulfillOrderWithPermit2Signature(order, permitSig, route, approval);
 
-    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'erc20 leg');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'erc20 transfer');
     assertEq(results.length, 1, 'one router result');
     assertEq(validator.sequenceLength(), 2, 'validator bracketed the order');
 
@@ -122,7 +122,7 @@ contract FulfillOrderTest is AuthenticatorBase {
       order, signature, _route(order, _calls(_routerCall(0, hex'01'))), ''
     );
 
-    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'erc20 leg');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'erc20 transfer');
     assertEq(results.length, 1, 'one router result');
     assertEq(validator.sequenceLength(), 2, 'validator saw both hooks');
   }
@@ -130,9 +130,10 @@ contract FulfillOrderTest is AuthenticatorBase {
   /**
    * AUTH-07b — the solver cannot swap in a different approver than the one the owner signed
    * @dev `solutionApprover` is read twice, as `order.relayer` is on the execute rail: the hub asks
-   * it to approve the route, and the witness carries it as `callsSigner`. The second leg presents a
-   * perfectly valid approval from an approver of the solver's choosing, so the refusal is Permit2's
-   * and is about the witness rather than about the approval. The first leg is the control.
+   * it to approve the route, and the witness carries it as `callsSigner`. The second step presents
+   * a perfectly valid approval from an approver of the solver's choosing, so the refusal is
+   * Permit2's and is about the witness rather than about the approval. The first step is the
+   * control.
    */
   function test_AUTH_07b_solutionApproverIsBoundByTheWitness() public {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
@@ -184,7 +185,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
   /**
    * AUTH-16 — the witness covers the order's metadata
-   * @dev The first leg is the control: a solver settles an order carrying metadata A. The second
+   * @dev The first step is the control: a solver settles an order carrying metadata A. The second
    * submits metadata B under the witness made for A, and Permit2 refuses it.
    */
   function test_AUTH_16_witnessPinsMetadata() public {
@@ -262,13 +263,14 @@ contract FulfillOrderTest is AuthenticatorBase {
    * @dev The mirror of `ORD-02` on this family, and it has to exist separately: the witness binds
    * `solver` as the order names it, not as the caller names itself, so the hub's own gate is the
    * only thing between a stranger and a settled order here. The gate runs before Permit2, so the
-   * middle leg's refusal is the hub's error and names both addresses. The last leg is what makes
+   * middle step's refusal is the hub's error and names both addresses. The last step is what makes
    * the middle one about the pin rather than about the submitter.
    */
   function test_ORD_03_solverPinningAndTheOpenSentinel() public {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     FulfillmentSolution memory route = _solution(
       _addresses(address(router)),
+      _amounts(AMOUNT),
       new address[](0),
       _calls(_routerCall(0, hex'01')),
       block.timestamp + 1 hours
@@ -308,7 +310,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     bytes memory againSig = _signFulfillmentWitness(pinnedAgain);
 
     vm.prank(relayer);
-    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedSolver.selector, relayer));
+    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.CallerNotSolver.selector, relayer));
     hub.fulfillOrderWithPermit2Signature(pinnedAgain, againSig, route, '');
 
     assertEq(
@@ -341,16 +343,17 @@ contract FulfillOrderTest is AuthenticatorBase {
    * @dev `SolutionApproval` carries `orderHash`, and the order hash covers the owner's tail, so an
    * approver who signed a route for one order has not approved the same route under a different
    * tail. The two orders differ in that one member and nothing else, so the refusal is about the
-   * binding. The second leg presents the first order's approval, of the very same route, with the
-   * second order. The first leg is the control.
+   * binding. The second step presents the first order's approval, of the very same route, with the
+   * second order. The first step is the control.
    */
   function test_SOL_01_oneApprovalBindsOneOrder() public {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
     uint256 deadline = block.timestamp + 1 hours;
 
-    FulfillmentSolution memory route =
-      _solution(_addresses(address(router)), new address[](0), solverCalls, deadline);
+    FulfillmentSolution memory route = _solution(
+      _addresses(address(router)), _amounts(AMOUNT), new address[](0), solverCalls, deadline
+    );
 
     FulfillmentOrder memory withTailA = _orderWithTail(_calls(_routerCall(0, hex'aa')), deadline);
     bytes32 hashA = SchemaHash.fulfillmentOrder(withTailA);
@@ -450,7 +453,11 @@ contract FulfillOrderTest is AuthenticatorBase {
   function test_SOL_06_anApprovalIsSpentWithItsOrder() public {
     uint256 deadline = block.timestamp + 1 hours;
     FulfillmentSolution memory route = _solution(
-      _addresses(address(router)), new address[](0), _calls(_routerCall(0, hex'01')), deadline
+      _addresses(address(router)),
+      _amounts(AMOUNT),
+      new address[](0),
+      _calls(_routerCall(0, hex'01')),
+      deadline
     );
 
     FulfillmentOrder memory named = _fulfillmentOrder(
@@ -480,7 +487,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   /**
    * SOL-02 — the sentinel approver accepts any route, with no signature to present
    * @dev Two different routes settle under the same order, which is the meaning of "any route", and
-   * neither carries an approval. The last leg is the contrast: a named approver on the otherwise
+   * neither carries an approval. The last step is the contrast: a named approver on the otherwise
    * identical order does demand one.
    */
   function test_SOL_02_sentinelApproverAcceptsAnyRoute() public {
@@ -638,7 +645,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
   /**
    * OWN-02 — the Permit2 witness pins the tail the owner signed
-   * @dev The first leg is the control: the same order with the tail left alone settles, so the
+   * @dev The first step is the control: the same order with the tail left alone settles, so the
    * refusal in the second is evidence about the witness covering `ownerCalls` rather than about a
    * signature that was never going to be accepted. Only one byte of call data separates them.
    */
@@ -687,7 +694,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   /**
    * OWN-03 — the same binding on the delegated rail, through the order the authenticator receives
    * @dev Carries validators as well as a tail, so both of those signed members are exercised. As in
-   * OWN-02 the first leg is the control.
+   * OWN-02 the first step is the control.
    */
   function test_OWN_03_authenticationBindsOwnerCalls() public {
     _delegateKeyThroughHub(key);
@@ -730,8 +737,8 @@ contract FulfillOrderTest is AuthenticatorBase {
 
   /**
    * OWN-04 — the whitelist gate covers the tail exactly as it covers the route
-   * @dev The first leg also shows the refusal unwinds the solver calls that had already run. The
-   * last leg is the control: granting the role and changing nothing else lets the very same tail
+   * @dev The first step also shows the refusal unwinds the solver calls that had already run. The
+   * last step is the control: granting the role and changing nothing else lets the very same tail
    * through, so the two refusals are about the role rather than about the router.
    */
   function test_OWN_04_ownerCallRouterMustBeWhitelisted() public {
@@ -754,7 +761,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     _fulfillWithTail(new GenericCall[](0), strangerCalls);
 
     assertEq(stranger.callCount(), 0, 'never called from either list');
-    assertEq(router.callCount(), 0, 'and the solver leg of the first order rolled back with it');
+    assertEq(router.callCount(), 0, 'and the solver calls of the first order rolled back with it');
 
     vm.prank(admin);
     hub.grantRole(ROUTER_ROLE, address(stranger));
@@ -763,7 +770,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     _fulfillWithTail(strangerCalls, routeCalls);
 
     assertEq(stranger.callCount(), 1, "the owner's tail reached it once whitelisted");
-    assertEq(router.callCount(), 1, 'and the solver leg ran too');
+    assertEq(router.callCount(), 1, 'and the solver call ran too');
   }
 
   /**
@@ -847,7 +854,7 @@ contract FulfillOrderTest is AuthenticatorBase {
    * VAL-01 — the hooks bracket the whole order on the delegated rail, each snapshot to its owner
    * @dev The spy reads the router's balance inside each hook, which is what orders the hooks
    * against the transfer and the router call: `beforeExecution` must see the pre-pull
-   * balance and `afterExecution` the balance after both the pull and the router leg.
+   * balance and `afterExecution` the balance after both the pull and the router call.
    */
   function test_VAL_01_hookOrderingAndSnapshotPairing() public {
     validator.setSnapshot(hex'aaaa');
@@ -858,7 +865,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     uint256 payout = 1 ether;
     uint256 routerBefore = IERC20(token18).balanceOf(address(router));
 
-    // the router pays part of it away while it runs, so the balance changes DURING the call leg.
+    // the router pays part of it away while it runs, so the balance changes DURING the router call.
     // Without this the after-hook would read the same value whether it ran before or after the
     // router, and the ordering assertion below would be vacuous.
     router.setPayout(token18, recipient, payout);
@@ -885,7 +892,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     assertEq(
       validator.balanceAtAfter(),
       routerBefore + amount - payout,
-      'afterExecution ran after the router leg, not merely after the pull'
+      'afterExecution ran after the router call, not merely after the pull'
     );
 
     // each validator's afterExecution received the snapshot its own beforeExecution returned
@@ -1009,17 +1016,20 @@ contract FulfillOrderTest is AuthenticatorBase {
    * has a counter of its own. `approveSolution` switches between a named approver with a real
    * approval and the sentinel; `usePermit2Allowances` picks the pull rail; `pinSubmitter` and the
    * nonce are covered by the order hash the event reports and by the authenticator's bitmap. The
-   * solver's two targets are drawn, and receive the legs.
+   * solver's two targets are drawn, and receive the transfers.
    */
   function testFuzz_FU_FUZZ_delegatedRail(FulfillFuzz memory f) public {
     _delegateKeyThroughHub(key);
 
+    f.nonce = bound(f.nonce, 1, type(uint256).max);
     f.amount = uint160(bound(f.amount, 0, 100 ether));
     f.solverCallCount = uint8(bound(f.solverCallCount, 0, 3));
     f.ownerCallCount = uint8(bound(f.ownerCallCount, 0, 3));
     f.deadlineOffset = bound(f.deadlineOffset, 0, 30 days);
     _assumeTargets(f);
-    if (f.usePermit2Allowances) _grantPermit2Allowance(token18, uint160(100 ether));
+    if (f.usePermit2Allowances) {
+      _grantPermit2Allowance(token18, uint160(100 ether));
+    }
 
     (FulfillmentOrder memory order, FulfillmentSolution memory route) = _fuzzOrder(f, relayer);
     bytes memory authData = _fulfillmentAuthData(order, key, masterKeyPk);
@@ -1118,9 +1128,9 @@ contract FulfillOrderTest is AuthenticatorBase {
   }
 
   /**
-   * @dev The solver's targets range over every account that can hold both legs and shows the move:
-   * non-zero, since both mocks refuse it; without code, since a contract target would need an
-   * ERC-721 receiver hook; and not the owner, whose balance would net to zero
+   * @dev The solver's targets range over every account that can receive both transfers and shows
+   * the move: non-zero, since both mocks refuse it; without code, since a contract target would
+   * need an ERC-721 receiver hook; and not the owner, whose balance would net to zero
    */
   function _assumeTargets(FulfillFuzz memory f) private view {
     vm.assume(f.erc20Target != address(0) && f.erc20Target.code.length == 0);
@@ -1158,6 +1168,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     );
     route = _solution(
       _addresses(f.erc20Target),
+      _amounts(f.amount),
       f.moveNft ? _addresses(f.erc721Target) : new address[](0),
       solverCalls,
       block.timestamp + f.deadlineOffset
@@ -1179,7 +1190,9 @@ contract FulfillOrderTest is AuthenticatorBase {
     assertEq(router.callCount(), f.solverCallCount, 'the solver list ran here');
     assertEq(router2.callCount(), f.ownerCallCount, "and the owner's tail there");
     assertEq(validator.sequenceLength(), 2, 'validator bracketed the order');
-    if (f.moveNft) assertEq(nft.ownerOf(NFT_ID), f.erc721Target, 'nft leg to the drawn target');
+    if (f.moveNft) {
+      assertEq(nft.ownerOf(NFT_ID), f.erc721Target, 'nft transfer to the drawn target');
+    }
 
     Vm.Log memory entry = _settlementLog();
     assertEq(

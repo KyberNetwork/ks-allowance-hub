@@ -149,9 +149,15 @@ abstract contract HubBase is V2TestBase {
 
     uint256 found;
     for (uint256 i = 0; i < entries.length; i++) {
-      if (entries[i].emitter != address(hub)) continue;
-      if (entries[i].topics.length == 0) continue;
-      if (entries[i].topics[0] != TRANSFER_TOKENS_TOPIC) continue;
+      if (entries[i].emitter != address(hub)) {
+        continue;
+      }
+      if (entries[i].topics.length == 0) {
+        continue;
+      }
+      if (entries[i].topics[0] != TRANSFER_TOKENS_TOPIC) {
+        continue;
+      }
 
       entry = entries[i];
       found++;
@@ -163,7 +169,9 @@ abstract contract HubBase is V2TestBase {
   /// @dev Asserts that none of `entries` is a `RevokeNonce`, which only an explicit revocation emits
   function _assertNoRevokeNonce(Vm.Log[] memory entries) internal pure {
     for (uint256 i = 0; i < entries.length; i++) {
-      if (entries[i].topics.length == 0) continue;
+      if (entries[i].topics.length == 0) {
+        continue;
+      }
       assertTrue(
         entries[i].topics[0] != REVOKE_NONCE_TOPIC, 'a spent signature emitted RevokeNonce'
       );
@@ -186,12 +194,12 @@ abstract contract HubBase is V2TestBase {
     return ERC721Transfer({token: address(nft), tokenId: NFT_ID, target: target});
   }
 
-  /// @dev A fulfillment's ERC20 leg: the amount that may leave the owner, with no target
+  /// @dev A fulfillment's ERC20 transfer: the amount that may leave the owner, with no target
   function _tokenAllowance(uint160 amount) internal view returns (ERC20Allowance memory) {
     return ERC20Allowance({token: token18, amount: amount});
   }
 
-  /// @dev A fulfillment's NFT leg, with no target
+  /// @dev A fulfillment's NFT transfer, with no target
   function _nftApproval() internal view returns (ERC721Approval memory) {
     return ERC721Approval({token: address(nft), tokenId: NFT_ID});
   }
@@ -237,7 +245,7 @@ abstract contract HubBase is V2TestBase {
     });
   }
 
-  /// @dev The commonest shape: open to any submitter, plain ERC20 allowance, no NFT leg
+  /// @dev The commonest shape: open to any submitter, plain ERC20 allowance, no NFT transfer
   function _openExecutionOrder(
     ERC20Transfer[] memory erc20Transfers,
     GenericCall[] memory genericCalls,
@@ -273,7 +281,7 @@ abstract contract HubBase is V2TestBase {
     });
   }
 
-  /// @dev Open to any submitter, any route, plain ERC20 allowance, no NFT leg
+  /// @dev Open to any submitter, any route, plain ERC20 allowance, no NFT transfer
   function _openFulfillmentOrder(
     ERC20Allowance[] memory erc20Allowances,
     ValidationParams[] memory validationParams,
@@ -293,14 +301,21 @@ abstract contract HubBase is V2TestBase {
     );
   }
 
+  function _amounts(uint160 a) internal pure returns (uint160[] memory out) {
+    out = new uint160[](1);
+    out[0] = a;
+  }
+
   function _solution(
     address[] memory erc20Targets,
+    uint160[] memory erc20Amounts,
     address[] memory erc721Targets,
     GenericCall[] memory solverCalls,
     uint256 deadline
   ) internal pure returns (FulfillmentSolution memory) {
     return FulfillmentSolution({
       erc20Targets: erc20Targets,
+      erc20Amounts: erc20Amounts,
       erc721Targets: erc721Targets,
       solverCalls: solverCalls,
       deadline: deadline
@@ -308,8 +323,8 @@ abstract contract HubBase is V2TestBase {
   }
 
   /**
-   * @dev As above, sending every ERC20 leg of `order` to `router` and every NFT leg to `router2`,
-   * the targets the suite's orders used before the solver chose them
+   * @dev As above, sending the full allowance of every ERC20 transfer of `order` to `router` and
+   * every NFT transfer to `router2`
    */
   function _solution(
     FulfillmentOrder memory order,
@@ -317,14 +332,16 @@ abstract contract HubBase is V2TestBase {
     uint256 deadline
   ) internal view returns (FulfillmentSolution memory) {
     address[] memory erc20Targets = new address[](order.erc20Allowances.length);
+    uint160[] memory erc20Amounts = new uint160[](order.erc20Allowances.length);
     for (uint256 i = 0; i < erc20Targets.length; i++) {
       erc20Targets[i] = address(router);
+      erc20Amounts[i] = order.erc20Allowances[i].amount;
     }
     address[] memory erc721Targets = new address[](order.erc721Approvals.length);
     for (uint256 i = 0; i < erc721Targets.length; i++) {
       erc721Targets[i] = address(router2);
     }
-    return _solution(erc20Targets, erc721Targets, solverCalls, deadline);
+    return _solution(erc20Targets, erc20Amounts, erc721Targets, solverCalls, deadline);
   }
 
   /// @dev The route a solver supplies for `order` when the owner pinned nothing, valid for an hour
@@ -456,7 +473,7 @@ abstract contract HubBase is V2TestBase {
    * @dev Submits `callData` with the top 96 bits of the word holding the token set, then submits it
    * as given. The order hash reads those words directly from calldata without masking them, so the
    * dirty payload must be refused by the field reads that settle the order. Dirty first and clean
-   * second, so the clean leg settling proves the payload was refused for the dirtying and not for
+   * second, so the clean step settling proves the payload was refused for the dirtying and not for
    * anything else it carried.
    */
   function _assertDirtyTokenWordIsRefused(address submitter, bytes memory callData) internal {
@@ -466,7 +483,9 @@ abstract contract HubBase is V2TestBase {
       assembly {
         w := mload(add(add(callData, 0x20), i))
       }
-      if (uint256(w) == uint256(uint160(token18))) word = i;
+      if (uint256(w) == uint256(uint160(token18))) {
+        word = i;
+      }
     }
     assertTrue(word != type(uint256).max, 'the token word is in the payload');
 

@@ -472,16 +472,24 @@ contract Eip712Test is V2TestBase {
     });
   }
 
-  /// @dev One target per leg of {_sampleFulfillmentOrder}, none of them a router
+  /// @dev One target and amount per ERC20 transfer, and one target per NFT transfer, of
+  /// {_sampleFulfillmentOrder}, none of them a router
   function _sampleSolution() private pure returns (FulfillmentSolution memory) {
     (,, GenericCall[] memory calls) = _sample();
     address[] memory erc20Targets = new address[](2);
     erc20Targets[0] = address(0xBBB1);
     erc20Targets[1] = address(0xBBB2);
+    uint160[] memory erc20Amounts = new uint160[](2);
+    erc20Amounts[0] = 1000;
+    erc20Amounts[1] = 2000;
     address[] memory erc721Targets = new address[](1);
     erc721Targets[0] = address(0xBBB3);
     return FulfillmentSolution({
-      erc20Targets: erc20Targets, erc721Targets: erc721Targets, solverCalls: calls, deadline: 9012
+      erc20Targets: erc20Targets,
+      erc20Amounts: erc20Amounts,
+      erc721Targets: erc721Targets,
+      solverCalls: calls,
+      deadline: 9012
     });
   }
 
@@ -498,7 +506,9 @@ contract Eip712Test is V2TestBase {
     for (uint256 i = 0; i < names.length; i++) {
       uint256 at = _indexOf(typeString, names[i]);
       assertTrue(at != type(uint256).max, 'referenced type is present');
-      if (i > 0) assertTrue(at > previous, 'referenced types appear in sorted order');
+      if (i > 0) {
+        assertTrue(at > previous, 'referenced types appear in sorted order');
+      }
       previous = at;
     }
   }
@@ -508,7 +518,9 @@ contract Eip712Test is V2TestBase {
     bytes memory y = bytes(b);
     uint256 n = x.length < y.length ? x.length : y.length;
     for (uint256 i = 0; i < n; i++) {
-      if (x[i] != y[i]) return uint8(x[i]) < uint8(y[i]);
+      if (x[i] != y[i]) {
+        return uint8(x[i]) < uint8(y[i]);
+      }
     }
     return x.length < y.length;
   }
@@ -516,7 +528,9 @@ contract Eip712Test is V2TestBase {
   function _indexOf(string memory haystack, string memory needle) private pure returns (uint256) {
     bytes memory h = bytes(haystack);
     bytes memory n = bytes(needle);
-    if (n.length == 0 || n.length > h.length) return type(uint256).max;
+    if (n.length == 0 || n.length > h.length) {
+      return type(uint256).max;
+    }
 
     for (uint256 i = 0; i + n.length <= h.length; i++) {
       bool hit = true;
@@ -526,7 +540,9 @@ contract Eip712Test is V2TestBase {
           break;
         }
       }
-      if (hit) return i;
+      if (hit) {
+        return i;
+      }
     }
     return type(uint256).max;
   }

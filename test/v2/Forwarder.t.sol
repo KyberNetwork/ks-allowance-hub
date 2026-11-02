@@ -395,7 +395,9 @@ contract ForwarderTest is AuthenticatorBase {
         data[i] =
           _erc2612Call('Permit Token', address(permitToken), address(hub), 1 ether, 0, expired);
         // the first unallowed failure is what the whole batch reverts with
-        if (!allowFailure.pos(i)) bubbles = true;
+        if (!allowFailure.pos(i)) {
+          bubbles = true;
+        }
       }
     }
 
@@ -809,7 +811,7 @@ contract ForwarderTest is AuthenticatorBase {
     assertEq(
       IERC20(token18).balanceOf(address(router)) - before, amount, 'the reentrant order settled'
     );
-    assertEq(router.callCount(), 1, 'and its router leg ran');
+    assertEq(router.callCount(), 1, 'and its router call ran');
     assertEq(router.seenMsgSender(), owner, 'holding the lock for the owner while it did');
   }
 

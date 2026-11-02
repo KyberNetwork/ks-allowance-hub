@@ -11,8 +11,8 @@ import {TokenHelper} from 'ks-common-sc/src/libraries/token/TokenHelper.sol';
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
- * @notice One ERC20 leg of an execution order: an amount of `token` transferred from the owner to
- * `target`
+ * @notice One ERC20 transfer of an execution order: an amount of `token` transferred from the
+ * owner to `target`
  * @dev In {IKSAllowanceHubV2-rescueTokens}, the entry is a transfer from the hub: a zero `amount`
  * transfers the hub's entire balance, and a `token` of the native-token address or the zero
  * address transfers native value.
@@ -72,7 +72,7 @@ library ERC20TransferLib {
     return transferHashes.hash();
   }
 
-  /// @dev Transfers each leg from `owner` to its target
+  /// @dev Executes each transfer from `owner` to its target
   function execute(ERC20Transfer[] calldata transfers, address owner) internal {
     for (uint256 i = 0; i < transfers.length; i++) {
       ERC20Transfer calldata transfer = transfers[i];
@@ -112,7 +112,7 @@ library ERC20TransferLib {
     }
   }
 
-  /// @dev EIP-712 hash of the legs' targets, in order, encoded as an `address[]`
+  /// @dev EIP-712 hash of the targets of the transfers, in order, encoded as an `address[]`
   function targetsHash(ERC20Transfer[] calldata transfers) internal pure returns (bytes32) {
     bytes32[] memory targetWords = transfers.length.malloc();
     for (uint256 i = 0; i < transfers.length; i++) {

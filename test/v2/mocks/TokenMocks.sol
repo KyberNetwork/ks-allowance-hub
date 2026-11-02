@@ -59,7 +59,9 @@ contract ERC1271WalletMock is IERC1271 {
   }
 
   function isValidSignature(bytes32 hash, bytes memory signature) external view returns (bytes4) {
-    if (returnWrongMagic) return 0xffffffff;
+    if (returnWrongMagic) {
+      return 0xffffffff;
+    }
     return ECDSA.recover(hash, signature) == SIGNER ? bytes4(0x1626ba7e) : bytes4(0xffffffff);
   }
 }

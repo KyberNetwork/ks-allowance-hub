@@ -6,18 +6,23 @@ import {EfficientHashLibExt} from '../libraries/EfficientHashLibExt.sol';
 import {GenericCall, GenericCallLib} from './GenericCall.sol';
 
 /**
- * @notice The route and the leg targets a solver chose for a {FulfillmentOrder}
+ * @notice The route, the target of each transfer and the amount of each ERC20 transfer a solver
+ * chose for a {FulfillmentOrder}
  * @dev Approved by the order's `solutionApprover` rather than signed by the owner, so it may be
- * chosen after the order is signed. `erc20Targets[i]` receives `order.erc20Allowances[i]` and
- * `erc721Targets[i]` receives `order.erc721Approvals[i]`, so each target array must have one entry
- * per leg. No approval is required when the order's `solutionApprover` is the dead address.
- * @param erc20Targets Target of each ERC20 leg, in order
- * @param erc721Targets Target of each ERC721 leg, in order
+ * chosen after the order is signed. `erc20Targets[i]` receives `erc20Amounts[i]` of
+ * `order.erc20Allowances[i]` and `erc721Targets[i]` receives `order.erc721Approvals[i]`. The
+ * solution names a target and an amount for each ERC20 transfer and a target for each ERC721
+ * transfer, so each target array and `erc20Amounts` must have one entry per transfer. No approval
+ * is required when the order's `solutionApprover` is the dead address.
+ * @param erc20Targets Target of each ERC20 transfer, in order
+ * @param erc20Amounts Amount of each ERC20 transfer, in order; each is at most its allowance
+ * @param erc721Targets Target of each ERC721 transfer, in order
  * @param solverCalls Router calls of the route
  * @param deadline Last timestamp at which the solution may settle
  */
 struct FulfillmentSolution {
   address[] erc20Targets;
+  uint160[] erc20Amounts;
   address[] erc721Targets;
   GenericCall[] solverCalls;
   uint256 deadline;
@@ -27,10 +32,11 @@ using FulfillmentSolutionLib for FulfillmentSolution global;
 
 library FulfillmentSolutionLib {
   using EfficientHashLibExt for address[];
+  using EfficientHashLibExt for uint160[];
   using GenericCallLib for GenericCall[];
 
   bytes32 internal constant FULFILLMENT_SOLUTION_TYPEHASH = keccak256(
-    'FulfillmentSolution(address[] erc20Targets,address[] erc721Targets,GenericCall[] solverCalls,uint256 deadline)'
+    'FulfillmentSolution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,GenericCall[] solverCalls,uint256 deadline)'
     'GenericCall(address router,uint256 value,bytes data)'
   );
 
@@ -40,6 +46,7 @@ library FulfillmentSolutionLib {
       abi.encode(
         FULFILLMENT_SOLUTION_TYPEHASH,
         self.erc20Targets.hash(),
+        self.erc20Amounts.hash(),
         self.erc721Targets.hash(),
         self.solverCalls.hash(),
         self.deadline
@@ -53,6 +60,7 @@ library FulfillmentSolutionLib {
       abi.encode(
         FULFILLMENT_SOLUTION_TYPEHASH,
         self.erc20Targets.hashMemory(),
+        self.erc20Amounts.hashMemory(),
         self.erc721Targets.hashMemory(),
         self.solverCalls.hashMemory(),
         self.deadline

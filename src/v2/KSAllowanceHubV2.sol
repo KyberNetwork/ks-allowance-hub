@@ -3,6 +3,8 @@ pragma solidity 0.8.36;
 
 import {MsgSender} from '../base/MsgSender.sol';
 
+import {Constants} from '../base/libraries/Constants.sol';
+
 import {PackedBits} from '../base/types/PackedBits.sol';
 
 import {AuthDelegator} from './AuthDelegator.sol';
@@ -47,7 +49,7 @@ import {
  * instead of each router.
  * @dev The owner signs an {ExecutionOrder} or a {FulfillmentOrder}. Both name the assets that may
  * leave the owner and the account that may submit the order. An execution order also names the
- * target of each leg and the exact router calls; a fulfillment order leaves both to a
+ * target of each transfer and the exact router calls; a fulfillment order leaves both to a
  * {FulfillmentSolution} and constrains the result with validators.
  *
  * An order is authorised either by the owner's Permit2 signature, which signs the order as its
@@ -75,18 +77,12 @@ contract KSAllowanceHubV2 is
   using TokenHelper for address;
   using ValidationParamsLib for ValidationParams[];
 
-  /// @notice Role a router must hold to be called by an order
-  bytes32 internal constant WHITELISTED_ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
-
-  /**
-   * @notice Value of `relayer` or `solver` that allows any caller to submit the order, and of
-   * `solutionApprover` that accepts any solution without an approval
-   */
-  address internal constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
-
   address internal immutable PERMIT2;
 
   address internal immutable CALLS_FORWARDER;
+
+  /// @inheritdoc IKSAllowanceHubV2
+  mapping(bytes32 orderHash => bool) public cancelledOrders;
 
   /**
    * @param initialAdmin Holder of the default admin role
@@ -109,9 +105,9 @@ contract KSAllowanceHubV2 is
   {
     _batchGrantRole(KSRoles.RESCUER_ROLE, initialRescuers);
 
-    _batchGrantRole(WHITELISTED_ROUTER_ROLE, initialWhitelistedRouters);
+    _batchGrantRole(Constants.WHITELISTED_ROUTER_ROLE, initialWhitelistedRouters);
     // Guardians may revoke a router without the admin
-    _setRoleRevoker(WHITELISTED_ROUTER_ROLE, KSRoles.GUARDIAN_ROLE);
+    _setRoleRevoker(Constants.WHITELISTED_ROUTER_ROLE, KSRoles.GUARDIAN_ROLE);
 
     PERMIT2 = permit2;
     CALLS_FORWARDER = callsForwarder;
@@ -136,8 +132,11 @@ contract KSAllowanceHubV2 is
     bytes32 orderHash = order.hash();
     // The owner's call is its own authentication; any other caller needs the authenticator's
     if (msg.sender != order.owner) {
-      if (msg.sender != order.relayer && order.relayer != DEAD_ADDRESS) {
-        revert UnauthorizedRelayer(msg.sender);
+      if (msg.sender != order.relayer && order.relayer != Constants.DEAD_ADDRESS) {
+        revert CallerNotRelayer(msg.sender);
+      }
+      if (order.nonce == Constants.REUSABLE_ORDER_NONCE && cancelledOrders[orderHash]) {
+        revert OrderCancelled(orderHash);
       }
       IOrderAuthenticator(authenticator).authenticateExecution(order, orderHash, authenticationData);
     }
@@ -171,7 +170,7 @@ contract KSAllowanceHubV2 is
     // The owner signs the permit alone; for any other caller the order is signed as the witness
     if (msg.sender == order.owner) {
       _permitTransferFrom(order.owner, permit, details, permit2Signature);
-    } else if (msg.sender == order.relayer || order.relayer == DEAD_ADDRESS) {
+    } else if (msg.sender == order.relayer || order.relayer == Constants.DEAD_ADDRESS) {
       bytes32 witness = ExecutionWitnessLib.hash(
         order.relayer,
         order.erc20Transfers.targetsHash(),
@@ -189,7 +188,7 @@ contract KSAllowanceHubV2 is
         permit2Signature
       );
     } else {
-      revert UnauthorizedRelayer(msg.sender);
+      revert CallerNotRelayer(msg.sender);
     }
 
     return _settleExecution(order);
@@ -210,6 +209,7 @@ contract KSAllowanceHubV2 is
     checkDeadline(order.deadline)
     checkDeadline(solution.deadline)
     checkLengths(solution.erc20Targets.length, order.erc20Allowances.length)
+    checkLengths(solution.erc20Amounts.length, order.erc20Allowances.length)
     checkLengths(solution.erc721Targets.length, order.erc721Approvals.length)
     setMsgSenderAndLock(order.owner)
     checkDelegation(order.owner, authenticator)
@@ -219,15 +219,18 @@ contract KSAllowanceHubV2 is
     bytes32 orderHash = order.hash();
     // The owner's call is its own authentication; any other caller needs the authenticator's
     if (msg.sender != order.owner) {
-      if (msg.sender != order.solver && order.solver != DEAD_ADDRESS) {
-        revert UnauthorizedSolver(msg.sender);
+      if (msg.sender != order.solver && order.solver != Constants.DEAD_ADDRESS) {
+        revert CallerNotSolver(msg.sender);
+      }
+      if (order.nonce == Constants.REUSABLE_ORDER_NONCE && cancelledOrders[orderHash]) {
+        revert OrderCancelled(orderHash);
       }
       IOrderAuthenticator(authenticator)
         .authenticateFulfillment(order, orderHash, authenticationData);
     }
 
     // A dead-address approver accepts any solution
-    if (order.solutionApprover != DEAD_ADDRESS) {
+    if (order.solutionApprover != Constants.DEAD_ADDRESS) {
       _approveSolution(order.solutionApprover, orderHash, solution, solutionSignature);
     }
 
@@ -235,7 +238,13 @@ contract KSAllowanceHubV2 is
     bytes[] memory beforeExecutionOutputs = order.validationParams.beforeExecution();
 
     _announceFulfillment(order, orderHash, solution);
-    _transferERC20s(order.owner, order.erc20Allowances, solution.erc20Targets, usePermit2Allowances);
+    _transferERC20s(
+      order.owner,
+      order.erc20Allowances,
+      solution.erc20Targets,
+      solution.erc20Amounts,
+      usePermit2Allowances
+    );
     return _settleFulfillment(order, solution, beforeExecutionOutputs);
   }
 
@@ -252,6 +261,7 @@ contract KSAllowanceHubV2 is
     checkDeadline(order.deadline)
     checkDeadline(solution.deadline)
     checkLengths(solution.erc20Targets.length, order.erc20Allowances.length)
+    checkLengths(solution.erc20Amounts.length, order.erc20Allowances.length)
     checkLengths(solution.erc721Targets.length, order.erc721Approvals.length)
     setMsgSenderAndLock(order.owner)
     guardNativeSpend
@@ -259,7 +269,7 @@ contract KSAllowanceHubV2 is
   {
     bytes32 orderHash = order.hash();
     // A dead-address approver accepts any solution
-    if (order.solutionApprover != DEAD_ADDRESS) {
+    if (order.solutionApprover != Constants.DEAD_ADDRESS) {
       _approveSolution(order.solutionApprover, orderHash, solution, solutionSignature);
     }
 
@@ -271,12 +281,12 @@ contract KSAllowanceHubV2 is
     ISignatureTransfer.PermitBatchTransferFrom memory permit =
       order.erc20Allowances.toPermitBatchTransferFrom(order.nonce, order.deadline);
     ISignatureTransfer.SignatureTransferDetails[] memory details =
-      order.erc20Allowances.toSignatureTransferDetails(solution.erc20Targets);
+      order.erc20Allowances.toSignatureTransferDetails(solution.erc20Targets, solution.erc20Amounts);
 
     // The owner signs the permit alone; for any other caller the order is signed as the witness
     if (msg.sender == order.owner) {
       _permitTransferFrom(order.owner, permit, details, permit2Signature);
-    } else if (msg.sender == order.solver || order.solver == DEAD_ADDRESS) {
+    } else if (msg.sender == order.solver || order.solver == Constants.DEAD_ADDRESS) {
       bytes32 witness = FulfillmentWitnessLib.hash(
         order.solver,
         order.erc721Approvals,
@@ -295,10 +305,40 @@ contract KSAllowanceHubV2 is
         permit2Signature
       );
     } else {
-      revert UnauthorizedSolver(msg.sender);
+      revert CallerNotSolver(msg.sender);
     }
 
     return _settleFulfillment(order, solution, beforeExecutionOutputs);
+  }
+
+  /// @inheritdoc IKSAllowanceHubV2
+  function cancelReusableExecutionOrder(ExecutionOrder calldata order) external payable {
+    if (msg.sender != order.owner) {
+      revert CallerNotOwner(msg.sender);
+    }
+    if (order.nonce != Constants.REUSABLE_ORDER_NONCE) {
+      revert OrderNotReusable(order.nonce);
+    }
+
+    bytes32 orderHash = order.hash();
+    cancelledOrders[orderHash] = true;
+
+    emit CancelOrder(msg.sender, orderHash);
+  }
+
+  /// @inheritdoc IKSAllowanceHubV2
+  function cancelReusableFulfillmentOrder(FulfillmentOrder calldata order) external payable {
+    if (msg.sender != order.owner) {
+      revert CallerNotOwner(msg.sender);
+    }
+    if (order.nonce != Constants.REUSABLE_ORDER_NONCE) {
+      revert OrderNotReusable(order.nonce);
+    }
+
+    bytes32 orderHash = order.hash();
+    cancelledOrders[orderHash] = true;
+
+    emit CancelOrder(msg.sender, orderHash);
   }
 
   /// @inheritdoc IKSAllowanceHubV2
@@ -337,8 +377,8 @@ contract KSAllowanceHubV2 is
     );
   }
 
-  /// @dev Emits {TransferTokens} for a fulfillment order, pairing each leg with the target the
-  /// solution names for it
+  /// @dev Emits {TransferTokens} for a fulfillment order, pairing each transfer with the target and
+  /// amount the solution names for it
   function _announceFulfillment(
     FulfillmentOrder calldata order,
     bytes32 orderHash,
@@ -348,13 +388,13 @@ contract KSAllowanceHubV2 is
       msg.sender,
       order.owner,
       orderHash,
-      order.erc20Allowances.toTransfers(solution.erc20Targets),
+      order.erc20Allowances.toTransfers(solution.erc20Targets, solution.erc20Amounts),
       order.erc721Approvals.toTransfers(solution.erc721Targets),
       solution.solverCalls.toNativeTransfers(order.ownerCalls)
     );
   }
 
-  /// @dev Transfers the ERC20 legs through a Permit2 permit signed without a witness
+  /// @dev Executes the ERC20 transfers through a Permit2 permit signed without a witness
   function _permitTransferFrom(
     address owner,
     ISignatureTransfer.PermitBatchTransferFrom memory permit,
@@ -364,7 +404,7 @@ contract KSAllowanceHubV2 is
     ISignatureTransfer(PERMIT2).permitTransferFrom(permit, details, owner, signature);
   }
 
-  /// @dev Transfers the ERC20 legs through a Permit2 permit that also signs `witness`
+  /// @dev Executes the ERC20 transfers through a Permit2 permit that also signs `witness`
   function _permitWitnessTransferFrom(
     address owner,
     ISignatureTransfer.PermitBatchTransferFrom memory permit,
@@ -390,7 +430,8 @@ contract KSAllowanceHubV2 is
     }
   }
 
-  /// @dev Transfers the ERC20 legs from `owner` through Permit2 allowances or allowances to this hub
+  /// @dev Executes the ERC20 transfers from `owner` through Permit2 allowances or allowances to
+  /// this hub
   function _transferERC20s(
     address owner,
     ERC20Transfer[] calldata erc20Transfers,
@@ -405,23 +446,25 @@ contract KSAllowanceHubV2 is
     }
   }
 
-  /// @dev As {_transferERC20s}, for a fulfillment's allowances and the targets its solution names
+  /// @dev As {_transferERC20s}, for a fulfillment's allowances and the targets and amounts its
+  /// solution names
   function _transferERC20s(
     address owner,
     ERC20Allowance[] calldata erc20Allowances,
     address[] calldata targets,
+    uint160[] calldata amounts,
     bool usePermit2Allowances
   ) internal {
     if (usePermit2Allowances) {
       IAllowanceTransfer.AllowanceTransferDetails[] memory details =
-        erc20Allowances.toAllowanceTransferDetails(owner, targets);
+        erc20Allowances.toAllowanceTransferDetails(owner, targets, amounts);
       IAllowanceTransfer(PERMIT2).transferFrom(details);
     } else {
-      erc20Allowances.execute(owner, targets);
+      erc20Allowances.execute(owner, targets, amounts);
     }
   }
 
-  /// @dev Transfers the ERC721 legs and runs the router calls of an execution order
+  /// @dev Executes the ERC721 transfers and runs the router calls of an execution order
   function _settleExecution(ExecutionOrder calldata order)
     internal
     returns (bytes[] memory results)
@@ -433,8 +476,8 @@ contract KSAllowanceHubV2 is
   }
 
   /**
-   * @dev Transfers the ERC721 legs, runs the solver's calls, runs the validators' `afterExecution`
-   * and runs the owner's calls of a fulfillment order
+   * @dev Executes the ERC721 transfers, runs the solver's calls, runs the validators'
+   * `afterExecution` and runs the owner's calls of a fulfillment order
    */
   function _settleFulfillment(
     FulfillmentOrder calldata order,
@@ -458,7 +501,7 @@ contract KSAllowanceHubV2 is
     internal
   {
     for (uint256 i = 0; i < calls.length; i++) {
-      _checkRole(WHITELISTED_ROUTER_ROLE, calls[i].router);
+      _checkRole(Constants.WHITELISTED_ROUTER_ROLE, calls[i].router);
       results[offset + i] = calls[i].execute();
     }
   }

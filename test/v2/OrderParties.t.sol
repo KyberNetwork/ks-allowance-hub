@@ -25,7 +25,7 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  * @dev `relayer` and `solver` say who may submit an order on every rail, not only the Permit2 ones
  * that `ORD-02` and `ORD-03` cover. A credential authenticates the owner; it does not say who may
  * submit the order, so an authenticator that checked nothing of the sort would leave the field
- * unenforced. The last leg of each case shows the exemption still holds: the owner is not subject
+ * unenforced. The last step of each case shows the exemption still holds: the owner is not subject
  * to a field that exists to bound everybody else. `ORD-04` covers the remaining party,
  * the account the order draws on.
  *
@@ -62,7 +62,7 @@ contract OrderPartiesTest is AuthenticatorBase {
 
     ExecutionOrder memory again = _executionOrder(relayer, erc20s, noNfts, noCalls, 71, deadline);
     vm.prank(solver);
-    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedRelayer.selector, solver));
+    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.CallerNotRelayer.selector, solver));
     hub.executeOrderWithDelegatedAuthentication(
       again, address(authenticator), _executionAuthData(again, key, masterKeyPk), false
     );
@@ -71,7 +71,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     // the credential it presents could never have passed
     ExecutionOrder memory third = _executionOrder(relayer, erc20s, noNfts, noCalls, 72, deadline);
     vm.prank(solver);
-    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedRelayer.selector, solver));
+    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.CallerNotRelayer.selector, solver));
     hub.executeOrderWithDelegatedAuthentication(
       third, address(authenticator), _authData(key, hex'00'), false
     );
@@ -96,7 +96,7 @@ contract OrderPartiesTest is AuthenticatorBase {
   /**
    * ORD-04 — the account the order draws on is the one the signature named
    * @dev A key may be approved by more than one account, and the digest carries no second place
-   * for the submitter to point it. The two legs are the same signature against the account it
+   * for the submitter to point it. The two steps are the same signature against the account it
    * names and against another that approved the same key.
    */
   function test_ORD_04_delegatedExecutionDrawsOnTheNamedOwner() public {
@@ -115,7 +115,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     bytes memory authData = _executionAuthData(order, key, masterKeyPk);
 
     // Repointed first, because the refusal rolls back the nonce the authenticator burns ahead of
-    // the signature check, leaving the second leg the same number to spend
+    // the signature check, leaving the second step the same number to spend
     order.owner = other;
     vm.prank(relayer);
     vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
@@ -155,7 +155,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     FulfillmentOrder memory again =
       _fulfillmentOrder(solver, erc20s, noNfts, noValidators, noOwnerCalls, ANY, 81, deadline);
     vm.prank(relayer);
-    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedSolver.selector, relayer));
+    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.CallerNotSolver.selector, relayer));
     hub.fulfillOrderWithDelegatedAuthentication(
       again,
       address(authenticator),
@@ -169,7 +169,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     FulfillmentOrder memory third =
       _fulfillmentOrder(solver, erc20s, noNfts, noValidators, noOwnerCalls, ANY, 82, deadline);
     vm.prank(relayer);
-    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedSolver.selector, relayer));
+    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.CallerNotSolver.selector, relayer));
     hub.fulfillOrderWithDelegatedAuthentication(
       third,
       address(authenticator),

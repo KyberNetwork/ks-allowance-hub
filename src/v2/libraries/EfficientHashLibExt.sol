@@ -5,7 +5,8 @@ import {DynamicArrayLib} from 'solady/utils/DynamicArrayLib.sol';
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /// @title EfficientHashLibExt
-/// @notice EIP-712 hashing of an `address[]` member, which {EfficientHashLib} does not provide
+/// @notice EIP-712 hashing of an `address[]` or `uint160[]` member, which {EfficientHashLib} does
+/// not provide
 library EfficientHashLibExt {
   using DynamicArrayLib for *;
   using EfficientHashLib for *;
@@ -23,5 +24,20 @@ library EfficientHashLibExt {
   /// @dev As {hash}, for an array already in memory
   function hashMemory(address[] memory addresses) internal pure returns (bytes32) {
     return addresses.toUint256Array().asBytes32Array().hash();
+  }
+
+  /// @dev EIP-712 hash of the array: the hash of its elements as 32-byte words
+  function hash(uint160[] calldata values) internal pure returns (bytes32) {
+    bytes calldata words;
+    assembly ('memory-safe') {
+      words.offset := values.offset
+      words.length := shl(5, values.length)
+    }
+    return words.hashCalldata();
+  }
+
+  /// @dev As {hash}, for an array already in memory
+  function hashMemory(uint160[] memory values) internal pure returns (bytes32) {
+    return keccak256(abi.encodePacked(values));
   }
 }

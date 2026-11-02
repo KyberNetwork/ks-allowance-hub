@@ -14,8 +14,8 @@ import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer
  * @dev Covers the parts of the order the permit does not; the permit covers the ERC20 tokens and
  * amounts.
  * @param relayer Account that may submit the order; the dead address allows any account
- * @param erc20Targets Target of each ERC20 leg, in order
- * @param erc721Transfers ERC721 legs
+ * @param erc20Targets Target of each ERC20 transfer, in order
+ * @param erc721Transfers ERC721 transfers
  * @param genericCalls Router calls
  * @param metadata The order's metadata
  */

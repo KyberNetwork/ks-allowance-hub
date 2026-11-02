@@ -14,19 +14,31 @@ import {NativeTransfer} from '../types/NativeTransfer.sol';
 /// @notice Interface of {KSAllowanceHubV2}
 interface IKSAllowanceHubV2 {
   /// @notice The caller is neither the order's owner nor its relayer, and the order names a relayer
-  error UnauthorizedRelayer(address caller);
+  error CallerNotRelayer(address caller);
 
   /// @notice The caller is neither the order's owner nor its solver, and the order names a solver
-  error UnauthorizedSolver(address caller);
+  error CallerNotSolver(address caller);
+
+  /// @notice The caller is not the order's owner
+  error CallerNotOwner(address caller);
+
+  /// @notice The order's nonce is not {Constants-REUSABLE_ORDER_NONCE}
+  error OrderNotReusable(uint256 nonce);
+
+  /// @notice The reusable order has been cancelled by its owner
+  error OrderCancelled(bytes32 orderHash);
+
+  /// @notice The amount the solution names for an ERC20 transfer exceeds its allowance
+  error ERC20AmountExceedsAllowance(uint256 index, uint256 amount, uint256 allowance);
 
   /// @notice The solution signature is not valid for the `solutionApprover` the order names
   error InvalidSolutionSignature();
 
   /**
    * @notice Emitted once for each settled order, before its assets move and its calls run
-   * @dev For a fulfillment, each ERC20 and ERC721 entry pairs a leg of the order with the target
-   * the solution names for it. `nativeTransfers` lists only the calls that carry native value, the
-   * solver's calls before the owner's, and is empty when no call carries value.
+   * @dev For a fulfillment, each ERC20 and ERC721 entry pairs a transfer of the order with the
+   * target the solution names for it. `nativeTransfers` lists only the calls that carry native
+   * value, the solver's calls before the owner's, and is empty when no call carries value.
    *
    * An order settled by a router call of an execution emits its event after the execution's and
    * before the execution's remaining calls run.
@@ -39,6 +51,9 @@ interface IKSAllowanceHubV2 {
     ERC721Transfer[] erc721Transfers,
     NativeTransfer[] nativeTransfers
   );
+
+  /// @notice Emitted when an owner cancels a reusable order
+  event CancelOrder(address indexed owner, bytes32 indexed orderHash);
 
   /// @notice Emitted when assets held by the hub are transferred out, with the entries as given
   event RescueTokens(ERC20Transfer[] erc20Transfers, ERC721Transfer[] erc721Transfers);
@@ -53,12 +68,14 @@ interface IKSAllowanceHubV2 {
    * so the owner may settle the same order more than once.
    *
    * Any other caller must be `order.relayer`, or any account when `order.relayer` is the dead
-   * address, and the authenticator must accept `authenticationData` for the order. The hub does
-   * not spend `order.nonce`; replay protection is the authenticator's.
+   * address, and the authenticator must accept `authenticationData` for the order. The hub does not
+   * spend `order.nonce`; replay protection is the authenticator's. When `order.nonce` is
+   * {Constants-REUSABLE_ORDER_NONCE}, the hub refuses an order that {cancelledOrders} records as
+   * cancelled; the owner's own call does not consult it.
    * @param order The order to settle
    * @param authenticator The authenticator that checks `authenticationData`
    * @param authenticationData Credential and signature, in the encoding the authenticator reads
-   * @param usePermit2Allowances Whether the ERC20 legs are drawn from the owner's Permit2
+   * @param usePermit2Allowances Whether the ERC20 transfers are drawn from the owner's Permit2
    * allowances instead of the owner's allowances to this hub
    * @return results Return data of each router call, in order
    */
@@ -71,7 +88,7 @@ interface IKSAllowanceHubV2 {
 
   /**
    * @notice Settles an execution order authorised by the owner's Permit2 signature
-   * @dev The ERC20 legs are transferred through a Permit2 batch permit whose nonce is
+   * @dev The ERC20 transfers are executed through a Permit2 batch permit whose nonce is
    * `order.nonce` and whose deadline is `order.deadline`.
    *
    * When the caller is `order.owner`, `permit2Signature` signs the permit alone. Any other caller
@@ -90,24 +107,27 @@ interface IKSAllowanceHubV2 {
    * @notice Settles a fulfillment order authenticated by an {IOrderAuthenticator} the owner has
    * delegated, along the route in `solution`
    * @dev The settlement runs in this order: the solution approval is checked, each validator's
-   * `beforeExecution` runs, the legs move to the targets `solution` names, `solution.solverCalls`
+   * `beforeExecution` runs, the assets move to the targets `solution` names, `solution.solverCalls`
    * run, each validator's `afterExecution` runs, and `order.ownerCalls` run. The validators do not
    * observe the effects of `order.ownerCalls`.
    *
-   * `solution` must name one target for each leg and must not have passed its own deadline. The
+   * `solution` must name one target and one amount for each transfer and must not have passed its
+   * own deadline. Each ERC20 transfer sends `solution.erc20Amounts[i]`, at most its allowance. The
    * approval is checked against `order.solutionApprover`, and is not required when that is the
    * dead address. The approval carries no nonce, so it remains valid until the settlement of its
    * order.
    *
    * The caller and the authenticator are treated as in {executeOrderWithDelegatedAuthentication},
-   * with `order.solver` in place of `order.relayer`. When the caller is `order.owner`, the solution
+   * with `order.solver` in place of `order.relayer`, and the cancellation of a reusable order is
+   * consulted before the authenticator is called. When the caller is `order.owner`, the solution
    * approval is still required.
    * @param order The order to settle
    * @param authenticator The authenticator that checks `authenticationData`
    * @param authenticationData Credential and signature, in the encoding the authenticator reads
-   * @param solution The route and the leg targets the solver chose
+   * @param solution The route, the target of each transfer and the amount of each ERC20 transfer
+   * the solver chose
    * @param solutionSignature The `solutionApprover`'s signature over the {SolutionApproval}
-   * @param usePermit2Allowances Whether the ERC20 legs are drawn from the owner's Permit2
+   * @param usePermit2Allowances Whether the ERC20 transfers are drawn from the owner's Permit2
    * allowances instead of the owner's allowances to this hub
    * @return results Return data of each router call, the solver's calls first
    */
@@ -124,15 +144,18 @@ interface IKSAllowanceHubV2 {
    * @notice Settles a fulfillment order authorised by the owner's Permit2 signature, along the
    * route in `solution`
    * @dev The settlement and the solution approval are as in
-   * {fulfillOrderWithDelegatedAuthentication}. The ERC20 legs are transferred through a Permit2
-   * batch permit whose nonce is `order.nonce` and whose deadline is `order.deadline`.
+   * {fulfillOrderWithDelegatedAuthentication}. The ERC20 transfers are executed through a Permit2
+   * batch permit whose nonce is `order.nonce` and whose deadline is `order.deadline`. The permit's
+   * permitted amounts are the order's allowances, and its requested amounts are
+   * `solution.erc20Amounts`.
    *
    * When the caller is `order.owner`, `permit2Signature` signs the permit alone. Any other caller
    * must be `order.solver`, or any account when `order.solver` is the dead address, and
    * `permit2Signature` must also sign the order's {FulfillmentWitness}.
    * @param order The order to settle
    * @param permit2Signature The owner's Permit2 signature
-   * @param solution The route and the leg targets the solver chose
+   * @param solution The route, the target of each transfer and the amount of each ERC20 transfer
+   * the solver chose
    * @param solutionSignature The `solutionApprover`'s signature over the {SolutionApproval}
    * @return results Return data of each router call, the solver's calls first
    */
@@ -142,6 +165,29 @@ interface IKSAllowanceHubV2 {
     FulfillmentSolution calldata solution,
     bytes calldata solutionSignature
   ) external payable returns (bytes[] memory results);
+
+  /**
+   * @notice Cancels a reusable execution order
+   * @dev The caller must be `order.owner`, and `order.nonce` must be
+   * {Constants-REUSABLE_ORDER_NONCE}.
+   * @param order The order to cancel
+   */
+  function cancelReusableExecutionOrder(ExecutionOrder calldata order) external payable;
+
+  /**
+   * @notice Cancels a reusable fulfillment order
+   * @dev The caller must be `order.owner`, and `order.nonce` must be
+   * {Constants-REUSABLE_ORDER_NONCE}.
+   * @param order The order to cancel
+   */
+  function cancelReusableFulfillmentOrder(FulfillmentOrder calldata order) external payable;
+
+  /**
+   * @notice Whether the reusable order with struct hash `orderHash` is cancelled
+   * @param orderHash EIP-712 struct hash of the order
+   * @return cancelled Whether the order has been cancelled by its owner
+   */
+  function cancelledOrders(bytes32 orderHash) external view returns (bool cancelled);
 
   /**
    * @notice Calls {ICallsForwarder-forwardCalls} on the forwarder set at deployment, so that it can

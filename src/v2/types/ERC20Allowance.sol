@@ -5,6 +5,8 @@ import {DynamicArrayLibExt} from '../libraries/DynamicArrayLibExt.sol';
 
 import {ERC20Transfer} from './ERC20Transfer.sol';
 
+import {IKSAllowanceHubV2} from '../interfaces/IKSAllowanceHubV2.sol';
+
 import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 
@@ -13,11 +15,13 @@ import {TokenHelper} from 'ks-common-sc/src/libraries/token/TokenHelper.sol';
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
- * @notice One ERC20 leg of a fulfillment order: an amount of `token` that leaves the owner
- * @dev The order does not name the leg's target. The {FulfillmentSolution} names one target for
- * each leg, and the full `amount` is transferred to it.
+ * @notice One ERC20 transfer of a fulfillment order: an amount of `token` that leaves the owner
+ * @dev The order does not name the target or the amount of the transfer. The
+ * {FulfillmentSolution} names a target and an amount for each transfer, and the amount
+ * transferred is at most `amount`.
  * @param token The ERC20 token
- * @param amount Amount transferred, with the width of a Permit2 allowance
+ * @param amount Largest amount the transfer sends in one settlement, with the width of a Permit2
+ * allowance
  */
 struct ERC20Allowance {
   address token;
@@ -70,13 +74,18 @@ library ERC20AllowanceLib {
     return allowanceHashes.hash();
   }
 
-  /// @dev Transfers each allowance in full from `owner` to the target at the same index
-  function execute(ERC20Allowance[] calldata allowances, address owner, address[] calldata targets)
-    internal
-  {
+  /// @dev Transfers `amounts[i]` of each allowance from `owner` to `targets[i]`; reverts when an
+  /// amount exceeds its allowance
+  function execute(
+    ERC20Allowance[] calldata allowances,
+    address owner,
+    address[] calldata targets,
+    uint160[] calldata amounts
+  ) internal {
     for (uint256 i = 0; i < allowances.length; i++) {
       ERC20Allowance calldata allowance = allowances[i];
-      allowance.token.safeTransferFrom(owner, targets[i], allowance.amount);
+      _checkAmount(i, amounts[i], allowance.amount);
+      allowance.token.safeTransferFrom(owner, targets[i], amounts[i]);
     }
   }
 
@@ -97,45 +106,56 @@ library ERC20AllowanceLib {
     }
   }
 
-  /// @dev Converts the allowances into Permit2 signature-transfer details, each to its target
+  /// @dev Converts the allowances into Permit2 signature-transfer details, each requesting
+  /// `amounts[i]` to `targets[i]`; reverts when an amount exceeds its allowance
   function toSignatureTransferDetails(
     ERC20Allowance[] calldata allowances,
-    address[] calldata targets
+    address[] calldata targets,
+    uint160[] calldata amounts
   ) internal pure returns (ISignatureTransfer.SignatureTransferDetails[] memory details) {
     details = allowances.length.mallocSignatureTransferDetails();
     for (uint256 i = 0; i < allowances.length; i++) {
-      details[i] = ISignatureTransfer.SignatureTransferDetails({
-        to: targets[i], requestedAmount: allowances[i].amount
-      });
+      _checkAmount(i, amounts[i], allowances[i].amount);
+      details[i] =
+        ISignatureTransfer.SignatureTransferDetails({to: targets[i], requestedAmount: amounts[i]});
     }
   }
 
-  /// @dev Converts the allowances into Permit2 allowance-transfer details, all drawn from `owner`
+  /// @dev Converts the allowances into Permit2 allowance-transfer details, all drawn from `owner`,
+  /// each moving `amounts[i]` to `targets[i]`; reverts when an amount exceeds its allowance
   function toAllowanceTransferDetails(
     ERC20Allowance[] calldata allowances,
     address owner,
-    address[] calldata targets
+    address[] calldata targets,
+    uint160[] calldata amounts
   ) internal pure returns (IAllowanceTransfer.AllowanceTransferDetails[] memory details) {
     details = allowances.length.mallocAllowanceTransferDetails();
     for (uint256 i = 0; i < allowances.length; i++) {
       ERC20Allowance calldata allowance = allowances[i];
+      _checkAmount(i, amounts[i], allowance.amount);
       details[i] = IAllowanceTransfer.AllowanceTransferDetails({
-        from: owner, to: targets[i], token: allowance.token, amount: allowance.amount
+        from: owner, to: targets[i], token: allowance.token, amount: amounts[i]
       });
     }
   }
 
-  /// @dev The allowances as transfers, each paired with the target at the same index
-  function toTransfers(ERC20Allowance[] calldata allowances, address[] calldata targets)
-    internal
-    pure
-    returns (ERC20Transfer[] memory transfers)
-  {
+  /// @dev The allowances as transfers, each paired with `targets[i]` and `amounts[i]`
+  function toTransfers(
+    ERC20Allowance[] calldata allowances,
+    address[] calldata targets,
+    uint160[] calldata amounts
+  ) internal pure returns (ERC20Transfer[] memory transfers) {
     transfers = allowances.length.mallocERC20Transfers();
     for (uint256 i = 0; i < allowances.length; i++) {
-      ERC20Allowance calldata allowance = allowances[i];
       transfers[i] =
-        ERC20Transfer({token: allowance.token, target: targets[i], amount: allowance.amount});
+        ERC20Transfer({token: allowances[i].token, target: targets[i], amount: amounts[i]});
+    }
+  }
+
+  /// @dev Reverts when the amount at `index` exceeds the allowance of its transfer
+  function _checkAmount(uint256 index, uint160 amount, uint160 allowance) private pure {
+    if (amount > allowance) {
+      revert IKSAllowanceHubV2.ERC20AmountExceedsAllowance(index, amount, allowance);
     }
   }
 }

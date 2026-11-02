@@ -6,7 +6,7 @@ import {IERC721} from 'openzeppelin-contracts/contracts/token/ERC721/IERC721.sol
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
- * @notice One ERC721 leg of an execution order, transferred from the owner to `target`
+ * @notice One ERC721 transfer of an execution order, transferred from the owner to `target`
  * @dev In {IKSAllowanceHubV2-rescueTokens}, the entry is a transfer from the hub.
  * @param token The ERC721 contract
  * @param tokenId The token transferred

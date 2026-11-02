@@ -10,9 +10,9 @@ import {IERC721} from 'openzeppelin-contracts/contracts/token/ERC721/IERC721.sol
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
- * @notice One ERC721 leg of a fulfillment order: a token that leaves the owner
- * @dev The order does not name the leg's target. The {FulfillmentSolution} names one target for
- * each leg.
+ * @notice One ERC721 transfer of a fulfillment order: a token that leaves the owner
+ * @dev The order does not name the target of the transfer. The {FulfillmentSolution} names one
+ * target for each transfer.
  * @param token The ERC721 contract
  * @param tokenId The token transferred
  */

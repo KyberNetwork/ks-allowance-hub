@@ -51,12 +51,16 @@ contract ValidatorMock is IKSActionValidator {
     external
     returns (bytes memory output)
   {
-    if (revertOnBefore) revert('before');
+    if (revertOnBefore) {
+      revert('before');
+    }
 
     sequence.push('before');
     beforeAction = action;
     beforeInput = input;
-    if (observing) balanceAtBefore = IERC20(observedToken).balanceOf(observedAccount);
+    if (observing) {
+      balanceAtBefore = IERC20(observedToken).balanceOf(observedAccount);
+    }
 
     return snapshot;
   }
@@ -67,10 +71,14 @@ contract ValidatorMock is IKSActionValidator {
     bytes calldata beforeOutput,
     bytes calldata afterExecutionInput
   ) external {
-    if (revertOnAfter) revert('after');
+    if (revertOnAfter) {
+      revert('after');
+    }
 
     sequence.push('after');
-    if (observing) balanceAtAfter = IERC20(observedToken).balanceOf(observedAccount);
+    if (observing) {
+      balanceAtAfter = IERC20(observedToken).balanceOf(observedAccount);
+    }
     beforeAction = action;
     beforeInput = input;
     afterBeforeOutput = beforeOutput;

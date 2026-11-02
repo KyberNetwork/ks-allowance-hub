@@ -31,6 +31,7 @@ tab_width = 2
 quote_style = 'single'
 number_underscore = 'thousands'
 sort_imports = true
+single_line_statement_blocks = 'multi'
 
 [lint]
 lint_on_build = false

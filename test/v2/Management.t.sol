@@ -111,7 +111,9 @@ contract ManagementTest is AuthenticatorBase {
     bytes32 topic = keccak256('RoleRevokerChanged(bytes32,bytes32,bytes32)');
     bool found;
     for (uint256 i = 0; i < logs.length; i++) {
-      if (logs[i].topics.length != 4 || logs[i].topics[0] != topic) continue;
+      if (logs[i].topics.length != 4 || logs[i].topics[0] != topic) {
+        continue;
+      }
       assertEq(logs[i].topics[1], ROUTER_ROLE, 'role');
       assertEq(logs[i].topics[2], ADMIN_ROLE, 'previous revoker');
       assertEq(logs[i].topics[3], GUARDIAN_ROLE, 'new revoker');
@@ -265,7 +267,7 @@ contract ManagementTest is AuthenticatorBase {
   // MGMT-08..09 — the rescue path
   // -----------------------------------------------------------------------------------------------
 
-  /// MGMT-08a — each ERC20 leg goes to its target; a zero amount sends the whole balance
+  /// MGMT-08a — each ERC20 transfer goes to its target; a zero amount sends the whole balance
   function test_MGMT_08a_rescueErc20s() public {
     deal(token18, address(hub), 3 ether);
     deal(token6, address(hub), 500e6);
@@ -282,7 +284,7 @@ contract ManagementTest is AuthenticatorBase {
 
     assertEq(IERC20(token18).balanceOf(recipient), 3 ether, 'the zero amount swept the balance');
     assertEq(IERC20(token18).balanceOf(address(hub)), 0, 'nothing left of it');
-    assertEq(IERC20(token6).balanceOf(solver), 100e6, 'the second leg, to its own target');
+    assertEq(IERC20(token6).balanceOf(solver), 100e6, 'the second transfer, to its own target');
     assertEq(IERC20(token6).balanceOf(address(hub)), 400e6, 'the rest stays put');
   }
 

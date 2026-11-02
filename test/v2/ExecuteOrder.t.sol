@@ -84,8 +84,8 @@ contract ExecuteOrderTest is AuthenticatorBase {
     vm.prank(relayer);
     bytes[] memory results = hub.executeOrderWithPermit2Signature(order, signature);
 
-    assertEq(IERC20(token18).balanceOf(address(router)) - balanceBefore, AMOUNT, 'erc20 leg');
-    assertEq(nft.ownerOf(NFT_ID), address(router), 'erc721 leg');
+    assertEq(IERC20(token18).balanceOf(address(router)) - balanceBefore, AMOUNT, 'erc20 transfer');
+    assertEq(nft.ownerOf(NFT_ID), address(router), 'erc721 transfer');
     assertEq(router.callCount(), 1, 'router called once');
     assertEq(results.length, 1, 'one result');
     assertEq(abi.decode(results[0], (uint256)), 1, 'result is the router return');
@@ -112,7 +112,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
   /**
    * AUTH-04 — the relayer the owner named is part of what the witness binds
    * @dev `order.relayer` is read twice: the gate compares it against the submitter, and the witness
-   * carries it. ORD-02 is the gate; this is the witness. The first leg is the control, so the
+   * carries it. ORD-02 is the gate; this is the witness. The first step is the control, so the
    * refusal in the second is evidence about the binding rather than about a signature that was
    * never going to be accepted — the two orders differ in that one field alone.
    */
@@ -145,9 +145,9 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
   /**
    * ORD-02 — `relayer` says who may submit, and the sentinel says anybody may
-   * @dev The gate runs before Permit2, so the middle leg's refusal is the hub's own error and names
-   * both addresses. The last leg is what makes the middle one about the pin rather than about the
-   * submitter: the same stranger settles an order that names nobody.
+   * @dev The gate runs before Permit2, so the middle step's refusal is the hub's own error and
+   * names both addresses. The last step is what makes the middle one about the pin rather than
+   * about the submitter: the same stranger settles an order that names nobody.
    */
   function test_ORD_02_relayerPinningAndTheOpenSentinel() public {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
@@ -170,7 +170,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     bytes memory pinnedAgainSig = _signExecutionWitness(pinnedAgain);
 
     vm.prank(solver);
-    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.UnauthorizedRelayer.selector, solver));
+    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.CallerNotRelayer.selector, solver));
     hub.executeOrderWithPermit2Signature(pinnedAgain, pinnedAgainSig);
 
     assertEq(
@@ -253,9 +253,9 @@ contract ExecuteOrderTest is AuthenticatorBase {
    * ORD-01 — the asset source is the submitter's parameter, and the same order settles either way
    * @dev `usePermit2Allowances` is an argument of the delegated entry points rather than a member
    * of the order, so one signed order settles on either pull rail and the submitter chooses. What
-   * bounds the submitter is the rest of the order, which is signed — the two legs here
-   * are the same order shape and the same amount, and each leg asserts that the source it did *not*
-   * name went untouched, so this is about the argument and not about the transfer.
+   * bounds the submitter is the rest of the order, which is signed — the two steps here
+   * are the same order shape and the same amount, and each step asserts that the source it did
+   * *not* name went untouched, so this is about the argument and not about the transfer.
    */
   function test_ORD_01_theAssetSourceIsTheSubmittersArgument() public {
     _delegateKeyThroughHub(key);
@@ -403,7 +403,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
   /**
    * AUTH-14 — the authenticator's signature covers the order's metadata
-   * @dev The first leg is the control: an order carrying metadata A settles. The second leg is
+   * @dev The first step is the control: an order carrying metadata A settles. The second step is
    * submitted with metadata B under the signature made for A, and the order hash it is checked
    * against differs.
    */
@@ -491,11 +491,14 @@ contract ExecuteOrderTest is AuthenticatorBase {
   function testFuzz_EX_FUZZ_delegatedRail(ExecuteFuzz memory f) public {
     _delegateKeyThroughHub(key);
 
+    f.nonce = bound(f.nonce, 1, type(uint256).max);
     f.amount = uint160(bound(f.amount, 0, 100 ether));
     f.callCount = uint8(bound(f.callCount, 0, 3));
     f.deadlineOffset = bound(f.deadlineOffset, 0, 30 days);
     f.msgValue = uint96(bound(f.msgValue, 0, 5 ether));
-    if (f.usePermit2Allowances) _grantPermit2Allowance(token18, uint160(100 ether));
+    if (f.usePermit2Allowances) {
+      _grantPermit2Allowance(token18, uint160(100 ether));
+    }
 
     // the whole value goes to the first call, so the guard sees an exactly-spent batch
     GenericCall[] memory calls = new GenericCall[](f.callCount);
@@ -531,7 +534,9 @@ contract ExecuteOrderTest is AuthenticatorBase {
     assertEq(results.length, f.callCount, 'one result per call');
     assertEq(router.callCount(), f.callCount, 'router called once per entry');
     assertEq(IERC20(token18).balanceOf(recipient), untouched, 'unnamed account untouched');
-    if (f.moveNft) assertEq(nft.ownerOf(NFT_ID), address(router2), 'nft leg');
+    if (f.moveNft) {
+      assertEq(nft.ownerOf(NFT_ID), address(router2), 'nft transfer');
+    }
 
     assertEq(
       authenticator.nonces(_credentialHash(key), f.nonce >> 8),
@@ -587,7 +592,9 @@ contract ExecuteOrderTest is AuthenticatorBase {
     assertEq(IERC20(token18).balanceOf(address(router)) - before, f.amount, 'exact amount moved');
     assertEq(address(router).balance - routerNative, value, 'native forwarded, none stranded');
     assertEq(results.length, f.callCount, 'one result per call');
-    if (f.moveNft) assertEq(nft.ownerOf(NFT_ID), address(router2), 'nft leg');
+    if (f.moveNft) {
+      assertEq(nft.ownerOf(NFT_ID), address(router2), 'nft transfer');
+    }
 
     assertEq(
       _permit2NonceBitmap(owner, f.nonce >> 8),

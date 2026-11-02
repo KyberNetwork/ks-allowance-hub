@@ -16,9 +16,9 @@ import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer
  * @param owner Account the assets are transferred from
  * @param relayer Account that may submit the order besides the owner; the dead address allows any
  * account
- * @param erc20Transfers ERC20 legs, each transferred from the owner to its target
- * @param erc721Transfers ERC721 legs, each transferred from the owner to its target
- * @param genericCalls Router calls run after the legs are transferred
+ * @param erc20Transfers ERC20 transfers, each transferred from the owner to its target
+ * @param erc721Transfers ERC721 transfers, each transferred from the owner to its target
+ * @param genericCalls Router calls run after the transfers are executed
  * @param nonce Permit2 nonce on the Permit2 entry points; on the delegated entry points, for the
  * authenticator to spend
  * @param deadline Last timestamp at which the order may settle

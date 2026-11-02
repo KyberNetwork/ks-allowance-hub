@@ -27,7 +27,9 @@ abstract contract UnorderedNonce is IUnorderedNonce {
     uint256 bit = 1 << bitPos;
     // The XOR clears a bit that was already set, which identifies a spent nonce
     uint256 flipped = nonces[namespace][wordPos] ^= bit;
-    if (flipped & bit == 0) revert NonceAlreadyUsed(namespace, nonce);
+    if (flipped & bit == 0) {
+      revert NonceAlreadyUsed(namespace, nonce);
+    }
   }
 
   /// @inheritdoc IUnorderedNonce

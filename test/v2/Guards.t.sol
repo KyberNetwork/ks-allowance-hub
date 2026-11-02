@@ -63,7 +63,7 @@ contract OrderAuthenticatorMock is IOrderAuthenticator {
  * The native-spend boundary is derived from {NativeSpendGuard}: the modifier compares
  * `balance + msg.value` against a `balanceBefore` that already contains `msg.value`, which
  * reduces to "revert iff the call spent strictly more than the value it was sent". Reaching the
- * over-spend leg therefore needs the hub to hold native of its own beforehand, or there is
+ * over-spend step therefore needs the hub to hold native of its own beforehand, or there is
  * nothing left to over-spend.
  *
  * The four entry points carry twenty modifier applications between them. `GUARD-*` takes the
@@ -241,9 +241,9 @@ contract GuardsTest is AuthenticatorBase {
 
   /// GUARD-06 — an order may spend up to the value it was sent, and not one wei more
   function test_GUARD_06_nativeSpendBoundary() public {
-    _nativeSpendLeg(VALUE - 1, true);
-    _nativeSpendLeg(VALUE, true);
-    _nativeSpendLeg(VALUE + 1, false);
+    _nativeSpendTransfer(VALUE - 1, true);
+    _nativeSpendTransfer(VALUE, true);
+    _nativeSpendTransfer(VALUE + 1, false);
   }
 
   // -----------------------------------------------------------------------------------------
@@ -252,9 +252,9 @@ contract GuardsTest is AuthenticatorBase {
 
   /**
    * GATE-01 — the fulfillment Permit2 rail is pausable, deadline-checked, locked and native-guarded
-   * @dev Four modifiers, one leg each, on the entry point they were added to. The control at the
+   * @dev Four modifiers, one step each, on the entry point they were added to. The control at the
    * top is what makes the four refusals evidence: the same shape of order settles when none of them
-   * fires, so each leg differs from a settling order in exactly the one thing its modifier reads.
+   * fires, so each step differs from a settling order in exactly the one thing its modifier reads.
    */
   function test_GATE_01_fulfillPermit2CarriesTheFourModifiers() public {
     uint256 deadline = block.timestamp + 1 hours;
@@ -350,8 +350,8 @@ contract GuardsTest is AuthenticatorBase {
 
   /**
    * GATE-02 — the modifier applications no other case watches
-   * @dev One leg each for `guardNativeSpend` on `executeOrderWithPermit2Signature`, and for
-   * `checkDelegation` and the native guard on `fulfillOrderWithDelegatedAuthentication`. Each leg
+   * @dev One step each for `guardNativeSpend` on `executeOrderWithPermit2Signature`, and for
+   * `checkDelegation` and the native guard on `fulfillOrderWithDelegatedAuthentication`. Each step
    * is written so that only its own modifier can produce the result. The lock on the fulfillment
    * rails is covered by LOCK-03 and LOCK-06.
    */
@@ -422,7 +422,9 @@ contract GuardsTest is AuthenticatorBase {
       _openExecutionOrder(_erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 0, deadline);
 
     vm.prank(owner);
-    if (!shouldSettle) vm.expectRevert(_deadlinePassed(deadline));
+    if (!shouldSettle) {
+      vm.expectRevert(_deadlinePassed(deadline));
+    }
     hub.executeOrderWithDelegatedAuthentication(order, address(0), '', false);
 
     assertEq(
@@ -445,7 +447,9 @@ contract GuardsTest is AuthenticatorBase {
     FulfillmentSolution memory route = _route(order, new GenericCall[](0));
 
     vm.prank(owner);
-    if (!shouldSettle) vm.expectRevert(_deadlinePassed(deadline));
+    if (!shouldSettle) {
+      vm.expectRevert(_deadlinePassed(deadline));
+    }
     hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', route, '', false);
 
     assertEq(
@@ -455,7 +459,7 @@ contract GuardsTest is AuthenticatorBase {
     );
   }
 
-  function _nativeSpendLeg(uint256 spend, bool shouldSettle) internal {
+  function _nativeSpendTransfer(uint256 spend, bool shouldSettle) internal {
     vm.deal(address(hub), PREFUND);
     vm.deal(owner, VALUE);
 

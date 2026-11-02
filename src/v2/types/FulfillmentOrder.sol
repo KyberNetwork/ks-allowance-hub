@@ -8,9 +8,10 @@ import {ValidationParams, ValidationParamsLib} from './ValidationParams.sol';
 
 /**
  * @notice An owner's order to transfer assets along a route chosen by a solver
- * @dev The order names neither the route nor the targets of its legs; a {FulfillmentSolution}
- * supplies both. The validators constrain the result of the solution, and `solutionApprover` may
- * be required to approve it. The validators do not observe the effects of `ownerCalls`.
+ * @dev The order names neither the route, nor the targets of its transfers, nor the amounts of its
+ * ERC20 transfers; a {FulfillmentSolution} supplies them. The validators constrain the result of
+ * the solution, and `solutionApprover` may be required to approve it. The validators do not
+ * observe the effects of `ownerCalls`.
  *
  * When `owner` submits the order, `solver` does not apply and no authentication is required
  * beyond the call itself, except that a Permit2 entry point still requires the owner's permit
@@ -20,11 +21,11 @@ import {ValidationParams, ValidationParamsLib} from './ValidationParams.sol';
  * @param owner Account the assets are transferred from
  * @param solver Account that may submit the order besides the owner; the dead address allows any
  * account
- * @param erc20Allowances ERC20 legs, each transferred in full from the owner to the target the
- * solution names for it
- * @param erc721Approvals ERC721 legs, each transferred from the owner to the target the solution
+ * @param erc20Allowances ERC20 transfers, each of at most its `amount`, sent from the owner to the
+ * target and in the amount the solution names for it
+ * @param erc721Approvals ERC721 transfers, each sent from the owner to the target the solution
  * names for it
- * @param validationParams Validators run before the legs are transferred and after the solver's
+ * @param validationParams Validators run before the transfers are executed and after the solver's
  * calls
  * @param ownerCalls Router calls fixed by the owner, run after the validators
  * @param solutionApprover Account whose signature the solution requires; the dead address

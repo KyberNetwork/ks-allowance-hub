@@ -1434,3 +1434,50 @@ changes with the owner rail's discriminator (`OWN-06`); its other legs are uncha
 Mutations, each confirmed to fail at least one new case and then restored: the nonce spent in
 `bytes32(0)` (12 of 15 fail), the `_hashTypedDataV4` wrap dropped (11 of 15), and the key rail
 selected by `== 0x60` (`SV-OWN-09d` fails). The authenticator is 12,716 bytes and the hub 22,929.
+
+## Run `20261101T181718Z`
+
+Scope: reusable orders, whose nonce is 0, on the delegated rails, where the authenticator spends no
+nonce on either its owner rail or its key rail; cancellation of a reusable order by its owner
+(`cancelReusableExecutionOrder`, `cancelReusableFulfillmentOrder`, `cancelledOrders`, `CancelOrder`),
+which the delegated rails consult for a submitter other than the owner and the Permit2 signature
+rails do not; the ERC20 amounts a fulfillment solution names, each at most the allowance of its
+transfer and covered by the solution approval; and the renames `UnauthorizedRelayer` to
+`CallerNotRelayer` and `UnauthorizedSolver` to `CallerNotSolver`. The new cases are the families
+`RO-*` and `CAN-*`, in `test/v2/ReusableOrders.t.sol`, and `AMT-*`, in
+`test/v2/FulfillTargets.t.sol`.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261101T181718Z/REUSE-01` | A reusable order (nonce 0) settles twice through the delegated rails with no nonce spent and no `RevokeNonce`: an execution order under a master key, a fulfillment order under a master key, both order types on the owner's signature (authenticator delegated with no key), and a fulfillment order under a session key approved by a master key. The key's credential namespace, or the owner's, keeps word 0 at 0, and the balances reflect every settlement | `RO-01` `test_RO_01_reusableExecutionSettlesTwiceUnderAMasterKey`, `RO-02` `test_RO_02_reusableFulfillmentSettlesTwiceUnderAMasterKey`, `RO-03` `test_RO_03_reusableOrdersSettleTwiceOnTheOwnerSignature`, `RO-04` `test_RO_04_sessionKeyAuthenticatesAReusableFulfillmentTwice` — `test/v2/ReusableOrders.t.sol` | `forge test --isolate` — 305 passed |
+| - [x] | - [ ] | `20261101T181718Z/REUSE-02` | Nonce 0 cannot be revoked and cannot be replayed: after the owner's `revokeNonce(0)` and the key's signed `revokeNonce(key, 0, ...)`, bit 0 is set in each namespace and a reusable order of either type still settles on the key rail and the owner rail, leaving both bits set. On the Permit2 signature rail a reusable fulfillment settles once and the second submission reverts with Permit2's `InvalidNonce()`. A control order with nonce 5 spends its nonce on the key rail and its replay reverts with `NonceAlreadyUsed(credentialHash, 5)`, for an execution and a fulfillment | `RO-05` `test_RO_05_revokingNonceZeroDoesNotStopAReusableOrder`, `RO-06` `test_RO_06_permit2SignatureRailSettlesAReusableOrderOnce`, `RO-07` `test_RO_07_nonReusableExecutionSpendsItsNonce`, `RO-07b` `test_RO_07b_nonReusableFulfillmentSpendsItsNonce` — `test/v2/ReusableOrders.t.sol`. The fulfillment replay is also asserted by `SOL-04` `test_SOL_04_anAuthenticatedFulfillmentCannotSettleTwice` — `test/v2/FulfillOrder.t.sol` | same |
+| - [x] | - [ ] | `20261101T181718Z/CANCEL-01` | Cancellation by the owner: `CancelOrder(owner, orderHash)` with the hash taken from the schema oracle, `cancelledOrders` set, and a relayer or solver submission then reverts `OrderCancelled(orderHash)` before the authenticator is called (an empty `authenticationData` is refused by the hub, not by the authenticator, and no nonce is spent) while the owner's own submission still settles; cancelling twice succeeds and emits twice; cancelling one fulfillment order leaves a reusable execution order and a fulfillment order differing in `metadata` settleable; a cancelled order still settles once over a Permit2 signature, for a fulfillment and an execution | `CAN-01` `test_CAN_01_cancelledReusableExecutionIsRefusedForARelayer`, `CAN-02` `test_CAN_02_cancelledReusableFulfillmentIsRefusedForASolver`, `CAN-03` `test_CAN_03_cancellingTwiceSucceedsAndEmitsTwice`, `CAN-06` `test_CAN_06_cancellationIsolatesOneOrder`, `CAN-08` `test_CAN_08_cancellationDoesNotApplyToThePermit2SignatureRail`, `CAN-08b` `test_CAN_08b_cancelledExecutionStillSettlesOverAPermit2Signature` — `test/v2/ReusableOrders.t.sol` | same |
+| - [x] | - [ ] | `20261101T181718Z/CANCEL-02` | Who may cancel and what: a caller other than the owner reverts `CallerNotOwner(caller)` for both functions, including for an order with a non-zero nonce, so the caller is checked before the nonce; the owner cancelling an order with nonce 1 or `type(uint256).max` reverts `OrderNotReusable(nonce)`; `multicall` by the owner cancels with the caller preserved, while a cancellation relayed by `forwardCalls` reverts `CallerNotOwner(callsForwarder)` and, with the entry's failure bit set, returns that revert data as the entry's result; the fuzz case draws the caller, the nonce, the order type and the metadata and asserts the refusal, the event and the mapping | `CAN-04` `test_CAN_04_onlyTheOwnerMayCancel`, `CAN-05` `test_CAN_05_ownerCannotCancelANonReusableOrder`, `CAN-07` `test_CAN_07_multicallKeepsTheCallerAndForwardingDoesNot`, `CAN-FUZZ` `testFuzz_CAN_FUZZ_cancel` — `test/v2/ReusableOrders.t.sol` | `forge test --isolate` — 305 passed; `FOUNDRY_PROFILE=deep forge test --isolate --match-path 'test/v2/{ReusableOrders,FulfillTargets}.t.sol'` — 31 passed |
+| - [x] | - [ ] | `20261101T181718Z/AMOUNT-01` | The solver's amounts: an amount below the allowance moves exactly that amount on the hub-allowance, Permit2-allowance and Permit2-signature branches, with the owner and target deltas, the `TransferTokens` payload and the Permit2 allowance decrease as oracles; an amount equal to the allowance settles and an amount one above it reverts `ERC20AmountExceedsAllowance(index, amount, allowance)` on each branch, tested for the second and the first transfer of a two-transfer order; an amount of 0 moves nothing on its transfer; an `erc20Amounts` array one shorter or one longer than the transfers reverts `MismatchedArrayLengths()` on both fulfillment functions; an approval of amounts A is refused with `InvalidSolutionSignature()` for amounts B; a reusable order is filled with 40% and then 60% of the allowance; the fuzz case ranges the allowance over [1, 1e30] and the amount over [0, 2 * allowance] on every branch | `AMT-01` `test_AMT_01_amountBelowTheAllowanceMovesExactlyThatAmount`, `AMT-02` `test_AMT_02_amountAboveTheAllowanceIsRefusedWithItsIndex`, `AMT-03` `test_AMT_03_amountZeroMovesNothingOnItsTransfer`, `AMT-04` `test_AMT_04_amountsOfTheWrongLengthAreRefused`, `AMT-05` `test_AMT_05_theApprovalBindsTheAmounts`, `AMT-06` `test_AMT_06_reusableOrderFilledTwiceWithDifferentAmounts`, `AMT-FUZZ` `testFuzz_AMT_FUZZ_solverAmount` — `test/v2/FulfillTargets.t.sol` | same |
+| - [x] | - [ ] | `20261101T181718Z/RENAME-01` | `UnauthorizedRelayer` becomes `CallerNotRelayer(address)` and `UnauthorizedSolver` becomes `CallerNotSolver(address)`. The existing expectations name the new errors and are otherwise unchanged | `ORD-02` `test_ORD_02_relayerPinningAndTheOpenSentinel` — `test/v2/ExecuteOrder.t.sol`; `ORD-03` `test_ORD_03_solverPinningAndTheOpenSentinel` — `test/v2/FulfillOrder.t.sol`; `ORD-02b` `test_ORD_02b_delegatedExecutionHonoursTheNamedRelayer`, `ORD-03b` `test_ORD_03b_delegatedFulfillmentHonoursTheNamedSolver` — `test/v2/OrderParties.t.sol` | `forge test --isolate` — 305 passed |
+| - [x] | - [ ] | `20261101T181718Z/BASELINE-01` | Nonce 0 is reusable and spends no nonce, so four existing fuzz tests bound their nonce to `[1, type(uint256).max]` and still assert the exact bit spent. Existing callers of `_solution` pass `erc20Amounts` equal to the full allowance, which preserves their prior behaviour | `EX-FUZZ` `testFuzz_EX_FUZZ_delegatedRail` — `test/v2/ExecuteOrder.t.sol`; `FU-FUZZ` `testFuzz_FU_FUZZ_delegatedRail` — `test/v2/FulfillOrder.t.sol`; `SV-FUZZ-VER` `testFuzz_SV_FUZZ_VER_nonceAndDeadline`, `SV-OWN-FUZZ` `testFuzz_SV_OWN_FUZZ_ownerSignedOrder` — `test/v2/authenticators/TwoTiersOrderAuthenticator.t.sol` | same |
+
+### Notes for this run
+
+The suite has 305 cases, 25 of them new: 18 in `ReusableOrders.t.sol` (`RO-01..07b`, `CAN-01..08b`,
+`CAN-FUZZ`) and 7 in `FulfillTargets.t.sol` (`AMT-01..06`, `AMT-FUZZ`). `RO-07` and `RO-07b` cover
+the replay of a non-reusable order for both order types; `SOL-04` asserts the fulfillment replay
+too. `CAN-FUZZ` draws a `reusable` flag in addition to the nonce, so that the success branch is
+reached; the nonce is bounded to `[1, type(uint256).max]` when the flag is false.
+
+Mutations, each confirmed to fail at least one new case and then restored (`git diff src/` was
+identical before and after):
+
+- The reusable-nonce guard removed from the key rail of `_authenticate`: `RO-01`, `RO-02`, `RO-04`,
+  `RO-05`, `CAN-01`, `CAN-02`, `CAN-06` and `AMT-06` fail. The owner-rail cases `RO-03` and `RO-07`
+  are unaffected.
+- The same guard removed from the owner rail: `RO-03` and `RO-05` fail.
+- The `OrderCancelled` check removed from `fulfillOrderWithDelegatedAuthentication`: `CAN-02` and
+  `CAN-06` fail with `next call did not revert as expected`.
+- `_checkAmount` removed from `toAllowanceTransferDetails`: `AMT-02` and `AMT-FUZZ` fail. The
+  Permit2 allowance in those cases is twice the transfer, so Permit2 does not refuse the amount
+  first and the transfer succeeds without the check.
+- The caller and nonce checks swapped in `cancelReusableFulfillmentOrder`: `CAN-04` and `CAN-FUZZ`
+  fail with `OrderNotReusable` where `CallerNotOwner` is expected.
+
+The hub is 24,303 bytes, 273 below the 24,576 limit, and the authenticator is 12,742 bytes.

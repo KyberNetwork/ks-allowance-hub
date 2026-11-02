@@ -501,7 +501,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    * SV-06b — the approval gate guards the fulfillment path too, not just the execution one
    * @dev Both entry points share one `_authenticate`, so what this constrains beyond `SV-06` is the
    * hub-side wiring: that the fulfillment path reaches it at all, over the fulfillment shape. The
-   * second leg is the control — the same order shape under the approved key settles.
+   * second step is the control — the same order shape under the approved key settles.
    */
   function test_SV_06b_unapprovedKeyRejectedOnTheFulfillmentPath() public {
     _delegateKeyThroughHub(key);
@@ -1068,7 +1068,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   function testFuzz_SV_FUZZ_VER_nonceAndDeadline(SessionVerifyFuzz memory f) public {
-    uint256 nonce = f.nonce;
+    uint256 nonce = bound(f.nonce, 1, type(uint256).max);
     uint256 deadline = block.timestamp + bound(f.deadlineOffset, 0, 30 days);
 
     // the key's own expiry is a live dimension: it must outlast the order for it to settle
@@ -1219,8 +1219,8 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
 
   /**
    * SV-TIER-05 — a session key may not outlive the master key approving it
-   * @dev Both legs run on nonce 20: the refusal happens before the burn, so the number is still
-   * there for the leg that succeeds.
+   * @dev Both steps run on nonce 20: the refusal happens before the burn, so the number is still
+   * there for the step that succeeds.
    */
   function test_SV_TIER_05_aSessionKeyMayNotOutliveItsMaster() public {
     _delegateKeyThroughHub(key);
@@ -1278,7 +1278,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   /**
    * SV-TIER-07 — the approval names the account it is for
    * @dev The same credential can be a master key for two accounts, so the decision carries the
-   * owner. The second leg submits the very same signature for the account it does name, so the
+   * owner. The second step submits the very same signature for the account it does name, so the
    * refusal is evidence about `owner` rather than about a bad signature.
    */
   function test_SV_TIER_07_theApprovalNamesTheAccountItIsFor() public {
@@ -1439,7 +1439,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    * SV-TIER-11 — the tier hint is trusted for nothing
    * @dev It picks which mapping settles the key, so naming the wrong one finds no approval there
    * and is refused. A master key offered as a session key has no master key behind it; a session
-   * key offered as a master key holds no approval of its own. Both legs then settle under the tier
+   * key offered as a master key holds no approval of its own. Both steps then settle under the tier
    * they do hold, so the refusals are about the hint and not about the keys.
    */
   function test_SV_TIER_11_theWrongTierIsRefused() public {
@@ -1559,7 +1559,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   /**
    * SV-TIER-13 — a master key speaks only for the session keys it approved
    * @dev Another master key may neither take an approval over by approving the key under itself nor
-   * clear it by revoking. The last leg has the approving master revoke the same key, so the
+   * clear it by revoking. The last step has the approving master revoke the same key, so the
    * refusals are about who holds the approval and not about the key.
    */
   function test_SV_TIER_13_aMasterKeyActsOnlyOnKeysItApproved() public {
@@ -1620,8 +1620,8 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
 
   /**
    * SV-ORD-01 — on the owner's rail, ahead of the owner's signature
-   * @dev The second leg presents the same bad signature for a live key and is refused for the
-   * signature, so the first leg's refusal is about the order of the checks.
+   * @dev The second step presents the same bad signature for a live key and is refused for the
+   * signature, so the first step's refusal is about the order of the checks.
    */
   function test_SV_ORD_01_expiryComesBeforeTheOwnersSignature() public {
     AuthKey memory stale = _secpKey(sessionSigner, block.timestamp + 1 hours);
@@ -2025,7 +2025,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   /**
    * SV-OWN-03 — an ERC-1271 owner authenticates through its wallet, and the wallet may refuse
    * @dev The order names the wallet as owner, and the wallet's signer signs the digest. The nonce
-   * is spent in the wallet's address namespace. In the second leg the wallet is set to return the
+   * is spent in the wallet's address namespace. In the second step the wallet is set to return the
    * wrong magic value for the same valid signature.
    */
   function test_SV_OWN_03_erc1271OwnerAuthenticatesAndMayRefuse() public {
@@ -2057,7 +2057,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
 
   /**
    * SV-OWN-04 — a signature by another account is refused, an approved key's included
-   * @dev The master key is approved, so the second leg shows that the owner's rail does not accept
+   * @dev The master key is approved, so the second step shows that the owner's rail does not accept
    * the signature of a key the owner approved.
    */
   function test_SV_OWN_04_anotherAccountsSignatureIsRefused() public {
@@ -2184,7 +2184,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   /**
    * SV-OWN-07 — the signature is bound to the authenticator's domain
    * @dev The same order hash is signed under the hub's domain and with no domain at all; each is
-   * refused. The control leg then settles the order signed under the authenticator's domain.
+   * refused. The control step then settles the order signed under the authenticator's domain.
    */
   function test_SV_OWN_07_signatureIsBoundToTheAuthenticatorsDomain() public {
     _delegateWithoutKey(owner);
@@ -2341,7 +2341,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     address account = vm.addr(pk);
     vm.assume(account.code.length == 0 && account != owner);
 
-    uint256 nonce = f.nonce;
+    uint256 nonce = bound(f.nonce, 1, type(uint256).max);
     uint256 deadline = block.timestamp + bound(f.deadlineOffset, 0, 30 days);
     _fundAndDelegate(account);
     uint256 before = IERC20(token18).balanceOf(address(router));
@@ -2689,7 +2689,9 @@ contract ERC1271WalletLocal {
     pure
     returns (address, uint8, bytes32)
   {
-    if (signature.length != 65) return (address(0), 0, 0);
+    if (signature.length != 65) {
+      return (address(0), 0, 0);
+    }
     bytes32 r = bytes32(signature[0:32]);
     bytes32 s = bytes32(signature[32:64]);
     uint8 v = uint8(signature[64]);
