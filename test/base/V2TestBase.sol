@@ -98,7 +98,7 @@ abstract contract V2TestBase is Test {
     address[] memory targets,
     ERC721Transfer[] memory erc721Transfers,
     GenericCall[] memory genericCalls,
-    string memory metadata
+    bytes memory extraData
   ) internal pure returns (bytes32) {
     return SchemaHash.executionWitness(
       ExecutionWitness({
@@ -106,7 +106,7 @@ abstract contract V2TestBase is Test {
         erc20Targets: targets,
         erc721Transfers: erc721Transfers,
         genericCalls: genericCalls,
-        metadata: metadata
+        extraData: extraData
       })
     );
   }
@@ -117,7 +117,7 @@ abstract contract V2TestBase is Test {
     GenericCall[] memory ownerCalls,
     ValidationParams[] memory validationParams,
     address callsSigner,
-    string memory metadata
+    bytes memory extraData
   ) internal pure returns (bytes32) {
     return SchemaHash.fulfillmentWitness(
       FulfillmentWitness({
@@ -126,7 +126,7 @@ abstract contract V2TestBase is Test {
         ownerCalls: ownerCalls,
         validationParams: validationParams,
         callsSigner: callsSigner,
-        metadata: metadata
+        extraData: extraData
       })
     );
   }

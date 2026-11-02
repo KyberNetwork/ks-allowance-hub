@@ -402,33 +402,33 @@ contract ExecuteOrderTest is AuthenticatorBase {
   }
 
   /**
-   * AUTH-14 — the authenticator's signature covers the order's metadata
-   * @dev The first step is the control: an order carrying metadata A settles. The second step is
-   * submitted with metadata B under the signature made for A, and the order hash it is checked
+   * AUTH-14 — the authenticator's signature covers the order's extra data
+   * @dev The first step is the control: an order carrying extra data A settles. The second step is
+   * submitted with extra data B under the signature made for A, and the order hash it is checked
    * against differs.
    */
-  function test_AUTH_14_authenticationBindsMetadata() public {
+  function test_AUTH_14_authenticationBindsExtraData() public {
     _delegateKeyThroughHub(key);
 
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     uint256 deadline = block.timestamp + 1 hours;
 
     ExecutionOrder memory control = _openExecutionOrder(erc20s, new GenericCall[](0), 80, deadline);
-    control.metadata = 'ref:A';
+    control.extraData = 'ref:A';
     bytes memory controlAuth = _executionAuthData(control, key, masterKeyPk);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
 
     vm.prank(relayer);
     hub.executeOrderWithDelegatedAuthentication(control, address(authenticator), controlAuth, false);
-    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'metadata A settled');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'extra data A settled');
 
     ExecutionOrder memory signed = _openExecutionOrder(erc20s, new GenericCall[](0), 81, deadline);
-    signed.metadata = 'ref:A';
+    signed.extraData = 'ref:A';
     bytes memory signedAuth = _executionAuthData(signed, key, masterKeyPk);
 
     ExecutionOrder memory tampered = _openExecutionOrder(erc20s, new GenericCall[](0), 81, deadline);
-    tampered.metadata = 'ref:B';
+    tampered.extraData = 'ref:B';
 
     vm.prank(relayer);
     vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
@@ -436,30 +436,30 @@ contract ExecuteOrderTest is AuthenticatorBase {
   }
 
   /**
-   * AUTH-15 — the witness covers the order's metadata
-   * @dev As AUTH-14 on the Permit2 rail, with a relayer submitting: the permit made for metadata A
-   * settles with A and is refused by Permit2 with B.
+   * AUTH-15 — the witness covers the order's extra data
+   * @dev As AUTH-14 on the Permit2 rail, with a relayer submitting: the permit made for extra
+   * data A settles with A and is refused by Permit2 with B.
    */
-  function test_AUTH_15_witnessPinsMetadata() public {
+  function test_AUTH_15_witnessPinsExtraData() public {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     uint256 deadline = block.timestamp + 1 hours;
 
     ExecutionOrder memory control = _openExecutionOrder(erc20s, new GenericCall[](0), 82, deadline);
-    control.metadata = 'ref:A';
+    control.extraData = 'ref:A';
     bytes memory controlSig = _signExecutionWitness(control);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
 
     vm.prank(relayer);
     hub.executeOrderWithPermit2Signature(control, controlSig);
-    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'metadata A settled');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'extra data A settled');
 
     ExecutionOrder memory signed = _openExecutionOrder(erc20s, new GenericCall[](0), 83, deadline);
-    signed.metadata = 'ref:A';
+    signed.extraData = 'ref:A';
     bytes memory signedSig = _signExecutionWitness(signed);
 
     ExecutionOrder memory tampered = _openExecutionOrder(erc20s, new GenericCall[](0), 83, deadline);
-    tampered.metadata = 'ref:B';
+    tampered.extraData = 'ref:B';
 
     vm.prank(relayer);
     vm.expectRevert(PERMIT2_INVALID_SIGNER);

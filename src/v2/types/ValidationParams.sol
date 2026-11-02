@@ -42,8 +42,8 @@ library ValidationParamsLib {
         VALIDATION_PARAMS_TYPEHASH,
         self.validator,
         self.action,
-        keccak256(self.beforeExecutionInput),
-        keccak256(self.afterExecutionInput)
+        self.beforeExecutionInput.hashCalldata(),
+        self.afterExecutionInput.hashCalldata()
       )
     );
   }

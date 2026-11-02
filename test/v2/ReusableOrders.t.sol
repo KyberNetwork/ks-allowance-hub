@@ -41,7 +41,7 @@ contract ReusableOrdersTest is AuthenticatorBase {
     bool reusable;
     uint256 nonce;
     bool fulfillment;
-    uint256 metadataSeed;
+    uint256 extraDataSeed;
   }
 
   AuthKey internal key;
@@ -391,7 +391,7 @@ contract ReusableOrdersTest is AuthenticatorBase {
   /**
    * CAN-06 — cancelling a reusable fulfillment order leaves the other orders of the owner alone
    * @dev The other orders are a reusable execution order and a reusable fulfillment order that
-   * differs from the cancelled one in `metadata` only. Both still settle for their submitters.
+   * differs from the cancelled one in `extraData` only. Both still settle for their submitters.
    */
   function test_CAN_06_cancellationIsolatesOneOrder() public {
     _delegateKeyThroughHub(key);
@@ -406,7 +406,7 @@ contract ReusableOrdersTest is AuthenticatorBase {
     hub.cancelReusableFulfillmentOrder(cancelled);
 
     assertTrue(hub.cancelledOrders(cancelledHash), 'the chosen order is cancelled');
-    assertFalse(hub.cancelledOrders(siblingHash), 'the order differing in metadata is not');
+    assertFalse(hub.cancelledOrders(siblingHash), 'the order differing in extra data is not');
     assertFalse(hub.cancelledOrders(executionHash), 'the execution order is not');
 
     bytes memory cancelledData = _fulfillmentAuthData(cancelled, key, masterKeyPk);
@@ -518,10 +518,10 @@ contract ReusableOrdersTest is AuthenticatorBase {
       : address(uint160(bound(uint256(uint160(f.other)), 1, type(uint160).max)));
     vm.assume(f.callerIsOwner || caller != owner);
     uint256 nonce = f.reusable ? 0 : bound(f.nonce, 1, type(uint256).max);
-    string memory metadata = vm.toString(f.metadataSeed);
+    bytes memory extraData = bytes(vm.toString(f.extraDataSeed));
 
-    ExecutionOrder memory execution = _execution(nonce, metadata);
-    FulfillmentOrder memory fulfillment = _fulfillment(nonce, metadata);
+    ExecutionOrder memory execution = _execution(nonce, extraData);
+    FulfillmentOrder memory fulfillment = _fulfillment(nonce, extraData);
     bytes32 orderHash = f.fulfillment
       ? SchemaHash.fulfillmentOrder(fulfillment)
       : SchemaHash.executionOrder(execution);
@@ -554,7 +554,7 @@ contract ReusableOrdersTest is AuthenticatorBase {
   // -------------------------------------------------------------------------------------------
 
   /// @dev An execution order of `AMOUNT` to the router that only `relayer` may submit
-  function _execution(uint256 nonce, string memory metadata)
+  function _execution(uint256 nonce, bytes memory extraData)
     private
     view
     returns (ExecutionOrder memory order)
@@ -567,11 +567,11 @@ contract ReusableOrdersTest is AuthenticatorBase {
       nonce,
       block.timestamp + 1 hours
     );
-    order.metadata = metadata;
+    order.extraData = extraData;
   }
 
   /// @dev A fulfillment order of `AMOUNT` that only `solver` may submit, with any route accepted
-  function _fulfillment(uint256 nonce, string memory metadata)
+  function _fulfillment(uint256 nonce, bytes memory extraData)
     private
     view
     returns (FulfillmentOrder memory order)
@@ -586,7 +586,7 @@ contract ReusableOrdersTest is AuthenticatorBase {
       nonce,
       block.timestamp + 1 hours
     );
-    order.metadata = metadata;
+    order.extraData = extraData;
   }
 
   function _routerCalls() private view returns (GenericCall[] memory) {

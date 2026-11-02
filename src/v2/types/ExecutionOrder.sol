@@ -7,6 +7,8 @@ import {GenericCall, GenericCallLib} from './GenericCall.sol';
 
 import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
 
+import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
+
 /**
  * @notice An owner's order to transfer assets to named targets and run a fixed list of router calls
  * @dev When `owner` submits the order, `relayer` does not apply and no authentication is required
@@ -22,7 +24,7 @@ import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer
  * @param nonce Permit2 nonce on the Permit2 entry points; on the delegated entry points, for the
  * authenticator to spend
  * @param deadline Last timestamp at which the order may settle
- * @param metadata Data the hub does not read, covered by the order's signature
+ * @param extraData Data the hub does not read, covered by the order's signature
  */
 struct ExecutionOrder {
   address owner;
@@ -32,18 +34,19 @@ struct ExecutionOrder {
   GenericCall[] genericCalls;
   uint256 nonce;
   uint256 deadline;
-  string metadata;
+  bytes extraData;
 }
 
 using ExecutionOrderLib for ExecutionOrder global;
 
 library ExecutionOrderLib {
+  using EfficientHashLib for bytes;
   using ERC20TransferLib for ERC20Transfer[];
   using ERC721TransferLib for ERC721Transfer[];
   using GenericCallLib for GenericCall[];
 
   bytes32 internal constant EXECUTION_ORDER_TYPEHASH = keccak256(
-    'ExecutionOrder(address owner,address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 deadline,string metadata)'
+    'ExecutionOrder(address owner,address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 deadline,bytes extraData)'
     'ERC20Transfer(address token,address target,uint160 amount)'
     'ERC721Transfer(address token,uint256 tokenId,address target)'
     'GenericCall(address router,uint256 value,bytes data)'
@@ -61,7 +64,7 @@ library ExecutionOrderLib {
         order.genericCalls.hash(),
         order.nonce,
         order.deadline,
-        keccak256(bytes(order.metadata))
+        order.extraData.hashCalldata()
       )
     );
   }
@@ -78,7 +81,7 @@ library ExecutionOrderLib {
         order.genericCalls.hashMemory(),
         order.nonce,
         order.deadline,
-        keccak256(bytes(order.metadata))
+        keccak256(order.extraData)
       )
     );
   }

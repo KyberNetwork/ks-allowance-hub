@@ -176,7 +176,7 @@ contract KSAllowanceHubV2 is
         order.erc20Transfers.targetsHash(),
         order.erc721Transfers,
         order.genericCalls,
-        order.metadata
+        order.extraData
       );
 
       _permitWitnessTransferFrom(
@@ -293,7 +293,7 @@ contract KSAllowanceHubV2 is
         order.ownerCalls,
         order.validationParams,
         order.solutionApprover,
-        order.metadata
+        order.extraData
       );
 
       _permitWitnessTransferFrom(

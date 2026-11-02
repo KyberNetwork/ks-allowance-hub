@@ -14,6 +14,8 @@ import {
 } from 'openzeppelin-contracts/contracts/utils/cryptography/SignatureChecker.sol';
 import {WebAuthn} from 'openzeppelin-contracts/contracts/utils/cryptography/WebAuthn.sol';
 
+import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
+
 /**
  * @notice A key that may sign for an account until `expiration`
  * @dev Approvals identify a key by its hash, which includes the expiry; nonces are spent under its
@@ -34,16 +36,16 @@ using AuthKeyLib for AuthKey global;
 
 library AuthKeyLib {
   using CalldataDecoder for bytes;
+  using EfficientHashLib for bytes;
 
   bytes32 internal constant AUTH_KEY_TYPEHASH =
     keccak256('AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)');
 
   /// @dev EIP-712 hash of the key, covering its public key, type and expiry
   function hash(AuthKey calldata key) internal pure returns (bytes32) {
-    return
-      keccak256(
-        abi.encode(AUTH_KEY_TYPEHASH, keccak256(key.publicKey), key.keyType, key.expiration)
-      );
+    return keccak256(
+      abi.encode(AUTH_KEY_TYPEHASH, key.publicKey.hashCalldata(), key.keyType, key.expiration)
+    );
   }
 
   /// @dev As {hash}, for a key already in memory

@@ -7,6 +7,8 @@ import {ValidationParams, ValidationParamsLib} from './ValidationParams.sol';
 
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 
+import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
+
 /**
  * @notice Witness the owner's Permit2 signature covers when another account submits
  * {KSAllowanceHubV2-fulfillOrderWithPermit2Signature}
@@ -18,7 +20,7 @@ import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer
  * @param ownerCalls Router calls fixed by the owner
  * @param validationParams Validators of the solution's result
  * @param callsSigner Account whose signature the solution requires; the dead address requires none
- * @param metadata The order's metadata
+ * @param extraData The order's extra data
  */
 struct FulfillmentWitness {
   address solver;
@@ -26,7 +28,7 @@ struct FulfillmentWitness {
   GenericCall[] ownerCalls;
   ValidationParams[] validationParams;
   address callsSigner;
-  string metadata;
+  bytes extraData;
 }
 
 /**
@@ -47,19 +49,20 @@ struct PermitBatchWitnessTransferFrom {
 }
 
 library FulfillmentWitnessLib {
+  using EfficientHashLib for bytes;
   using ERC721ApprovalLib for ERC721Approval[];
   using GenericCallLib for GenericCall[];
   using ValidationParamsLib for ValidationParams[];
 
   string internal constant FULFILLMENT_WITNESS_PERMIT2_TYPE_STRING = 'FulfillmentWitness witness)'
     'ERC721Approval(address token,uint256 tokenId)'
-    'FulfillmentWitness(address solver,ERC721Approval[] erc721Approvals,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner,string metadata)'
+    'FulfillmentWitness(address solver,ERC721Approval[] erc721Approvals,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner,bytes extraData)'
     'GenericCall(address router,uint256 value,bytes data)'
     'TokenPermissions(address token,uint256 amount)'
     'ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)';
 
   bytes32 internal constant FULFILLMENT_WITNESS_TYPEHASH = keccak256(
-    'FulfillmentWitness(address solver,ERC721Approval[] erc721Approvals,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner,string metadata)'
+    'FulfillmentWitness(address solver,ERC721Approval[] erc721Approvals,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner,bytes extraData)'
     'ERC721Approval(address token,uint256 tokenId)'
     'GenericCall(address router,uint256 value,bytes data)'
     'ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)'
@@ -72,7 +75,7 @@ library FulfillmentWitnessLib {
     GenericCall[] calldata ownerCalls,
     ValidationParams[] calldata validationParams,
     address callsSigner,
-    string calldata metadata
+    bytes calldata extraData
   ) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(
@@ -82,7 +85,7 @@ library FulfillmentWitnessLib {
         ownerCalls.hash(),
         validationParams.hash(),
         callsSigner,
-        keccak256(bytes(metadata))
+        extraData.hashCalldata()
       )
     );
   }
@@ -94,7 +97,7 @@ library FulfillmentWitnessLib {
     GenericCall[] memory ownerCalls,
     ValidationParams[] memory validationParams,
     address callsSigner,
-    string memory metadata
+    bytes memory extraData
   ) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(
@@ -104,7 +107,7 @@ library FulfillmentWitnessLib {
         ownerCalls.hashMemory(),
         validationParams.hashMemory(),
         callsSigner,
-        keccak256(bytes(metadata))
+        keccak256(extraData)
       )
     );
   }

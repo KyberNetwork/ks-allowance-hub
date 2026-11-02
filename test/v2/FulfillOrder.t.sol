@@ -184,34 +184,34 @@ contract FulfillOrderTest is AuthenticatorBase {
   }
 
   /**
-   * AUTH-16 — the witness covers the order's metadata
-   * @dev The first step is the control: a solver settles an order carrying metadata A. The second
-   * submits metadata B under the witness made for A, and Permit2 refuses it.
+   * AUTH-16 — the witness covers the order's extra data
+   * @dev The first step is the control: a solver settles an order carrying extra data A. The second
+   * submits extra data B under the witness made for A, and Permit2 refuses it.
    */
-  function test_AUTH_16_witnessPinsMetadata() public {
+  function test_AUTH_16_witnessPinsExtraData() public {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
     uint256 deadline = block.timestamp + 1 hours;
 
     FulfillmentOrder memory control =
       _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 33, deadline);
-    control.metadata = 'ref:A';
+    control.extraData = 'ref:A';
     bytes memory controlSig = _signFulfillmentWitness(control);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
 
     vm.prank(solver);
     hub.fulfillOrderWithPermit2Signature(control, controlSig, _route(control, solverCalls), '');
-    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'metadata A settled');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'extra data A settled');
 
     FulfillmentOrder memory signed =
       _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 34, deadline);
-    signed.metadata = 'ref:A';
+    signed.extraData = 'ref:A';
     bytes memory signedSig = _signFulfillmentWitness(signed);
 
     FulfillmentOrder memory tampered =
       _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 34, deadline);
-    tampered.metadata = 'ref:B';
+    tampered.extraData = 'ref:B';
 
     vm.prank(solver);
     vm.expectRevert(PERMIT2_INVALID_SIGNER);
@@ -219,10 +219,10 @@ contract FulfillOrderTest is AuthenticatorBase {
   }
 
   /**
-   * AUTH-17 — the authenticator's signature covers the order's metadata
+   * AUTH-17 — the authenticator's signature covers the order's extra data
    * @dev As AUTH-16 on the delegated rail.
    */
-  function test_AUTH_17_authenticationBindsMetadata() public {
+  function test_AUTH_17_authenticationBindsExtraData() public {
     _delegateKeyThroughHub(key);
 
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
@@ -231,7 +231,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     FulfillmentOrder memory control =
       _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 35, deadline);
-    control.metadata = 'ref:A';
+    control.extraData = 'ref:A';
     bytes memory controlAuth = _fulfillmentAuthData(control, key, masterKeyPk);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
@@ -240,16 +240,16 @@ contract FulfillOrderTest is AuthenticatorBase {
     hub.fulfillOrderWithDelegatedAuthentication(
       control, address(authenticator), controlAuth, _route(control, solverCalls), '', false
     );
-    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'metadata A settled');
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'extra data A settled');
 
     FulfillmentOrder memory signed =
       _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 36, deadline);
-    signed.metadata = 'ref:A';
+    signed.extraData = 'ref:A';
     bytes memory signedAuth = _fulfillmentAuthData(signed, key, masterKeyPk);
 
     FulfillmentOrder memory tampered =
       _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 36, deadline);
-    tampered.metadata = 'ref:B';
+    tampered.extraData = 'ref:B';
 
     vm.prank(relayer);
     vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);

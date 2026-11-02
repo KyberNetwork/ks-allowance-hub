@@ -35,7 +35,9 @@ library GenericCallLib {
   /// @dev EIP-712 hash of one call
   function hash(GenericCall calldata self) internal pure returns (bytes32) {
     return
-      keccak256(abi.encode(GENERIC_CALL_TYPEHASH, self.router, self.value, keccak256(self.data)));
+      keccak256(
+        abi.encode(GENERIC_CALL_TYPEHASH, self.router, self.value, self.data.hashCalldata())
+      );
   }
 
   /// @dev As {hash}, for a call already in memory

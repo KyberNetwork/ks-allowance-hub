@@ -28,7 +28,7 @@ import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
  * them, which a typehash comparison alone does not reach.
  */
 contract Eip712Test is V2TestBase {
-  string internal constant METADATA = 'order-ref:7f3a';
+  bytes internal constant EXTRA_DATA = 'order-ref:7f3a';
 
   // -------------------------------------------------------------------------------------------
   // T712-08b..12 — struct and array encodings, against the schemas the structs declare
@@ -125,44 +125,45 @@ contract Eip712Test is V2TestBase {
     );
   }
 
-  /// @dev A non-empty metadata is encoded by both hashers of the execution witness and moves the
+  /// @dev Non-empty extra data is encoded by both hashers of the execution witness and moves the
   /// hash
-  function test_T712_executionWitnessMetadataStructHash() public view {
+  function test_T712_executionWitnessExtraDataStructHash() public view {
     (address[] memory targets, ERC721Transfer[] memory nfts, GenericCall[] memory calls) = _sample();
-    bytes32 expected = lExecutionWitness(ANY, targets, nfts, calls, METADATA);
+    bytes32 expected = lExecutionWitness(ANY, targets, nfts, calls, EXTRA_DATA);
 
     assertEq(
-      ExecutionWitnessLib.hashMemory(ANY, targets, nfts, calls, METADATA), expected, 'memory'
+      ExecutionWitnessLib.hashMemory(ANY, targets, nfts, calls, EXTRA_DATA), expected, 'memory'
     );
-    assertEq(this.extHashExecutionWitness(targets, nfts, calls, METADATA), expected, 'calldata');
-    assertTrue(expected != lExecutionWitness(ANY, targets, nfts, calls, ''), 'metadata is signed');
+    assertEq(this.extHashExecutionWitness(targets, nfts, calls, EXTRA_DATA), expected, 'calldata');
+    assertTrue(expected != lExecutionWitness(ANY, targets, nfts, calls, ''), 'extra data is signed');
   }
 
-  /// @dev The fulfillment counterpart of {test_T712_executionWitnessMetadataStructHash}
-  function test_T712_fulfillmentWitnessMetadataStructHash() public view {
+  /// @dev The fulfillment counterpart of {test_T712_executionWitnessExtraDataStructHash}
+  function test_T712_fulfillmentWitnessExtraDataStructHash() public view {
     (,, GenericCall[] memory ownerCalls) = _sample();
     ERC721Approval[] memory nfts = _sampleApprovals();
     ValidationParams[] memory vs = _sampleValidations();
     address approver = address(0xBEEF);
-    bytes32 expected = lFulfillmentWitness(ANY, nfts, ownerCalls, vs, approver, METADATA);
+    bytes32 expected = lFulfillmentWitness(ANY, nfts, ownerCalls, vs, approver, EXTRA_DATA);
 
     assertEq(
-      FulfillmentWitnessLib.hashMemory(ANY, nfts, ownerCalls, vs, approver, METADATA),
+      FulfillmentWitnessLib.hashMemory(ANY, nfts, ownerCalls, vs, approver, EXTRA_DATA),
       expected,
       'memory'
     );
-    assertEq(this.extHashFulfillmentWitness(nfts, ownerCalls, vs, approver, METADATA), expected);
+    assertEq(this.extHashFulfillmentWitness(nfts, ownerCalls, vs, approver, EXTRA_DATA), expected);
     assertTrue(
-      expected != lFulfillmentWitness(ANY, nfts, ownerCalls, vs, approver, ''), 'metadata is signed'
+      expected != lFulfillmentWitness(ANY, nfts, ownerCalls, vs, approver, ''),
+      'extra data is signed'
     );
   }
 
-  /// @dev Both order hashers with a non-empty metadata, and the metadata moves the hash
-  function test_T712_ordersMetadataStructHash() public view {
+  /// @dev Both order hashers with non-empty extra data, and the extra data moves the hash
+  function test_T712_ordersExtraDataStructHash() public view {
     ExecutionOrder memory execution = _sampleExecutionOrder();
     FulfillmentOrder memory fulfillment = _sampleFulfillmentOrder();
-    assertEq(execution.metadata, METADATA);
-    assertEq(fulfillment.metadata, METADATA);
+    assertEq(execution.extraData, EXTRA_DATA);
+    assertEq(fulfillment.extraData, EXTRA_DATA);
 
     bytes32 executionExpected = SchemaHash.executionOrder(execution);
     bytes32 fulfillmentExpected = SchemaHash.fulfillmentOrder(fulfillment);
@@ -171,13 +172,13 @@ contract Eip712Test is V2TestBase {
     assertEq(fulfillment.hashMemory(), fulfillmentExpected, 'fulfillment memory');
     assertEq(this.extHashFulfillmentOrder(fulfillment), fulfillmentExpected, 'fulfillment calldata');
 
-    execution.metadata = '';
-    fulfillment.metadata = '';
+    execution.extraData = '';
+    fulfillment.extraData = '';
     assertEq(this.extHashExecutionOrder(execution), SchemaHash.executionOrder(execution));
     assertEq(this.extHashFulfillmentOrder(fulfillment), SchemaHash.fulfillmentOrder(fulfillment));
-    assertTrue(SchemaHash.executionOrder(execution) != executionExpected, 'execution metadata');
+    assertTrue(SchemaHash.executionOrder(execution) != executionExpected, 'execution extra data');
     assertTrue(
-      SchemaHash.fulfillmentOrder(fulfillment) != fulfillmentExpected, 'fulfillment metadata'
+      SchemaHash.fulfillmentOrder(fulfillment) != fulfillmentExpected, 'fulfillment extra data'
     );
   }
 
@@ -361,9 +362,9 @@ contract Eip712Test is V2TestBase {
     address[] calldata targets,
     ERC721Transfer[] calldata nfts,
     GenericCall[] calldata calls,
-    string calldata metadata
+    bytes calldata extraData
   ) external pure returns (bytes32) {
-    return ExecutionWitnessLib.hash(ANY, EfficientHashLibExt.hash(targets), nfts, calls, metadata);
+    return ExecutionWitnessLib.hash(ANY, EfficientHashLibExt.hash(targets), nfts, calls, extraData);
   }
 
   function extHashFulfillmentWitness(
@@ -371,9 +372,9 @@ contract Eip712Test is V2TestBase {
     GenericCall[] calldata ownerCalls,
     ValidationParams[] calldata vs,
     address approver,
-    string calldata metadata
+    bytes calldata extraData
   ) external pure returns (bytes32) {
-    return FulfillmentWitnessLib.hash(ANY, nfts, ownerCalls, vs, approver, metadata);
+    return FulfillmentWitnessLib.hash(ANY, nfts, ownerCalls, vs, approver, extraData);
   }
 
   function extHashSolution(FulfillmentSolution calldata s) external pure returns (bytes32) {
@@ -441,7 +442,7 @@ contract Eip712Test is V2TestBase {
       genericCalls: calls,
       nonce: 11,
       deadline: 1234,
-      metadata: METADATA
+      extraData: EXTRA_DATA
     });
   }
 
@@ -468,7 +469,7 @@ contract Eip712Test is V2TestBase {
       solutionApprover: address(0xBEEF),
       nonce: 12,
       deadline: 5678,
-      metadata: METADATA
+      extraData: EXTRA_DATA
     });
   }
 
