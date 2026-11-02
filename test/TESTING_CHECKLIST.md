@@ -1540,3 +1540,11 @@ Scope: `IOrderAuthenticator.authenticateFulfillment` takes the fulfillment's `Fu
 | Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
 |---|---|---|---|---|---|
 | - [x] | - [ ] | `20261102T172124Z/AUTH-18` | The authenticator receives the order, its EIP-712 hash, the solution and the authentication data unaltered, and the order settles | `AUTH-18` `test_AUTH_18_authenticatorReceivesTheOrderAndTheSolution` — `test/v2/FulfillOrder.t.sol`; the mocks in `test/v2/Delegation.t.sol` and `test/v2/Guards.t.sol` and the callers in `test/v2/Forwarder.t.sol` (`FWD-16`) and `test/v2/authenticators/TwoTiersOrderAuthenticator.t.sol` (`SV-05`) take the new parameter | `forge test --isolate --no-match-path 'test/v1/*'` — 293 passed |
+
+## Run `20261103T000000Z`
+
+Scope: reusable orders are removed. Nonce 0 is an ordinary nonce, the hub keeps no record of cancelled orders, and whether an order may settle more than once is the authenticator's decision.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261103T000000Z/REMOVE-01` | The `RO-*` and `CAN-*` cases of `test/v2/ReusableOrders.t.sol` are deleted with the behaviour they covered: the nonce-free reusable order, `cancelReusableExecutionOrder`, `cancelReusableFulfillmentOrder`, `cancelledOrders` and the `CancelOrder` event. 18 tests are deleted, and `AMT-06`, which filled a reusable order twice, is deleted with them. Nonce 0 is spent as any other nonce, so the nonce cases of `SV-09` and `SV-OWN-*` cover it. The nonce domains of `EX-FUZZ`, `FU-FUZZ`, `SV-FUZZ-VER` and `SV-OWN-FUZZ` include 0 again, as they did before the reusable order | `RO-01..07b` and `CAN-01..08b` with `CAN-FUZZ` — `test/v2/ReusableOrders.t.sol` (deleted); `AMT-06` — `test/v2/FulfillTargets.t.sol`; `testFuzz_EX_FUZZ_delegatedRail` — `test/v2/ExecuteOrder.t.sol`; `testFuzz_FU_FUZZ_delegatedRail` — `test/v2/FulfillOrder.t.sol`; `testFuzz_SV_FUZZ_VER_nonceAndDeadline`, `testFuzz_SV_OWN_FUZZ_ownerSignedOrder` — `test/v2/authenticators/TwoTiersOrderAuthenticator.t.sol` | `forge test --isolate --no-match-path 'test/v1/*'` — 274 passed |

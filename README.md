@@ -75,20 +75,10 @@ other.
 
 On the **delegated entry points**, the owner must have delegated the authenticator, the caller must
 be the order's submitter, and the authenticator must accept `authenticationData` for the order. The
-hub does not spend `order.nonce`; replay protection is the authenticator's. The ERC20 transfers are
-drawn from the owner's allowances to the hub, or from the owner's Permit2 allowances when
-`usePermit2Allowances` is set.
-
-### Reusable orders
-
-An order whose nonce is `Constants.REUSABLE_ORDER_NONCE` (0) is reusable: the authenticator spends
-no nonce when it authenticates the order, so the order may be settled until its deadline passes or
-its owner cancels it. The owner cancels a reusable order by calling `cancelReusableExecutionOrder`
-or `cancelReusableFulfillmentOrder`, which records the order hash in `cancelledOrders` and emits
-`CancelOrder`. On the delegated entry points, the hub refuses a cancelled reusable order for any
-caller other than the owner. An order with any other nonce is cancelled by spending its nonce with
-`revokeNonce` on the authenticator or on Permit2. On the Permit2 entry points, Permit2 spends the
-nonce, so such an order settles once there, and the cancellation record does not apply.
+hub does not spend `order.nonce` and keeps no record of settled orders, so whether an order may be
+settled more than once is the authenticator's decision. The ERC20 transfers are drawn from the
+owner's allowances to the hub, or from the owner's Permit2 allowances when `usePermit2Allowances` is
+set.
 
 ### Orders submitted by the owner
 
@@ -162,10 +152,10 @@ the key's signature over the order's EIP-712 digest under the authenticator's do
 `abi.encode(bytes signature)` carries the owner's own signature over the same digest, verified as
 an ECDSA signature or through ERC-1271, and requires no approved key.
 
-Every signature, except that of a reusable order, spends a nonce in its signer's namespace: the
-owner's address for the owner's own signatures, and the key's credential hash,
-`keccak256(abi.encodePacked(keyType, publicKey))`, for anything a key signs. The credential hash
-excludes the expiry, so all approvals of one key share its nonces.
+Every signature spends a nonce in its signer's namespace: the owner's address for the owner's own
+signatures, and the key's credential hash, `keccak256(abi.encodePacked(keyType, publicKey))`, for
+anything a key signs. The credential hash excludes the expiry, so all approvals of one key share its
+nonces.
 `revokeNonce(AuthKey, nonce, deadline, signature)` spends a key's nonce on the key's signature,
 whether or not the key is still approved or unexpired.
 

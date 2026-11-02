@@ -81,9 +81,6 @@ contract KSAllowanceHubV2 is
 
   address internal immutable CALLS_FORWARDER;
 
-  /// @inheritdoc IKSAllowanceHubV2
-  mapping(bytes32 orderHash => bool) public cancelledOrders;
-
   /**
    * @param initialAdmin Holder of the default admin role
    * @param initialGuardians Accounts that may pause the hub and revoke routers
@@ -134,9 +131,6 @@ contract KSAllowanceHubV2 is
     if (msg.sender != order.owner) {
       if (msg.sender != order.relayer && order.relayer != Constants.DEAD_ADDRESS) {
         revert CallerNotRelayer(msg.sender);
-      }
-      if (order.nonce == Constants.REUSABLE_ORDER_NONCE && cancelledOrders[orderHash]) {
-        revert OrderCancelled(orderHash);
       }
       IOrderAuthenticator(authenticator).authenticateExecution(order, orderHash, authenticationData);
     }
@@ -222,9 +216,6 @@ contract KSAllowanceHubV2 is
       if (msg.sender != order.solver && order.solver != Constants.DEAD_ADDRESS) {
         revert CallerNotSolver(msg.sender);
       }
-      if (order.nonce == Constants.REUSABLE_ORDER_NONCE && cancelledOrders[orderHash]) {
-        revert OrderCancelled(orderHash);
-      }
       IOrderAuthenticator(authenticator)
         .authenticateFulfillment(order, orderHash, solution, authenticationData);
     }
@@ -309,36 +300,6 @@ contract KSAllowanceHubV2 is
     }
 
     return _settleFulfillment(order, solution, beforeExecutionOutputs);
-  }
-
-  /// @inheritdoc IKSAllowanceHubV2
-  function cancelReusableExecutionOrder(ExecutionOrder calldata order) external payable {
-    if (msg.sender != order.owner) {
-      revert CallerNotOwner(msg.sender);
-    }
-    if (order.nonce != Constants.REUSABLE_ORDER_NONCE) {
-      revert OrderNotReusable(order.nonce);
-    }
-
-    bytes32 orderHash = order.hash();
-    cancelledOrders[orderHash] = true;
-
-    emit CancelOrder(msg.sender, orderHash);
-  }
-
-  /// @inheritdoc IKSAllowanceHubV2
-  function cancelReusableFulfillmentOrder(FulfillmentOrder calldata order) external payable {
-    if (msg.sender != order.owner) {
-      revert CallerNotOwner(msg.sender);
-    }
-    if (order.nonce != Constants.REUSABLE_ORDER_NONCE) {
-      revert OrderNotReusable(order.nonce);
-    }
-
-    bytes32 orderHash = order.hash();
-    cancelledOrders[orderHash] = true;
-
-    emit CancelOrder(msg.sender, orderHash);
   }
 
   /// @inheritdoc IKSAllowanceHubV2

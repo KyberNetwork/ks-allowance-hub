@@ -47,9 +47,8 @@ interface IOrderAuthenticator {
    * @notice Checks that `data` authenticates `order` on behalf of its owner
    * @dev Must revert when it does not; a normal return is treated as success. The hub calls this
    * only when the caller is not the owner, after checking `order.deadline` and the submitter. The
-   * hub does not spend `order.nonce`, so replay protection is the implementation's. An order whose
-   * nonce is {Constants-REUSABLE_ORDER_NONCE} is reusable, and an implementation must not spend its
-   * nonce. The hub refuses a cancelled reusable order before calling the authenticator. `orderHash`
+   * hub does not spend `order.nonce` and keeps no record of settled orders, so replay protection
+   * is the implementation's, and so is any decision to accept an order more than once. `orderHash`
    * is computed by the hub from `order`.
    * @param order The order to authenticate
    * @param orderHash EIP-712 struct hash of `order`

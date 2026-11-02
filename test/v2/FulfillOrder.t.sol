@@ -1068,7 +1068,6 @@ contract FulfillOrderTest is AuthenticatorBase {
   function testFuzz_FU_FUZZ_delegatedRail(FulfillFuzz memory f) public {
     _delegateKeyThroughHub(key);
 
-    f.nonce = bound(f.nonce, 1, type(uint256).max);
     f.amount = uint160(bound(f.amount, 0, 100 ether));
     f.solverCallCount = uint8(bound(f.solverCallCount, 0, 3));
     f.ownerCallCount = uint8(bound(f.ownerCallCount, 0, 3));

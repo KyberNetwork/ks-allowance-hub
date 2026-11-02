@@ -11,10 +11,6 @@ library Constants {
   /// `solutionApprover` that accepts any solution without an approval
   address internal constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
-  /// @dev Nonce of a reusable order: an order with this nonce spends no nonce when it is
-  /// authenticated, and may be settled until it is cancelled or its deadline passes
-  uint256 internal constant REUSABLE_ORDER_NONCE = 0;
-
   /// @dev Transient slot of {MsgSender}, holding the account in its low 160 bits and the lock in
   /// bit 160
   bytes32 internal constant MSG_SENDER_SLOT = bytes32(erc7201('ks-allowance-hub.msg-sender'));

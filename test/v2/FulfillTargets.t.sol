@@ -26,7 +26,7 @@ import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 /**
- * @notice `TGT-01..04` with `LEN-01..02`, `APR-01` and `EVT-01`, and `AMT-01..06` with `AMT-FUZZ`:
+ * @notice `TGT-01..04` with `LEN-01..02`, `APR-01` and `EVT-01`, and `AMT-01..05` with `AMT-FUZZ`:
  * the solver chooses where each transfer of a fulfillment goes, and how much each ERC20 transfer
  * moves
  * @dev The order names only what may leave the owner; the solution names one target per transfer
@@ -256,7 +256,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
   }
 
   // -------------------------------------------------------------------------------------------
-  // AMT-01..06 — the solver chooses how much each transfer moves, up to its allowance
+  // AMT-01..05 — the solver chooses how much each transfer moves, up to its allowance
   // -------------------------------------------------------------------------------------------
 
   /**
@@ -398,35 +398,6 @@ contract FulfillTargetsTest is AuthenticatorBase {
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', approved, approval, false);
     assertEq(ownerBefore - _balance(owner), AMOUNT, 'the approved amounts settle');
-  }
-
-  /**
-   * AMT-06 — a reusable fulfillment order is filled twice with different amounts
-   * @dev The solver fills 40% and then 60% of the allowance, each fill within it. The owner pays
-   * the sum, and the credential namespace of the key spends no nonce.
-   */
-  function test_AMT_06_reusableOrderFilledTwiceWithDifferentAmounts() public {
-    _delegateKeyThroughHub(key);
-    FulfillmentOrder memory order = _amountOrder(AMOUNT, 0);
-    order.solver = solver;
-    bytes memory authData = _fulfillmentAuthData(order, key, masterKeyPk);
-    uint160 first = (AMOUNT * 40) / 100;
-    uint160 second = (AMOUNT * 60) / 100;
-    uint256 ownerBefore = _balance(owner);
-
-    vm.prank(solver);
-    hub.fulfillOrderWithDelegatedAuthentication(
-      order, address(authenticator), authData, _amountSolution(first), '', false
-    );
-    assertEq(ownerBefore - _balance(owner), first, 'the first fill moved 40%');
-
-    vm.prank(solver);
-    hub.fulfillOrderWithDelegatedAuthentication(
-      order, address(authenticator), authData, _amountSolution(second), '', false
-    );
-    assertEq(ownerBefore - _balance(owner), uint256(first) + second, 'the owner paid the sum');
-    assertEq(_balance(solverWallet), uint256(first) + second, 'and the target received it');
-    assertEq(authenticator.nonces(_credentialHash(key), 0), 0, 'no nonce was spent');
   }
 
   // -------------------------------------------------------------------------------------------

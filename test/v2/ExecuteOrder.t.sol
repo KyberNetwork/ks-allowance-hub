@@ -491,7 +491,6 @@ contract ExecuteOrderTest is AuthenticatorBase {
   function testFuzz_EX_FUZZ_delegatedRail(ExecuteFuzz memory f) public {
     _delegateKeyThroughHub(key);
 
-    f.nonce = bound(f.nonce, 1, type(uint256).max);
     f.amount = uint160(bound(f.amount, 0, 100 ether));
     f.callCount = uint8(bound(f.callCount, 0, 3));
     f.deadlineOffset = bound(f.deadlineOffset, 0, 30 days);

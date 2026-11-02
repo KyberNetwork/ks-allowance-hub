@@ -4,8 +4,6 @@ pragma solidity 0.8.36;
 import {DeadlineChecker} from '../../base/DeadlineChecker.sol';
 import {UnorderedNonce} from '../../base/UnorderedNonce.sol';
 
-import {Constants} from '../../base/libraries/Constants.sol';
-
 import {AuthKey} from '../../base/types/AuthKey.sol';
 
 import {IOrderAuthenticator} from '../interfaces/IOrderAuthenticator.sol';
@@ -39,11 +37,10 @@ import {
  * A session key may not expire after its master key, and is not accepted once its master key is
  * revoked. The owner may also sign an order itself, without any key.
  *
- * Every signature this contract verifies spends a nonce in the signer's namespace, except that of a
- * reusable order, whose nonce is {Constants-REUSABLE_ORDER_NONCE}. The namespace is the owner's
- * address for the owner's own signatures, approvals and orders, and the key's credential hash for
- * anything a key signs. The credential hash excludes the expiry, so all approvals of one credential
- * share its nonces.
+ * Every signature this contract verifies spends a nonce in the signer's namespace. The namespace is
+ * the owner's address for the owner's own signatures, approvals and orders, and the key's
+ * credential hash for anything a key signs. The credential hash excludes the expiry, so all
+ * approvals of one credential share its nonces.
  */
 contract TwoTiersOrderAuthenticator is
   ITwoTiersOrderAuthenticator,
@@ -177,12 +174,10 @@ contract TwoTiersOrderAuthenticator is
    *
    * - `abi.encode(bytes signature)`: `signature` is `order.owner`'s signature over the EIP-712
    *   digest of the order under this contract's domain, verified as an ECDSA signature or through
-   *   ERC-1271, and `order.nonce` is spent in the owner's address namespace unless it is
-   *   {Constants-REUSABLE_ORDER_NONCE}.
+   *   ERC-1271, and `order.nonce` is spent in the owner's address namespace.
    * - `abi.encode(AuthKey key, bool isSessionKey, bytes signature)`: `signature` is the key's
    *   signature over the EIP-712 digest of the order under this contract's domain, and
-   *   `order.nonce` is spent under the key's credential unless it is
-   *   {Constants-REUSABLE_ORDER_NONCE}.
+   *   `order.nonce` is spent under the key's credential.
    */
   function authenticateExecution(
     ExecutionOrder calldata order,
@@ -230,18 +225,14 @@ contract TwoTiersOrderAuthenticator is
   /**
    * @dev Verifies that the order with hash `orderHash` was signed either by `owner`, which spends
    * `nonce` in the owner's namespace, or by a key in `data` that may sign for `owner`, which spends
-   * `nonce` under the key's credential. A reusable order, whose nonce is
-   * {Constants-REUSABLE_ORDER_NONCE}, spends no nonce. `isSessionKey` selects the tier the key is
-   * checked under; a key presented under a tier it does not hold has no approval there and is
-   * refused.
+   * `nonce` under the key's credential. `isSessionKey` selects the tier the key is checked
+   * under; a key presented under a tier it does not hold has no approval there and is refused.
    */
   function _authenticate(address owner, uint256 nonce, bytes32 orderHash, bytes calldata data)
     private
   {
     if (data.decodeUint256(0) <= 0x20) {
-      if (nonce != Constants.REUSABLE_ORDER_NONCE) {
-        _useUnorderedNonce(owner, nonce);
-      }
+      _useUnorderedNonce(owner, nonce);
 
       bytes32 ownerDigest = _hashTypedDataV4(orderHash);
       bytes calldata signature = data.decodeBytes(0);
@@ -268,9 +259,7 @@ contract TwoTiersOrderAuthenticator is
       revert MasterKeyNotApproved(keyHash);
     }
 
-    if (nonce != Constants.REUSABLE_ORDER_NONCE) {
-      _useUnorderedNonce(key.credentialHash(), nonce);
-    }
+    _useUnorderedNonce(key.credentialHash(), nonce);
 
     bytes32 digest = _hashTypedDataV4(orderHash);
     bytes calldata signature = data.decodeBytes(2);

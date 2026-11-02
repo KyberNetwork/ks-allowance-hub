@@ -1064,7 +1064,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   function testFuzz_SV_FUZZ_VER_nonceAndDeadline(SessionVerifyFuzz memory f) public {
-    uint256 nonce = bound(f.nonce, 1, type(uint256).max);
+    uint256 nonce = f.nonce;
     uint256 deadline = block.timestamp + bound(f.deadlineOffset, 0, 30 days);
 
     // the key's own expiry is a live dimension: it must outlast the order for it to settle
@@ -2335,7 +2335,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     address account = vm.addr(pk);
     vm.assume(account.code.length == 0 && account != owner);
 
-    uint256 nonce = bound(f.nonce, 1, type(uint256).max);
+    uint256 nonce = f.nonce;
     uint256 deadline = block.timestamp + bound(f.deadlineOffset, 0, 30 days);
     _fundAndDelegate(account);
     uint256 before = IERC20(token18).balanceOf(address(router));

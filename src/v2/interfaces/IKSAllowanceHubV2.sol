@@ -19,15 +19,6 @@ interface IKSAllowanceHubV2 {
   /// @notice The caller is neither the order's owner nor its solver, and the order names a solver
   error CallerNotSolver(address caller);
 
-  /// @notice The caller is not the order's owner
-  error CallerNotOwner(address caller);
-
-  /// @notice The order's nonce is not {Constants-REUSABLE_ORDER_NONCE}
-  error OrderNotReusable(uint256 nonce);
-
-  /// @notice The reusable order has been cancelled by its owner
-  error OrderCancelled(bytes32 orderHash);
-
   /// @notice The amount the solution names for an ERC20 transfer exceeds its allowance
   error ERC20AmountExceedsAllowance(uint256 index, uint256 amount, uint256 allowance);
 
@@ -52,9 +43,6 @@ interface IKSAllowanceHubV2 {
     NativeTransfer[] nativeTransfers
   );
 
-  /// @notice Emitted when an owner cancels a reusable order
-  event CancelOrder(address indexed owner, bytes32 indexed orderHash);
-
   /// @notice Emitted when assets held by the hub are transferred out, with the entries as given
   event RescueTokens(ERC20Transfer[] erc20Transfers, ERC721Transfer[] erc721Transfers);
 
@@ -69,9 +57,8 @@ interface IKSAllowanceHubV2 {
    *
    * Any other caller must be `order.relayer`, or any account when `order.relayer` is the dead
    * address, and the authenticator must accept `authenticationData` for the order. The hub does not
-   * spend `order.nonce`; replay protection is the authenticator's. When `order.nonce` is
-   * {Constants-REUSABLE_ORDER_NONCE}, the hub refuses an order that {cancelledOrders} records as
-   * cancelled; the owner's own call does not consult it.
+   * spend `order.nonce` and keeps no record of settled orders, so whether an order may be
+   * settled more than once is the authenticator's decision.
    * @param order The order to settle
    * @param authenticator The authenticator that checks `authenticationData`
    * @param authenticationData Credential and signature, in the encoding the authenticator reads
@@ -118,8 +105,7 @@ interface IKSAllowanceHubV2 {
    * order.
    *
    * The caller and the authenticator are treated as in {executeOrderWithDelegatedAuthentication},
-   * with `order.solver` in place of `order.relayer`, and the cancellation of a reusable order is
-   * consulted before the authenticator is called. When the caller is `order.owner`, the solution
+   * with `order.solver` in place of `order.relayer`. When the caller is `order.owner`, the solution
    * approval is still required.
    * @param order The order to settle
    * @param authenticator The authenticator that checks `authenticationData`
@@ -165,29 +151,6 @@ interface IKSAllowanceHubV2 {
     FulfillmentSolution calldata solution,
     bytes calldata solutionSignature
   ) external payable returns (bytes[] memory results);
-
-  /**
-   * @notice Cancels a reusable execution order
-   * @dev The caller must be `order.owner`, and `order.nonce` must be
-   * {Constants-REUSABLE_ORDER_NONCE}.
-   * @param order The order to cancel
-   */
-  function cancelReusableExecutionOrder(ExecutionOrder calldata order) external payable;
-
-  /**
-   * @notice Cancels a reusable fulfillment order
-   * @dev The caller must be `order.owner`, and `order.nonce` must be
-   * {Constants-REUSABLE_ORDER_NONCE}.
-   * @param order The order to cancel
-   */
-  function cancelReusableFulfillmentOrder(FulfillmentOrder calldata order) external payable;
-
-  /**
-   * @notice Whether the reusable order with struct hash `orderHash` is cancelled
-   * @param orderHash EIP-712 struct hash of the order
-   * @return cancelled Whether the order has been cancelled by its owner
-   */
-  function cancelledOrders(bytes32 orderHash) external view returns (bool cancelled);
 
   /**
    * @notice Calls {ICallsForwarder-forwardCalls} on the forwarder set at deployment, so that it can
