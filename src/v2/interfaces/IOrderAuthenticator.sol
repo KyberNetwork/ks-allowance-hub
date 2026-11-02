@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import {ExecutionOrder} from '../types/ExecutionOrder.sol';
 import {FulfillmentOrder} from '../types/FulfillmentOrder.sol';
+import {FulfillmentSolution} from '../types/FulfillmentSolution.sol';
 
 /// @title IOrderAuthenticator
 /// @notice Interface an authenticator must implement to be delegated through {AuthDelegator}
@@ -62,14 +63,18 @@ interface IOrderAuthenticator {
 
   /**
    * @notice Checks that `data` authenticates `order` on behalf of its owner
-   * @dev As {authenticateExecution}, for a fulfillment order
+   * @dev As {authenticateExecution}, for a fulfillment order. `solution` is the solution submitted
+   * with the order. The owner has not signed it, so an implementation that accepts or refuses a
+   * fulfillment by its solution must read it here.
    * @param order The order to authenticate
    * @param orderHash EIP-712 struct hash of `order`
+   * @param solution The solution submitted with the order
    * @param data Credential and signature, in the encoding the implementation reads
    */
   function authenticateFulfillment(
     FulfillmentOrder calldata order,
     bytes32 orderHash,
+    FulfillmentSolution calldata solution,
     bytes calldata data
   ) external;
 }

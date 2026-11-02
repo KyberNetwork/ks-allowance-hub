@@ -12,6 +12,7 @@ import {IOrderAuthenticator} from '../interfaces/IOrderAuthenticator.sol';
 
 import {ExecutionOrder} from '../types/ExecutionOrder.sol';
 import {FulfillmentOrder} from '../types/FulfillmentOrder.sol';
+import {FulfillmentSolution} from '../types/FulfillmentSolution.sol';
 
 import {OrderAuthenticatorBase} from './OrderAuthenticatorBase.sol';
 
@@ -193,11 +194,12 @@ contract TwoTiersOrderAuthenticator is
 
   /**
    * @inheritdoc IOrderAuthenticator
-   * @dev `data` is encoded as for {authenticateExecution}
+   * @dev `data` is encoded as for {authenticateExecution}. The solution is not read.
    */
   function authenticateFulfillment(
     FulfillmentOrder calldata order,
     bytes32 orderHash,
+    FulfillmentSolution calldata,
     bytes calldata data
   ) external onlyAuthorizedCaller {
     _authenticate(order.owner, order.nonce, orderHash, data);

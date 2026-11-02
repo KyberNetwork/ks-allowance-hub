@@ -14,6 +14,7 @@ import {IAuthDelegator} from 'src/v2/interfaces/IAuthDelegator.sol';
 import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
+import {FulfillmentSolution} from 'src/v2/types/FulfillmentSolution.sol';
 
 /// @notice Authenticator that can be switched to reverting, to show a withdrawal never calls it
 contract RevertingAuthenticator is IOrderAuthenticator {
@@ -50,10 +51,12 @@ contract RevertingAuthenticator is IOrderAuthenticator {
     }
   }
 
-  function authenticateFulfillment(FulfillmentOrder calldata, bytes32, bytes calldata)
-    external
-    view
-  {
+  function authenticateFulfillment(
+    FulfillmentOrder calldata,
+    bytes32,
+    FulfillmentSolution calldata,
+    bytes calldata
+  ) external view {
     if (reverting) {
       revert Nope();
     }

@@ -226,7 +226,7 @@ contract KSAllowanceHubV2 is
         revert OrderCancelled(orderHash);
       }
       IOrderAuthenticator(authenticator)
-        .authenticateFulfillment(order, orderHash, authenticationData);
+        .authenticateFulfillment(order, orderHash, solution, authenticationData);
     }
 
     // A dead-address approver accepts any solution

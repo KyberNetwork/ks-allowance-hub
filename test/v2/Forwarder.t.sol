@@ -25,6 +25,7 @@ import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
+import {FulfillmentSolution} from 'src/v2/types/FulfillmentSolution.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
 import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
@@ -627,9 +628,10 @@ contract ForwarderTest is AuthenticatorBase {
     executionData[0] =
       abi.encodeCall(IOrderAuthenticator.authenticateExecution, (execOrder, bytes32(0), payload));
 
+    FulfillmentSolution memory solution;
     bytes[] memory fulfillmentData = new bytes[](1);
     fulfillmentData[0] = abi.encodeCall(
-      IOrderAuthenticator.authenticateFulfillment, (fulfillOrder, bytes32(0), payload)
+      IOrderAuthenticator.authenticateFulfillment, (fulfillOrder, bytes32(0), solution, payload)
     );
 
     // Sent straight at the authenticator, each of the three reaches its hub-only gate, so the

@@ -21,6 +21,7 @@ import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
 import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
 import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
+import {FulfillmentSolution} from 'src/v2/types/FulfillmentSolution.sol';
 import {GenericCall} from 'src/v2/types/GenericCall.sol';
 import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
 
@@ -360,6 +361,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     FulfillmentOrder memory fulfillOrder = _openFulfillmentOrder(
       new ERC20Allowance[](0), new ValidationParams[](0), new GenericCall[](0), 0, block.timestamp
     );
+    FulfillmentSolution memory solution;
     bytes memory data = _authData(key, hex'00');
 
     vm.prank(relayer);
@@ -372,7 +374,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     vm.expectRevert(
       abi.encodeWithSelector(IOrderAuthenticator.CallerNotAuthorized.selector, relayer)
     );
-    authenticator.authenticateFulfillment(fulfillOrder, bytes32(0), data);
+    authenticator.authenticateFulfillment(fulfillOrder, bytes32(0), solution, data);
   }
 
   /// SV-06 — a key the owner never approved cannot authenticate anything

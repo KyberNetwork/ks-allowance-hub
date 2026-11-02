@@ -15,6 +15,7 @@ import {
   ITwoTiersOrderAuthenticator
 } from 'src/v2/authenticators/interfaces/ITwoTiersOrderAuthenticator.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
+import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
 import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Approval} from 'src/v2/types/ERC721Approval.sol';
@@ -27,7 +28,7 @@ import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessCon
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 /**
- * @notice `AUTH-01b`, `AUTH-07..07b`, `AUTH-16..17`, `SOL-01..04`, `OWN-01..06` and `VAL-01..04` —
+ * @notice `AUTH-01b`, `AUTH-07..07b`, `AUTH-16..18`, `SOL-01..04`, `OWN-01..06` and `VAL-01..04` —
  * both fulfillment rails, the solution approval and the validator bracket.
  * @dev A fulfillment splits in two: the owner fixes `ownerCalls` and the validators, a solver
  * supplies the {FulfillmentSolution}, and the `solutionApprover` the order names is who may approve
@@ -255,6 +256,52 @@ contract FulfillOrderTest is AuthenticatorBase {
     vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
       tampered, address(authenticator), signedAuth, _route(tampered, solverCalls), '', false
+    );
+  }
+
+  /**
+   * AUTH-18 — the authenticator receives the order, its hash, the solution and the data, unaltered
+   * @dev The solution is submitted beside the order and the owner has not signed it, so the hub
+   * passes the struct it received. The solution pays less than the allowance and carries a solver
+   * call, so a hub that substituted a default or a rebuilt solution would send different calldata.
+   * The expected calldata is assembled from the interface and the order hash from the bound schema.
+   * The settlement assertion rules out a vacuous pass.
+   */
+  function test_AUTH_18_authenticatorReceivesTheOrderAndTheSolution() public {
+    _delegateKeyThroughHub(key);
+
+    ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
+    uint256 deadline = block.timestamp + 1 hours;
+
+    FulfillmentOrder memory order =
+      _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 37, deadline);
+    bytes memory authData = _fulfillmentAuthData(order, key, masterKeyPk);
+
+    address[] memory targets = new address[](1);
+    targets[0] = address(router);
+    uint160 paid = AMOUNT - 1 ether;
+    FulfillmentSolution memory solution = _solution(
+      targets, _amounts(paid), new address[](0), _calls(_routerCall(0, hex'01')), deadline - 1
+    );
+
+    bytes memory expectedCall = abi.encodeCall(
+      IOrderAuthenticator.authenticateFulfillment,
+      (order, SchemaHash.fulfillmentOrder(order), solution, authData)
+    );
+
+    uint256 before = IERC20(token18).balanceOf(address(router));
+
+    vm.expectCall(address(authenticator), expectedCall, 1);
+
+    vm.prank(relayer);
+    hub.fulfillOrderWithDelegatedAuthentication(
+      order, address(authenticator), authData, solution, '', false
+    );
+
+    assertEq(
+      IERC20(token18).balanceOf(address(router)) - before,
+      paid,
+      'and the order settled by the solution'
     );
   }
 
