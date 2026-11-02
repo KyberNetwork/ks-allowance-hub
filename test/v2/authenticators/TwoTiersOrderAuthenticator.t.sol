@@ -398,11 +398,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _executeViaAuthenticator(expiring, masterKeyPk, 9, t + 1 hours, true);
 
     vm.warp(t + 1);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        ITwoTiersOrderAuthenticator.AuthKeyExpired.selector, t, vm.getBlockTimestamp()
-      )
-    );
+    vm.expectRevert(_deadlinePassed(t));
     _executeViaAuthenticator(expiring, masterKeyPk, 10, t + 1 hours, false);
   }
 
@@ -536,11 +532,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     );
 
     vm.warp(t + 1);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        ITwoTiersOrderAuthenticator.AuthKeyExpired.selector, t, vm.getBlockTimestamp()
-      )
-    );
+    vm.expectRevert(_deadlinePassed(t));
     _fulfillViaAuthenticator(expiring, masterKeyPk, 63, t + 1 hours);
   }
 
@@ -1472,13 +1464,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
 
     // the owner's rail refuses it, and still revokes it
     vm.prank(owner);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        ITwoTiersOrderAuthenticator.AuthKeyExpired.selector,
-        stale.expiration,
-        vm.getBlockTimestamp()
-      )
-    );
+    vm.expectRevert(_deadlinePassed(stale.expiration));
     authenticator.updateAuthentication(owner, _approveKey(stale), 0, deadline, '');
 
     vm.prank(owner);
@@ -1487,13 +1473,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
 
     // the hub's delegation path reaches `initAuthentication`, which refuses it too
     vm.prank(owner);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        ITwoTiersOrderAuthenticator.AuthKeyExpired.selector,
-        stale.expiration,
-        vm.getBlockTimestamp()
-      )
-    );
+    vm.expectRevert(_deadlinePassed(stale.expiration));
     hub.updateDelegation(owner, address(authenticator), true, _encodeKey(stale), 0, deadline, '');
   }
 
@@ -1516,13 +1496,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     // inside the bound, and therefore expired with it
     bytes memory staleSig = _signSessionKeyUpdate(master, stale, true, 70, deadline, masterKeyPk);
     vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        ITwoTiersOrderAuthenticator.AuthKeyExpired.selector,
-        stale.expiration,
-        vm.getBlockTimestamp()
-      )
-    );
+    vm.expectRevert(_deadlinePassed(stale.expiration));
     authenticator.updateAuthentication(
       owner, _sessionKeyData(stale, master, true), 70, deadline, staleSig
     );
@@ -1627,13 +1601,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     vm.warp(stale.expiration + 1);
 
     vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        ITwoTiersOrderAuthenticator.AuthKeyExpired.selector,
-        stale.expiration,
-        vm.getBlockTimestamp()
-      )
-    );
+    vm.expectRevert(_deadlinePassed(stale.expiration));
     authenticator.updateAuthentication(owner, _approveKey(stale), 90, deadline, hex'00');
 
     vm.prank(relayer);
@@ -1655,13 +1623,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
 
     bytes memory staleSig = _signSessionKeyUpdate(key, stale, true, 91, deadline, masterKeyPk);
     vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        ITwoTiersOrderAuthenticator.AuthKeyExpired.selector,
-        stale.expiration,
-        vm.getBlockTimestamp()
-      )
-    );
+    vm.expectRevert(_deadlinePassed(stale.expiration));
     authenticator.updateAuthentication(
       owner, _sessionKeyData(stale, key, true), 91, deadline, staleSig
     );
@@ -1691,13 +1653,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     vm.warp(stale.expiration + 1);
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        ITwoTiersOrderAuthenticator.AuthKeyExpired.selector,
-        stale.expiration,
-        vm.getBlockTimestamp()
-      )
-    );
+    vm.expectRevert(_deadlinePassed(stale.expiration));
     _executeViaAuthenticator(stale, sessionKeyPk, 92, deadline, false, false);
 
     vm.expectRevert(_masterKeyNotApproved(live));

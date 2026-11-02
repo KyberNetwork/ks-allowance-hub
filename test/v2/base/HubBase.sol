@@ -223,7 +223,7 @@ abstract contract HubBase is V2TestBase {
     ERC721Transfer[] memory erc721Transfers,
     GenericCall[] memory genericCalls,
     uint256 nonce,
-    uint256 deadline
+    uint256 expiration
   ) internal view returns (ExecutionOrder memory) {
     return ExecutionOrder({
       owner: owner,
@@ -232,7 +232,7 @@ abstract contract HubBase is V2TestBase {
       erc721Transfers: erc721Transfers,
       genericCalls: genericCalls,
       nonce: nonce,
-      deadline: deadline,
+      expiration: expiration,
       extraData: ''
     });
   }
@@ -242,10 +242,10 @@ abstract contract HubBase is V2TestBase {
     ERC20Transfer[] memory erc20Transfers,
     GenericCall[] memory genericCalls,
     uint256 nonce,
-    uint256 deadline
+    uint256 expiration
   ) internal view returns (ExecutionOrder memory) {
     return _executionOrder(
-      ANY, erc20Transfers, new ERC721Transfer[](0), genericCalls, nonce, deadline
+      ANY, erc20Transfers, new ERC721Transfer[](0), genericCalls, nonce, expiration
     );
   }
 
@@ -257,7 +257,7 @@ abstract contract HubBase is V2TestBase {
     GenericCall[] memory ownerCalls,
     address solutionApprover,
     uint256 nonce,
-    uint256 deadline
+    uint256 expiration
   ) internal view returns (FulfillmentOrder memory) {
     return FulfillmentOrder({
       owner: owner,
@@ -268,7 +268,7 @@ abstract contract HubBase is V2TestBase {
       ownerCalls: ownerCalls,
       solutionApprover: solutionApprover,
       nonce: nonce,
-      deadline: deadline,
+      expiration: expiration,
       extraData: ''
     });
   }
@@ -279,7 +279,7 @@ abstract contract HubBase is V2TestBase {
     ValidationParams[] memory validationParams,
     GenericCall[] memory ownerCalls,
     uint256 nonce,
-    uint256 deadline
+    uint256 expiration
   ) internal view returns (FulfillmentOrder memory) {
     return _fulfillmentOrder(
       ANY,
@@ -289,7 +289,7 @@ abstract contract HubBase is V2TestBase {
       ownerCalls,
       ANY,
       nonce,
-      deadline
+      expiration
     );
   }
 
@@ -303,14 +303,14 @@ abstract contract HubBase is V2TestBase {
     uint160[] memory erc20Amounts,
     address[] memory erc721Targets,
     GenericCall[] memory solverCalls,
-    uint256 deadline
+    uint256 expiration
   ) internal pure returns (FulfillmentSolution memory) {
     return FulfillmentSolution({
       erc20Targets: erc20Targets,
       erc20Amounts: erc20Amounts,
       erc721Targets: erc721Targets,
       solverCalls: solverCalls,
-      deadline: deadline
+      expiration: expiration
     });
   }
 
@@ -321,7 +321,7 @@ abstract contract HubBase is V2TestBase {
   function _solution(
     FulfillmentOrder memory order,
     GenericCall[] memory solverCalls,
-    uint256 deadline
+    uint256 expiration
   ) internal view returns (FulfillmentSolution memory) {
     address[] memory erc20Targets = new address[](order.erc20Allowances.length);
     uint160[] memory erc20Amounts = new uint160[](order.erc20Allowances.length);
@@ -333,7 +333,7 @@ abstract contract HubBase is V2TestBase {
     for (uint256 i = 0; i < erc721Targets.length; i++) {
       erc721Targets[i] = address(router2);
     }
-    return _solution(erc20Targets, erc20Amounts, erc721Targets, solverCalls, deadline);
+    return _solution(erc20Targets, erc20Amounts, erc721Targets, solverCalls, expiration);
   }
 
   /// @dev The route a solver supplies for `order` when the owner pinned nothing, valid for an hour
@@ -375,7 +375,7 @@ abstract contract HubBase is V2TestBase {
     return _sign(
       ownerKey,
       lPermit2ExecutionWitnessDigest(
-        tokens, amounts, address(hub), order.nonce, order.deadline, witness
+        tokens, amounts, address(hub), order.nonce, order.expiration, witness
       )
     );
   }
@@ -406,7 +406,7 @@ abstract contract HubBase is V2TestBase {
     return _sign(
       ownerKey,
       lPermit2FulfillmentWitnessDigest(
-        tokens, amounts, address(hub), order.nonce, order.deadline, witness
+        tokens, amounts, address(hub), order.nonce, order.expiration, witness
       )
     );
   }

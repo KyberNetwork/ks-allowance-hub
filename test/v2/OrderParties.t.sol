@@ -50,9 +50,9 @@ contract OrderPartiesTest is AuthenticatorBase {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC721Transfer[] memory noNfts = new ERC721Transfer[](0);
     GenericCall[] memory noCalls = new GenericCall[](0);
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 expiration = block.timestamp + 1 hours;
 
-    ExecutionOrder memory pinned = _executionOrder(relayer, erc20s, noNfts, noCalls, 70, deadline);
+    ExecutionOrder memory pinned = _executionOrder(relayer, erc20s, noNfts, noCalls, 70, expiration);
     uint256 before = _routerWeth();
     vm.prank(relayer);
     hub.executeOrderWithDelegatedAuthentication(
@@ -60,7 +60,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     );
     assertEq(_routerWeth() - before, AMOUNT, 'the named relayer may submit');
 
-    ExecutionOrder memory again = _executionOrder(relayer, erc20s, noNfts, noCalls, 71, deadline);
+    ExecutionOrder memory again = _executionOrder(relayer, erc20s, noNfts, noCalls, 71, expiration);
     vm.prank(solver);
     vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.CallerNotRelayer.selector, solver));
     hub.executeOrderWithDelegatedAuthentication(
@@ -69,7 +69,7 @@ contract OrderPartiesTest is AuthenticatorBase {
 
     // The pin is read before the credential, so an unnamed submitter is refused as such even when
     // the credential it presents could never have passed
-    ExecutionOrder memory third = _executionOrder(relayer, erc20s, noNfts, noCalls, 72, deadline);
+    ExecutionOrder memory third = _executionOrder(relayer, erc20s, noNfts, noCalls, 72, expiration);
     vm.prank(solver);
     vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.CallerNotRelayer.selector, solver));
     hub.executeOrderWithDelegatedAuthentication(
@@ -77,7 +77,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     );
 
     // The same stranger settles an order that names nobody, so the refusals were about the pin
-    ExecutionOrder memory open = _openExecutionOrder(erc20s, noCalls, 73, deadline);
+    ExecutionOrder memory open = _openExecutionOrder(erc20s, noCalls, 73, expiration);
     before = _routerWeth();
     vm.prank(solver);
     hub.executeOrderWithDelegatedAuthentication(
@@ -86,7 +86,8 @@ contract OrderPartiesTest is AuthenticatorBase {
     assertEq(_routerWeth() - before, AMOUNT, 'the sentinel leaves it open to anyone');
 
     // The owner is not bound by the field, exactly as on the Permit2 rail
-    ExecutionOrder memory byOwner = _executionOrder(relayer, erc20s, noNfts, noCalls, 74, deadline);
+    ExecutionOrder memory byOwner =
+      _executionOrder(relayer, erc20s, noNfts, noCalls, 74, expiration);
     before = _routerWeth();
     vm.prank(owner);
     hub.executeOrderWithDelegatedAuthentication(byOwner, address(0), '', false);
@@ -136,10 +137,10 @@ contract OrderPartiesTest is AuthenticatorBase {
     ERC721Approval[] memory noNfts = new ERC721Approval[](0);
     ValidationParams[] memory noValidators = new ValidationParams[](0);
     GenericCall[] memory noOwnerCalls = new GenericCall[](0);
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 expiration = block.timestamp + 1 hours;
 
     FulfillmentOrder memory pinned =
-      _fulfillmentOrder(solver, erc20s, noNfts, noValidators, noOwnerCalls, ANY, 80, deadline);
+      _fulfillmentOrder(solver, erc20s, noNfts, noValidators, noOwnerCalls, ANY, 80, expiration);
     uint256 before = _routerWeth();
     vm.prank(solver);
     hub.fulfillOrderWithDelegatedAuthentication(
@@ -153,7 +154,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     assertEq(_routerWeth() - before, AMOUNT, 'the named solver may submit');
 
     FulfillmentOrder memory again =
-      _fulfillmentOrder(solver, erc20s, noNfts, noValidators, noOwnerCalls, ANY, 81, deadline);
+      _fulfillmentOrder(solver, erc20s, noNfts, noValidators, noOwnerCalls, ANY, 81, expiration);
     vm.prank(relayer);
     vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.CallerNotSolver.selector, relayer));
     hub.fulfillOrderWithDelegatedAuthentication(
@@ -167,7 +168,7 @@ contract OrderPartiesTest is AuthenticatorBase {
 
     // As on the execution rail, the pin is read before the credential
     FulfillmentOrder memory third =
-      _fulfillmentOrder(solver, erc20s, noNfts, noValidators, noOwnerCalls, ANY, 82, deadline);
+      _fulfillmentOrder(solver, erc20s, noNfts, noValidators, noOwnerCalls, ANY, 82, expiration);
     vm.prank(relayer);
     vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.CallerNotSolver.selector, relayer));
     hub.fulfillOrderWithDelegatedAuthentication(
@@ -180,7 +181,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     );
 
     FulfillmentOrder memory open =
-      _openFulfillmentOrder(erc20s, noValidators, noOwnerCalls, 83, deadline);
+      _openFulfillmentOrder(erc20s, noValidators, noOwnerCalls, 83, expiration);
     before = _routerWeth();
     vm.prank(relayer);
     hub.fulfillOrderWithDelegatedAuthentication(
@@ -194,7 +195,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     assertEq(_routerWeth() - before, AMOUNT, 'the sentinel leaves it open to anyone');
 
     FulfillmentOrder memory byOwner =
-      _fulfillmentOrder(solver, erc20s, noNfts, noValidators, noOwnerCalls, ANY, 84, deadline);
+      _fulfillmentOrder(solver, erc20s, noNfts, noValidators, noOwnerCalls, ANY, 84, expiration);
     before = _routerWeth();
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(

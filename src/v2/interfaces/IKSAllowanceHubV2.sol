@@ -76,7 +76,7 @@ interface IKSAllowanceHubV2 {
   /**
    * @notice Settles an execution order authorised by the owner's Permit2 signature
    * @dev The ERC20 transfers are executed through a Permit2 batch permit whose nonce is
-   * `order.nonce` and whose deadline is `order.deadline`.
+   * `order.nonce` and whose deadline is `order.expiration`.
    *
    * When the caller is `order.owner`, `permit2Signature` signs the permit alone. Any other caller
    * must be `order.relayer`, or any account when `order.relayer` is the dead address, and
@@ -99,7 +99,7 @@ interface IKSAllowanceHubV2 {
    * observe the effects of `order.ownerCalls`.
    *
    * `solution` must name one target and one amount for each transfer and must not have passed its
-   * own deadline. Each ERC20 transfer sends `solution.erc20Amounts[i]`, at most its allowance. The
+   * own expiration. Each ERC20 transfer sends `solution.erc20Amounts[i]`, at most its allowance. The
    * approval is checked against `order.solutionApprover`, and is not required when that is the
    * dead address. The approval carries no nonce, so it remains valid until the settlement of its
    * order.
@@ -131,8 +131,8 @@ interface IKSAllowanceHubV2 {
    * route in `solution`
    * @dev The settlement and the solution approval are as in
    * {fulfillOrderWithDelegatedAuthentication}. The ERC20 transfers are executed through a Permit2
-   * batch permit whose nonce is `order.nonce` and whose deadline is `order.deadline`. The permit's
-   * permitted amounts are the order's allowances, and its requested amounts are
+   * batch permit whose nonce is `order.nonce` and whose deadline is `order.expiration`. The
+   * permit's permitted amounts are the order's allowances, and its requested amounts are
    * `solution.erc20Amounts`.
    *
    * When the caller is `order.owner`, `permit2Signature` signs the permit alone. Any other caller

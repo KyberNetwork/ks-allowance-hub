@@ -46,7 +46,7 @@ interface IOrderAuthenticator {
   /**
    * @notice Checks that `data` authenticates `order` on behalf of its owner
    * @dev Must revert when it does not; a normal return is treated as success. The hub calls this
-   * only when the caller is not the owner, after checking `order.deadline` and the submitter. The
+   * only when the caller is not the owner, after checking `order.expiration` and the submitter. The
    * hub does not spend `order.nonce` and keeps no record of settled orders, so replay protection
    * is the implementation's, and so is any decision to accept an order more than once. `orderHash`
    * is computed by the hub from `order`.

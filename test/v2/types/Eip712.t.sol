@@ -441,7 +441,7 @@ contract Eip712Test is V2TestBase {
       erc721Transfers: nfts,
       genericCalls: calls,
       nonce: 11,
-      deadline: 1234,
+      expiration: 1234,
       extraData: EXTRA_DATA
     });
   }
@@ -468,7 +468,7 @@ contract Eip712Test is V2TestBase {
       ownerCalls: ownerCalls,
       solutionApprover: address(0xBEEF),
       nonce: 12,
-      deadline: 5678,
+      expiration: 5678,
       extraData: EXTRA_DATA
     });
   }
@@ -490,7 +490,7 @@ contract Eip712Test is V2TestBase {
       erc20Amounts: erc20Amounts,
       erc721Targets: erc721Targets,
       solverCalls: calls,
-      deadline: 9012
+      expiration: 9012
     });
   }
 

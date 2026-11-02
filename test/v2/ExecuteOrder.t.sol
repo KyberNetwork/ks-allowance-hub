@@ -74,9 +74,9 @@ contract ExecuteOrderTest is AuthenticatorBase {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC721Transfer[] memory nfts = _erc721s(_nftTransfer(address(router)));
     GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 expiration = block.timestamp + 1 hours;
 
-    ExecutionOrder memory order = _executionOrder(ANY, erc20s, nfts, calls, 1, deadline);
+    ExecutionOrder memory order = _executionOrder(ANY, erc20s, nfts, calls, 1, expiration);
     bytes memory signature = _signExecutionWitness(order);
 
     uint256 balanceBefore = IERC20(token18).balanceOf(address(router));
@@ -118,10 +118,11 @@ contract ExecuteOrderTest is AuthenticatorBase {
    */
   function test_AUTH_04_witnessPinsTheNamedRelayer() public {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 expiration = block.timestamp + 1 hours;
 
-    ExecutionOrder memory pinned =
-      _executionOrder(relayer, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 3, deadline);
+    ExecutionOrder memory pinned = _executionOrder(
+      relayer, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 3, expiration
+    );
     bytes memory matching = _signExecutionWitness(pinned);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
@@ -135,7 +136,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     // the owner signed a witness naming the relayer; the order submitted names nobody, so the hub
     // rebuilds a different witness from it
     ExecutionOrder memory openOrder =
-      _executionOrder(ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 4, deadline);
+      _executionOrder(ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 4, expiration);
     bytes memory forTheRelayer = _signExecutionWitness(openOrder, relayer);
 
     vm.prank(relayer);
@@ -153,9 +154,9 @@ contract ExecuteOrderTest is AuthenticatorBase {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC721Transfer[] memory noNfts = new ERC721Transfer[](0);
     GenericCall[] memory noCalls = new GenericCall[](0);
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 expiration = block.timestamp + 1 hours;
 
-    ExecutionOrder memory pinned = _executionOrder(relayer, erc20s, noNfts, noCalls, 50, deadline);
+    ExecutionOrder memory pinned = _executionOrder(relayer, erc20s, noNfts, noCalls, 50, expiration);
     bytes memory pinnedSig = _signExecutionWitness(pinned);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
@@ -166,7 +167,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     );
 
     ExecutionOrder memory pinnedAgain =
-      _executionOrder(relayer, erc20s, noNfts, noCalls, 51, deadline);
+      _executionOrder(relayer, erc20s, noNfts, noCalls, 51, expiration);
     bytes memory pinnedAgainSig = _signExecutionWitness(pinnedAgain);
 
     vm.prank(solver);
@@ -179,7 +180,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
       'the refused order burned no Permit2 nonce'
     );
 
-    ExecutionOrder memory openOrder = _executionOrder(ANY, erc20s, noNfts, noCalls, 52, deadline);
+    ExecutionOrder memory openOrder = _executionOrder(ANY, erc20s, noNfts, noCalls, 52, expiration);
     bytes memory openSig = _signExecutionWitness(openOrder);
 
     before = IERC20(token18).balanceOf(address(router));
@@ -261,11 +262,11 @@ contract ExecuteOrderTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
     _grantPermit2Allowance(token18, 100 ether);
 
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 expiration = block.timestamp + 1 hours;
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
 
     ExecutionOrder memory plainRail =
-      _executionOrder(ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 40, deadline);
+      _executionOrder(ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 40, expiration);
     bytes memory plainAuth = _executionAuthData(plainRail, key, masterKeyPk);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
@@ -278,7 +279,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     assertEq(_permit2Allowance(token18), allowanceBefore, 'and it left the Permit2 allowance alone');
 
     ExecutionOrder memory permit2Rail =
-      _executionOrder(ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 41, deadline);
+      _executionOrder(ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 41, expiration);
     bytes memory permit2Auth = _executionAuthData(permit2Rail, key, masterKeyPk);
 
     before = IERC20(token18).balanceOf(address(router));
@@ -308,10 +309,10 @@ contract ExecuteOrderTest is AuthenticatorBase {
     vm.prank(owner);
     IERC20(token18).approve(address(hub), 0);
 
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 expiration = block.timestamp + 1 hours;
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ExecutionOrder memory order =
-      _executionOrder(ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 44, deadline);
+      _executionOrder(ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 44, expiration);
     bytes memory witness = _signExecutionWitness(order);
 
     uint160 permit2Before = _permit2Allowance(token18);
@@ -342,10 +343,10 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 expiration = block.timestamp + 1 hours;
 
     ExecutionOrder memory order =
-      _executionOrder(ANY, erc20s, new ERC721Transfer[](0), calls, 43, deadline);
+      _executionOrder(ANY, erc20s, new ERC721Transfer[](0), calls, 43, expiration);
     bytes memory authData = _executionAuthData(order, key, masterKeyPk);
 
     bytes memory expectedCall = abi.encodeCall(
@@ -411,9 +412,10 @@ contract ExecuteOrderTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
 
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 expiration = block.timestamp + 1 hours;
 
-    ExecutionOrder memory control = _openExecutionOrder(erc20s, new GenericCall[](0), 80, deadline);
+    ExecutionOrder memory control =
+      _openExecutionOrder(erc20s, new GenericCall[](0), 80, expiration);
     control.extraData = 'ref:A';
     bytes memory controlAuth = _executionAuthData(control, key, masterKeyPk);
 
@@ -423,11 +425,12 @@ contract ExecuteOrderTest is AuthenticatorBase {
     hub.executeOrderWithDelegatedAuthentication(control, address(authenticator), controlAuth, false);
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'extra data A settled');
 
-    ExecutionOrder memory signed = _openExecutionOrder(erc20s, new GenericCall[](0), 81, deadline);
+    ExecutionOrder memory signed = _openExecutionOrder(erc20s, new GenericCall[](0), 81, expiration);
     signed.extraData = 'ref:A';
     bytes memory signedAuth = _executionAuthData(signed, key, masterKeyPk);
 
-    ExecutionOrder memory tampered = _openExecutionOrder(erc20s, new GenericCall[](0), 81, deadline);
+    ExecutionOrder memory tampered =
+      _openExecutionOrder(erc20s, new GenericCall[](0), 81, expiration);
     tampered.extraData = 'ref:B';
 
     vm.prank(relayer);
@@ -442,9 +445,10 @@ contract ExecuteOrderTest is AuthenticatorBase {
    */
   function test_AUTH_15_witnessPinsExtraData() public {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 expiration = block.timestamp + 1 hours;
 
-    ExecutionOrder memory control = _openExecutionOrder(erc20s, new GenericCall[](0), 82, deadline);
+    ExecutionOrder memory control =
+      _openExecutionOrder(erc20s, new GenericCall[](0), 82, expiration);
     control.extraData = 'ref:A';
     bytes memory controlSig = _signExecutionWitness(control);
 
@@ -454,11 +458,12 @@ contract ExecuteOrderTest is AuthenticatorBase {
     hub.executeOrderWithPermit2Signature(control, controlSig);
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'extra data A settled');
 
-    ExecutionOrder memory signed = _openExecutionOrder(erc20s, new GenericCall[](0), 83, deadline);
+    ExecutionOrder memory signed = _openExecutionOrder(erc20s, new GenericCall[](0), 83, expiration);
     signed.extraData = 'ref:A';
     bytes memory signedSig = _signExecutionWitness(signed);
 
-    ExecutionOrder memory tampered = _openExecutionOrder(erc20s, new GenericCall[](0), 83, deadline);
+    ExecutionOrder memory tampered =
+      _openExecutionOrder(erc20s, new GenericCall[](0), 83, expiration);
     tampered.extraData = 'ref:B';
 
     vm.prank(relayer);
@@ -475,7 +480,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     uint160 amount;
     uint8 callCount;
     bool usePermit2Allowances;
-    uint256 deadlineOffset;
+    uint256 expirationOffset;
     uint96 msgValue;
     bool moveNft;
     bool pinSubmitter;
@@ -493,7 +498,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
     f.amount = uint160(bound(f.amount, 0, 100 ether));
     f.callCount = uint8(bound(f.callCount, 0, 3));
-    f.deadlineOffset = bound(f.deadlineOffset, 0, 30 days);
+    f.expirationOffset = bound(f.expirationOffset, 0, 30 days);
     f.msgValue = uint96(bound(f.msgValue, 0, 5 ether));
     if (f.usePermit2Allowances) {
       _grantPermit2Allowance(token18, uint160(100 ether));
@@ -512,7 +517,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
       f.moveNft ? _erc721s(_nftTransfer(address(router2))) : new ERC721Transfer[](0),
       calls,
       f.nonce,
-      block.timestamp + f.deadlineOffset
+      block.timestamp + f.expirationOffset
     );
     bytes memory authData = _executionAuthData(order, key, masterKeyPk);
 
@@ -559,7 +564,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
   function testFuzz_EX_FUZZ_permit2Rail(ExecuteFuzz memory f) public {
     f.amount = uint160(bound(f.amount, 0, 100 ether));
     f.callCount = uint8(bound(f.callCount, 0, 3));
-    f.deadlineOffset = bound(f.deadlineOffset, 0, 30 days);
+    f.expirationOffset = bound(f.expirationOffset, 0, 30 days);
     f.msgValue = uint96(bound(f.msgValue, 0, 5 ether));
 
     GenericCall[] memory calls = new GenericCall[](f.callCount);
@@ -574,7 +579,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
       f.moveNft ? _erc721s(_nftTransfer(address(router2))) : new ERC721Transfer[](0),
       calls,
       f.nonce,
-      block.timestamp + f.deadlineOffset
+      block.timestamp + f.expirationOffset
     );
     bytes memory signature = _signExecutionWitness(order);
 

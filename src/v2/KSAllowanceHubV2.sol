@@ -120,7 +120,7 @@ contract KSAllowanceHubV2 is
     external
     payable
     whenNotPaused
-    checkDeadline(order.deadline)
+    checkDeadline(order.expiration)
     setMsgSender(order.owner)
     checkDelegation(order.owner, authenticator)
     guardNativeSpend
@@ -149,7 +149,7 @@ contract KSAllowanceHubV2 is
     external
     payable
     whenNotPaused
-    checkDeadline(order.deadline)
+    checkDeadline(order.expiration)
     setMsgSender(order.owner)
     guardNativeSpend
     returns (bytes[] memory results)
@@ -157,7 +157,7 @@ contract KSAllowanceHubV2 is
     _announceExecution(order, order.hash());
 
     ISignatureTransfer.PermitBatchTransferFrom memory permit =
-      order.erc20Transfers.toPermitBatchTransferFrom(order.nonce, order.deadline);
+      order.erc20Transfers.toPermitBatchTransferFrom(order.nonce, order.expiration);
     ISignatureTransfer.SignatureTransferDetails[] memory details =
       order.erc20Transfers.toSignatureTransferDetails();
 
@@ -200,8 +200,8 @@ contract KSAllowanceHubV2 is
     external
     payable
     whenNotPaused
-    checkDeadline(order.deadline)
-    checkDeadline(solution.deadline)
+    checkDeadline(order.expiration)
+    checkDeadline(solution.expiration)
     checkLengths(solution.erc20Targets.length, order.erc20Allowances.length)
     checkLengths(solution.erc20Amounts.length, order.erc20Allowances.length)
     checkLengths(solution.erc721Targets.length, order.erc721Approvals.length)
@@ -249,8 +249,8 @@ contract KSAllowanceHubV2 is
     external
     payable
     whenNotPaused
-    checkDeadline(order.deadline)
-    checkDeadline(solution.deadline)
+    checkDeadline(order.expiration)
+    checkDeadline(solution.expiration)
     checkLengths(solution.erc20Targets.length, order.erc20Allowances.length)
     checkLengths(solution.erc20Amounts.length, order.erc20Allowances.length)
     checkLengths(solution.erc721Targets.length, order.erc721Approvals.length)
@@ -270,7 +270,7 @@ contract KSAllowanceHubV2 is
     _announceFulfillment(order, orderHash, solution);
 
     ISignatureTransfer.PermitBatchTransferFrom memory permit =
-      order.erc20Allowances.toPermitBatchTransferFrom(order.nonce, order.deadline);
+      order.erc20Allowances.toPermitBatchTransferFrom(order.nonce, order.expiration);
     ISignatureTransfer.SignatureTransferDetails[] memory details =
       order.erc20Allowances.toSignatureTransferDetails(solution.erc20Targets, solution.erc20Amounts);
 

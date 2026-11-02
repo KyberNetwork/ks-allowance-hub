@@ -146,7 +146,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
   /// TGT-04 — the owner submits over Permit2 with a plain permit, and still picks the targets
   function test_TGT_04_ownerSubmitsWithTargetsOfTheirChoice() public {
     FulfillmentOrder memory order = _bothTransfers(ANY, 2);
-    bytes memory permit = _signPlainPermit(order.erc20Allowances, 2, order.deadline);
+    bytes memory permit = _signPlainPermit(order.erc20Allowances, 2, order.expiration);
     uint256 ownerBefore = _balance(owner);
 
     vm.prank(owner);

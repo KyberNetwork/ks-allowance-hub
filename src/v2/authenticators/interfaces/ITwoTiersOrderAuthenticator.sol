@@ -24,9 +24,6 @@ interface ITwoTiersOrderAuthenticator {
   /// @notice No master key has approved this session key, or its approval was revoked
   error SessionKeyNotApproved(bytes32 sessionKeyHash);
 
-  /// @notice The key has expired
-  error AuthKeyExpired(uint256 expiration, uint256 currentTime);
-
   /// @notice Another master key approved this session key; only that master key may change it
   error SessionKeyAlreadyApproved(
     bytes32 sessionKeyHash, bytes32 masterKeyHash, bytes32 expectedMasterKeyHash

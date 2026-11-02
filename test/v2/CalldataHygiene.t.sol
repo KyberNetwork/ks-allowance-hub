@@ -110,7 +110,11 @@ contract CalldataHygieneTest is AuthenticatorBase {
   }
 
   /// @dev The sentinel approver, so no approval signature stands between the rail and the hash
-  function _order(uint256 nonce, uint256 deadline) internal view returns (FulfillmentOrder memory) {
+  function _order(uint256 nonce, uint256 expiration)
+    internal
+    view
+    returns (FulfillmentOrder memory)
+  {
     return _fulfillmentOrder(
       ANY,
       _allowances(_tokenAllowance(AMOUNT)),
@@ -119,7 +123,7 @@ contract CalldataHygieneTest is AuthenticatorBase {
       new GenericCall[](0),
       ANY,
       nonce,
-      deadline
+      expiration
     );
   }
 }

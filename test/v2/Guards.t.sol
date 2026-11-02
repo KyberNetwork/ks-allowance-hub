@@ -60,8 +60,8 @@ contract OrderAuthenticatorMock is IOrderAuthenticator {
 }
 
 /**
- * @notice `GUARD-01..06`, `GATE-01`, `MC-01..06` and `MC-FUZZ` — pause, deadline, native spend, the
- * reentrancy lock and the batching surface.
+ * @notice `GUARD-01..06`, `GATE-01`, `MC-01..06` and `MC-FUZZ` — pause, expiration, native spend,
+ * the reentrancy lock and the batching surface.
  * @dev Role identifiers are written out rather than imported, so a changed production constant
  * cannot agree with the expectation undetected.
  *
@@ -115,13 +115,13 @@ contract GuardsTest is AuthenticatorBase {
 
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC20Allowance[] memory allowances = _allowances(_tokenAllowance(AMOUNT));
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 expiration = block.timestamp + 1 hours;
 
     ExecutionOrder memory execOrder =
-      _openExecutionOrder(erc20s, new GenericCall[](0), 90, deadline);
+      _openExecutionOrder(erc20s, new GenericCall[](0), 90, expiration);
     bytes memory permitSig = _signExecutionWitness(execOrder);
     FulfillmentOrder memory fulfillOrder = _openFulfillmentOrder(
-      allowances, new ValidationParams[](0), new GenericCall[](0), 0, deadline
+      allowances, new ValidationParams[](0), new GenericCall[](0), 0, expiration
     );
 
     vm.prank(guardian);
@@ -183,23 +183,23 @@ contract GuardsTest is AuthenticatorBase {
   }
 
   // -----------------------------------------------------------------------------------------
-  // GUARD — deadline
+  // GUARD — expiration
   // -----------------------------------------------------------------------------------------
 
-  /// GUARD-04 — the deadline block itself still settles; the one before it does not
-  function test_GUARD_04_deadlineBoundaryOnTheOrderEntryPoints() public {
+  /// GUARD-04 — the expiration block itself still settles; the one before it does not
+  function test_GUARD_04_expirationBoundaryOnTheOrderEntryPoints() public {
     uint256 t = block.timestamp;
 
-    _executeAtDeadline(t - 1, false);
-    _executeAtDeadline(t, true);
-    _executeAtDeadline(t + 1, true);
+    _executeAtExpiration(t - 1, false);
+    _executeAtExpiration(t, true);
+    _executeAtExpiration(t + 1, true);
 
-    _fulfillAtDeadline(t - 1, false);
-    _fulfillAtDeadline(t, true);
-    _fulfillAtDeadline(t + 1, true);
+    _fulfillAtExpiration(t - 1, false);
+    _fulfillAtExpiration(t, true);
+    _fulfillAtExpiration(t + 1, true);
 
-    // the Permit2 rail carries the same deadline into the permit, so the hub's own modifier has to
-    // be the one that fires: a stale order must not reach Permit2 at all
+    // the Permit2 rail carries the same expiration into the permit, so the hub's own modifier has
+    // to be the one that fires: a stale order must not reach Permit2 at all
     ExecutionOrder memory stale =
       _openExecutionOrder(_erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 91, t - 1);
     bytes memory staleSig = _signExecutionWitness(stale);
@@ -210,7 +210,7 @@ contract GuardsTest is AuthenticatorBase {
   }
 
   /// GUARD-05 — when both guards would fire, the pause wins, because it is the outer modifier
-  function test_GUARD_05_pauseTakesPrecedenceOverTheDeadline() public {
+  function test_GUARD_05_pauseTakesPrecedenceOverTheExpiration() public {
     FulfillmentOrder memory staleFulfillment = _openFulfillmentOrder(
       _allowances(_tokenAllowance(AMOUNT)),
       new ValidationParams[](0),
@@ -256,19 +256,21 @@ contract GuardsTest is AuthenticatorBase {
   // -----------------------------------------------------------------------------------------
 
   /**
-   * GATE-01 — the fulfillment Permit2 rail is pausable, deadline-checked, locked and native-guarded
+   * GATE-01 — the fulfillment Permit2 rail is pausable, expiration-checked, locked and
+   * native-guarded
    * @dev Four modifiers, one step each, on the entry point they were added to. The control at the
    * top is what makes the four refusals evidence: the same shape of order settles when none of them
    * fires, so each step differs from a settling order in exactly the one thing its modifier reads.
    */
   function test_GATE_01_fulfillPermit2CarriesTheFourModifiers() public {
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 expiration = block.timestamp + 1 hours;
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
 
     // control
     uint256 before = IERC20(token18).balanceOf(address(router));
-    FulfillmentOrder memory control =
-      _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 100, deadline);
+    FulfillmentOrder memory control = _openFulfillmentOrder(
+      erc20s, new ValidationParams[](0), new GenericCall[](0), 100, expiration
+    );
     bytes memory controlSig = _signFulfillmentWitness(control);
 
     vm.prank(solver);
@@ -278,8 +280,9 @@ contract GuardsTest is AuthenticatorBase {
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the control settled');
 
     // whenNotPaused
-    FulfillmentOrder memory paused =
-      _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 101, deadline);
+    FulfillmentOrder memory paused = _openFulfillmentOrder(
+      erc20s, new ValidationParams[](0), new GenericCall[](0), 101, expiration
+    );
     bytes memory pausedSig = _signFulfillmentWitness(paused);
 
     vm.prank(guardian);
@@ -311,14 +314,15 @@ contract GuardsTest is AuthenticatorBase {
     vm.prank(admin);
     hub.grantRole(ROUTER_ROLE, address(evil));
 
-    FulfillmentOrder memory locked =
-      _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 103, deadline);
+    FulfillmentOrder memory locked = _openFulfillmentOrder(
+      erc20s, new ValidationParams[](0), new GenericCall[](0), 103, expiration
+    );
     bytes memory lockedSig = _signFulfillmentWitness(locked);
     evil.setReentry(
       abi.encodeCall(
         IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
         (
-          _openExecutionOrder(new ERC20Transfer[](0), new GenericCall[](0), 0, deadline),
+          _openExecutionOrder(new ERC20Transfer[](0), new GenericCall[](0), 0, expiration),
           address(0),
           '',
           false
@@ -336,8 +340,9 @@ contract GuardsTest is AuthenticatorBase {
     vm.deal(address(hub), PREFUND);
     vm.deal(solver, VALUE);
 
-    FulfillmentOrder memory overSpending =
-      _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 104, deadline);
+    FulfillmentOrder memory overSpending = _openFulfillmentOrder(
+      erc20s, new ValidationParams[](0), new GenericCall[](0), 104, expiration
+    );
     bytes memory overSpendingSig = _signFulfillmentWitness(overSpending);
     FulfillmentSolution memory greedyRoute =
       _route(overSpending, _calls(_routerCall(VALUE + 1, hex'01')));
@@ -420,26 +425,26 @@ contract GuardsTest is AuthenticatorBase {
     assertEq(address(hub).balance, PREFUND, "the fulfill rail kept the hub's native balance");
   }
 
-  function _executeAtDeadline(uint256 deadline, bool shouldSettle) internal {
+  function _executeAtExpiration(uint256 expiration, bool shouldSettle) internal {
     uint256 routerBefore = IERC20(token18).balanceOf(address(router));
 
     ExecutionOrder memory order =
-      _openExecutionOrder(_erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 0, deadline);
+      _openExecutionOrder(_erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 0, expiration);
 
     vm.prank(owner);
     if (!shouldSettle) {
-      vm.expectRevert(_deadlinePassed(deadline));
+      vm.expectRevert(_deadlinePassed(expiration));
     }
     hub.executeOrderWithDelegatedAuthentication(order, address(0), '', false);
 
     assertEq(
       IERC20(token18).balanceOf(address(router)) - routerBefore,
       shouldSettle ? AMOUNT : 0,
-      'the execution rail moved assets only inside the deadline'
+      'the execution rail moved assets only up to the expiration'
     );
   }
 
-  function _fulfillAtDeadline(uint256 deadline, bool shouldSettle) internal {
+  function _fulfillAtExpiration(uint256 expiration, bool shouldSettle) internal {
     uint256 routerBefore = IERC20(token18).balanceOf(address(router));
 
     FulfillmentOrder memory order = _openFulfillmentOrder(
@@ -447,20 +452,20 @@ contract GuardsTest is AuthenticatorBase {
       new ValidationParams[](0),
       new GenericCall[](0),
       0,
-      deadline
+      expiration
     );
     FulfillmentSolution memory route = _route(order, new GenericCall[](0));
 
     vm.prank(owner);
     if (!shouldSettle) {
-      vm.expectRevert(_deadlinePassed(deadline));
+      vm.expectRevert(_deadlinePassed(expiration));
     }
     hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', route, '', false);
 
     assertEq(
       IERC20(token18).balanceOf(address(router)) - routerBefore,
       shouldSettle ? AMOUNT : 0,
-      'the fulfillment rail moved assets only inside the deadline'
+      'the fulfillment rail moved assets only up to the expiration'
     );
   }
 

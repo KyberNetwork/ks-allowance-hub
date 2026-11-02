@@ -73,9 +73,9 @@ contract SettlementTest is HubBase {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC721Transfer[] memory nfts = _erc721s(_nftTransfer(address(router)));
     GenericCall[] memory calls = _calls(_routerCall(0, hex'abcd'));
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 expiration = block.timestamp + 1 hours;
 
-    ExecutionOrder memory order = _executionOrder(ANY, erc20s, nfts, calls, 11, deadline);
+    ExecutionOrder memory order = _executionOrder(ANY, erc20s, nfts, calls, 11, expiration);
     bytes memory signature = _signExecutionWitness(order);
 
     vm.recordLogs();

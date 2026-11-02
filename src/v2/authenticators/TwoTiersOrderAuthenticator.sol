@@ -69,7 +69,7 @@ contract TwoTiersOrderAuthenticator is
    */
   function initAuthentication(address owner, bytes calldata data) external onlyAuthorizedCaller {
     AuthKey calldata masterKey = _decodeKey(data, 0);
-    _checkNotExpired(masterKey);
+    _checkDeadline(masterKey.expiration);
 
     bytes32 masterKeyHash = masterKey.hash();
     masterKeys[owner][masterKeyHash] = true;
@@ -105,7 +105,7 @@ contract TwoTiersOrderAuthenticator is
       // Read as a word, so any non-zero value approves
       bool approved = data.decodeUint256(1) != 0;
       if (approved) {
-        _checkNotExpired(masterKey);
+        _checkDeadline(masterKey.expiration);
       }
 
       bytes32 masterKeyHash = masterKey.hash();
@@ -137,7 +137,7 @@ contract TwoTiersOrderAuthenticator is
         if (sessionKey.expiration > masterKey.expiration) {
           revert SessionKeyOutlivesMasterKey(sessionKey.expiration, masterKey.expiration);
         }
-        _checkNotExpired(sessionKey);
+        _checkDeadline(sessionKey.expiration);
       }
 
       bytes32 masterKeyHash = masterKey.hash();
@@ -243,7 +243,7 @@ contract TwoTiersOrderAuthenticator is
     }
 
     AuthKey calldata key = _decodeKey(data, 0);
-    _checkNotExpired(key);
+    _checkDeadline(key.expiration);
 
     bytes32 keyHash = key.hash();
     if (data.decodeUint256(1) != 0) {
@@ -276,13 +276,6 @@ contract TwoTiersOrderAuthenticator is
   {
     assembly ('memory-safe') {
       key := add(data.offset, calldataload(add(data.offset, shl(5, index))))
-    }
-  }
-
-  /// @dev Reverts when `key` has expired
-  function _checkNotExpired(AuthKey calldata key) private view {
-    if (block.timestamp > key.expiration) {
-      revert AuthKeyExpired(key.expiration, block.timestamp);
     }
   }
 }

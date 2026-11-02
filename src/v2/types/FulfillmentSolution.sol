@@ -18,14 +18,14 @@ import {GenericCall, GenericCallLib} from './GenericCall.sol';
  * @param erc20Amounts Amount of each ERC20 transfer, in order; each is at most its allowance
  * @param erc721Targets Target of each ERC721 transfer, in order
  * @param solverCalls Router calls of the route
- * @param deadline Last timestamp at which the solution may settle
+ * @param expiration Last timestamp at which the solution may settle
  */
 struct FulfillmentSolution {
   address[] erc20Targets;
   uint160[] erc20Amounts;
   address[] erc721Targets;
   GenericCall[] solverCalls;
-  uint256 deadline;
+  uint256 expiration;
 }
 
 using FulfillmentSolutionLib for FulfillmentSolution global;
@@ -36,7 +36,7 @@ library FulfillmentSolutionLib {
   using GenericCallLib for GenericCall[];
 
   bytes32 internal constant FULFILLMENT_SOLUTION_TYPEHASH = keccak256(
-    'FulfillmentSolution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,GenericCall[] solverCalls,uint256 deadline)'
+    'FulfillmentSolution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,GenericCall[] solverCalls,uint256 expiration)'
     'GenericCall(address router,uint256 value,bytes data)'
   );
 
@@ -49,7 +49,7 @@ library FulfillmentSolutionLib {
         self.erc20Amounts.hash(),
         self.erc721Targets.hash(),
         self.solverCalls.hash(),
-        self.deadline
+        self.expiration
       )
     );
   }
@@ -63,7 +63,7 @@ library FulfillmentSolutionLib {
         self.erc20Amounts.hashMemory(),
         self.erc721Targets.hashMemory(),
         self.solverCalls.hashMemory(),
-        self.deadline
+        self.expiration
       )
     );
   }

@@ -27,9 +27,9 @@ account that may submit the order.
 | `FulfillmentOrder` | the transfers, the validators and the owner's own router calls | a `FulfillmentSolution`: the target and the amount of each ERC20 transfer, the target of each ERC721 transfer and the solver's router calls |
 
 ```
-ExecutionOrder(address owner,address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 deadline,bytes extraData)
-FulfillmentOrder(address owner,address solver,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,ValidationParams[] validationParams,GenericCall[] ownerCalls,address solutionApprover,uint256 nonce,uint256 deadline,bytes extraData)
-FulfillmentSolution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,GenericCall[] solverCalls,uint256 deadline)
+ExecutionOrder(address owner,address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 expiration,bytes extraData)
+FulfillmentOrder(address owner,address solver,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,ValidationParams[] validationParams,GenericCall[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes extraData)
+FulfillmentSolution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,GenericCall[] solverCalls,uint256 expiration)
 ```
 
 `relayer` or `solver` is the account that may submit the order besides the owner. The dead address
@@ -62,7 +62,7 @@ solver: the solver chooses every target and every router call.
 | `fulfillOrderWithDelegatedAuthentication` | an authenticator the owner delegated |
 
 On the **Permit2 entry points**, the ERC20 transfers are executed through a Permit2 batch permit
-whose nonce is `order.nonce` and whose deadline is `order.deadline`. When another account submits,
+whose nonce is `order.nonce` and whose deadline is `order.expiration`. When another account submits,
 the owner's signature must also cover a witness:
 
 ```
