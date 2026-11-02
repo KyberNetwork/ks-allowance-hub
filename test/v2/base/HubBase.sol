@@ -10,6 +10,7 @@ import {ERC20Mock, ERC721Mock} from 'test/v2/mocks/TokenMocks.sol';
 import {ValidatorMock} from 'test/v2/mocks/ValidatorMock.sol';
 
 import {DeadlineChecker} from 'src/base/DeadlineChecker.sol';
+import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
 import {CallsForwarder} from 'src/v2/CallsForwarder.sol';
 import {KSAllowanceHubV2} from 'src/v2/KSAllowanceHubV2.sol';
 import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
@@ -53,9 +54,6 @@ abstract contract HubBase is V2TestBase {
   bytes32 internal constant TRANSFER_TOKENS_TOPIC = keccak256(
     'TransferTokens(address,address,bytes32,(address,address,uint160)[],(address,uint256,address)[],(address,uint256)[])'
   );
-
-  /// @dev Transcribed from {IUnorderedNonce-RevokeNonce}, never imported
-  bytes32 internal constant REVOKE_NONCE_TOPIC = keccak256('RevokeNonce(bytes32,uint256)');
 
   function setUp() public virtual {
     permit2 = _deployPermit2();
@@ -166,16 +164,10 @@ abstract contract HubBase is V2TestBase {
     assertEq(found, 1, 'exactly one TransferTokens per order');
   }
 
-  /// @dev Asserts that none of `entries` is a `RevokeNonce`, which only an explicit revocation emits
-  function _assertNoRevokeNonce(Vm.Log[] memory entries) internal pure {
-    for (uint256 i = 0; i < entries.length; i++) {
-      if (entries[i].topics.length == 0) {
-        continue;
-      }
-      assertTrue(
-        entries[i].topics[0] != REVOKE_NONCE_TOPIC, 'a spent signature emitted RevokeNonce'
-      );
-    }
+  /// @dev Expects the next call to emit no `RevokeNonce` from any contract
+  function _expectNoRevokeNonce() internal {
+    vm.expectEmit(false, false, false, false, 0);
+    emit IUnorderedNonce.RevokeNonce(bytes32(0), 0);
   }
 
   function _topicAddress(bytes32 topic) internal pure returns (address) {

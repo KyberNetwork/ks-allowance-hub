@@ -67,10 +67,6 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
 
   uint160 internal constant AMOUNT = 3 ether;
 
-  /// @dev The order of the secp256k1 group, transcribed from SEC 2; a private key is valid below it
-  uint256 internal constant SECP256K1_N =
-    0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141;
-
   /// @dev Transcribed from {CalldataDecoder}'s `SliceOutOfBounds()`, never imported
   bytes4 internal constant SLICE_OUT_OF_BOUNDS = bytes4(keccak256('SliceOutOfBounds()'));
 
@@ -92,9 +88,8 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     uint256 deadline = block.timestamp + 1 hours;
     uint256 before = IERC20(token18).balanceOf(address(router));
 
-    vm.recordLogs();
+    _expectNoRevokeNonce();
     _executeViaAuthenticator(key, masterKeyPk, nonce, deadline, true);
-    _assertNoRevokeNonce(vm.getRecordedLogs());
 
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'tokens moved');
     assertEq(
@@ -188,12 +183,11 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     uint256 deadline = block.timestamp + 1 days;
     bytes memory sig = _signMasterKeyUpdate(key, false, 32, deadline);
 
-    vm.recordLogs();
     vm.expectEmit(address(authenticator));
     emit ITwoTiersOrderAuthenticator.UpdateMasterKey(owner, _keyHash(key), key, false);
+    _expectNoRevokeNonce();
     vm.prank(relayer);
     authenticator.updateAuthentication(owner, _revokeKey(key), 32, deadline, sig);
-    _assertNoRevokeNonce(vm.getRecordedLogs());
 
     assertFalse(authenticator.masterKeys(owner, _keyHash(key)), 'revoked');
     assertEq(authenticator.nonces(lNonceKey(owner), 0), 1 << 32, 'nonce spent');
@@ -1989,9 +1983,8 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory data = _executionOwnerAuthData(order);
     uint256 before = IERC20(token18).balanceOf(address(router));
 
-    vm.recordLogs();
+    _expectNoRevokeNonce();
     _relayExecution(order, data);
-    _assertNoRevokeNonce(vm.getRecordedLogs());
 
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'tokens moved');
     assertEq(
@@ -2011,9 +2004,8 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory data = _fulfillmentOwnerAuthData(order);
     uint256 before = IERC20(token18).balanceOf(address(router));
 
-    vm.recordLogs();
+    _expectNoRevokeNonce();
     _relayFulfillment(order, data);
-    _assertNoRevokeNonce(vm.getRecordedLogs());
 
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'tokens moved');
     assertEq(
@@ -2035,9 +2027,9 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
 
     ExecutionOrder memory order = _standardOrder(40, deadline);
     order.owner = address(wallet);
-    vm.recordLogs();
-    _relayExecution(order, _executionOwnerAuthData(order, walletSignerPk));
-    _assertNoRevokeNonce(vm.getRecordedLogs());
+    bytes memory ownerData = _executionOwnerAuthData(order, walletSignerPk);
+    _expectNoRevokeNonce();
+    _relayExecution(order, ownerData);
 
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'tokens moved');
     assertEq(authenticator.nonces(lNonceKey(address(wallet)), 0), 1 << 40, 'wallet namespace');
@@ -2337,7 +2329,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    * `owner`'s namespace are untouched, and no `RevokeNonce` is emitted.
    */
   function testFuzz_SV_OWN_FUZZ_ownerSignedOrder(OwnerOrderFuzz memory f) public {
-    uint256 pk = bound(f.ownerPk, 1, SECP256K1_N - 1);
+    uint256 pk = boundPrivateKey(f.ownerPk);
     address account = vm.addr(pk);
     vm.assume(account.code.length == 0 && account != owner);
 
@@ -2346,17 +2338,19 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _fundAndDelegate(account);
     uint256 before = IERC20(token18).balanceOf(address(router));
 
-    vm.recordLogs();
     if (f.fulfillment) {
       FulfillmentOrder memory order = _fulfillmentOrderOf(nonce, deadline);
       order.owner = account;
-      _relayFulfillment(order, _fulfillmentOwnerAuthData(order, pk));
+      bytes memory ownerData = _fulfillmentOwnerAuthData(order, pk);
+      _expectNoRevokeNonce();
+      _relayFulfillment(order, ownerData);
     } else {
       ExecutionOrder memory order = _standardOrder(nonce, deadline);
       order.owner = account;
-      _relayExecution(order, _executionOwnerAuthData(order, pk));
+      bytes memory ownerData = _executionOwnerAuthData(order, pk);
+      _expectNoRevokeNonce();
+      _relayExecution(order, ownerData);
     }
-    _assertNoRevokeNonce(vm.getRecordedLogs());
 
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'tokens moved');
     assertEq(

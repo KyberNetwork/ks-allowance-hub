@@ -1481,3 +1481,33 @@ identical before and after):
   fail with `OrderNotReusable` where `CallerNotOwner` is expected.
 
 The hub is 24,303 bytes, 273 below the 24,576 limit, and the authenticator is 12,742 bytes.
+
+## Run `20261102T075108Z`
+
+Scope: test changes that follow the forge-std upgrade from v1.11.0 to v1.17.0. The check that a
+spent signature emits no `RevokeNonce` uses `vm.expectEmit` with a count of 0 in place of a scan of
+the recorded logs, and the private key of `SV-OWN-FUZZ` is bounded by forge-std's
+`boundPrivateKey`. No production code changes, and no case is added or removed.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261102T075108Z/NOREVOKE-01` | `_expectNoRevokeNonce` in `HubBase` replaces `_assertNoRevokeNonce` and the transcribed `REVOKE_NONCE_TOPIC`. It expects the next call to emit no `RevokeNonce` from any contract, whatever its namespace and nonce, and is placed immediately before each call the earlier scan covered; auth data that was built inline in the call is built first. The other assertions of each case are unchanged | `DEL-02` — `test/v2/Delegation.t.sol`; `RO-01`, `RO-02`, `RO-03`, `RO-04` — `test/v2/ReusableOrders.t.sol`; `SV-01`, `SV-REV-02`, `SV-OWN-01`, `SV-OWN-02`, `SV-OWN-03`, `SV-OWN-FUZZ` — `test/v2/authenticators/TwoTiersOrderAuthenticator.t.sol` | `forge test --isolate --no-match-path 'test/v1/*'` — 292 passed |
+| - [x] | - [ ] | `20261102T075108Z/KEYBOUND-01` | The owner's private key in `SV-OWN-FUZZ` is bounded with `boundPrivateKey`, whose domain `[1, N - 1]` for the secp256k1 order `N` is the domain of the removed local `SECP256K1_N` bound | `SV-OWN-FUZZ` `testFuzz_SV_OWN_FUZZ_ownerSignedOrder` — `test/v2/authenticators/TwoTiersOrderAuthenticator.t.sol` | same |
+
+### Notes for this run
+
+The 13 cases of `test/v1/KSAllowanceHub.t.sol` fork mainnet through `RPC_1` and were not run; no
+file they compile against changed. With them the suite has 305 cases, as before.
+
+The expectation was confirmed before the conversion: a `RevokeNonce` emitted by the hub or by the
+authenticator, with a namespace and nonce other than those of the expectation, fails it with `log
+emitted but expected 0 times`, and a settlement that emits none passes it. It is also accepted
+alongside the existing `vm.expectEmit` of `DEL-02` and `SV-REV-02`, in either order.
+
+Mutation: an emission of `RevokeNonce` added after each `_useUnorderedNonce` call of
+`TwoTiersOrderAuthenticator` and `AuthDelegator` fails `DEL-02`, `SV-01`, `SV-REV-02`, `SV-OWN-01`,
+`SV-OWN-02`, `SV-OWN-03` and `SV-OWN-FUZZ`. `RO-01` to `RO-04` spend no nonce and still pass. The
+source was restored and `git diff src/` was empty afterwards.
+
+The description of `20261030T194233Z/EVT-05` refers to the recorded logs; its cases now use the
+expectation of `NOREVOKE-01`.

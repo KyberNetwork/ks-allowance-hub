@@ -111,12 +111,11 @@ contract DelegationTest is AuthenticatorBase {
       ownerKey, owner, address(authenticator), true, _encodeKey(key), nonce, deadline
     );
 
-    vm.recordLogs();
     vm.expectEmit(address(hub));
     emit IAuthDelegator.UpdateDelegation(owner, address(authenticator), true);
+    _expectNoRevokeNonce();
     vm.prank(relayer);
     hub.updateDelegation(owner, address(authenticator), true, _encodeKey(key), nonce, deadline, sig);
-    _assertNoRevokeNonce(vm.getRecordedLogs());
 
     assertTrue(hub.authDelegated(owner, address(authenticator)));
     assertEq(hub.nonces(lNonceKey(owner), nonce >> 8), 1 << (nonce & 0xff), 'exact bit set');

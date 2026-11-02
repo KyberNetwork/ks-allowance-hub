@@ -63,10 +63,10 @@ contract ReusableOrdersTest is AuthenticatorBase {
     uint256 routerBefore = _routerBalance();
     uint256 ownerBefore = _ownerBalance();
 
-    vm.recordLogs();
+    _expectNoRevokeNonce();
     _executeAs(relayer, order, authData);
+    _expectNoRevokeNonce();
     _executeAs(relayer, order, authData);
-    _assertNoRevokeNonce(vm.getRecordedLogs());
 
     assertEq(authenticator.nonces(_credentialHash(key), 0), 0, 'the key spent no nonce');
     assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'the owner namespace is untouched');
@@ -83,10 +83,10 @@ contract ReusableOrdersTest is AuthenticatorBase {
     uint256 routerBefore = _routerBalance();
     uint256 ownerBefore = _ownerBalance();
 
-    vm.recordLogs();
+    _expectNoRevokeNonce();
     _fulfillAs(solver, order, authData);
+    _expectNoRevokeNonce();
     _fulfillAs(solver, order, authData);
-    _assertNoRevokeNonce(vm.getRecordedLogs());
 
     assertEq(authenticator.nonces(_credentialHash(key), 0), 0, 'the key spent no nonce');
     assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'the owner namespace is untouched');
@@ -108,14 +108,16 @@ contract ReusableOrdersTest is AuthenticatorBase {
     uint256 routerBefore = _routerBalance();
     uint256 ownerBefore = _ownerBalance();
 
-    vm.recordLogs();
+    _expectNoRevokeNonce();
     _executeAs(relayer, execution, executionData);
+    _expectNoRevokeNonce();
     _executeAs(relayer, execution, executionData);
     assertEq(_routerBalance() - routerBefore, 2 * AMOUNT, 'two executions settled');
 
+    _expectNoRevokeNonce();
     _fulfillAs(solver, fulfillment, fulfillmentData);
+    _expectNoRevokeNonce();
     _fulfillAs(solver, fulfillment, fulfillmentData);
-    _assertNoRevokeNonce(vm.getRecordedLogs());
 
     assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'the owner spent no nonce');
     assertEq(_routerBalance() - routerBefore, 4 * AMOUNT, 'and two fulfillments settled');
@@ -133,10 +135,10 @@ contract ReusableOrdersTest is AuthenticatorBase {
     bytes memory authData = _fulfillmentAuthData(order, sessionKey, sessionKeyPk, true);
     uint256 routerBefore = _routerBalance();
 
-    vm.recordLogs();
+    _expectNoRevokeNonce();
     _fulfillAs(solver, order, authData);
+    _expectNoRevokeNonce();
     _fulfillAs(solver, order, authData);
-    _assertNoRevokeNonce(vm.getRecordedLogs());
 
     assertEq(authenticator.nonces(_credentialHash(sessionKey), 0), 0, 'the session key spent none');
     assertEq(authenticator.nonces(_credentialHash(key), 0), 1 << 1, 'only the approval spent one');
