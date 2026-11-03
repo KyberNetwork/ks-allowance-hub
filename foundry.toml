@@ -1,5 +1,4 @@
 [profile.default]
-solc = "solar"
 optimizer = true
 optimizer_runs = 44_444_444
 fs_permissions = [{ access = "read-write", path = "./" }]
@@ -8,6 +7,19 @@ via_ir = true
 dynamic_test_linking = true
 ffi = true
 bytecode_hash = "none"
+
+additional_compiler_profiles = [
+    { name = "runs-20000", via_ir = true, optimizer_runs = 20000 },
+]
+
+compilation_restrictions = [
+    { paths = "src/v2/KSAllowanceHubV2.sol", optimizer_runs = 20000 },
+]
+
+# Solar build of the same sources. From 10,000 optimizer runs solar inlines enough to put the hub
+# over the EIP-170 limit, so the hub is compiled at 7,500. Run with `FOUNDRY_PROFILE=solar`.
+[profile.solar]
+solc = "solar"
 
 additional_compiler_profiles = [
     { name = "runs-7500", via_ir = true, optimizer_runs = 7_500 },

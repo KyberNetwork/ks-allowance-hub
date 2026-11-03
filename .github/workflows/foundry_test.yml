@@ -46,6 +46,10 @@ jobs:
         with:
           version: v1.9.0
 
-      - name: Run Forge Test
-        id: test
-        run: forge test -vvv --isolate
+      - name: Run Forge Test for v1
+        id: test-v1
+        run: forge test -vvv --isolate --match-path 'test/v1/*'
+
+      - name: Run Forge Test for v2 with solar
+        id: test-v2
+        run: FOUNDRY_PROFILE=solar forge test -vvv --isolate --no-match-path 'test/v1/*'
