@@ -33,13 +33,13 @@ library KeyFixtures {
     0x6c4b9a1f3d8e27b5a0c1d2e3f4051627384950a1b2c3d4e5f60718293a4b5c6d;
 
   /// @dev `abi.encodePacked(qx, qy)`, the layout {AuthKey} documents for P256 and WebAuthn
-  function p256PublicKey() internal view returns (bytes memory) {
+  function p256PublicKey() internal pure returns (bytes memory) {
     (uint256 qx, uint256 qy) = VM.publicKeyP256(P256_PRIVATE_KEY);
     return abi.encodePacked(bytes32(qx), bytes32(qy));
   }
 
   /// @dev `abi.encodePacked(r, s)` with `s` normalised into the lower half of the order
-  function p256Sign(bytes32 digest) internal view returns (bytes memory) {
+  function p256Sign(bytes32 digest) internal pure returns (bytes memory) {
     (bytes32 r, bytes32 s) = _signP256Low(digest);
     return abi.encodePacked(r, s);
   }
@@ -82,7 +82,7 @@ library KeyFixtures {
    */
   function webAuthnAssertion(bytes32 challenge, bool userVerified)
     internal
-    view
+    pure
     returns (bytes memory)
   {
     bytes1 flags = userVerified ? FLAG_USER_PRESENT | FLAG_USER_VERIFIED : FLAG_USER_PRESENT;
@@ -208,7 +208,7 @@ library KeyFixtures {
   }
 
   /// @dev Foundry does not promise a canonical `s`, so normalise before handing a vector out
-  function _signP256Low(bytes32 digest) private view returns (bytes32 r, bytes32 s) {
+  function _signP256Low(bytes32 digest) private pure returns (bytes32 r, bytes32 s) {
     (r, s) = VM.signP256(P256_PRIVATE_KEY, digest);
     if (uint256(s) > P256_HALF_N) {
       s = bytes32(P256_N - uint256(s));
