@@ -222,7 +222,7 @@ contract KSAllowanceHubV2 is
 
     // A dead-address approver accepts any solution
     if (order.solutionApprover != Constants.DEAD_ADDRESS) {
-      _approveSolution(order.solutionApprover, orderHash, solution, solutionSignature);
+      _checkSolutionApproval(order.solutionApprover, orderHash, solution, solutionSignature);
     }
 
     // Run before any asset moves, so that each validator observes the state before settlement
@@ -261,7 +261,7 @@ contract KSAllowanceHubV2 is
     bytes32 orderHash = order.hash();
     // A dead-address approver accepts any solution
     if (order.solutionApprover != Constants.DEAD_ADDRESS) {
-      _approveSolution(order.solutionApprover, orderHash, solution, solutionSignature);
+      _checkSolutionApproval(order.solutionApprover, orderHash, solution, solutionSignature);
     }
 
     // Run before any asset moves, so that each validator observes the state before settlement
@@ -379,7 +379,7 @@ contract KSAllowanceHubV2 is
   }
 
   /// @dev Reverts unless `solutionApprover` signed `solution` for the order with hash `orderHash`
-  function _approveSolution(
+  function _checkSolutionApproval(
     address solutionApprover,
     bytes32 orderHash,
     FulfillmentSolution calldata solution,
