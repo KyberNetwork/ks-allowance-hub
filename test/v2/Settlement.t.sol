@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.36;
+pragma solidity ^0.8.0;
 
 import {Vm} from 'forge-std/Vm.sol';
 
@@ -73,7 +73,7 @@ contract SettlementTest is HubBase {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC721Transfer[] memory nfts = _erc721s(_nftTransfer(address(router)));
     GenericCall[] memory calls = _calls(_routerCall(0, hex'abcd'));
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     ExecutionOrder memory order = _executionOrder(ANY, erc20s, nfts, calls, 11, expiration);
     bytes memory signature = _signExecutionWitness(order);
@@ -110,7 +110,10 @@ contract SettlementTest is HubBase {
 
     vm.prank(owner);
     hub.executeOrderWithDelegatedAuthentication{value: 1}(
-      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp), address(0), '', false
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, vm.getBlockTimestamp()),
+      address(0),
+      '',
+      false
     );
 
     Vm.Log memory entry = _settlementLog();
@@ -134,7 +137,10 @@ contract SettlementTest is HubBase {
 
     vm.prank(owner);
     bytes[] memory results = hub.executeOrderWithDelegatedAuthentication(
-      _openExecutionOrder(noErc20s, new GenericCall[](0), 0, block.timestamp), address(0), '', false
+      _openExecutionOrder(noErc20s, new GenericCall[](0), 0, vm.getBlockTimestamp()),
+      address(0),
+      '',
+      false
     );
 
     assertEq(results.length, 0, 'no calls, no results');
@@ -162,7 +168,10 @@ contract SettlementTest is HubBase {
 
     vm.prank(owner);
     bytes[] memory results = hub.executeOrderWithDelegatedAuthentication(
-      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp), address(0), '', false
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, vm.getBlockTimestamp()),
+      address(0),
+      '',
+      false
     );
 
     assertEq(results.length, 3, 'one result per call');
@@ -199,7 +208,7 @@ contract SettlementTest is HubBase {
     vm.deal(owner, 3);
 
     FulfillmentOrder memory order = _openFulfillmentOrder(
-      new ERC20Allowance[](0), new ValidationParams[](0), ownerCalls, 0, block.timestamp
+      new ERC20Allowance[](0), new ValidationParams[](0), ownerCalls, 0, vm.getBlockTimestamp()
     );
 
     vm.recordLogs();
@@ -248,7 +257,7 @@ contract SettlementTest is HubBase {
       )
     );
     hub.executeOrderWithDelegatedAuthentication(
-      _openExecutionOrder(erc20s, calls, 0, block.timestamp), address(0), '', false
+      _openExecutionOrder(erc20s, calls, 0, vm.getBlockTimestamp()), address(0), '', false
     );
 
     assertEq(stranger.callCount(), 0, 'never called');
@@ -266,7 +275,10 @@ contract SettlementTest is HubBase {
 
     vm.prank(owner);
     hub.executeOrderWithDelegatedAuthentication(
-      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp), address(0), '', false
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, vm.getBlockTimestamp()),
+      address(0),
+      '',
+      false
     );
     assertEq(router.callCount(), 1, 'the first order went through');
 
@@ -281,7 +293,10 @@ contract SettlementTest is HubBase {
       )
     );
     hub.executeOrderWithDelegatedAuthentication(
-      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp), address(0), '', false
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, vm.getBlockTimestamp()),
+      address(0),
+      '',
+      false
     );
 
     assertEq(router.callCount(), 1, 'and no second call happened');
@@ -301,7 +316,10 @@ contract SettlementTest is HubBase {
 
     vm.prank(owner);
     hub.executeOrderWithDelegatedAuthentication(
-      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp), address(0), '', false
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, vm.getBlockTimestamp()),
+      address(0),
+      '',
+      false
     );
 
     assertEq(router.callCount(), 1, 'router once');
@@ -386,14 +404,14 @@ contract SettlementTest is HubBase {
       new GenericCall[](0),
       ANY,
       0,
-      block.timestamp + 1 hours
+      vm.getBlockTimestamp() + 1 hours
     );
     FulfillmentSolution memory solution = _solution(
       new address[](0),
       new uint160[](0),
       erc721Targets,
       new GenericCall[](0),
-      block.timestamp + 1 hours
+      vm.getBlockTimestamp() + 1 hours
     );
 
     vm.prank(owner);
@@ -419,7 +437,10 @@ contract SettlementTest is HubBase {
 
     vm.prank(owner);
     bytes[] memory results = hub.executeOrderWithDelegatedAuthentication(
-      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp), address(0), '', false
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, vm.getBlockTimestamp()),
+      address(0),
+      '',
+      false
     );
 
     assertEq(results.length, 1, 'the order settled');
@@ -582,7 +603,7 @@ contract SettlementTest is HubBase {
     view
     returns (ExecutionOrder memory order)
   {
-    order = _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp + 1 hours);
+    order = _openExecutionOrder(new ERC20Transfer[](0), calls, 0, vm.getBlockTimestamp() + 1 hours);
     order.owner = orderOwner;
   }
 
@@ -597,7 +618,7 @@ contract SettlementTest is HubBase {
       new ValidationParams[](0),
       new GenericCall[](0),
       0,
-      block.timestamp + 1 hours
+      vm.getBlockTimestamp() + 1 hours
     );
     order.owner = orderOwner;
   }
@@ -685,7 +706,7 @@ contract SettlementTest is HubBase {
   }
 
   /// @dev Every `TransferTokens` the hub emitted, in emission order
-  function _transferTokensLogs() internal returns (Vm.Log[] memory logs) {
+  function _transferTokensLogs() internal view returns (Vm.Log[] memory logs) {
     Vm.Log[] memory entries = vm.getRecordedLogs();
 
     uint256 found;
@@ -718,7 +739,7 @@ contract SettlementTest is HubBase {
     address submitter,
     address orderOwner,
     bytes32 orderHash
-  ) internal view {
+  ) internal pure {
     assertEq(entry.topics.length, 4, 'caller, owner and the order hash are indexed');
     assertEq(_topicAddress(entry.topics[1]), submitter, 'the submitter');
     assertEq(_topicAddress(entry.topics[2]), orderOwner, 'the owner');

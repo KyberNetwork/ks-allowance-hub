@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.36;
+pragma solidity ^0.8.0;
 
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
@@ -76,7 +76,7 @@ contract DelegationTest is AuthenticatorBase {
 
   function setUp() public override {
     super.setUp();
-    key = _secpKey(masterSigner, block.timestamp + 30 days);
+    key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -98,7 +98,7 @@ contract DelegationTest is AuthenticatorBase {
     emit IAuthDelegator.UpdateDelegation(owner, address(authenticator), true);
     vm.prank(owner);
     hub.updateDelegation(
-      owner, address(authenticator), true, _encodeKey(key), 0, block.timestamp + 1 days, ''
+      owner, address(authenticator), true, _encodeKey(key), 0, vm.getBlockTimestamp() + 1 days, ''
     );
 
     assertTrue(hub.authDelegated(owner, address(authenticator)), 'delegated');
@@ -109,7 +109,7 @@ contract DelegationTest is AuthenticatorBase {
   /// DEL-02 — a third party may submit the delegation when it carries the owner's signature
   function test_DEL_02_relayedDelegationConsumesNonce() public {
     uint256 nonce = 5;
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
     bytes memory sig = _signAuthDelegation(
       ownerKey, owner, address(authenticator), true, _encodeKey(key), nonce, deadline
     );
@@ -133,12 +133,12 @@ contract DelegationTest is AuthenticatorBase {
 
   /// DEL-03 — changing any signed field invalidates the delegation
   function test_DEL_03_tamperedDelegationRejected() public {
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
     bytes memory sig = _signAuthDelegation(
       ownerKey, owner, address(authenticator), true, _encodeKey(key), 1, deadline
     );
 
-    AuthKey memory otherKey = _secpKey(relayer, block.timestamp + 30 days);
+    AuthKey memory otherKey = _secpKey(relayer, vm.getBlockTimestamp() + 30 days);
 
     vm.prank(relayer);
     vm.expectRevert(IAuthDelegator.InvalidDelegationSignature.selector);
@@ -152,7 +152,7 @@ contract DelegationTest is AuthenticatorBase {
     (address walletSigner, uint256 walletSignerKey) = makeAddrAndKey('wallet signer');
     ERC1271WalletMock wallet = new ERC1271WalletMock(walletSigner);
 
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
     bytes memory sig = _signAuthDelegation(
       walletSignerKey, address(wallet), address(authenticator), true, _encodeKey(key), 2, deadline
     );
@@ -178,7 +178,7 @@ contract DelegationTest is AuthenticatorBase {
 
   /// DEL-05 — the delegation deadline is enforced
   function test_DEL_05_expiredDelegation() public {
-    uint256 deadline = block.timestamp - 1;
+    uint256 deadline = vm.getBlockTimestamp() - 1;
     bytes memory sig = _signAuthDelegation(
       ownerKey, owner, address(authenticator), true, _encodeKey(key), 4, deadline
     );
@@ -200,7 +200,9 @@ contract DelegationTest is AuthenticatorBase {
     vm.expectEmit(address(hub));
     emit IAuthDelegator.UpdateDelegation(owner, address(authenticator), false);
     vm.prank(owner);
-    hub.updateDelegation(owner, address(authenticator), false, '', 0, block.timestamp + 1 days, '');
+    hub.updateDelegation(
+      owner, address(authenticator), false, '', 0, vm.getBlockTimestamp() + 1 days, ''
+    );
     assertFalse(hub.authDelegated(owner, address(authenticator)));
 
     // the authenticator still holds the approval, which is why re-delegating re-arms it; dropping
@@ -219,7 +221,7 @@ contract DelegationTest is AuthenticatorBase {
    */
   function test_DEL_08_withdrawalDoesNotCallTheAuthenticator() public {
     RevertingAuthenticator bad = new RevertingAuthenticator();
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
 
     vm.prank(owner);
     hub.updateDelegation(owner, address(bad), true, hex'1234', 0, deadline, '');
@@ -243,7 +245,7 @@ contract DelegationTest is AuthenticatorBase {
   /// DEL-09 — a relayed withdrawal needs the owner's signature over the same direction
   function test_DEL_09_relayedWithdrawal() public {
     _delegateKeyThroughHub(key);
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
 
     // the direction is signed, so a delegation signature cannot be submitted as a withdrawal
     bytes memory delegateSig =
@@ -282,7 +284,7 @@ contract DelegationTest is AuthenticatorBase {
    * opposite.
    */
   function test_DEL_10_initAuthenticationIgnoresTheDirectionWord() public {
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
     bytes32 keyHash = _keyHash(key);
     bytes memory revokeShaped = _revokeKey(key);
 
@@ -306,7 +308,7 @@ contract DelegationTest is AuthenticatorBase {
    * second one being a no-op against a key that was already approved.
    */
   function test_DEL_11_bothPayloadShapesNameTheSameKey() public {
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
     bytes32 keyHash = _keyHash(key);
     bytes memory keyOnly = _encodeKey(key);
     bytes memory keyPlusNoise = abi.encode(key, keccak256('noise'));
@@ -372,7 +374,7 @@ contract DelegationTest is AuthenticatorBase {
     vm.expectCall(address(bad), expectedCall, 0);
 
     vm.prank(owner);
-    hub.updateDelegation(owner, address(bad), true, empty, 0, block.timestamp + 1 days, '');
+    hub.updateDelegation(owner, address(bad), true, empty, 0, vm.getBlockTimestamp() + 1 days, '');
 
     assertTrue(
       hub.authDelegated(owner, address(bad)), 'delegated without touching the authenticator'
@@ -390,7 +392,7 @@ contract DelegationTest is AuthenticatorBase {
    */
   function test_DEL_14_nonEmptyPayloadDoesCallInitAuthentication() public {
     RevertingAuthenticator bad = new RevertingAuthenticator();
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
 
     bytes memory payload = hex'00';
     bytes memory expectedCall =
@@ -438,7 +440,9 @@ contract DelegationTest is AuthenticatorBase {
     vm.expectCall(address(bad), expectedCall, 0);
 
     vm.prank(owner);
-    hub.updateDelegation(owner, address(bad), false, payload, 0, block.timestamp + 1 days, '');
+    hub.updateDelegation(
+      owner, address(bad), false, payload, 0, vm.getBlockTimestamp() + 1 days, ''
+    );
 
     assertFalse(hub.authDelegated(owner, address(bad)), 'withdrawn');
     assertEq(bad.initCount(), 0, 'and the authenticator was never called');
@@ -454,7 +458,7 @@ contract DelegationTest is AuthenticatorBase {
     address walletA = address(new ERC1271WalletMock(sharedSigner));
     address walletB = address(new ERC1271WalletMock(sharedSigner));
 
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
     bytes memory sig = _signAuthDelegation(
       sharedSignerKey, walletA, address(authenticator), true, _encodeKey(key), 7, deadline
     );
@@ -475,7 +479,7 @@ contract DelegationTest is AuthenticatorBase {
    * owner submits never leaves its nonce unspent for a later replay
    */
   function test_DEL_17_ownerCallTakesNoSignature() public {
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
     bytes memory sig =
       _signAuthDelegation(ownerKey, owner, address(authenticator), true, '', 9, deadline);
 
@@ -492,7 +496,7 @@ contract DelegationTest is AuthenticatorBase {
   /// DEL-FUZZ — the delegation nonce bitmap behaves across its whole domain
   function testFuzz_DEL_FUZZ_relayedDelegation(DelegationFuzz memory f) public {
     uint256 nonce = f.nonce;
-    uint256 deadline = block.timestamp + bound(f.deadlineOffset, 0, 30 days);
+    uint256 deadline = vm.getBlockTimestamp() + bound(f.deadlineOffset, 0, 30 days);
 
     bytes memory sig = _signAuthDelegation(
       ownerKey, owner, address(authenticator), true, _encodeKey(key), nonce, deadline

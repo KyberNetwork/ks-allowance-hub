@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.36;
+pragma solidity ^0.8.0;
 
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
@@ -53,7 +53,7 @@ contract MulticallTest is AuthenticatorBase {
   /// MC-01 — a permit and the order that uses the approval share one transaction, with value
   function test_MC_01_permitAndOrderInOneBatch() public {
     uint256 permitValue = 1234e6;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     address[] memory tokens = new address[](1);
     tokens[0] = token6;
@@ -103,7 +103,7 @@ contract MulticallTest is AuthenticatorBase {
     bytes memory order = abi.encodeCall(
       IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
       (
-        _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp),
+        _openExecutionOrder(new ERC20Transfer[](0), calls, 0, vm.getBlockTimestamp()),
         address(0),
         '',
         false
@@ -138,7 +138,7 @@ contract MulticallTest is AuthenticatorBase {
     batch[0] = abi.encodeCall(
       IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
       (
-        _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp),
+        _openExecutionOrder(new ERC20Transfer[](0), calls, 0, vm.getBlockTimestamp()),
         address(0),
         '',
         false
@@ -239,8 +239,8 @@ contract MulticallTest is AuthenticatorBase {
    * batch carries on, and the delegation is in place either way.
    */
   function test_MC_09_aFrontRunDelegationDoesNotUnwindTheBatch() public {
-    AuthKey memory key = _secpKey(masterSigner, block.timestamp + 30 days);
-    uint256 deadline = block.timestamp + 1 hours;
+    AuthKey memory key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     uint256 delegationNonce = 80;
 
     bytes memory delegationSig = _signAuthDelegation(
@@ -314,10 +314,10 @@ contract MulticallTest is AuthenticatorBase {
    * key of its own, so the hub's gate is open while the authenticator still knows nothing.
    */
   function test_MC_06_approveAMasterKeyAndSpendOnItInOneBatch() public {
-    AuthKey memory key = _secpKey(masterSigner, block.timestamp + 30 days);
+    AuthKey memory key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
     bytes32 keyHash = _keyHash(key);
 
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     uint256 approvalNonce = 70;
     uint256 orderNonce = 71;
 
@@ -395,10 +395,10 @@ contract MulticallTest is AuthenticatorBase {
    * is evidence that slot 0 is what let it through.
    */
   function test_MC_08_masterKeyMintsAnEphemeralKeyAndSpendsOnItInOneBatch() public {
-    AuthKey memory masterKey = _secpKey(masterSigner, block.timestamp + 30 days);
-    AuthKey memory ephemeral = _secpKey(sessionSigner, block.timestamp + 10 minutes);
+    AuthKey memory masterKey = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
+    AuthKey memory ephemeral = _secpKey(sessionSigner, vm.getBlockTimestamp() + 10 minutes);
 
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     uint256 approvalNonce = 80;
     uint256 orderNonce = 81;
 
@@ -541,7 +541,7 @@ contract MulticallTest is AuthenticatorBase {
       IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
       (
         _openExecutionOrder(
-          _erc20s(_tokenTransfer(amount)), _calls(_routerCall(0, data)), 0, block.timestamp
+          _erc20s(_tokenTransfer(amount)), _calls(_routerCall(0, data)), 0, vm.getBlockTimestamp()
         ),
         address(0),
         '',

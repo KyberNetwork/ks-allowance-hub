@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.36;
+pragma solidity ^0.8.0;
 
 import {Vm} from 'forge-std/Vm.sol';
 
@@ -46,7 +46,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
   function setUp() public override {
     super.setUp();
-    key = _secpKey(masterSigner, block.timestamp + 30 days);
+    key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -56,7 +56,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
   /// AUTH-01 — the owner submits their own Permit2 order, so nothing is witnessed
   function test_AUTH_01_permit2SelfSubmitted() public {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     ExecutionOrder memory order = _openExecutionOrder(erc20s, new GenericCall[](0), 0, deadline);
     bytes memory signature = _signPlainPermit(erc20s, 0, deadline);
@@ -74,7 +74,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC721Transfer[] memory nfts = _erc721s(_nftTransfer(address(router)));
     GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     ExecutionOrder memory order = _executionOrder(ANY, erc20s, nfts, calls, 1, expiration);
     bytes memory signature = _signExecutionWitness(order);
@@ -94,7 +94,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
   /// AUTH-03 — mutating a byte of the signed call list invalidates the order
   function test_AUTH_03_witnessPinsTheCallList() public {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     ExecutionOrder memory signed =
       _openExecutionOrder(erc20s, _calls(_routerCall(0, hex'01')), 2, deadline);
@@ -118,7 +118,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
    */
   function test_AUTH_04_witnessPinsTheNamedRelayer() public {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     ExecutionOrder memory pinned = _executionOrder(
       relayer, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 3, expiration
@@ -154,7 +154,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC721Transfer[] memory noNfts = new ERC721Transfer[](0);
     GenericCall[] memory noCalls = new GenericCall[](0);
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     ExecutionOrder memory pinned = _executionOrder(relayer, erc20s, noNfts, noCalls, 50, expiration);
     bytes memory pinnedSig = _signExecutionWitness(pinned);
@@ -203,7 +203,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     uint256 balanceBefore = IERC20(token18).balanceOf(address(router));
 
     ExecutionOrder memory order =
-      _openExecutionOrder(erc20s, new GenericCall[](0), 0, block.timestamp);
+      _openExecutionOrder(erc20s, new GenericCall[](0), 0, vm.getBlockTimestamp());
 
     vm.prank(owner);
     hub.executeOrderWithDelegatedAuthentication(order, address(0), '', false);
@@ -220,7 +220,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     uint160 allowanceBefore = _permit2Allowance(token18);
 
     ExecutionOrder memory order = _executionOrder(
-      ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 0, block.timestamp
+      ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 0, vm.getBlockTimestamp()
     );
 
     vm.prank(owner);
@@ -237,7 +237,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
   /// AUTH-08 — an authenticator the owner never delegated is refused before it is ever called
   function test_AUTH_08_undelegatedAuthenticatorRefused() public {
     ExecutionOrder memory order = _openExecutionOrder(
-      _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 0, block.timestamp
+      _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 0, vm.getBlockTimestamp()
     );
     bytes memory authData = _authData(key, hex'00');
 
@@ -262,7 +262,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
     _grantPermit2Allowance(token18, 100 ether);
 
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
 
     ExecutionOrder memory plainRail =
@@ -309,7 +309,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     vm.prank(owner);
     IERC20(token18).approve(address(hub), 0);
 
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ExecutionOrder memory order =
       _executionOrder(ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 44, expiration);
@@ -343,7 +343,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     ExecutionOrder memory order =
       _executionOrder(ANY, erc20s, new ERC721Transfer[](0), calls, 43, expiration);
@@ -376,7 +376,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
 
     ExecutionOrder memory order = _openExecutionOrder(
-      _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 0, block.timestamp
+      _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 0, vm.getBlockTimestamp()
     );
 
     vm.prank(relayer);
@@ -412,7 +412,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
 
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     ExecutionOrder memory control =
       _openExecutionOrder(erc20s, new GenericCall[](0), 80, expiration);
@@ -445,7 +445,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
    */
   function test_AUTH_15_witnessPinsExtraData() public {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     ExecutionOrder memory control =
       _openExecutionOrder(erc20s, new GenericCall[](0), 82, expiration);
@@ -517,7 +517,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
       f.moveNft ? _erc721s(_nftTransfer(address(router2))) : new ERC721Transfer[](0),
       calls,
       f.nonce,
-      block.timestamp + f.expirationOffset
+      vm.getBlockTimestamp() + f.expirationOffset
     );
     bytes memory authData = _executionAuthData(order, key, masterKeyPk);
 
@@ -579,7 +579,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
       f.moveNft ? _erc721s(_nftTransfer(address(router2))) : new ERC721Transfer[](0),
       calls,
       f.nonce,
-      block.timestamp + f.expirationOffset
+      vm.getBlockTimestamp() + f.expirationOffset
     );
     bytes memory signature = _signExecutionWitness(order);
 

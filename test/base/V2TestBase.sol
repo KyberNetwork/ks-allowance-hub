@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.36;
+pragma solidity ^0.8.0;
 
 import {Test} from 'forge-std/Test.sol';
 
@@ -324,7 +324,7 @@ abstract contract V2TestBase is Test {
         ),
         keccak256(bytes(name)),
         keccak256(bytes(version)),
-        block.chainid,
+        vm.getChainId(),
         verifyingContract
       )
     );
@@ -338,7 +338,7 @@ abstract contract V2TestBase is Test {
     return keccak256(abi.encodePacked('\x19\x01', domainSeparator, structHash));
   }
 
-  function _sign(uint256 key, bytes32 digest) internal returns (bytes memory) {
+  function _sign(uint256 key, bytes32 digest) internal pure returns (bytes memory) {
     (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, digest);
     return abi.encodePacked(r, s, v);
   }

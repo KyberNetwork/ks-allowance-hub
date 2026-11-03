@@ -39,6 +39,7 @@ abstract contract MsgSender is IMsgSender {
     TransientSlot.Uint256Slot slot = Constants.MSG_SENDER_SLOT.asUint256();
     previous = slot.tload();
     if (previous & Constants.LOCKED_FLAG != 0) {
+      // forge-lint: disable-next-line(unsafe-typecast)
       revert AlreadyLocked(address(uint160(previous)));
     }
 
@@ -47,6 +48,7 @@ abstract contract MsgSender is IMsgSender {
 
   /// @inheritdoc IMsgSender
   function msgSender() public view returns (address sender) {
+    // forge-lint: disable-next-line(unsafe-typecast)
     return address(uint160(Constants.MSG_SENDER_SLOT.asUint256().tload()));
   }
 }

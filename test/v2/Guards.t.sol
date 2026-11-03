@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.36;
+pragma solidity ^0.8.0;
 
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
@@ -115,7 +115,7 @@ contract GuardsTest is AuthenticatorBase {
 
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC20Allowance[] memory allowances = _allowances(_tokenAllowance(AMOUNT));
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     ExecutionOrder memory execOrder =
       _openExecutionOrder(erc20s, new GenericCall[](0), 90, expiration);
@@ -143,7 +143,7 @@ contract GuardsTest is AuthenticatorBase {
 
     // Delegation carries no assets, so the pause does not reach it
     vm.prank(owner);
-    hub.updateDelegation(owner, address(mock), true, hex'1234', 0, block.timestamp, '');
+    hub.updateDelegation(owner, address(mock), true, hex'1234', 0, vm.getBlockTimestamp(), '');
 
     assertTrue(hub.authDelegated(owner, address(mock)), 'delegation still works');
     assertEq(mock.initCount(), 1, 'and reached the authenticator');
@@ -188,7 +188,7 @@ contract GuardsTest is AuthenticatorBase {
 
   /// GUARD-04 — the expiration block itself still settles; the one before it does not
   function test_GUARD_04_expirationBoundaryOnTheOrderEntryPoints() public {
-    uint256 t = block.timestamp;
+    uint256 t = vm.getBlockTimestamp();
 
     _executeAtExpiration(t - 1, false);
     _executeAtExpiration(t, true);
@@ -216,7 +216,7 @@ contract GuardsTest is AuthenticatorBase {
       new ValidationParams[](0),
       new GenericCall[](0),
       0,
-      block.timestamp - 1
+      vm.getBlockTimestamp() - 1
     );
 
     vm.prank(guardian);
@@ -226,7 +226,7 @@ contract GuardsTest is AuthenticatorBase {
     vm.expectRevert(Pausable.EnforcedPause.selector);
     hub.executeOrderWithDelegatedAuthentication(
       _openExecutionOrder(
-        _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 0, block.timestamp - 1
+        _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 0, vm.getBlockTimestamp() - 1
       ),
       address(0),
       '',
@@ -263,7 +263,7 @@ contract GuardsTest is AuthenticatorBase {
    * fires, so each step differs from a settling order in exactly the one thing its modifier reads.
    */
   function test_GATE_01_fulfillPermit2CarriesTheFourModifiers() public {
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
 
     // control
@@ -299,12 +299,12 @@ contract GuardsTest is AuthenticatorBase {
 
     // checkDeadline
     FulfillmentOrder memory stale = _openFulfillmentOrder(
-      erc20s, new ValidationParams[](0), new GenericCall[](0), 102, block.timestamp - 1
+      erc20s, new ValidationParams[](0), new GenericCall[](0), 102, vm.getBlockTimestamp() - 1
     );
     bytes memory staleSig = _signFulfillmentWitness(stale);
 
     vm.prank(solver);
-    vm.expectRevert(_deadlinePassed(block.timestamp - 1));
+    vm.expectRevert(_deadlinePassed(vm.getBlockTimestamp() - 1));
     hub.fulfillOrderWithPermit2Signature(
       stale, staleSig, _route(stale, _calls(_routerCall(0, hex'01'))), ''
     );
@@ -366,7 +366,7 @@ contract GuardsTest is AuthenticatorBase {
    * rails is covered by LOCK-03 and LOCK-06.
    */
   function test_GATE_02_theUnwatchedModifierApplications() public {
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     ERC20Allowance[] memory allowances = _allowances(_tokenAllowance(AMOUNT));
 
     // guardNativeSpend on executeOrderWithPermit2Signature
@@ -477,7 +477,7 @@ contract GuardsTest is AuthenticatorBase {
     GenericCall[] memory calls = _calls(_routerCall(spend, hex'01'));
 
     ExecutionOrder memory order =
-      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, block.timestamp);
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, vm.getBlockTimestamp());
 
     vm.prank(owner);
     if (!shouldSettle) {

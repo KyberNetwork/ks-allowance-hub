@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.36;
+pragma solidity ^0.8.0;
 
 import {Vm} from 'forge-std/Vm.sol';
 
@@ -53,7 +53,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
   function setUp() public override {
     super.setUp();
-    key = _secpKey(masterSigner, block.timestamp + 30 days);
+    key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
 
     (approver, approverKey) = makeAddrAndKey('solution approver');
   }
@@ -73,7 +73,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   function test_AUTH_01b_fulfillmentPermit2SelfSubmitted() public {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     ValidationParams[] memory vs = _validations(_validation(validator));
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     FulfillmentOrder memory order = _fulfillmentOrder(
       ANY, erc20s, new ERC721Approval[](0), vs, new GenericCall[](0), approver, 61, deadline
@@ -108,7 +108,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   function test_AUTH_07_fulfillmentPermit2Witness() public {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     ValidationParams[] memory vs = _validations(_validation(validator));
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     // the sentinel approver, so the owner is signing "any route the solver picks"
     FulfillmentOrder memory order = _fulfillmentOrder(
@@ -139,7 +139,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   function test_AUTH_07b_solutionApproverIsBoundByTheWitness() public {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     FulfillmentOrder memory named = _fulfillmentOrder(
       ANY,
@@ -192,7 +192,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   function test_AUTH_16_witnessPinsExtraData() public {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     FulfillmentOrder memory control = _openFulfillmentOrder(
       erc20s, new ValidationParams[](0), new GenericCall[](0), 33, expiration
@@ -231,7 +231,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     FulfillmentOrder memory control = _openFulfillmentOrder(
       erc20s, new ValidationParams[](0), new GenericCall[](0), 35, expiration
@@ -277,7 +277,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
 
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     FulfillmentOrder memory order =
       _openFulfillmentOrder(erc20s, new ValidationParams[](0), new GenericCall[](0), 37, deadline);
@@ -326,9 +326,9 @@ contract FulfillOrderTest is AuthenticatorBase {
       _amounts(AMOUNT),
       new address[](0),
       _calls(_routerCall(0, hex'01')),
-      block.timestamp + 1 hours
+      vm.getBlockTimestamp() + 1 hours
     );
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     FulfillmentOrder memory pinned = _fulfillmentOrder(
       solver,
@@ -403,7 +403,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   function test_SOL_01_oneApprovalBindsOneOrder() public {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     FulfillmentSolution memory route = _solution(
       _addresses(address(router)), _amounts(AMOUNT), new address[](0), solverCalls, deadline
@@ -449,7 +449,7 @@ contract FulfillOrderTest is AuthenticatorBase {
    * expiration: the expiration second itself still settles, and the second after it does not.
    */
   function test_SOL_05_theRouteExpirationIsEnforced() public {
-    uint256 orderExpiration = block.timestamp + 1 days;
+    uint256 orderExpiration = vm.getBlockTimestamp() + 1 days;
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
 
     FulfillmentOrder memory open = _openFulfillmentOrder(
@@ -463,7 +463,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     uint256 before = IERC20(token18).balanceOf(address(router));
     vm.prank(owner);
     hub.fulfillOrderWithDelegatedAuthentication(
-      open, address(0), '', _solution(open, solverCalls, block.timestamp), '', false
+      open, address(0), '', _solution(open, solverCalls, vm.getBlockTimestamp()), '', false
     );
     assertEq(
       IERC20(token18).balanceOf(address(router)) - before,
@@ -471,7 +471,7 @@ contract FulfillOrderTest is AuthenticatorBase {
       'the expiration second itself still settles'
     );
 
-    vm.warp(block.timestamp + 1);
+    vm.warp(vm.getBlockTimestamp() + 1);
     uint256 stale = vm.getBlockTimestamp() - 1;
 
     vm.prank(owner);
@@ -505,7 +505,7 @@ contract FulfillOrderTest is AuthenticatorBase {
    * the hub is never touched.
    */
   function test_SOL_06_anApprovalIsSpentWithItsOrder() public {
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     FulfillmentSolution memory route = _solution(
       _addresses(address(router)),
       _amounts(AMOUNT),
@@ -545,7 +545,7 @@ contract FulfillOrderTest is AuthenticatorBase {
    * identical order does demand one.
    */
   function test_SOL_02_sentinelApproverAcceptsAnyRoute() public {
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     FulfillmentOrder memory open = _openFulfillmentOrder(
       new ERC20Allowance[](0), new ValidationParams[](0), new GenericCall[](0), 0, expiration
@@ -592,7 +592,7 @@ contract FulfillOrderTest is AuthenticatorBase {
    * signature too short to recover from must therefore fail the check rather than skip it.
    */
   function test_SOL_03_malformedApprovalSignature() public {
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     FulfillmentOrder memory order = _fulfillmentOrder(
       ANY,
@@ -623,7 +623,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
 
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     FulfillmentOrder memory order = _fulfillmentOrder(
       ANY,
@@ -708,7 +708,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
     GenericCall[] memory signedTail = _calls(_routerCall(0, hex'aa'));
     GenericCall[] memory swappedTail = _calls(_routerCall(0, hex'bb'));
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     uint256 before = IERC20(token18).balanceOf(address(router));
 
@@ -772,7 +772,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
     GenericCall[] memory signedTail = _calls(_routerCall(0, hex'aa'));
     GenericCall[] memory swappedTail = _calls(_routerCall(0, hex'bb'));
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     uint256 before = IERC20(token18).balanceOf(address(router));
 
@@ -861,7 +861,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     vm.prank(owner);
     bytes[] memory executeResults = hub.executeOrderWithDelegatedAuthentication(
-      _openExecutionOrder(new ERC20Transfer[](0), solverCalls, 0, block.timestamp),
+      _openExecutionOrder(new ERC20Transfer[](0), solverCalls, 0, vm.getBlockTimestamp()),
       address(0),
       '',
       false
@@ -943,7 +943,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     vs[1] = _validation(validator2);
 
     FulfillmentOrder memory order = _openFulfillmentOrder(
-      _allowances(_tokenAllowance(amount)), vs, new GenericCall[](0), 0, block.timestamp
+      _allowances(_tokenAllowance(amount)), vs, new GenericCall[](0), 0, vm.getBlockTimestamp()
     );
 
     vm.prank(owner);
@@ -984,7 +984,7 @@ contract FulfillOrderTest is AuthenticatorBase {
 
     uint160 amount = 4 ether;
     uint256 payout = 1 ether;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     uint256 routerBefore = IERC20(token18).balanceOf(address(router));
 
     router.setPayout(token18, recipient, payout);
@@ -1033,7 +1033,7 @@ contract FulfillOrderTest is AuthenticatorBase {
       _validations(_validation(validator)),
       new GenericCall[](0),
       0,
-      block.timestamp
+      vm.getBlockTimestamp()
     );
 
     vm.prank(owner);
@@ -1048,7 +1048,11 @@ contract FulfillOrderTest is AuthenticatorBase {
   /// VAL-04 — no validators is a legal order
   function test_VAL_04_noValidators() public {
     FulfillmentOrder memory order = _openFulfillmentOrder(
-      new ERC20Allowance[](0), new ValidationParams[](0), new GenericCall[](0), 0, block.timestamp
+      new ERC20Allowance[](0),
+      new ValidationParams[](0),
+      new GenericCall[](0),
+      0,
+      vm.getBlockTimestamp()
     );
 
     vm.prank(owner);
@@ -1169,7 +1173,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     returns (bytes[] memory results)
   {
     FulfillmentOrder memory order = _openFulfillmentOrder(
-      new ERC20Allowance[](0), new ValidationParams[](0), ownerCalls, 0, block.timestamp
+      new ERC20Allowance[](0), new ValidationParams[](0), ownerCalls, 0, vm.getBlockTimestamp()
     );
     results = hub.fulfillOrderWithDelegatedAuthentication(
       order, address(0), '', _route(order, solverCalls), '', false
@@ -1231,14 +1235,14 @@ contract FulfillOrderTest is AuthenticatorBase {
       ownerCalls,
       f.approveSolution ? approver : ANY,
       f.nonce,
-      block.timestamp + f.expirationOffset
+      vm.getBlockTimestamp() + f.expirationOffset
     );
     route = _solution(
       _addresses(f.erc20Target),
       _amounts(f.amount),
       f.moveNft ? _addresses(f.erc721Target) : new address[](0),
       solverCalls,
-      block.timestamp + f.expirationOffset
+      vm.getBlockTimestamp() + f.expirationOffset
     );
   }
 
@@ -1247,7 +1251,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     FulfillmentOrder memory order,
     bytes[] memory results,
     uint256 targetBefore
-  ) private {
+  ) private view {
     assertEq(
       IERC20(token18).balanceOf(f.erc20Target) - targetBefore,
       f.amount,

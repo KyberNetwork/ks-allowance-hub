@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.36;
+pragma solidity ^0.8.0;
 
 import {Vm} from 'forge-std/Vm.sol';
 
@@ -117,7 +117,7 @@ abstract contract HubBase is V2TestBase {
         token,
         address(hub),
         amount,
-        uint48(block.timestamp + 30 days)
+        uint48(vm.getBlockTimestamp() + 30 days)
       )
     );
     assertTrue(ok, 'permit2 approve');
@@ -137,12 +137,13 @@ abstract contract HubBase is V2TestBase {
    * here. The error carries values, so a selector-only expectation would not match it.
    */
   function _deadlinePassed(uint256 deadline) internal view returns (bytes memory) {
-    return
-      abi.encodeWithSelector(DeadlineChecker.DeadlinePassed.selector, deadline, block.timestamp);
+    return abi.encodeWithSelector(
+      DeadlineChecker.DeadlinePassed.selector, deadline, vm.getBlockTimestamp()
+    );
   }
 
   /// @dev Selects the single `TransferTokens` the hub emitted from the fork's log stream
-  function _settlementLog() internal returns (Vm.Log memory entry) {
+  function _settlementLog() internal view returns (Vm.Log memory entry) {
     Vm.Log[] memory entries = vm.getRecordedLogs();
 
     uint256 found;
@@ -342,7 +343,7 @@ abstract contract HubBase is V2TestBase {
     view
     returns (FulfillmentSolution memory)
   {
-    return _solution(order, solverCalls, block.timestamp + 1 hours);
+    return _solution(order, solverCalls, vm.getBlockTimestamp() + 1 hours);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -360,6 +361,7 @@ abstract contract HubBase is V2TestBase {
    */
   function _signExecutionWitness(ExecutionOrder memory order, address witnessRelayer)
     internal
+    view
     returns (bytes memory)
   {
     ExecutionWitness memory witness = ExecutionWitness({
@@ -381,7 +383,7 @@ abstract contract HubBase is V2TestBase {
   }
 
   /// @dev As {_signExecutionWitness}, with the witness naming the relayer the order names
-  function _signExecutionWitness(ExecutionOrder memory order) internal returns (bytes memory) {
+  function _signExecutionWitness(ExecutionOrder memory order) internal view returns (bytes memory) {
     return _signExecutionWitness(order, order.relayer);
   }
 
@@ -391,7 +393,7 @@ abstract contract HubBase is V2TestBase {
     address witnessSolver,
     GenericCall[] memory witnessOwnerCalls,
     address witnessApprover
-  ) internal returns (bytes memory) {
+  ) internal view returns (bytes memory) {
     FulfillmentWitness memory witness = FulfillmentWitness({
       solver: witnessSolver,
       erc721Approvals: order.erc721Approvals,
@@ -412,13 +414,18 @@ abstract contract HubBase is V2TestBase {
   }
 
   /// @dev As above, with the witness agreeing with the order in every member
-  function _signFulfillmentWitness(FulfillmentOrder memory order) internal returns (bytes memory) {
+  function _signFulfillmentWitness(FulfillmentOrder memory order)
+    internal
+    view
+    returns (bytes memory)
+  {
     return _signFulfillmentWitness(order, order.solver, order.ownerCalls, order.solutionApprover);
   }
 
   /// @dev Permit2 self-transfer: the owner submits, so there is no witness to bind
   function _signPlainPermit(ERC20Transfer[] memory erc20Transfers, uint256 nonce, uint256 deadline)
     internal
+    view
     returns (bytes memory)
   {
     (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(erc20Transfers);
@@ -430,7 +437,7 @@ abstract contract HubBase is V2TestBase {
     ERC20Allowance[] memory erc20Allowances,
     uint256 nonce,
     uint256 deadline
-  ) internal returns (bytes memory) {
+  ) internal view returns (bytes memory) {
     (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(erc20Allowances);
     return _sign(ownerKey, lPermit2BatchDigest(tokens, amounts, address(hub), nonce, deadline));
   }
@@ -440,7 +447,7 @@ abstract contract HubBase is V2TestBase {
     uint256 signerKey,
     FulfillmentOrder memory order,
     FulfillmentSolution memory solution
-  ) internal returns (bytes memory) {
+  ) internal view returns (bytes memory) {
     return _sign(signerKey, lTypedDataHash(_hubDomain(), lSolutionApproval(order, solution)));
   }
 
@@ -452,7 +459,7 @@ abstract contract HubBase is V2TestBase {
     bytes memory data,
     uint256 nonce,
     uint256 deadline
-  ) internal returns (bytes memory) {
+  ) internal view returns (bytes memory) {
     return _sign(
       signerKey,
       lTypedDataHash(

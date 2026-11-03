@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.36;
+pragma solidity ^0.8.0;
 
 import {SchemaHash} from 'test/base/SchemaHash.sol';
 
@@ -86,7 +86,7 @@ abstract contract AuthenticatorBase is HubBase {
   function _delegateKeyThroughHub(AuthKey memory key) internal {
     vm.prank(owner);
     hub.updateDelegation(
-      owner, address(authenticator), true, _encodeKey(key), 0, block.timestamp + 1 days, ''
+      owner, address(authenticator), true, _encodeKey(key), 0, vm.getBlockTimestamp() + 1 days, ''
     );
   }
 

@@ -22,6 +22,7 @@ abstract contract UnorderedNonce is IUnorderedNonce {
   /// @dev A nonce is a word index in its top bits and a bit position in its low byte
   function _useUnorderedNonce(bytes32 namespace, uint256 nonce) internal {
     uint256 wordPos = nonce >> 8;
+    // forge-lint: disable-next-line(unsafe-typecast)
     uint256 bitPos = uint8(nonce);
 
     uint256 bit = 1 << bitPos;

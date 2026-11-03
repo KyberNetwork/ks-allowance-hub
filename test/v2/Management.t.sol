@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.36;
+pragma solidity ^0.8.0;
 
 import {Vm} from 'forge-std/Vm.sol';
 
@@ -56,8 +56,8 @@ contract ManagementTest is AuthenticatorBase {
   function test_DOM_01_bothDomainsAreChainScoped() public {
     assertTrue(_hubDomain() != _authenticatorDomain(), 'the two domains are not the same');
 
-    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
-    uint256 deadline = block.timestamp + 1 days;
+    AuthKey memory fresh = _secpKey(recipient, vm.getBlockTimestamp() + 10 days);
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
     bytes memory delegationSig =
       _signAuthDelegation(ownerKey, owner, address(authenticator), true, '', 1, deadline);
     bytes memory approvalSig = _signMasterKeyUpdate(fresh, true, 1, deadline);

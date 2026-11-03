@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.36;
+pragma solidity ^0.8.0;
 
 import {SchemaHash} from 'test/base/SchemaHash.sol';
 
@@ -75,7 +75,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
 
   function setUp() public override {
     super.setUp();
-    key = _secpKey(masterSigner, block.timestamp + 30 days);
+    key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -86,7 +86,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
 
     uint256 nonce = 7;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     uint256 before = IERC20(token18).balanceOf(address(router));
 
     _expectNoRevokeNonce();
@@ -111,12 +111,14 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    * `updateDelegation`. No nonce is spent, because no signature was presented to replay.
    */
   function test_SV_02_ownerApprovesDirectlyWithoutSignature() public {
-    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
+    AuthKey memory fresh = _secpKey(recipient, vm.getBlockTimestamp() + 10 days);
 
     vm.expectEmit(address(authenticator));
     emit ITwoTiersOrderAuthenticator.UpdateMasterKey(owner, _keyHash(fresh), fresh, true);
     vm.prank(owner);
-    authenticator.updateAuthentication(owner, _approveKey(fresh), 0, block.timestamp + 1 days, '');
+    authenticator.updateAuthentication(
+      owner, _approveKey(fresh), 0, vm.getBlockTimestamp() + 1 days, ''
+    );
 
     assertTrue(authenticator.masterKeys(owner, _keyHash(fresh)), 'approved');
     assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'no nonce spent without a signature');
@@ -124,17 +126,19 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
 
   /// SV-02b — but not on someone else's behalf
   function test_SV_02b_strangerCannotApproveWithoutSignature() public {
-    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
+    AuthKey memory fresh = _secpKey(recipient, vm.getBlockTimestamp() + 10 days);
 
     vm.prank(relayer);
     vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidUpdateSignature.selector);
-    authenticator.updateAuthentication(owner, _approveKey(fresh), 0, block.timestamp + 1 days, '');
+    authenticator.updateAuthentication(
+      owner, _approveKey(fresh), 0, vm.getBlockTimestamp() + 1 days, ''
+    );
   }
 
   /// SV-03 — a signature from anyone but the owner is rejected
   function test_SV_03_directApprovalWrongSigner() public {
-    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
-    uint256 deadline = block.timestamp + 1 days;
+    AuthKey memory fresh = _secpKey(recipient, vm.getBlockTimestamp() + 10 days);
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
 
     bytes32 digest =
       lTypedDataHash(_authenticatorDomain(), lMasterKeyUpdate(owner, fresh, true, 4, deadline));
@@ -147,8 +151,8 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
 
   /// SV-04 — the approval deadline is enforced by the authenticator itself
   function test_SV_04_directApprovalExpired() public {
-    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
-    uint256 deadline = block.timestamp - 1;
+    AuthKey memory fresh = _secpKey(recipient, vm.getBlockTimestamp() + 10 days);
+    uint256 deadline = vm.getBlockTimestamp() - 1;
     bytes memory sig = _signMasterKeyUpdate(fresh, true, 5, deadline);
 
     vm.prank(relayer);
@@ -163,25 +167,27 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   /// SV-REV-01 — the owner revokes directly, and a key that had been authenticating orders stops
   function test_SV_REV_01_ownerRevokesDirectly() public {
     _delegateKeyThroughHub(key);
-    _executeViaAuthenticator(key, masterKeyPk, 30, block.timestamp + 1 hours, true);
+    _executeViaAuthenticator(key, masterKeyPk, 30, vm.getBlockTimestamp() + 1 hours, true);
 
     vm.expectEmit(address(authenticator));
     emit ITwoTiersOrderAuthenticator.UpdateMasterKey(owner, _keyHash(key), key, false);
     vm.prank(owner);
-    authenticator.updateAuthentication(owner, _revokeKey(key), 0, block.timestamp + 1 days, '');
+    authenticator.updateAuthentication(
+      owner, _revokeKey(key), 0, vm.getBlockTimestamp() + 1 days, ''
+    );
 
     assertFalse(authenticator.masterKeys(owner, _keyHash(key)), 'revoked');
     assertTrue(hub.authDelegated(owner, address(authenticator)), 'the delegation itself survives');
 
     vm.expectRevert(_masterKeyNotApproved(key));
-    _executeViaAuthenticator(key, masterKeyPk, 31, block.timestamp + 1 hours, false);
+    _executeViaAuthenticator(key, masterKeyPk, 31, vm.getBlockTimestamp() + 1 hours, false);
   }
 
   /// SV-REV-02 — a relayed revocation carrying the owner's signature spends an authenticator nonce
   function test_SV_REV_02_relayedRevocation() public {
     _delegateKeyThroughHub(key);
 
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
     bytes memory sig = _signMasterKeyUpdate(key, false, 32, deadline);
 
     vm.expectEmit(address(authenticator));
@@ -204,8 +210,8 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   function test_SV_REV_03_directionCannotBeFlipped() public {
     _delegateKeyThroughHub(key);
 
-    uint256 deadline = block.timestamp + 1 days;
-    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
+    AuthKey memory fresh = _secpKey(recipient, vm.getBlockTimestamp() + 10 days);
 
     // an approval, submitted as a revocation
     bytes memory approval = _signMasterKeyUpdate(fresh, true, 33, deadline);
@@ -244,14 +250,18 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
 
     vm.prank(owner);
-    authenticator.updateAuthentication(owner, _revokeKey(key), 0, block.timestamp + 1 days, '');
+    authenticator.updateAuthentication(
+      owner, _revokeKey(key), 0, vm.getBlockTimestamp() + 1 days, ''
+    );
     assertFalse(authenticator.masterKeys(owner, _keyHash(key)), 'revoked');
 
     vm.prank(owner);
-    authenticator.updateAuthentication(owner, _approveKey(key), 0, block.timestamp + 1 days, '');
+    authenticator.updateAuthentication(
+      owner, _approveKey(key), 0, vm.getBlockTimestamp() + 1 days, ''
+    );
     assertTrue(authenticator.masterKeys(owner, _keyHash(key)), 'approved again');
 
-    _executeViaAuthenticator(key, masterKeyPk, 35, block.timestamp + 1 hours, true);
+    _executeViaAuthenticator(key, masterKeyPk, 35, vm.getBlockTimestamp() + 1 hours, true);
   }
 
   /**
@@ -261,8 +271,8 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    * into the digest instead would not match.
    */
   function test_SV_REV_05_nonCanonicalDirectionIsNarrowed() public {
-    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
-    uint256 deadline = block.timestamp + 1 days;
+    AuthKey memory fresh = _secpKey(recipient, vm.getBlockTimestamp() + 10 days);
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
 
     bytes memory data = _approveKey(fresh);
     // word 1 of the payload is the direction; 2 is a value no ABI encoder would write there
@@ -290,10 +300,10 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    * bytes from anyone else are checked and refused.
    */
   function test_SV_UPD_01_ownerBranchTakesNoSignature() public {
-    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
+    AuthKey memory fresh = _secpKey(recipient, vm.getBlockTimestamp() + 10 days);
     bytes32 freshHash = _keyHash(fresh);
     uint256 nonce = 40;
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
 
     bytes memory sig = _signMasterKeyUpdate(fresh, true, nonce, deadline);
     bytes memory approve = _approveKey(fresh);
@@ -323,7 +333,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    */
   function test_SV_UPD_02_anUnchangedWriteStillEmits() public {
     _delegateKeyThroughHub(key);
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
 
     vm.expectEmit(address(authenticator));
     emit ITwoTiersOrderAuthenticator.UpdateMasterKey(owner, _keyHash(key), key, true);
@@ -357,9 +367,13 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    * @dev The gate is the whole of their security, so each entry point is asserted separately.
    */
   function test_SV_05_onlyTheAuthorizedCallerMayAuthenticate() public {
-    ExecutionOrder memory execOrder = _standardOrder(0, block.timestamp);
+    ExecutionOrder memory execOrder = _standardOrder(0, vm.getBlockTimestamp());
     FulfillmentOrder memory fulfillOrder = _openFulfillmentOrder(
-      new ERC20Allowance[](0), new ValidationParams[](0), new GenericCall[](0), 0, block.timestamp
+      new ERC20Allowance[](0),
+      new ValidationParams[](0),
+      new GenericCall[](0),
+      0,
+      vm.getBlockTimestamp()
     );
     FulfillmentSolution memory solution;
     bytes memory data = _authData(key, hex'00');
@@ -381,15 +395,15 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   function test_SV_06_unapprovedKeyRejected() public {
     _delegateKeyThroughHub(key);
 
-    AuthKey memory stranger = _secpKey(relayer, block.timestamp + 30 days);
+    AuthKey memory stranger = _secpKey(relayer, vm.getBlockTimestamp() + 30 days);
 
     vm.expectRevert(_masterKeyNotApproved(stranger));
-    _executeViaAuthenticator(stranger, masterKeyPk, 8, block.timestamp + 1 hours, false);
+    _executeViaAuthenticator(stranger, masterKeyPk, 8, vm.getBlockTimestamp() + 1 hours, false);
   }
 
   /// SV-07 — expiry is inclusive: the expiry second itself still works, the one after it does not
   function test_SV_07_expiryBoundary() public {
-    uint256 t = block.timestamp + 1 days;
+    uint256 t = vm.getBlockTimestamp() + 1 days;
 
     AuthKey memory expiring = _secpKey(masterSigner, t);
     _delegateKeyThroughHub(expiring);
@@ -409,7 +423,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     (, uint256 impostorKey) = makeAddrAndKey('impostor');
 
     vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
-    _executeViaAuthenticator(key, impostorKey, 11, block.timestamp + 1 hours, false);
+    _executeViaAuthenticator(key, impostorKey, 11, vm.getBlockTimestamp() + 1 hours, false);
   }
 
   /// SV-09 — the authenticator's nonce makes an authentication single-use
@@ -417,7 +431,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
 
     uint256 nonce = 12;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     _executeViaAuthenticator(key, masterKeyPk, nonce, deadline, true);
 
@@ -441,7 +455,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
 
     uint256 nonce = 13;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     FulfillmentOrder memory fulfillOrder = _openFulfillmentOrder(
@@ -468,7 +482,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
 
     uint256 nonce = 14;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     FulfillmentOrder memory fulfillOrder = _openFulfillmentOrder(
@@ -498,13 +512,13 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   function test_SV_06b_unapprovedKeyRejectedOnTheFulfillmentPath() public {
     _delegateKeyThroughHub(key);
 
-    AuthKey memory stranger = _secpKey(relayer, block.timestamp + 30 days);
+    AuthKey memory stranger = _secpKey(relayer, vm.getBlockTimestamp() + 30 days);
 
     vm.expectRevert(_masterKeyNotApproved(stranger));
-    _fulfillViaAuthenticator(stranger, masterKeyPk, 60, block.timestamp + 1 hours);
+    _fulfillViaAuthenticator(stranger, masterKeyPk, 60, vm.getBlockTimestamp() + 1 hours);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
-    _fulfillViaAuthenticator(key, masterKeyPk, 61, block.timestamp + 1 hours);
+    _fulfillViaAuthenticator(key, masterKeyPk, 61, vm.getBlockTimestamp() + 1 hours);
     assertEq(
       IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the approved key still settles'
     );
@@ -517,7 +531,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    * refusal one second later is about the boundary and not about the key.
    */
   function test_SV_07b_expiryBoundaryOnTheFulfillmentPath() public {
-    uint256 t = block.timestamp + 1 days;
+    uint256 t = vm.getBlockTimestamp() + 1 days;
 
     AuthKey memory expiring = _secpKey(masterSigner, t);
     _delegateKeyThroughHub(expiring);
@@ -547,7 +561,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     AuthKey memory stretched = _secpKey(masterSigner, key.expiration + 1);
 
     vm.expectRevert(_masterKeyNotApproved(stretched));
-    _executeViaAuthenticator(stretched, masterKeyPk, 15, block.timestamp + 1 hours, false);
+    _executeViaAuthenticator(stretched, masterKeyPk, 15, vm.getBlockTimestamp() + 1 hours, false);
   }
 
   /**
@@ -560,8 +574,8 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     address walletA = address(new ERC1271WalletLocal(sharedSigner));
     address walletB = address(new ERC1271WalletLocal(sharedSigner));
 
-    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
-    uint256 deadline = block.timestamp + 1 days;
+    AuthKey memory fresh = _secpKey(recipient, vm.getBlockTimestamp() + 10 days);
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
     bytes memory sig = _sign(
       sharedSignerKey,
       lTypedDataHash(_authenticatorDomain(), lMasterKeyUpdate(walletA, fresh, true, 8, deadline))
@@ -592,10 +606,14 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory sig = _sign(_walletSignerKey, digest);
 
     AuthKey memory asSecp = AuthKey({
-      publicKey: abi.encode(wallet), keyType: KeyType.Secp256k1, expiration: block.timestamp + 1
+      publicKey: abi.encode(wallet),
+      keyType: KeyType.Secp256k1,
+      expiration: vm.getBlockTimestamp() + 1
     });
     AuthKey memory as1271 = AuthKey({
-      publicKey: abi.encode(wallet), keyType: KeyType.ERC1271, expiration: block.timestamp + 1
+      publicKey: abi.encode(wallet),
+      keyType: KeyType.ERC1271,
+      expiration: vm.getBlockTimestamp() + 1
     });
 
     assertFalse(_verifyWithKeyTail(asSecp, '', digest, sig), 'Secp256k1 does not call ERC-1271');
@@ -607,12 +625,14 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     AuthKey memory walletKey = AuthKey({
       publicKey: abi.encode(_wallet()),
       keyType: KeyType.ERC1271,
-      expiration: block.timestamp + 30 days
+      expiration: vm.getBlockTimestamp() + 30 days
     });
     _delegateKeyThroughHub(walletKey);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
-    _executeViaAuthenticator(walletKey, _walletSignerKey, 16, block.timestamp + 1 hours, true);
+    _executeViaAuthenticator(
+      walletKey, _walletSignerKey, 16, vm.getBlockTimestamp() + 1 hours, true
+    );
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT);
   }
 
@@ -623,12 +643,14 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory sig = _sign(masterKeyPk, digest);
 
     AuthKey memory as1271 = AuthKey({
-      publicKey: abi.encode(masterSigner), keyType: KeyType.ERC1271, expiration: block.timestamp + 1
+      publicKey: abi.encode(masterSigner),
+      keyType: KeyType.ERC1271,
+      expiration: vm.getBlockTimestamp() + 1
     });
     AuthKey memory asSecp = AuthKey({
       publicKey: abi.encode(masterSigner),
       keyType: KeyType.Secp256k1,
-      expiration: block.timestamp + 1
+      expiration: vm.getBlockTimestamp() + 1
     });
 
     assertFalse(_verifyWithKeyTail(as1271, '', digest, sig), 'ERC1271 does not recover');
@@ -643,11 +665,11 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     AuthKey memory verifierKey = AuthKey({
       publicKey: abi.encodePacked(address(new ERC7913P256Verifier()), KeyFixtures.p256PublicKey()),
       keyType: KeyType.ERC7913,
-      expiration: block.timestamp + 30 days
+      expiration: vm.getBlockTimestamp() + 30 days
     });
     _delegateKeyThroughHub(verifierKey);
 
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     bytes memory signature = KeyFixtures.p256Sign(_executionDigest(_standardOrder(19, deadline)));
 
     uint256 before = IERC20(token18).balanceOf(address(router));
@@ -668,21 +690,23 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     address permissive = address(new PermissiveVerifier());
 
     AuthKey memory bare = AuthKey({
-      publicKey: abi.encodePacked(permissive), keyType: KeyType.ERC7913, expiration: block.timestamp
+      publicKey: abi.encodePacked(permissive),
+      keyType: KeyType.ERC7913,
+      expiration: vm.getBlockTimestamp()
     });
     assertFalse(_verifyWithKeyTail(bare, '', digest, ''), 'no key refused');
 
     AuthKey memory oneByte = AuthKey({
       publicKey: abi.encodePacked(permissive, hex'01'),
       keyType: KeyType.ERC7913,
-      expiration: block.timestamp
+      expiration: vm.getBlockTimestamp()
     });
     assertTrue(_verifyWithKeyTail(oneByte, '', digest, ''), 'a one-byte key reaches the verifier');
 
     AuthKey memory noCode = AuthKey({
       publicKey: abi.encodePacked(masterSigner, KeyFixtures.p256PublicKey()),
       keyType: KeyType.ERC7913,
-      expiration: block.timestamp
+      expiration: vm.getBlockTimestamp()
     });
     assertFalse(
       _verifyWithKeyTail(noCode, '', digest, KeyFixtures.p256Sign(digest)), 'codeless verifier'
@@ -694,12 +718,12 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     AuthKey memory p256 = AuthKey({
       publicKey: KeyFixtures.p256PublicKey(),
       keyType: KeyType.P256,
-      expiration: block.timestamp + 30 days
+      expiration: vm.getBlockTimestamp() + 30 days
     });
     _delegateKeyThroughHub(p256);
 
     uint256 nonce = 17;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     bytes32 digest = _executionDigest(_standardOrder(nonce, deadline));
 
     bytes memory signature = KeyFixtures.p256Sign(digest);
@@ -724,11 +748,11 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     AuthKey memory wa = AuthKey({
       publicKey: KeyFixtures.p256PublicKey(),
       keyType: KeyType.WebAuthn,
-      expiration: block.timestamp + 30 days
+      expiration: vm.getBlockTimestamp() + 30 days
     });
     _delegateKeyThroughHub(wa);
 
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     // -01 a user-verified assertion is accepted
     bytes32 digest = _executionDigest(_standardOrder(19, deadline));
@@ -764,7 +788,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     AuthKey memory rsa = AuthKey({
       publicKey: KeyFixtures.rsaPublicKey(),
       keyType: KeyType.RSA,
-      expiration: block.timestamp + 30 days
+      expiration: vm.getBlockTimestamp() + 30 days
     });
 
     assertTrue(
@@ -782,7 +806,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     AuthKey memory shortRsa = AuthKey({
       publicKey: KeyFixtures.rsaPublicKeyWithShortModulus(),
       keyType: KeyType.RSA,
-      expiration: block.timestamp + 30 days
+      expiration: vm.getBlockTimestamp() + 30 days
     });
 
     assertFalse(
@@ -805,12 +829,13 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    */
   function test_SV_KEY_LEN_01_anEmptySecp256k1KeySignsNothing() public {
     (address attacker, uint256 attackerPk) = makeAddrAndKey('attacker');
-    AuthKey memory empty =
-      AuthKey({publicKey: '', keyType: KeyType.Secp256k1, expiration: block.timestamp + 30 days});
+    AuthKey memory empty = AuthKey({
+      publicKey: '', keyType: KeyType.Secp256k1, expiration: vm.getBlockTimestamp() + 30 days
+    });
     _delegateKeyThroughHub(empty);
 
     uint256 nonce = 130;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     bytes memory sig = _sign(attackerPk, _executionDigest(_standardOrder(nonce, deadline)));
     bytes memory forged = _authDataWithKeyTail(empty, abi.encode(attacker), sig);
 
@@ -831,12 +856,15 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory sig = _sign(masterKeyPk, digest);
 
     AuthKey memory short_ = AuthKey({
-      publicKey: _prefix(full, 31), keyType: KeyType.Secp256k1, expiration: block.timestamp + 1 days
+      publicKey: _prefix(full, 31),
+      keyType: KeyType.Secp256k1,
+      expiration: vm.getBlockTimestamp() + 1 days
     });
     assertFalse(_verifyWithKeyTail(short_, _suffix(full, 31), digest, sig), 'short key refused');
 
-    AuthKey memory exact =
-      AuthKey({publicKey: full, keyType: KeyType.Secp256k1, expiration: block.timestamp + 1 days});
+    AuthKey memory exact = AuthKey({
+      publicKey: full, keyType: KeyType.Secp256k1, expiration: vm.getBlockTimestamp() + 1 days
+    });
     assertTrue(_verifyWithKeyTail(exact, '', digest, sig), 'the full key verifies');
   }
 
@@ -847,12 +875,15 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory sig = KeyFixtures.p256Sign(digest);
 
     AuthKey memory short_ = AuthKey({
-      publicKey: _prefix(full, 63), keyType: KeyType.P256, expiration: block.timestamp + 1 days
+      publicKey: _prefix(full, 63),
+      keyType: KeyType.P256,
+      expiration: vm.getBlockTimestamp() + 1 days
     });
     assertFalse(_verifyWithKeyTail(short_, _suffix(full, 63), digest, sig), 'short key refused');
 
-    AuthKey memory exact =
-      AuthKey({publicKey: full, keyType: KeyType.P256, expiration: block.timestamp + 1 days});
+    AuthKey memory exact = AuthKey({
+      publicKey: full, keyType: KeyType.P256, expiration: vm.getBlockTimestamp() + 1 days
+    });
     assertTrue(_verifyWithKeyTail(exact, '', digest, sig), 'the full key verifies');
   }
 
@@ -863,14 +894,17 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     bytes memory assertion = KeyFixtures.webAuthnAssertion(digest, true);
 
     AuthKey memory short_ = AuthKey({
-      publicKey: _prefix(full, 63), keyType: KeyType.WebAuthn, expiration: block.timestamp + 1 days
+      publicKey: _prefix(full, 63),
+      keyType: KeyType.WebAuthn,
+      expiration: vm.getBlockTimestamp() + 1 days
     });
     assertFalse(
       _verifyWithKeyTail(short_, _suffix(full, 63), digest, assertion), 'short key refused'
     );
 
-    AuthKey memory exact =
-      AuthKey({publicKey: full, keyType: KeyType.WebAuthn, expiration: block.timestamp + 1 days});
+    AuthKey memory exact = AuthKey({
+      publicKey: full, keyType: KeyType.WebAuthn, expiration: vm.getBlockTimestamp() + 1 days
+    });
     assertTrue(_verifyWithKeyTail(exact, '', digest, assertion), 'the full key verifies');
   }
 
@@ -897,7 +931,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
         abi.encodePacked(posKey, KeyFixtures.RSA_FIXED_DIGEST, posSig),
         eBlob,
         nBlob,
-        abi.encode(uint256(0x60), KeyType.RSA, block.timestamp + 1 days, uint256(0)),
+        abi.encode(uint256(0x60), KeyType.RSA, vm.getBlockTimestamp() + 1 days, uint256(0)),
         abi.encodePacked(posE - posKeyBytes, posN - posKeyBytes),
         _blob(KeyFixtures.rsaSignatureForFixedDigest())
       );
@@ -919,11 +953,13 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     AuthKey memory renewed = _secpKey(masterSigner, key.expiration + 30 days);
     _delegateKeyThroughHub(key);
     vm.prank(owner);
-    authenticator.updateAuthentication(owner, _approveKey(renewed), 0, block.timestamp + 1, '');
+    authenticator.updateAuthentication(
+      owner, _approveKey(renewed), 0, vm.getBlockTimestamp() + 1, ''
+    );
     assertEq(_credentialHash(key), _credentialHash(renewed), 'one credential, two approvals');
 
     uint256 nonce = 140;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     bytes memory sig = _sign(masterKeyPk, _executionDigest(_standardOrder(nonce, deadline)));
 
     _submitExecution(key, sig, nonce, deadline);
@@ -943,12 +979,14 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     AuthKey memory asSession = _secpKey(sessionSigner, key.expiration);
     AuthKey memory asMaster = _secpKey(sessionSigner, key.expiration - 1);
     vm.prank(relayer);
-    _approveSessionKey(key, asSession, 149, block.timestamp + 1 days, masterKeyPk);
+    _approveSessionKey(key, asSession, 149, vm.getBlockTimestamp() + 1 days, masterKeyPk);
     vm.prank(owner);
-    authenticator.updateAuthentication(owner, _approveKey(asMaster), 0, block.timestamp + 1, '');
+    authenticator.updateAuthentication(
+      owner, _approveKey(asMaster), 0, vm.getBlockTimestamp() + 1, ''
+    );
 
     uint256 nonce = 150;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     _executeViaAuthenticator(asSession, sessionKeyPk, nonce, deadline, true, true);
 
     vm.expectRevert(
@@ -965,7 +1003,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(renewed);
 
     uint256 nonce = 160;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     authenticator.revokeNonce(
       key, nonce, deadline, _signNonceRevocation(key, nonce, deadline, masterKeyPk)
     );
@@ -1015,8 +1053,8 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    */
   function testFuzz_SV_FUZZ_UPD_directUpdate(SessionFuzz memory f) public {
     KeyType keyType = KeyType(bound(f.keyType, 0, 5));
-    uint256 expiration = block.timestamp + bound(f.expirationOffset, 0, 365 days);
-    uint256 deadline = block.timestamp + bound(f.deadlineOffset, 0, 30 days);
+    uint256 expiration = vm.getBlockTimestamp() + bound(f.expirationOffset, 0, 365 days);
+    uint256 deadline = vm.getBlockTimestamp() + bound(f.deadlineOffset, 0, 30 days);
 
     AuthKey memory fresh =
       AuthKey({publicKey: abi.encode(recipient), keyType: keyType, expiration: expiration});
@@ -1057,11 +1095,11 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
 
   function testFuzz_SV_FUZZ_VER_nonceAndDeadline(SessionVerifyFuzz memory f) public {
     uint256 nonce = f.nonce;
-    uint256 deadline = block.timestamp + bound(f.deadlineOffset, 0, 30 days);
+    uint256 deadline = vm.getBlockTimestamp() + bound(f.deadlineOffset, 0, 30 days);
 
     // the key's own expiry is a live dimension: it must outlast the order for it to settle
     AuthKey memory fuzzKey =
-      _secpKey(masterSigner, block.timestamp + bound(f.expirationOffset, 0, 365 days));
+      _secpKey(masterSigner, vm.getBlockTimestamp() + bound(f.expirationOffset, 0, 365 days));
     _delegateKeyThroughHub(fuzzKey);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
@@ -1094,7 +1132,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
       owner, _keyHash(sessionKey), _keyHash(key), sessionKey, true
     );
     vm.prank(relayer);
-    _approveSessionKey(key, sessionKey, 1, block.timestamp + 1 days, masterKeyPk);
+    _approveSessionKey(key, sessionKey, 1, vm.getBlockTimestamp() + 1 days, masterKeyPk);
 
     assertEq(
       authenticator.sessionKeyMaster(owner, _keyHash(sessionKey)),
@@ -1106,7 +1144,9 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     );
 
     uint256 before = IERC20(token18).balanceOf(address(router));
-    _executeViaAuthenticator(sessionKey, sessionKeyPk, 2, block.timestamp + 1 hours, true, true);
+    _executeViaAuthenticator(
+      sessionKey, sessionKeyPk, 2, vm.getBlockTimestamp() + 1 hours, true, true
+    );
     assertEq(
       IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the session key settled it'
     );
@@ -1118,10 +1158,10 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
 
     vm.prank(relayer);
-    _approveSessionKey(key, sessionKey, 1, block.timestamp + 1 days, masterKeyPk);
+    _approveSessionKey(key, sessionKey, 1, vm.getBlockTimestamp() + 1 days, masterKeyPk);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
-    _fulfillViaAuthenticator(sessionKey, sessionKeyPk, 3, block.timestamp + 1 hours, true);
+    _fulfillViaAuthenticator(sessionKey, sessionKeyPk, 3, vm.getBlockTimestamp() + 1 hours, true);
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the fulfillment settled');
   }
 
@@ -1134,7 +1174,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
     AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
 
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
     vm.prank(relayer);
     _approveSessionKey(key, sessionKey, 1, deadline, masterKeyPk);
 
@@ -1159,10 +1199,10 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
 
     (address strangerSigner, uint256 strangerPk) = makeAddrAndKey('stranger key');
-    AuthKey memory stranger = _secpKey(strangerSigner, block.timestamp + 30 days);
-    AuthKey memory sessionKey = _secpKey(sessionSigner, block.timestamp + 1 days);
+    AuthKey memory stranger = _secpKey(strangerSigner, vm.getBlockTimestamp() + 30 days);
+    AuthKey memory sessionKey = _secpKey(sessionSigner, vm.getBlockTimestamp() + 1 days);
 
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
     bytes memory sig = _signSessionKeyUpdate(stranger, sessionKey, true, 5, deadline, strangerPk);
 
     vm.prank(relayer);
@@ -1182,10 +1222,12 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
     AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
 
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
     vm.prank(relayer);
     _approveSessionKey(key, sessionKey, 1, deadline, masterKeyPk);
-    _executeViaAuthenticator(sessionKey, sessionKeyPk, 10, block.timestamp + 1 hours, true, true);
+    _executeViaAuthenticator(
+      sessionKey, sessionKeyPk, 10, vm.getBlockTimestamp() + 1 hours, true, true
+    );
 
     vm.prank(owner);
     authenticator.updateAuthentication(owner, _revokeKey(key), 0, deadline, '');
@@ -1198,11 +1240,15 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     );
 
     vm.expectRevert(_masterKeyNotApproved(key));
-    _executeViaAuthenticator(sessionKey, sessionKeyPk, 11, block.timestamp + 1 hours, false, true);
+    _executeViaAuthenticator(
+      sessionKey, sessionKeyPk, 11, vm.getBlockTimestamp() + 1 hours, false, true
+    );
 
     vm.prank(owner);
     authenticator.updateAuthentication(owner, _approveKey(key), 0, deadline, '');
-    _executeViaAuthenticator(sessionKey, sessionKeyPk, 12, block.timestamp + 1 hours, true, true);
+    _executeViaAuthenticator(
+      sessionKey, sessionKeyPk, 12, vm.getBlockTimestamp() + 1 hours, true, true
+    );
   }
 
   /**
@@ -1212,7 +1258,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    */
   function test_SV_TIER_05_aSessionKeyMayNotOutliveItsMaster() public {
     _delegateKeyThroughHub(key);
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
 
     AuthKey memory tooLong = _secpKey(sessionSigner, key.expiration + 1);
     bytes memory sig = _signSessionKeyUpdate(key, tooLong, true, 20, deadline, masterKeyPk);
@@ -1253,7 +1299,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
     AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
 
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
     bytes memory sig = _signSessionKeyUpdate(key, sessionKey, true, 21, deadline, sessionKeyPk);
 
     vm.prank(relayer);
@@ -1273,7 +1319,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
     AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
 
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
     vm.prank(recipient);
     authenticator.updateAuthentication(recipient, _approveKey(key), 0, deadline, '');
 
@@ -1311,7 +1357,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
     AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
 
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
     uint256 nonce = 9;
 
     vm.prank(relayer);
@@ -1336,7 +1382,9 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     authenticator.updateAuthentication(owner, _approveKey(other), nonce, deadline, ownerSig);
     assertTrue(authenticator.masterKeys(owner, _keyHash(other)), 'the owner still has that number');
 
-    _executeViaAuthenticator(sessionKey, sessionKeyPk, nonce, block.timestamp + 1 hours, true, true);
+    _executeViaAuthenticator(
+      sessionKey, sessionKeyPk, nonce, vm.getBlockTimestamp() + 1 hours, true, true
+    );
   }
 
   /// SV-TIER-09 — a master key revokes a session key it approved, and the key stops signing
@@ -1344,10 +1392,12 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
     AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
 
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
     vm.prank(relayer);
     _approveSessionKey(key, sessionKey, 40, deadline, masterKeyPk);
-    _executeViaAuthenticator(sessionKey, sessionKeyPk, 41, block.timestamp + 1 hours, true, true);
+    _executeViaAuthenticator(
+      sessionKey, sessionKeyPk, 41, vm.getBlockTimestamp() + 1 hours, true, true
+    );
 
     bytes memory sig = _signSessionKeyUpdate(key, sessionKey, false, 42, deadline, masterKeyPk);
     vm.expectEmit(address(authenticator));
@@ -1365,7 +1415,9 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
       'the approval is cleared'
     );
     vm.expectRevert(_sessionKeyNotApproved(sessionKey));
-    _executeViaAuthenticator(sessionKey, sessionKeyPk, 43, block.timestamp + 1 hours, false, true);
+    _executeViaAuthenticator(
+      sessionKey, sessionKeyPk, 43, vm.getBlockTimestamp() + 1 hours, false, true
+    );
   }
 
   /**
@@ -1378,7 +1430,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   function test_SV_TIER_10_eachApprovalIsUsableOnItsOwnTier() public {
     _delegateKeyThroughHub(key);
     AuthKey memory both = _secpKey(sessionSigner, key.expiration);
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
 
     vm.prank(relayer);
     _approveSessionKey(key, both, 50, deadline, masterKeyPk);
@@ -1386,29 +1438,29 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     authenticator.updateAuthentication(owner, _approveKey(both), 0, deadline, '');
 
     // either tier settles an order while both approvals stand
-    _executeViaAuthenticator(both, sessionKeyPk, 51, block.timestamp + 1 hours, true, true);
-    _executeViaAuthenticator(both, sessionKeyPk, 52, block.timestamp + 1 hours, true, false);
+    _executeViaAuthenticator(both, sessionKeyPk, 51, vm.getBlockTimestamp() + 1 hours, true, true);
+    _executeViaAuthenticator(both, sessionKeyPk, 52, vm.getBlockTimestamp() + 1 hours, true, false);
 
     // revoking the master key closes the session route, and leaves the owner's approval alone
     vm.prank(owner);
     authenticator.updateAuthentication(owner, _revokeKey(key), 0, deadline, '');
 
     vm.expectRevert(_masterKeyNotApproved(key));
-    _executeViaAuthenticator(both, sessionKeyPk, 53, block.timestamp + 1 hours, false, true);
-    _executeViaAuthenticator(both, sessionKeyPk, 54, block.timestamp + 1 hours, true, false);
+    _executeViaAuthenticator(both, sessionKeyPk, 53, vm.getBlockTimestamp() + 1 hours, false, true);
+    _executeViaAuthenticator(both, sessionKeyPk, 54, vm.getBlockTimestamp() + 1 hours, true, false);
 
     // and revoking the owner's approval closes the remaining route
     vm.prank(owner);
     authenticator.updateAuthentication(owner, _revokeKey(both), 0, deadline, '');
 
     vm.expectRevert(_masterKeyNotApproved(both));
-    _executeViaAuthenticator(both, sessionKeyPk, 55, block.timestamp + 1 hours, false, false);
+    _executeViaAuthenticator(both, sessionKeyPk, 55, vm.getBlockTimestamp() + 1 hours, false, false);
   }
 
   /// SV-TIER-10b — a master key that approves itself still signs, on either tier
   function test_SV_TIER_10b_aMasterKeyMayApproveItself() public {
     _delegateKeyThroughHub(key);
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
 
     bytes memory selfSig = _signSessionKeyUpdate(key, key, true, 56, deadline, masterKeyPk);
     vm.prank(relayer);
@@ -1419,8 +1471,8 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     assertEq(
       authenticator.sessionKeyMaster(owner, _keyHash(key)), _keyHash(key), 'approved by itself'
     );
-    _executeViaAuthenticator(key, masterKeyPk, 57, block.timestamp + 1 hours, true, true);
-    _executeViaAuthenticator(key, masterKeyPk, 58, block.timestamp + 1 hours, true, false);
+    _executeViaAuthenticator(key, masterKeyPk, 57, vm.getBlockTimestamp() + 1 hours, true, true);
+    _executeViaAuthenticator(key, masterKeyPk, 58, vm.getBlockTimestamp() + 1 hours, true, false);
   }
 
   /**
@@ -1435,16 +1487,20 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
 
     vm.prank(relayer);
-    _approveSessionKey(key, sessionKey, 60, block.timestamp + 1 days, masterKeyPk);
+    _approveSessionKey(key, sessionKey, 60, vm.getBlockTimestamp() + 1 days, masterKeyPk);
 
     vm.expectRevert(_sessionKeyNotApproved(key));
-    _executeViaAuthenticator(key, masterKeyPk, 61, block.timestamp + 1 hours, false, true);
+    _executeViaAuthenticator(key, masterKeyPk, 61, vm.getBlockTimestamp() + 1 hours, false, true);
 
     vm.expectRevert(_masterKeyNotApproved(sessionKey));
-    _executeViaAuthenticator(sessionKey, sessionKeyPk, 62, block.timestamp + 1 hours, false, false);
+    _executeViaAuthenticator(
+      sessionKey, sessionKeyPk, 62, vm.getBlockTimestamp() + 1 hours, false, false
+    );
 
-    _executeViaAuthenticator(key, masterKeyPk, 61, block.timestamp + 1 hours, true, false);
-    _executeViaAuthenticator(sessionKey, sessionKeyPk, 62, block.timestamp + 1 hours, true, true);
+    _executeViaAuthenticator(key, masterKeyPk, 61, vm.getBlockTimestamp() + 1 hours, true, false);
+    _executeViaAuthenticator(
+      sessionKey, sessionKeyPk, 62, vm.getBlockTimestamp() + 1 hours, true, true
+    );
   }
 
   /**
@@ -1456,8 +1512,8 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   function test_SV_TIER_12_anExpiredKeyCannotBeApproved() public {
     _delegateKeyThroughHub(key);
 
-    uint256 deadline = block.timestamp + 365 days;
-    AuthKey memory stale = _secpKey(sessionSigner, block.timestamp + 1 hours);
+    uint256 deadline = vm.getBlockTimestamp() + 365 days;
+    AuthKey memory stale = _secpKey(sessionSigner, vm.getBlockTimestamp() + 1 hours);
     bytes32 staleHash = _keyHash(stale);
 
     vm.warp(stale.expiration + 1);
@@ -1484,10 +1540,10 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    * bound. So the master key needs no expiry check of its own.
    */
   function test_SV_TIER_12b_anExpiredMasterKeyCanApproveNothing() public {
-    AuthKey memory master = _secpKey(masterSigner, block.timestamp + 2 hours);
+    AuthKey memory master = _secpKey(masterSigner, vm.getBlockTimestamp() + 2 hours);
     _delegateKeyThroughHub(master);
 
-    uint256 deadline = block.timestamp + 365 days;
+    uint256 deadline = vm.getBlockTimestamp() + 365 days;
     AuthKey memory stale = _secpKey(sessionSigner, master.expiration);
     AuthKey memory fresh = _secpKey(recipient, master.expiration + 1);
 
@@ -1536,7 +1592,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     (address otherSigner, uint256 otherPk) = makeAddrAndKey('other master signer');
     AuthKey memory other = _secpKey(otherSigner, key.expiration);
     AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
 
     _delegateKeyThroughHub(key);
     vm.prank(owner);
@@ -1594,9 +1650,9 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    * signature, so the first step's refusal is about the order of the checks.
    */
   function test_SV_ORD_01_expiryComesBeforeTheOwnersSignature() public {
-    AuthKey memory stale = _secpKey(sessionSigner, block.timestamp + 1 hours);
-    AuthKey memory live = _secpKey(sessionSigner, block.timestamp + 30 days);
-    uint256 deadline = block.timestamp + 365 days;
+    AuthKey memory stale = _secpKey(sessionSigner, vm.getBlockTimestamp() + 1 hours);
+    AuthKey memory live = _secpKey(sessionSigner, vm.getBlockTimestamp() + 30 days);
+    uint256 deadline = vm.getBlockTimestamp() + 365 days;
 
     vm.warp(stale.expiration + 1);
 
@@ -1615,9 +1671,9 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    * expired one's refusal is about the order of the checks.
    */
   function test_SV_ORD_02_expiryComesBeforeTheMasterKeysApproval() public {
-    AuthKey memory stale = _secpKey(sessionSigner, block.timestamp + 1 hours);
-    AuthKey memory live = _secpKey(recipient, block.timestamp + 2 hours);
-    uint256 deadline = block.timestamp + 365 days;
+    AuthKey memory stale = _secpKey(sessionSigner, vm.getBlockTimestamp() + 1 hours);
+    AuthKey memory live = _secpKey(recipient, vm.getBlockTimestamp() + 2 hours);
+    uint256 deadline = vm.getBlockTimestamp() + 365 days;
 
     vm.warp(stale.expiration + 1);
 
@@ -1647,8 +1703,8 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    */
   function test_SV_ORD_03_expiryComesBeforeTheKeysApproval() public {
     _delegateKeyThroughHub(key);
-    AuthKey memory stale = _secpKey(sessionSigner, block.timestamp + 1 hours);
-    AuthKey memory live = _secpKey(recipient, block.timestamp + 30 days);
+    AuthKey memory stale = _secpKey(sessionSigner, vm.getBlockTimestamp() + 1 hours);
+    AuthKey memory live = _secpKey(recipient, vm.getBlockTimestamp() + 30 days);
 
     vm.warp(stale.expiration + 1);
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
@@ -1662,10 +1718,11 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
 
   /// SV-FUZZ-TIER — the master key rail over its whole domain
   function testFuzz_SV_FUZZ_TIER_masterKeyRail(TierFuzz memory f) public {
-    uint256 masterExpiration = block.timestamp + bound(f.masterExpirationOffset, 1 hours, 365 days);
-    uint256 sessionExpiration =
-      block.timestamp + bound(f.sessionExpirationOffset, 1, masterExpiration - block.timestamp);
-    uint256 deadline = block.timestamp + bound(f.deadlineOffset, 1, 365 days);
+    uint256 masterExpiration =
+      vm.getBlockTimestamp() + bound(f.masterExpirationOffset, 1 hours, 365 days);
+    uint256 sessionExpiration = vm.getBlockTimestamp()
+      + bound(f.sessionExpirationOffset, 1, masterExpiration - vm.getBlockTimestamp());
+    uint256 deadline = vm.getBlockTimestamp() + bound(f.deadlineOffset, 1, 365 days);
     uint256 nonce = bound(f.nonce, 0, type(uint64).max);
 
     AuthKey memory masterKey = _secpKey(masterSigner, masterExpiration);
@@ -1709,7 +1766,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   function test_SV_NREV_01_aKeyRevokesANonceOfItsOwn() public {
     _delegateKeyThroughHub(key);
     uint256 nonce = 60;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     bytes memory orderSig = _sign(masterKeyPk, _executionDigest(_standardOrder(nonce, deadline)));
 
@@ -1735,7 +1792,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
     AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
     uint256 nonce = 70;
-    uint256 deadline = block.timestamp + 1 days;
+    uint256 deadline = vm.getBlockTimestamp() + 1 days;
 
     bytes memory approval =
       _signSessionKeyUpdate(key, sessionKey, true, nonce, deadline, masterKeyPk);
@@ -1760,10 +1817,10 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
     AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
     vm.prank(relayer);
-    _approveSessionKey(key, sessionKey, 79, block.timestamp + 1 days, masterKeyPk);
+    _approveSessionKey(key, sessionKey, 79, vm.getBlockTimestamp() + 1 days, masterKeyPk);
 
     uint256 nonce = 80;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     authenticator.revokeNonce(
       sessionKey, nonce, deadline, _signNonceRevocation(sessionKey, nonce, deadline, sessionKeyPk)
     );
@@ -1784,7 +1841,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   /// SV-NREV-04 — the revocation must be signed by the key, for the nonce and deadline it names
   function test_SV_NREV_04_theKeyMustHaveSignedThisNonce() public {
     uint256 nonce = 90;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidRevocationSignature.selector);
     authenticator.revokeNonce(
@@ -1813,7 +1870,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   /// SV-NREV-05 — a revocation spends its nonce, so it cannot be submitted twice
   function test_SV_NREV_05_aRevocationCannotBeReplayed() public {
     uint256 nonce = 100;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     bytes memory sig = _signNonceRevocation(key, nonce, deadline, masterKeyPk);
     authenticator.revokeNonce(key, nonce, deadline, sig);
 
@@ -1829,9 +1886,9 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    * all keep the means to cancel what they signed.
    */
   function test_SV_NREV_06_neitherApprovalNorExpiryIsRequired() public {
-    uint256 deadline = block.timestamp + 365 days;
+    uint256 deadline = vm.getBlockTimestamp() + 365 days;
 
-    AuthKey memory never = _secpKey(sessionSigner, block.timestamp + 30 days);
+    AuthKey memory never = _secpKey(sessionSigner, vm.getBlockTimestamp() + 30 days);
     authenticator.revokeNonce(
       never, 1, deadline, _signNonceRevocation(never, 1, deadline, sessionKeyPk)
     );
@@ -1839,12 +1896,14 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
 
     _delegateKeyThroughHub(key);
     vm.prank(owner);
-    authenticator.updateAuthentication(owner, _revokeKey(key), 0, block.timestamp + 1 days, '');
+    authenticator.updateAuthentication(
+      owner, _revokeKey(key), 0, vm.getBlockTimestamp() + 1 days, ''
+    );
     authenticator.revokeNonce(key, 2, deadline, _signNonceRevocation(key, 2, deadline, masterKeyPk));
     assertEq(authenticator.nonces(_credentialHash(key), 0), 1 << 2, 'approval withdrawn');
 
     (address staleSigner, uint256 staleKeyPk) = makeAddrAndKey('stale signer');
-    AuthKey memory stale = _secpKey(staleSigner, block.timestamp + 1 hours);
+    AuthKey memory stale = _secpKey(staleSigner, vm.getBlockTimestamp() + 1 hours);
     vm.warp(stale.expiration + 1);
     authenticator.revokeNonce(
       stale, 3, deadline, _signNonceRevocation(stale, 3, deadline, staleKeyPk)
@@ -1857,10 +1916,10 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     AuthKey memory p256 = AuthKey({
       publicKey: KeyFixtures.p256PublicKey(),
       keyType: KeyType.P256,
-      expiration: block.timestamp + 30 days
+      expiration: vm.getBlockTimestamp() + 30 days
     });
     uint256 nonce = 110;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidRevocationSignature.selector);
     authenticator.revokeNonce(
@@ -1891,7 +1950,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   function test_SV_NREV_08_deadlineBoundary() public {
     _delegateKeyThroughHub(key);
     uint256 nonce = 120;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     bytes memory sig = _signNonceRevocation(key, nonce, deadline, masterKeyPk);
 
     vm.warp(deadline + 1);
@@ -1911,7 +1970,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
 
   /// SV-FUZZ-NREV — a revocation spends exactly the nonce it names, in the key's namespace
   function testFuzz_SV_FUZZ_NREV_revokeNonce(uint256 nonce, uint256 deadlineOffset) public {
-    uint256 deadline = block.timestamp + bound(deadlineOffset, 0, 365 days);
+    uint256 deadline = vm.getBlockTimestamp() + bound(deadlineOffset, 0, 365 days);
     bytes memory sig = _signNonceRevocation(key, nonce, deadline, masterKeyPk);
 
     vm.expectEmit(address(authenticator));
@@ -1937,7 +1996,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     assertFalse(authenticator.masterKeys(owner, _keyHash(key)), 'the owner holds no master key');
 
     uint256 nonce = 300;
-    ExecutionOrder memory order = _standardOrder(nonce, block.timestamp + 1 hours);
+    ExecutionOrder memory order = _standardOrder(nonce, vm.getBlockTimestamp() + 1 hours);
     bytes memory data = _executionOwnerAuthData(order);
     uint256 before = IERC20(token18).balanceOf(address(router));
 
@@ -1958,7 +2017,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _delegateWithoutKey(owner);
 
     uint256 nonce = 301;
-    FulfillmentOrder memory order = _fulfillmentOrderOf(nonce, block.timestamp + 1 hours);
+    FulfillmentOrder memory order = _fulfillmentOrderOf(nonce, vm.getBlockTimestamp() + 1 hours);
     bytes memory data = _fulfillmentOwnerAuthData(order);
     uint256 before = IERC20(token18).balanceOf(address(router));
 
@@ -1980,7 +2039,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    */
   function test_SV_OWN_03_erc1271OwnerAuthenticatesAndMayRefuse() public {
     (ERC1271WalletMock wallet, uint256 walletSignerPk) = _walletOwner();
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     uint256 before = IERC20(token18).balanceOf(address(router));
 
     ExecutionOrder memory order = _standardOrder(40, deadline);
@@ -2013,7 +2072,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   function test_SV_OWN_04_anotherAccountsSignatureIsRefused() public {
     _delegateKeyThroughHub(key);
 
-    ExecutionOrder memory order = _standardOrder(50, block.timestamp + 1 hours);
+    ExecutionOrder memory order = _standardOrder(50, vm.getBlockTimestamp() + 1 hours);
     (, uint256 impostorPk) = makeAddrAndKey('impostor');
 
     bytes memory impostorData = _executionOwnerAuthData(order, impostorPk);
@@ -2040,7 +2099,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _delegateWithoutKey(owner);
 
     uint256 nonce = 60;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     ExecutionOrder memory order = _standardOrder(nonce, deadline);
     bytes memory data = _executionOwnerAuthData(order);
     _relayExecution(order, data);
@@ -2066,8 +2125,8 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    */
   function test_SV_OWN_06_ownerNamespaceIsSharedWithMasterKeyUpdates() public {
     _delegateWithoutKey(owner);
-    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 10 days);
-    uint256 deadline = block.timestamp + 1 hours;
+    AuthKey memory fresh = _secpKey(recipient, vm.getBlockTimestamp() + 10 days);
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     // an update spends 70, so an order at 70 is refused
     bytes memory updateSig = _signMasterKeyUpdate(fresh, true, 70, deadline);
@@ -2084,7 +2143,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     ExecutionOrder memory second = _standardOrder(71, deadline);
     _relayExecution(second, _executionOwnerAuthData(second));
 
-    AuthKey memory other = _secpKey(relayer, block.timestamp + 10 days);
+    AuthKey memory other = _secpKey(relayer, vm.getBlockTimestamp() + 10 days);
     bytes memory otherSig = _signMasterKeyUpdate(other, true, 71, deadline);
     vm.prank(relayer);
     vm.expectRevert(_nonceAlreadyUsed(lNonceKey(owner), 71));
@@ -2101,7 +2160,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _delegateWithoutKey(owner);
 
     uint256 nonce = 72;
-    ExecutionOrder memory order = _standardOrder(nonce, block.timestamp + 1 hours);
+    ExecutionOrder memory order = _standardOrder(nonce, vm.getBlockTimestamp() + 1 hours);
     bytes memory data = _executionOwnerAuthData(order);
 
     vm.expectEmit(address(authenticator));
@@ -2119,11 +2178,11 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _delegateKeyThroughHub(key);
 
     uint256 nonce = 73;
-    _executeViaAuthenticator(key, masterKeyPk, nonce, block.timestamp + 1 hours, true);
+    _executeViaAuthenticator(key, masterKeyPk, nonce, vm.getBlockTimestamp() + 1 hours, true);
     assertEq(authenticator.nonces(_credentialHash(key), 0), 1 << 73, 'key namespace');
     assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'owner namespace');
 
-    ExecutionOrder memory order = _standardOrder(nonce, block.timestamp + 2 hours);
+    ExecutionOrder memory order = _standardOrder(nonce, vm.getBlockTimestamp() + 2 hours);
     _relayExecution(order, _executionOwnerAuthData(order));
     assertEq(authenticator.nonces(lNonceKey(owner), 0), 1 << 73, 'the owner spends its own bit');
     assertEq(
@@ -2139,7 +2198,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   function test_SV_OWN_07_signatureIsBoundToTheAuthenticatorsDomain() public {
     _delegateWithoutKey(owner);
 
-    ExecutionOrder memory order = _standardOrder(80, block.timestamp + 1 hours);
+    ExecutionOrder memory order = _standardOrder(80, vm.getBlockTimestamp() + 1 hours);
     bytes32 structHash = SchemaHash.executionOrder(order);
 
     bytes memory hubDomain =
@@ -2166,10 +2225,12 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   function test_SV_OWN_08_ownerRailConsultsNoKeys() public {
     _delegateKeyThroughHub(key);
     vm.prank(owner);
-    authenticator.updateAuthentication(owner, _revokeKey(key), 0, block.timestamp + 1 days, '');
+    authenticator.updateAuthentication(
+      owner, _revokeKey(key), 0, vm.getBlockTimestamp() + 1 days, ''
+    );
     assertFalse(authenticator.masterKeys(owner, _keyHash(key)), 'every master key is revoked');
 
-    ExecutionOrder memory order = _standardOrder(90, block.timestamp + 1 hours);
+    ExecutionOrder memory order = _standardOrder(90, vm.getBlockTimestamp() + 1 hours);
     bytes memory ownerSig = _sign(ownerKey, _executionDigest(order));
 
     vm.expectRevert(_masterKeyNotApproved(key));
@@ -2196,7 +2257,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   function test_SV_OWN_09_firstWord0x20IsTheOwnersRail() public {
     _delegateWithoutKey(owner);
 
-    ExecutionOrder memory order = _standardOrder(100, block.timestamp + 1 hours);
+    ExecutionOrder memory order = _standardOrder(100, vm.getBlockTimestamp() + 1 hours);
     bytes memory sig = _sign(ownerKey, _executionDigest(order));
 
     bytes memory byHand = abi.encodePacked(uint256(0x20), _blob(sig));
@@ -2204,7 +2265,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _relayExecution(order, byHand);
     assertEq(authenticator.nonces(lNonceKey(owner), 0), 1 << 100, 'padded');
 
-    ExecutionOrder memory unpadded = _standardOrder(101, block.timestamp + 1 hours);
+    ExecutionOrder memory unpadded = _standardOrder(101, vm.getBlockTimestamp() + 1 hours);
     bytes memory unpaddedSig = _sign(ownerKey, _executionDigest(unpadded));
     _relayExecution(unpadded, abi.encodePacked(uint256(0x20), unpaddedSig.length, unpaddedSig));
     assertEq(authenticator.nonces(lNonceKey(owner), 0), (1 << 100) | (1 << 101), 'unpadded');
@@ -2221,7 +2282,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   function test_SV_OWN_09b_firstWord0x00ReadsAnEmptySignature() public {
     _delegateWithoutKey(owner);
 
-    ExecutionOrder memory order = _standardOrder(102, block.timestamp + 1 hours);
+    ExecutionOrder memory order = _standardOrder(102, vm.getBlockTimestamp() + 1 hours);
     bytes memory sig = _sign(ownerKey, _executionDigest(order));
 
     vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
@@ -2239,7 +2300,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   function test_SV_OWN_09c_aTruncatedPayloadIsASliceError() public {
     _delegateWithoutKey(owner);
 
-    ExecutionOrder memory order = _standardOrder(103, block.timestamp + 1 hours);
+    ExecutionOrder memory order = _standardOrder(103, vm.getBlockTimestamp() + 1 hours);
     bytes memory sig = _sign(ownerKey, _executionDigest(order));
 
     vm.expectRevert(abi.encodePacked(SLICE_OUT_OF_BOUNDS));
@@ -2263,7 +2324,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   function test_SV_OWN_09d_firstWordAbove0x20IsTheKeyRail() public {
     _delegateKeyThroughHub(key);
 
-    ExecutionOrder memory order = _standardOrder(104, block.timestamp + 1 hours);
+    ExecutionOrder memory order = _standardOrder(104, vm.getBlockTimestamp() + 1 hours);
     bytes memory sig = _sign(masterKeyPk, _executionDigest(order));
     bytes memory keyBody = _suffix(abi.encode(key), 0x20);
 
@@ -2292,7 +2353,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     vm.assume(account.code.length == 0 && account != owner);
 
     uint256 nonce = f.nonce;
-    uint256 deadline = block.timestamp + bound(f.deadlineOffset, 0, 30 days);
+    uint256 deadline = vm.getBlockTimestamp() + bound(f.deadlineOffset, 0, 30 days);
     _fundAndDelegate(account);
     uint256 before = IERC20(token18).balanceOf(address(router));
 
@@ -2388,12 +2449,13 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     private
   {
     bytes32 digest = keccak256('a digest');
-    AuthKey memory clean =
-      AuthKey({publicKey: abi.encode(signer), keyType: keyType, expiration: block.timestamp + 1});
+    AuthKey memory clean = AuthKey({
+      publicKey: abi.encode(signer), keyType: keyType, expiration: vm.getBlockTimestamp() + 1
+    });
     AuthKey memory dirty = AuthKey({
       publicKey: abi.encode(uint256(uint160(signer)) | (1 << 200)),
       keyType: keyType,
-      expiration: block.timestamp + 1
+      expiration: vm.getBlockTimestamp() + 1
     });
 
     assertTrue(_verifyWithKeyTail(clean, '', digest, signature), 'the clean encoding verifies');
@@ -2425,14 +2487,14 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
 
   /// @dev The error for a key presented as a master key that the owner never approved, payload
   /// and all
-  function _masterKeyNotApproved(AuthKey memory masterKey) private view returns (bytes memory) {
+  function _masterKeyNotApproved(AuthKey memory masterKey) private pure returns (bytes memory) {
     return abi.encodeWithSelector(
       ITwoTiersOrderAuthenticator.MasterKeyNotApproved.selector, _keyHash(masterKey)
     );
   }
 
   /// @dev The error for a session key with no master key the owner still holds behind it
-  function _sessionKeyNotApproved(AuthKey memory sessionKey) private view returns (bytes memory) {
+  function _sessionKeyNotApproved(AuthKey memory sessionKey) private pure returns (bytes memory) {
     return abi.encodeWithSelector(
       ITwoTiersOrderAuthenticator.SessionKeyNotApproved.selector, _keyHash(sessionKey)
     );
@@ -2441,7 +2503,9 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   /// @dev Delegates the authenticator for `account` with empty init data, so no master key is set
   function _delegateWithoutKey(address account) private {
     vm.prank(account);
-    hub.updateDelegation(account, address(authenticator), true, '', 0, block.timestamp + 1 days, '');
+    hub.updateDelegation(
+      account, address(authenticator), true, '', 0, vm.getBlockTimestamp() + 1 days, ''
+    );
     assertTrue(hub.authDelegated(account, address(authenticator)), 'delegated');
   }
 

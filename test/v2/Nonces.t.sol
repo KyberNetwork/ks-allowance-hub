@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.36;
+pragma solidity ^0.8.0;
 
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
@@ -26,7 +26,7 @@ contract NoncesTest is AuthenticatorBase {
 
   function setUp() public override {
     super.setUp();
-    key = _secpKey(masterSigner, block.timestamp + 30 days);
+    key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
   }
 
   /// NONCE-06 — in the authenticator, the owner's approvals and a session key's orders are separate
@@ -38,7 +38,7 @@ contract NoncesTest is AuthenticatorBase {
     authenticator.revokeNonce(7);
 
     ExecutionOrder memory order = _openExecutionOrder(
-      _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 7, block.timestamp + 1 hours
+      _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 7, vm.getBlockTimestamp() + 1 hours
     );
 
     uint256 before = IERC20(token18).balanceOf(address(router));

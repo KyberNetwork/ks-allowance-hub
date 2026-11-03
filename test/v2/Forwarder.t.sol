@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.36;
+pragma solidity ^0.8.0;
 
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
@@ -122,7 +122,7 @@ contract ForwarderTest is AuthenticatorBase {
   /// PF-01 — an EIP-2612 permit is relayed to the token and lands as an allowance
   function test_PF_01_eip2612PermitForwarded() public {
     uint256 value = 123 ether;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     bytes[] memory data = new bytes[](1);
     data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
@@ -141,7 +141,7 @@ contract ForwarderTest is AuthenticatorBase {
   /// PF-02 — the DAI-flavoured permit, whose `allowed` flag is a direction not an amount
   function test_PF_02_daiStylePermitForwarded() public {
     uint256 nonce = _daiNonce(owner);
-    uint256 expiry = block.timestamp + 1 hours;
+    uint256 expiry = vm.getBlockTimestamp() + 1 hours;
 
     bytes32 structHash = keccak256(
       abi.encode(keccak256(bytes(L_DAI_PERMIT)), owner, address(hub), nonce, expiry, true)
@@ -163,7 +163,7 @@ contract ForwarderTest is AuthenticatorBase {
 
   /// PF-03 — the ERC-721 permit as Uniswap v3 defines it, with the signature split into v/r/s
   function test_PF_03_erc721V3PermitForwarded() public {
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     bytes32 structHash = keccak256(
       abi.encode(
@@ -187,7 +187,7 @@ contract ForwarderTest is AuthenticatorBase {
 
   /// PF-04 — and as v4 defines it, with an unordered nonce and a packed signature
   function test_PF_04_erc721V4PermitForwarded() public {
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     uint256 nonce = 99;
 
     bytes[] memory data = new bytes[](1);
@@ -203,8 +203,8 @@ contract ForwarderTest is AuthenticatorBase {
   /// PF-05 — Permit2's batch `permit`, one of the two Permit2 overloads
   function test_PF_05_permit2BatchPermitForwarded() public {
     uint160 amount = 42 ether;
-    uint48 expiration = uint48(block.timestamp + 1 days);
-    uint256 sigDeadline = block.timestamp + 1 hours;
+    uint48 expiration = uint48(vm.getBlockTimestamp() + 1 days);
+    uint256 sigDeadline = vm.getBlockTimestamp() + 1 hours;
 
     IAllowanceTransfer.PermitBatch memory batch =
       _permit2Batch(token18, amount, expiration, 0, address(hub), sigDeadline);
@@ -281,7 +281,7 @@ contract ForwarderTest is AuthenticatorBase {
   /// PF-06b — a relayed call that fails on its target unwinds the entries that already ran
   function test_PF_06b_failingTransferUnwindsTheBatch() public {
     uint256 value = 11 ether;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     address[] memory targets = new address[](2);
     targets[0] = address(permitToken);
@@ -323,7 +323,7 @@ contract ForwarderTest is AuthenticatorBase {
   /// PF-08 — with its bit clear, a failing call bubbles its own revert and takes the batch with it
   function test_PF_08_failingCallBubblesWhenNotAllowed() public {
     uint256 value = 7 ether;
-    uint256 expired = block.timestamp - 1;
+    uint256 expired = vm.getBlockTimestamp() - 1;
 
     (address[] memory targets, bytes[] memory data) = _goodThenExpired(value, expired);
 
@@ -338,7 +338,7 @@ contract ForwarderTest is AuthenticatorBase {
   /// PF-09 — with its bit set, the same failure is recorded as a result and the batch carries on
   function test_PF_09_failingCallIsCarriedPastWhenAllowed() public {
     uint256 value = 7 ether;
-    uint256 expired = block.timestamp - 1;
+    uint256 expired = vm.getBlockTimestamp() - 1;
 
     (address[] memory targets, bytes[] memory data) = _goodThenExpired(value, expired);
 
@@ -370,8 +370,8 @@ contract ForwarderTest is AuthenticatorBase {
    */
   function testFuzz_PF_FUZZ_allowFailureBits(PermitFuzz memory f) public {
     uint256 count = bound(f.entryCount, 1, 4);
-    uint256 deadline = block.timestamp + bound(f.deadlineOffset, 1, 30 days);
-    uint256 expired = block.timestamp - 1;
+    uint256 deadline = vm.getBlockTimestamp() + bound(f.deadlineOffset, 1, 30 days);
+    uint256 expired = vm.getBlockTimestamp() - 1;
     PackedBits allowFailure = _bits(f.allowFailure);
 
     address[] memory targets = new address[](count);
@@ -453,9 +453,9 @@ contract ForwarderTest is AuthenticatorBase {
    * owner's own signature, so the forwarder needs no such gate.
    */
   function test_FWD_13_updateAuthenticationIsRelayedAndApprovesTheKey() public {
-    AuthKey memory fresh = _secpKey(masterSigner, block.timestamp + 30 days);
+    AuthKey memory fresh = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
     uint256 nonce = 300;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     assertFalse(hub.authDelegated(owner, address(authenticator)), 'the owner never delegated it');
 
@@ -491,12 +491,12 @@ contract ForwarderTest is AuthenticatorBase {
    * submitted, so nothing of theirs is spent.
    */
   function test_FWD_20_updateAuthenticationIsRelayedOnTheMasterKeyRail() public {
-    AuthKey memory masterKey = _secpKey(masterSigner, block.timestamp + 30 days);
-    AuthKey memory ephemeral = _secpKey(sessionSigner, block.timestamp + 1 hours);
+    AuthKey memory masterKey = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
+    AuthKey memory ephemeral = _secpKey(sessionSigner, vm.getBlockTimestamp() + 1 hours);
     _delegateKeyThroughHub(masterKey);
 
     uint256 nonce = 310;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     bytes memory approvalSig =
       _signSessionKeyUpdate(masterKey, ephemeral, true, nonce, deadline, masterKeyPk);
 
@@ -532,9 +532,9 @@ contract ForwarderTest is AuthenticatorBase {
    * approve a key for `owner` on nothing but the say-so of whoever paid for the gas.
    */
   function test_FWD_14_emptySignatureIsRefusedEvenFromTheOwner() public {
-    AuthKey memory fresh = _secpKey(recipient, block.timestamp + 30 days);
+    AuthKey memory fresh = _secpKey(recipient, vm.getBlockTimestamp() + 30 days);
     uint256 nonce = 301;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     bytes32 freshHash = _keyHash(fresh);
     bytes memory noSignature = '';
@@ -563,7 +563,7 @@ contract ForwarderTest is AuthenticatorBase {
   /// FWD-21 — a relayed `updateDelegation` delegates on the owner's signature and the hub's nonce
   function test_FWD_21_updateDelegationIsRelayed() public {
     uint256 nonce = 310;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     bytes memory sig =
       _signAuthDelegation(ownerKey, owner, address(authenticator), true, '', nonce, deadline);
 
@@ -588,7 +588,7 @@ contract ForwarderTest is AuthenticatorBase {
    * own delegation must sign it.
    */
   function test_FWD_22_relayedDelegationNeedsTheOwnersSignature() public {
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     bytes[] memory data = new bytes[](1);
     data[0] = abi.encodeCall(
@@ -609,7 +609,7 @@ contract ForwarderTest is AuthenticatorBase {
    * is unchanged. With the failure bit set the refusal is recorded as that entry's result.
    */
   function test_FWD_16_authenticatorRefusesTheForwarderOnHubOnlyCalls() public {
-    AuthKey memory victimKey = _secpKey(relayer, block.timestamp + 30 days);
+    AuthKey memory victimKey = _secpKey(relayer, vm.getBlockTimestamp() + 30 days);
     bytes32 victimHash = _keyHash(victimKey);
     bytes memory payload = _encodeKey(victimKey);
 
@@ -619,9 +619,13 @@ contract ForwarderTest is AuthenticatorBase {
     initData[0] = abi.encodeCall(IOrderAuthenticator.initAuthentication, (owner, payload));
 
     ExecutionOrder memory execOrder =
-      _openExecutionOrder(new ERC20Transfer[](0), new GenericCall[](0), 0, block.timestamp);
+      _openExecutionOrder(new ERC20Transfer[](0), new GenericCall[](0), 0, vm.getBlockTimestamp());
     FulfillmentOrder memory fulfillOrder = _openFulfillmentOrder(
-      new ERC20Allowance[](0), new ValidationParams[](0), new GenericCall[](0), 0, block.timestamp
+      new ERC20Allowance[](0),
+      new ValidationParams[](0),
+      new GenericCall[](0),
+      0,
+      vm.getBlockTimestamp()
     );
 
     bytes[] memory executionData = new bytes[](1);
@@ -677,8 +681,8 @@ contract ForwarderTest is AuthenticatorBase {
    */
   function test_FWD_17_permit2SinglePermitForwarded() public {
     uint160 amount = 17 ether;
-    uint48 expiration = uint48(block.timestamp + 2 days);
-    uint256 sigDeadline = block.timestamp + 1 hours;
+    uint48 expiration = uint48(vm.getBlockTimestamp() + 2 days);
+    uint256 sigDeadline = vm.getBlockTimestamp() + 1 hours;
 
     IAllowanceTransfer.PermitSingle memory single = IAllowanceTransfer.PermitSingle({
       details: IAllowanceTransfer.PermitDetails({
@@ -730,7 +734,7 @@ contract ForwarderTest is AuthenticatorBase {
    */
   function test_FWD_PAUSE_01_forwardStillWorksWhilePaused() public {
     uint256 value = 5 ether;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     bytes[] memory data = new bytes[](1);
     data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
@@ -754,7 +758,7 @@ contract ForwarderTest is AuthenticatorBase {
    */
   function test_FWD_VALUE_01_valueSentWithForwardIsStranded() public {
     uint256 value = 5 ether;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     bytes[] memory data = new bytes[](1);
     data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
@@ -785,7 +789,7 @@ contract ForwarderTest is AuthenticatorBase {
 
     uint160 amount = 6 ether;
     uint256 nonce = 310;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(amount));
     GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
@@ -820,7 +824,7 @@ contract ForwarderTest is AuthenticatorBase {
   /// FWD-23 — the forwarder relays a permit and a failing call alike when called directly
   function test_FWD_23_forwarderRelaysWhenCalledDirectly() public {
     uint256 value = 17 ether;
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     bytes[] memory data = new bytes[](1);
     data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
@@ -863,7 +867,7 @@ contract ForwarderTest is AuthenticatorBase {
       owner,
       address(hub),
       uint256(1),
-      block.timestamp + 1 hours,
+      vm.getBlockTimestamp() + 1 hours,
       uint8(27),
       bytes32(0),
       bytes32(0)
@@ -934,6 +938,7 @@ contract ForwarderTest is AuthenticatorBase {
   /// @dev A good permit followed by one that is past its deadline, sharing one target
   function _goodThenExpired(uint256 value, uint256 expired)
     internal
+    view
     returns (address[] memory targets, bytes[] memory data)
   {
     targets = new address[](2);
@@ -942,7 +947,7 @@ contract ForwarderTest is AuthenticatorBase {
 
     data = new bytes[](2);
     data[0] = _erc2612Call(
-      'Permit Token', address(permitToken), address(hub), value, 0, block.timestamp + 1 hours
+      'Permit Token', address(permitToken), address(hub), value, 0, vm.getBlockTimestamp() + 1 hours
     );
     data[1] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 1, expired);
   }
@@ -975,7 +980,7 @@ contract ForwarderTest is AuthenticatorBase {
     uint256 value,
     uint256 nonce,
     uint256 deadline
-  ) internal returns (bytes memory) {
+  ) internal view returns (bytes memory) {
     (uint8 v, bytes32 r, bytes32 s) = vm.sign(
       ownerKey, _erc2612Digest(name, token, owner, spender, value, nonce, deadline)
     );
@@ -984,6 +989,7 @@ contract ForwarderTest is AuthenticatorBase {
 
   function _erc721V4Call(address spender, uint256 deadline, uint256 nonce)
     internal
+    view
     returns (bytes memory)
   {
     bytes32 structHash = keccak256(

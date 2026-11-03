@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.36;
+pragma solidity ^0.8.0;
 
 import {Vm} from 'forge-std/Vm.sol';
 
@@ -45,7 +45,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
 
   function setUp() public override {
     super.setUp();
-    key = _secpKey(masterSigner, block.timestamp + 30 days);
+    key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
     (approver, approverKey) = makeAddrAndKey('solution approver');
     solverWallet = makeAddr('solver wallet');
     nftRecipient = makeAddr('nft recipient');
@@ -135,7 +135,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
         _amounts(AMOUNT),
         _addresses(solverWallet),
         _calls(_routerCall(0, hex'01')),
-        block.timestamp + 1 hours
+        vm.getBlockTimestamp() + 1 hours
       ),
       ''
     );
@@ -171,7 +171,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
       _amounts(AMOUNT),
       _addresses(address(router2)),
       _calls(_routerCall(0, hex'01')),
-      block.timestamp + 1 hours
+      vm.getBlockTimestamp() + 1 hours
     );
     FulfillmentSolution memory toSolver = _toSolverAndRecipient();
     bytes memory routersApproval = _signSolutionApproval(approverKey, order, toRouters);
@@ -213,7 +213,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
       new GenericCall[](0),
       ANY,
       0,
-      block.timestamp + 1 hours
+      vm.getBlockTimestamp() + 1 hours
     );
     address[] memory erc20Targets = new address[](2);
     erc20Targets[0] = address(router2);
@@ -226,7 +226,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
       erc20Amounts,
       _addresses(nftRecipient),
       new GenericCall[](0),
-      block.timestamp + 1 hours
+      vm.getBlockTimestamp() + 1 hours
     );
 
     ERC20Transfer[] memory expectedErc20s = new ERC20Transfer[](2);
@@ -457,7 +457,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
       new GenericCall[](0),
       solutionApprover,
       nonce,
-      block.timestamp + 1 hours
+      vm.getBlockTimestamp() + 1 hours
     );
   }
 
@@ -468,7 +468,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
       _amounts(AMOUNT),
       _addresses(nftRecipient),
       _calls(_routerCall(0, hex'01')),
-      block.timestamp + 1 hours
+      vm.getBlockTimestamp() + 1 hours
     );
   }
 
@@ -491,7 +491,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
       _amounts(AMOUNT),
       erc721Targets,
       _calls(_routerCall(0, hex'01')),
-      block.timestamp + 1 hours
+      vm.getBlockTimestamp() + 1 hours
     );
   }
 
@@ -515,7 +515,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
       new GenericCall[](0),
       ANY,
       nonce,
-      block.timestamp + 1 hours
+      vm.getBlockTimestamp() + 1 hours
     );
   }
 
@@ -536,7 +536,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
       new GenericCall[](0),
       ANY,
       nonce,
-      block.timestamp + 1 hours
+      vm.getBlockTimestamp() + 1 hours
     );
   }
 
@@ -547,7 +547,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
       _amounts(amount),
       new address[](0),
       new GenericCall[](0),
-      block.timestamp + 1 hours
+      vm.getBlockTimestamp() + 1 hours
     );
   }
 
@@ -563,8 +563,9 @@ contract FulfillTargetsTest is AuthenticatorBase {
     uint160[] memory amounts = new uint160[](2);
     amounts[0] = amount18;
     amounts[1] = amount6;
-    return
-      _solution(targets, amounts, new address[](0), new GenericCall[](0), block.timestamp + 1 hours);
+    return _solution(
+      targets, amounts, new address[](0), new GenericCall[](0), vm.getBlockTimestamp() + 1 hours
+    );
   }
 
   /**

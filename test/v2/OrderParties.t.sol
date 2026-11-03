@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.36;
+pragma solidity ^0.8.0;
 
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
@@ -37,7 +37,7 @@ contract OrderPartiesTest is AuthenticatorBase {
 
   function setUp() public override {
     super.setUp();
-    key = _secpKey(masterSigner, block.timestamp + 30 days);
+    key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
     _delegateKeyThroughHub(key);
   }
 
@@ -50,7 +50,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC721Transfer[] memory noNfts = new ERC721Transfer[](0);
     GenericCall[] memory noCalls = new GenericCall[](0);
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     ExecutionOrder memory pinned = _executionOrder(relayer, erc20s, noNfts, noCalls, 70, expiration);
     uint256 before = _routerWeth();
@@ -107,11 +107,11 @@ contract OrderPartiesTest is AuthenticatorBase {
     IERC20(token18).approve(address(hub), type(uint256).max);
     vm.prank(other);
     hub.updateDelegation(
-      other, address(authenticator), true, _encodeKey(key), 0, block.timestamp + 1 days, ''
+      other, address(authenticator), true, _encodeKey(key), 0, vm.getBlockTimestamp() + 1 days, ''
     );
 
     ExecutionOrder memory order = _openExecutionOrder(
-      _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 75, block.timestamp + 1 hours
+      _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 75, vm.getBlockTimestamp() + 1 hours
     );
     bytes memory authData = _executionAuthData(order, key, masterKeyPk);
 
@@ -137,7 +137,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     ERC721Approval[] memory noNfts = new ERC721Approval[](0);
     ValidationParams[] memory noValidators = new ValidationParams[](0);
     GenericCall[] memory noOwnerCalls = new GenericCall[](0);
-    uint256 expiration = block.timestamp + 1 hours;
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     FulfillmentOrder memory pinned =
       _fulfillmentOrder(solver, erc20s, noNfts, noValidators, noOwnerCalls, ANY, 80, expiration);

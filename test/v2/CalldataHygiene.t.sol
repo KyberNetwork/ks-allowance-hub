@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.36;
+pragma solidity ^0.8.0;
 
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
@@ -27,7 +27,7 @@ contract CalldataHygieneTest is AuthenticatorBase {
 
   function setUp() public override {
     super.setUp();
-    key = _secpKey(masterSigner, block.timestamp + 30 days);
+    key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
   }
 
   /// DIRTY-01 — the delegated execution rail
@@ -38,7 +38,10 @@ contract CalldataHygieneTest is AuthenticatorBase {
         IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
         (
           _openExecutionOrder(
-            _erc20s(_tokenTransfer(AMOUNT)), _calls(_routerCall(0, hex'01')), 90, block.timestamp
+            _erc20s(_tokenTransfer(AMOUNT)),
+            _calls(_routerCall(0, hex'01')),
+            90,
+            vm.getBlockTimestamp()
           ),
           address(0),
           '',
@@ -50,7 +53,7 @@ contract CalldataHygieneTest is AuthenticatorBase {
 
   /// DIRTY-02 — the Permit2-signature execution rail, where the witness binds the same transfers
   function test_DIRTY_02_permit2Execution() public {
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     ExecutionOrder memory order = _executionOrder(
       ANY,
       _erc20s(_tokenTransfer(AMOUNT)),
@@ -71,7 +74,7 @@ contract CalldataHygieneTest is AuthenticatorBase {
   /// DIRTY-03 — the delegated fulfillment rail
   function test_DIRTY_03_delegatedFulfillment() public {
     _delegateKeyThroughHub(key);
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     FulfillmentOrder memory order = _order(92, deadline);
 
     _assertDirtyTokenWordIsRefused(
@@ -92,7 +95,7 @@ contract CalldataHygieneTest is AuthenticatorBase {
 
   /// DIRTY-04 — the Permit2-signature fulfillment rail
   function test_DIRTY_04_permit2Fulfillment() public {
-    uint256 deadline = block.timestamp + 1 hours;
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     FulfillmentOrder memory order = _order(93, deadline);
 
     _assertDirtyTokenWordIsRefused(
