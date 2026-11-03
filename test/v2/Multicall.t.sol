@@ -553,7 +553,6 @@ contract MulticallTest is AuthenticatorBase {
   /// @dev A whole EIP-2612 `permit` call for {ICallsForwarder-forwardCalls} to relay to token6
   function _usdcPermitCall(address spender, uint256 value, uint256 deadline)
     internal
-    view
     returns (bytes memory)
   {
     bytes32 structHash = keccak256(

@@ -108,7 +108,7 @@ abstract contract AuthenticatorBase is HubBase {
     uint256 nonce,
     uint256 deadline,
     uint256 signerPk
-  ) internal view returns (bytes memory) {
+  ) internal returns (bytes memory) {
     return _signSessionKeyUpdate(owner, masterKey, sessionKey, approved, nonce, deadline, signerPk);
   }
 
@@ -121,7 +121,7 @@ abstract contract AuthenticatorBase is HubBase {
     uint256 nonce,
     uint256 deadline,
     uint256 signerPk
-  ) internal view returns (bytes memory) {
+  ) internal returns (bytes memory) {
     bytes32 digest = lTypedDataHash(
       _authenticatorDomain(),
       lSessionKeyUpdate(keyOwner, masterKey, sessionKey, approved, nonce, deadline)
@@ -152,7 +152,7 @@ abstract contract AuthenticatorBase is HubBase {
     uint256 nonce,
     uint256 deadline,
     uint256 signerPk
-  ) internal view returns (bytes memory) {
+  ) internal returns (bytes memory) {
     return _sign(
       signerPk, lTypedDataHash(_authenticatorDomain(), lNonceRevocation(key, nonce, deadline))
     );
@@ -160,7 +160,6 @@ abstract contract AuthenticatorBase is HubBase {
 
   function _signMasterKeyUpdate(AuthKey memory key, bool approved, uint256 nonce, uint256 deadline)
     internal
-    view
     returns (bytes memory)
   {
     bytes32 digest = lTypedDataHash(
@@ -207,7 +206,6 @@ abstract contract AuthenticatorBase is HubBase {
   /// @dev `authenticationData` whose signature is `signerKey`'s over `order`, for a master key
   function _executionAuthData(ExecutionOrder memory order, AuthKey memory key, uint256 signerKey)
     internal
-    view
     returns (bytes memory)
   {
     return _authData(key, _sign(signerKey, _executionDigest(order)), false);
@@ -219,7 +217,7 @@ abstract contract AuthenticatorBase is HubBase {
     AuthKey memory key,
     uint256 signerKey,
     bool isSessionKey
-  ) internal view returns (bytes memory) {
+  ) internal returns (bytes memory) {
     return _authData(key, _sign(signerKey, _executionDigest(order)), isSessionKey);
   }
 
@@ -227,7 +225,7 @@ abstract contract AuthenticatorBase is HubBase {
     FulfillmentOrder memory order,
     AuthKey memory key,
     uint256 signerKey
-  ) internal view returns (bytes memory) {
+  ) internal returns (bytes memory) {
     return _authData(key, _sign(signerKey, _fulfillmentDigest(order)), false);
   }
 
@@ -237,7 +235,7 @@ abstract contract AuthenticatorBase is HubBase {
     AuthKey memory key,
     uint256 signerKey,
     bool isSessionKey
-  ) internal view returns (bytes memory) {
+  ) internal returns (bytes memory) {
     return _authData(key, _sign(signerKey, _fulfillmentDigest(order)), isSessionKey);
   }
 
@@ -249,25 +247,19 @@ abstract contract AuthenticatorBase is HubBase {
   /// @dev The owner's rail for an execution, signed by `signerKey` under the authenticator domain
   function _executionOwnerAuthData(ExecutionOrder memory order, uint256 signerKey)
     internal
-    view
     returns (bytes memory)
   {
     return _ownerAuthData(_sign(signerKey, _executionDigest(order)));
   }
 
   /// @dev As above, signed by this base's own `owner`
-  function _executionOwnerAuthData(ExecutionOrder memory order)
-    internal
-    view
-    returns (bytes memory)
-  {
+  function _executionOwnerAuthData(ExecutionOrder memory order) internal returns (bytes memory) {
     return _executionOwnerAuthData(order, ownerKey);
   }
 
   /// @dev The owner's rail for a fulfillment, signed by `signerKey` under the authenticator domain
   function _fulfillmentOwnerAuthData(FulfillmentOrder memory order, uint256 signerKey)
     internal
-    view
     returns (bytes memory)
   {
     return _ownerAuthData(_sign(signerKey, _fulfillmentDigest(order)));
@@ -276,7 +268,6 @@ abstract contract AuthenticatorBase is HubBase {
   /// @dev As above, signed by this base's own `owner`
   function _fulfillmentOwnerAuthData(FulfillmentOrder memory order)
     internal
-    view
     returns (bytes memory)
   {
     return _fulfillmentOwnerAuthData(order, ownerKey);

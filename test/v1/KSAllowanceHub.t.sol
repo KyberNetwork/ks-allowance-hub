@@ -374,7 +374,7 @@ contract KSAllowanceHubTest is Test {
     assertFalse(allowanceHub.hasRole(WHITELIST_ROUTER_ROLE, address(genericRouter)));
   }
 
-  function test_roleRevokerIsSetForWhitelistRouterRole() public view {
+  function test_roleRevokerIsSetForWhitelistRouterRole() public {
     assertEq(allowanceHub.roleRevokers(WHITELIST_ROUTER_ROLE), KSRoles.GUARDIAN_ROLE);
   }
 
