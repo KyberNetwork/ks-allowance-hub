@@ -501,8 +501,8 @@ contract SettlementTest is HubBase {
 
   /**
    * LOCK-06 — no entry point settles an order inside a fulfillment, at depth one or two
-   * @dev The refusal names the owner of the fulfillment in progress, never the reentering order's.
-   * Through an execution, that fulfillment is the nested one owned by `evilOuter`.
+   * @dev The refusal reports the owner of the fulfillment in progress, never the reentering
+   * order's. Through an execution, that fulfillment is the nested one owned by `evilOuter`.
    */
   function testFuzz_LOCK_06_noOrderSettlesInsideAFulfillment(LockedReentryParams memory p) public {
     uint256 entry = bound(p.entry, 0, 3);

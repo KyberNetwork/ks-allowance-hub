@@ -9,7 +9,7 @@ import {ERC721Holder} from 'openzeppelin-contracts/contracts/token/ERC721/utils/
 
 /// @notice Router that records what the hub passed it, so tests can assert identity and ordering.
 contract RouterMock is IKSGenericRouter, ERC721Holder {
-  /// @dev Read inside `ksExecute`, where {msgSender} still names the owner of the order settling
+  /// @dev Read inside `ksExecute`, where {msgSender} still returns the owner of the order settling
   address public seenMsgSender;
   uint256 public callCount;
   uint256 public lastValue;

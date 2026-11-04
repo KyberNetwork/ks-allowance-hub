@@ -70,7 +70,7 @@ contract ForwarderTest is AuthenticatorBase {
 
   // -----------------------------------------------------------------------------------------------
   // Literal `permit` signatures. These six share one name across six interfaces, so a selector
-  // has to be named by its argument list rather than taken from a function
+  // has to be identified by its argument list rather than taken from a function
   // -----------------------------------------------------------------------------------------------
 
   string internal constant S_EIP2612_PERMIT =
@@ -444,9 +444,9 @@ contract ForwarderTest is AuthenticatorBase {
 
   /**
    * FWD-13 — a relayed `updateAuthentication` approves a session key, on the authenticator's nonce
-   * @dev This is not a token permit: it is the owner's instruction to an authenticator naming the
-   * credential that may sign for them, relayed so the approval and the order that uses it fit in
-   * one transaction. The authenticator owns the replay protection for it, so its nonce bitmap
+   * @dev This is not a token permit: it is the owner's instruction to an authenticator specifying
+   * the credential that may sign for them, relayed so the approval and the order that uses it fit
+   * in one transaction. The authenticator owns the replay protection for it, so its nonce bitmap
    * changes and the hub's does not: the hub only relays the call and spends nothing of its own. The
    * forwarder reaches an authenticator the owner never delegated, and the relay leaves it
    * undelegated: the order rails gate on the delegation, but `updateAuthentication` carries the
@@ -605,7 +605,7 @@ contract ForwarderTest is AuthenticatorBase {
    * authenticator refuses it as the caller because it is not the hub
    * @dev `initAuthentication`, `authenticateExecution` and `authenticateFulfillment` trust only the
    * hub. A relay makes the forwarder their caller, so each reverts with
-   * {IOrderAuthenticator-CallerNotAuthorized} naming the forwarder and the authenticator's state
+   * {IOrderAuthenticator-CallerNotAuthorized} reporting the forwarder and the authenticator's state
    * is unchanged. With the failure bit set the refusal is recorded as that entry's result.
    */
   function test_FWD_16_authenticatorRefusesTheForwarderOnHubOnlyCalls() public {
@@ -968,7 +968,7 @@ contract ForwarderTest is AuthenticatorBase {
     bytes32 structHash = keccak256(
       abi.encode(keccak256(bytes(L_EIP2612_PERMIT)), tokenOwner, spender, value, nonce, deadline)
     );
-    // OpenZeppelin's ERC20Permit names its domain after the token and versions it '1'
+    // OpenZeppelin's ERC20Permit takes its domain name from the token and versions it '1'
     return lTypedDataHash(lDomainSeparator(name, '1', token), structHash);
   }
 

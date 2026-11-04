@@ -191,7 +191,7 @@ contract DelegationTest is AuthenticatorBase {
   /**
    * DEL-06 — withdrawing stops the hub accepting that authenticator, while the key stays approved
    * @dev The owner needs no signature, exactly as when delegating: being `msg.sender` is the
-   * authentication. `data` is ignored on this direction, so the key it names is left alone.
+   * authentication. `data` is ignored on this direction, so the key it specifies is left alone.
    */
   function test_DEL_06_withdrawDelegation() public {
     _delegateKeyThroughHub(key);
@@ -301,7 +301,7 @@ contract DelegationTest is AuthenticatorBase {
   }
 
   /**
-   * DEL-11 — both payload shapes name the same key
+   * DEL-11 — both payload shapes specify the same key
    * @dev `initAuthentication` follows a relative offset out of word 0 rather than assuming the
    * struct starts at a fixed place, so `abi.encode(key)` and `abi.encode(key, anything)` land on
    * the same bytes and hash to the same key. The revocation between the two steps is what stops the
@@ -388,7 +388,7 @@ contract DelegationTest is AuthenticatorBase {
    * enough to cross the guard, which isolates `data.length > 0` from any notion of the payload
    * being meaningful. The first step also fixes the exact calldata the hub forwards, whose absence
    * is what the zero-call expectations in DEL-13 and DEL-15 assert: a signature string
-   * that named nothing would make those two pass vacuously, and would fail here.
+   * that specified nothing would make those two pass vacuously, and would fail here.
    */
   function test_DEL_14_nonEmptyPayloadDoesCallInitAuthentication() public {
     RevertingAuthenticator bad = new RevertingAuthenticator();
@@ -468,7 +468,7 @@ contract DelegationTest is AuthenticatorBase {
     hub.updateDelegation(walletB, address(authenticator), true, _encodeKey(key), 7, deadline, sig);
     assertFalse(hub.authDelegated(walletB, address(authenticator)), 'B not delegated');
 
-    // the same signature on the account it names is accepted, so the refusal is evidence
+    // the same signature on the account it specifies is accepted, so the refusal is evidence
     vm.prank(relayer);
     hub.updateDelegation(walletA, address(authenticator), true, _encodeKey(key), 7, deadline, sig);
     assertTrue(hub.authDelegated(walletA, address(authenticator)), 'A delegated');

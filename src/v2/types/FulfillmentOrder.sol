@@ -10,9 +10,9 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
  * @notice An owner's order to transfer assets along a route chosen by a solver
- * @dev The order names neither the route, nor the targets of its transfers, nor the amounts of its
- * ERC20 transfers; a {FulfillmentSolution} supplies them. The validators constrain the result of
- * the solution, and `solutionApprover` may be required to approve it. The validators do not
+ * @dev The order specifies neither the route, nor the targets of its transfers, nor the amounts of
+ * its ERC20 transfers; a {FulfillmentSolution} supplies them. The validators constrain the result
+ * of the solution, and `solutionApprover` may be required to approve it. The validators do not
  * observe the effects of `ownerCalls`.
  *
  * When `owner` submits the order, `solver` does not apply and no authentication is required
@@ -24,9 +24,9 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * @param solver Account that may submit the order besides the owner; the dead address allows any
  * account
  * @param erc20Allowances ERC20 transfers, each of at most its `amount`, sent from the owner to the
- * target and in the amount the solution names for it
+ * target and in the amount the solution specifies for it
  * @param erc721Approvals ERC721 transfers, each sent from the owner to the target the solution
- * names for it
+ * specifies for it
  * @param validationParams Validators run before the transfers are executed and after the solver's
  * calls
  * @param ownerCalls Router calls fixed by the owner, run after the validators

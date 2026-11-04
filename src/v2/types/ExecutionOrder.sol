@@ -10,7 +10,8 @@ import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
- * @notice An owner's order to transfer assets to named targets and run a fixed list of router calls
+ * @notice An owner's order to transfer assets to the targets it specifies and run a fixed list of
+ * router calls
  * @dev When `owner` submits the order, `relayer` does not apply and no authentication is required
  * beyond the call itself, except that a Permit2 entry point still requires the owner's permit
  * signature, without a witness. On a delegated entry point the owner's own submission spends no

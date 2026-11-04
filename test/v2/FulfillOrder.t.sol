@@ -31,8 +31,8 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  * @notice `AUTH-01b`, `AUTH-07..07b`, `AUTH-16..18`, `SOL-01..04`, `OWN-01..06` and `VAL-01..04` —
  * both fulfillment rails, the solution approval and the validator bracket.
  * @dev A fulfillment splits in two: the owner fixes `ownerCalls` and the validators, a solver
- * supplies the {FulfillmentSolution}, and the `solutionApprover` the order names is who may approve
- * that route. The validators run between the two call lists.
+ * supplies the {FulfillmentSolution}, and the `solutionApprover` the order specifies is who may
+ * approve that route. The validators run between the two call lists.
  */
 contract FulfillOrderTest is AuthenticatorBase {
   uint160 internal constant AMOUNT = 5 ether;
@@ -65,7 +65,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   /**
    * AUTH-01b — the owner submits their own fulfillment, so the permit witnesses nothing
    * @dev Worth its own case beyond the branch: an owner submitting for themselves skips the witness
-   * entirely, so the validators, their own tail and the approver they named are bound by no
+   * entirely, so the validators, their own tail and the approver they specified are bound by no
    * signature at all — yet the approval is still demanded and still has to be over this order. The
    * second step is what says so: the same approval against a route the approver did not sign is
    * refused even though the owner is the caller.
@@ -104,7 +104,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     hub.fulfillOrderWithPermit2Signature(again, permitSig2, otherRoute, approval);
   }
 
-  /// AUTH-07 — a solver submits, and the witness names who may choose the route, not the route
+  /// AUTH-07 — a solver submits, and the witness specifies who may choose the route, not the route
   function test_AUTH_07_fulfillmentPermit2Witness() public {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     ValidationParams[] memory vs = _validations(_validation(validator));
@@ -175,7 +175,8 @@ contract FulfillOrderTest is AuthenticatorBase {
     );
     FulfillmentSolution memory route2 = _solution(swapped, solverCalls, deadline);
     bytes memory approval2 = _signSolutionApproval(approverKey, swapped, route2);
-    // the owner signed a witness naming nobody, so the approver in the order is not the one signed
+    // the owner signed a witness that specifies no solver, so the approver in the order is not the
+    // one signed
     bytes memory openWitness =
       _signFulfillmentWitness(swapped, swapped.solver, swapped.ownerCalls, ANY);
 
@@ -314,10 +315,10 @@ contract FulfillOrderTest is AuthenticatorBase {
   /**
    * ORD-03 — `solver` says who may submit a fulfillment, and the sentinel says anybody may
    * @dev The mirror of `ORD-02` on this family, and it has to exist separately: the witness binds
-   * `solver` as the order names it, not as the caller names itself, so the hub's own gate is the
-   * only thing between a stranger and a settled order here. The gate runs before Permit2, so the
-   * middle step's refusal is the hub's error and names both addresses. The last step is what makes
-   * the middle one about the pin rather than about the submitter.
+   * `solver` as the order specifies it, not as the caller presents itself, so the hub's own gate is
+   * the only thing between a stranger and a settled order here. The gate runs before Permit2, so
+   * the middle step's refusal is the hub's error and reports both addresses. The last step is what
+   * makes the middle one about the pin rather than about the submitter.
    */
   function test_ORD_03_solverPinningAndTheOpenSentinel() public {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
@@ -499,8 +500,8 @@ contract FulfillOrderTest is AuthenticatorBase {
 
   /**
    * SOL-06 — an approval spends no nonce of its own, and is spent with its order
-   * @dev The approval names the order, so it can settle only that order, and only as often as the
-   * order itself does. Relayed over Permit2, the order spends its Permit2 nonce: a second
+   * @dev The approval specifies the order, so it can settle only that order, and only as often as
+   * the order itself does. Relayed over Permit2, the order spends its Permit2 nonce: a second
    * submission of the same order and approval is refused there, and the approver's namespace in
    * the hub is never touched.
    */
@@ -541,8 +542,8 @@ contract FulfillOrderTest is AuthenticatorBase {
   /**
    * SOL-02 — the sentinel approver accepts any route, with no signature to present
    * @dev Two different routes settle under the same order, which is the meaning of "any route", and
-   * neither carries an approval. The last step is the contrast: a named approver on the otherwise
-   * identical order does demand one.
+   * neither carries an approval. The last step is the contrast: a specified approver on the
+   * otherwise identical order does demand one.
    */
   function test_SOL_02_sentinelApproverAcceptsAnyRoute() public {
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
@@ -587,7 +588,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   }
 
   /**
-   * SOL-03 — a malformed approval is refused rather than read as "no approver named"
+   * SOL-03 — a malformed approval is refused rather than read as "no approver specified"
    * @dev The sentinel is the only thing that waives the check, and it lives in the signed order. A
    * signature too short to recover from must therefore fail the check rather than skip it.
    */
@@ -1067,7 +1068,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   // FU-FUZZ — one property per fulfill entry point
   // -------------------------------------------------------------------------------------------
 
-  /// @dev One named struct for the fulfill family, per the frozen plan's fuzz contract
+  /// @dev One parameter struct for the fulfill family, per the frozen plan's fuzz contract
   struct FulfillFuzz {
     uint160 amount;
     uint8 solverCallCount;
@@ -1085,7 +1086,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   /**
    * FU-FUZZ — `fulfillOrderWithDelegatedAuthentication` over a relayed session-key credential
    * @dev Both call lists range over empty and non-empty, and they go to different routers so each
-   * has a counter of its own. `approveSolution` switches between a named approver with a real
+   * has a counter of its own. `approveSolution` switches between a specified approver with a real
    * approval and the sentinel; `usePermit2Allowances` picks the pull rail; `pinSubmitter` and the
    * nonce are covered by the order hash the event reports and by the authenticator's bitmap. The
    * solver's two targets are drawn, and receive the transfers.
@@ -1132,7 +1133,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   /**
    * FU-FUZZ — `fulfillOrderWithPermit2Signature`, relayed, where the witness is the binding
    * @dev `pinSubmitter` is live control flow here: it decides whether the gate compares the
-   * submitter against a named solver or against the sentinel, and it changes the witness either
+   * submitter against a specified solver or against the sentinel, and it changes the witness either
    * way. The Permit2 nonce is the replay oracle.
    */
   function testFuzz_FU_FUZZ_permit2Rail(FulfillFuzz memory f) public {

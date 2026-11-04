@@ -29,9 +29,10 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  * @notice `TGT-01..04` with `LEN-01..02`, `APR-01` and `EVT-01`, and `AMT-01..05` with `AMT-FUZZ`:
  * the solver chooses where each transfer of a fulfillment goes, and how much each ERC20 transfer
  * moves
- * @dev The order names only what may leave the owner; the solution names one target per transfer
- * and one amount per ERC20 transfer. Every case sends the transfers somewhere no order signed:
- * `solverWallet` for an ERC20 transfer and `nftRecipient` for the NFT, neither of them a router.
+ * @dev The order specifies only what may leave the owner; the solution specifies one target per
+ * transfer and one amount per ERC20 transfer. Every case sends the transfers somewhere no order
+ * signed: `solverWallet` for an ERC20 transfer and `nftRecipient` for the NFT, neither of them a
+ * router.
  */
 contract FulfillTargetsTest is AuthenticatorBase {
   uint160 internal constant AMOUNT = 5 ether;
@@ -102,7 +103,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
    * TGT-03 / LEN-02 — relayed over Permit2: the owner's witness carries no ERC20 target
    * @dev The four solutions without exactly one target per transfer are refused first, ahead of the
    * permit. Then one witness signature settles the order once with the transfers sent one way and,
-   * from the same pre-state, once with them sent another, so nothing the owner signed names a
+   * from the same pre-state, once with them sent another, so nothing the owner signed specifies a
    * target.
    */
   function test_TGT_03_witnessDoesNotBindTheErc20Targets() public {
@@ -404,7 +405,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
   // AMT-FUZZ
   // -------------------------------------------------------------------------------------------
 
-  /// @dev The fields {testFuzz_AMT_FUZZ_solverAmount} draws, one named struct for the family
+  /// @dev The fields {testFuzz_AMT_FUZZ_solverAmount} draws, one parameter struct for the family
   struct AmountFuzz {
     uint160 allowance;
     uint160 amount;

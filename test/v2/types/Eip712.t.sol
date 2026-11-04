@@ -213,7 +213,7 @@ contract Eip712Test is V2TestBase {
   /**
    * @dev The whole order is a member, encoded by its own struct hash, so the production hasher takes
    * that hash and the expected side nests the order. One approval ties to one order and to the
-   * targets it names.
+   * targets it specifies.
    */
   function test_T712_solutionApprovalStructHash() public view {
     FulfillmentOrder memory order = _sampleFulfillmentOrder();

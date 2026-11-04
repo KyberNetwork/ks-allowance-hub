@@ -201,7 +201,7 @@ contract ManagementTest is AuthenticatorBase {
     assertEq(hub.roleRevokers(TEST_ROLE), GUARDIAN_ROLE, 'revoker recorded');
   }
 
-  /// MGMT-06 — `revokeRole` names both roles it would have accepted
+  /// MGMT-06 — `revokeRole` reports both roles it would have accepted
   function test_MGMT_06_revokeRoleNeedsRevokerOrAdmin() public {
     bytes32[] memory neededRoles = new bytes32[](2);
     neededRoles[0] = GUARDIAN_ROLE; // the nominated revoker
@@ -327,7 +327,7 @@ contract ManagementTest is AuthenticatorBase {
 
     ERC20Transfer[] memory toZero = new ERC20Transfer[](1);
     toZero[0] = ERC20Transfer({token: token18, target: address(0), amount: 1 ether});
-    // TokenHelper wraps the token's refusal as ERC-7751 describes, naming the call that failed
+    // TokenHelper wraps the token's refusal as ERC-7751 describes, reporting the call that failed
     vm.prank(rescuer);
     vm.expectRevert(
       abi.encodeWithSelector(

@@ -14,8 +14,8 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
  * @notice One ERC20 transfer of a fulfillment order: an amount of `token` that leaves the owner
- * @dev The order does not name the target or the amount of the transfer. The
- * {FulfillmentSolution} names a target and an amount for each transfer, and the amount
+ * @dev The order does not specify the target or the amount of the transfer. The
+ * {FulfillmentSolution} specifies a target and an amount for each transfer, and the amount
  * transferred is at most `amount`.
  * @param token The ERC20 token
  * @param amount Largest amount the transfer sends in one settlement, with the width of a Permit2
@@ -33,7 +33,7 @@ library ERC20AllowanceLib {
   using EfficientHashLib for *;
   using TokenHelper for address;
 
-  /// @notice The amount the solution names for an ERC20 transfer exceeds its allowance
+  /// @notice The amount the solution specifies for an ERC20 transfer exceeds its allowance
   error ERC20AllowanceExceeded(uint256 index, uint256 amount, uint256 allowance);
 
   bytes32 internal constant ERC20_ALLOWANCE_TYPEHASH =

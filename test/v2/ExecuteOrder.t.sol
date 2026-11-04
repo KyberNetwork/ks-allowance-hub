@@ -110,7 +110,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
   }
 
   /**
-   * AUTH-04 — the relayer the owner named is part of what the witness binds
+   * AUTH-04 — the relayer the owner specified is part of what the witness binds
    * @dev `order.relayer` is read twice: the gate compares it against the submitter, and the witness
    * carries it. ORD-02 is the gate; this is the witness. The first step is the control, so the
    * refusal in the second is evidence about the binding rather than about a signature that was
@@ -133,8 +133,8 @@ contract ExecuteOrderTest is AuthenticatorBase {
       IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the matching order settled'
     );
 
-    // the owner signed a witness naming the relayer; the order submitted names nobody, so the hub
-    // rebuilds a different witness from it
+    // the owner signed a witness specifying the relayer; the order submitted specifies no relayer,
+    // so the hub rebuilds a different witness from it
     ExecutionOrder memory openOrder =
       _executionOrder(ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 4, expiration);
     bytes memory forTheRelayer = _signExecutionWitness(openOrder, relayer);
@@ -147,8 +147,8 @@ contract ExecuteOrderTest is AuthenticatorBase {
   /**
    * ORD-02 — `relayer` says who may submit, and the sentinel says anybody may
    * @dev The gate runs before Permit2, so the middle step's refusal is the hub's own error and
-   * names both addresses. The last step is what makes the middle one about the pin rather than
-   * about the submitter: the same stranger settles an order that names nobody.
+   * reports both addresses. The last step is what makes the middle one about the pin rather than
+   * about the submitter: the same stranger settles an order that specifies no relayer.
    */
   function test_ORD_02_relayerPinningAndTheOpenSentinel() public {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
@@ -256,7 +256,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
    * of the order, so one signed order settles on either pull rail and the submitter chooses. What
    * bounds the submitter is the rest of the order, which is signed — the two steps here
    * are the same order shape and the same amount, and each step asserts that the source it did
-   * *not* name went untouched, so this is about the argument and not about the transfer.
+   * *not* specify went untouched, so this is about the argument and not about the transfer.
    */
   function test_ORD_01_theAssetSourceIsTheSubmittersArgument() public {
     _delegateKeyThroughHub(key);
@@ -475,7 +475,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
   // EX-FUZZ — one property per execute entry point
   // -------------------------------------------------------------------------------------------
 
-  /// @dev One named struct for the execute family, per the frozen plan's fuzz contract
+  /// @dev One parameter struct for the execute family, per the frozen plan's fuzz contract
   struct ExecuteFuzz {
     uint160 amount;
     uint8 callCount;
@@ -558,8 +558,8 @@ contract ExecuteOrderTest is AuthenticatorBase {
   /**
    * EX-FUZZ — `executeOrderWithPermit2Signature`, relayed, where the witness is the binding
    * @dev `pinSubmitter` is live control flow here: it decides whether the gate compares the
-   * submitter against a named relayer or against the sentinel, and it changes the witness either
-   * way. The Permit2 nonce is the replay oracle.
+   * submitter against a specified relayer or against the sentinel, and it changes the witness
+   * either way. The Permit2 nonce is the replay oracle.
    */
   function testFuzz_EX_FUZZ_permit2Rail(ExecuteFuzz memory f) public {
     f.amount = uint160(bound(f.amount, 0, 100 ether));

@@ -213,7 +213,7 @@ abstract contract AuthenticatorBase is HubBase {
     return _authData(key, _sign(signerKey, _executionDigest(order)), false);
   }
 
-  /// @dev As {_executionAuthData}, naming the tier the key is presented as
+  /// @dev As {_executionAuthData}, with the tier the key is presented as
   function _executionAuthData(
     ExecutionOrder memory order,
     AuthKey memory key,
@@ -231,7 +231,7 @@ abstract contract AuthenticatorBase is HubBase {
     return _authData(key, _sign(signerKey, _fulfillmentDigest(order)), false);
   }
 
-  /// @dev As {_fulfillmentAuthData}, naming the tier the key is presented as
+  /// @dev As {_fulfillmentAuthData}, with the tier the key is presented as
   function _fulfillmentAuthData(
     FulfillmentOrder memory order,
     AuthKey memory key,

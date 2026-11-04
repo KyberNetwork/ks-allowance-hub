@@ -382,7 +382,7 @@ abstract contract HubBase is V2TestBase {
     );
   }
 
-  /// @dev As {_signExecutionWitness}, with the witness naming the relayer the order names
+  /// @dev As {_signExecutionWitness}, with the witness specifying the relayer the order specifies
   function _signExecutionWitness(ExecutionOrder memory order) internal view returns (bytes memory) {
     return _signExecutionWitness(order, order.relayer);
   }

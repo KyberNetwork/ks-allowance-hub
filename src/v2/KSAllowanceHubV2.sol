@@ -47,9 +47,9 @@ import {
  * @notice Single approval target for KyberSwap. It transfers an owner's ERC20 and ERC721 tokens
  * and calls whitelisted routers in one transaction, so that the owner approves this contract
  * instead of each router.
- * @dev The owner signs an {ExecutionOrder} or a {FulfillmentOrder}. Both name the assets that may
- * leave the owner and the account that may submit the order. An execution order also names the
- * target of each transfer and the exact router calls; a fulfillment order leaves both to a
+ * @dev The owner signs an {ExecutionOrder} or a {FulfillmentOrder}. Both specify the assets that
+ * may leave the owner and the account that may submit the order. An execution order also specifies
+ * the target of each transfer and the exact router calls; a fulfillment order leaves both to a
  * {FulfillmentSolution} and constrains the result with validators.
  *
  * An order is authorised either by the owner's Permit2 signature, which signs the order as its
@@ -339,7 +339,7 @@ contract KSAllowanceHubV2 is
   }
 
   /// @dev Emits {TransferTokens} for a fulfillment order, pairing each transfer with the target and
-  /// amount the solution names for it
+  /// amount the solution specifies for it
   function _announceFulfillment(
     FulfillmentOrder calldata order,
     bytes32 orderHash,
@@ -408,7 +408,7 @@ contract KSAllowanceHubV2 is
   }
 
   /// @dev As {_transferERC20s}, for a fulfillment's allowances and the targets and amounts its
-  /// solution names
+  /// solution specifies
   function _transferERC20s(
     address owner,
     ERC20Allowance[] calldata erc20Allowances,

@@ -11,7 +11,7 @@ import {GenericCall, GenericCallLib} from './GenericCall.sol';
  * @dev Approved by the order's `solutionApprover` rather than signed by the owner, so it may be
  * chosen after the order is signed. `erc20Targets[i]` receives `erc20Amounts[i]` of
  * `order.erc20Allowances[i]` and `erc721Targets[i]` receives `order.erc721Approvals[i]`. The
- * solution names a target and an amount for each ERC20 transfer and a target for each ERC721
+ * solution specifies a target and an amount for each ERC20 transfer and a target for each ERC721
  * transfer, so each target array and `erc20Amounts` must have one entry per transfer. No approval
  * is required when the order's `solutionApprover` is the dead address.
  * @param erc20Targets Target of each ERC20 transfer, in order

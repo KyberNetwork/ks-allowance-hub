@@ -586,7 +586,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     authenticator.updateAuthentication(walletB, _approveKey(fresh), 8, deadline, sig);
     assertFalse(authenticator.masterKeys(walletB, _keyHash(fresh)), 'B has no master key');
 
-    // the same signature on the account it names is accepted, so the refusal is evidence
+    // the same signature on the account it specifies is accepted, so the refusal is evidence
     vm.prank(relayer);
     authenticator.updateAuthentication(walletA, _approveKey(fresh), 8, deadline, sig);
     assertTrue(authenticator.masterKeys(walletA, _keyHash(fresh)), 'A has the master key');
@@ -597,8 +597,8 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   // -------------------------------------------------------------------------------------------
 
   /**
-   * SV-KEY-SECP-02 — a Secp256k1 key naming a contract verifies nothing, even a signature the
-   * contract accepts through ERC-1271, while an ERC1271 key over the same bytes accepts it
+   * SV-KEY-SECP-02 — a Secp256k1 key whose address is a contract verifies nothing, even a signature
+   * the contract accepts through ERC-1271, while an ERC1271 key over the same bytes accepts it
    */
   function test_SV_KEY_SECP_02_aContractIsNotASecp256k1Signer() public {
     address wallet = _wallet();
@@ -636,7 +636,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT);
   }
 
-  /// SV-KEY-1271-02 — an ERC1271 key naming an account without code verifies nothing, even that
+  /// SV-KEY-1271-02 — an ERC1271 key whose account has no code verifies nothing, even that
   /// account's own ECDSA signature
   function test_SV_KEY_1271_02_anEoaIsNotAnErc1271Signer() public {
     bytes32 digest = keccak256('a digest');
@@ -946,7 +946,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   /**
    * SV-CRED-01 — an order settled under one approval of a key cannot settle again under another
    * @dev The owner renews `key` by approving the same credential with a later expiry, and leaves the
-   * first approval in place. The order signature names no key, so both approvals accept it; the
+   * first approval in place. The order signature specifies no key, so both approvals accept it; the
    * nonce they share refuses the second settlement.
    */
   function test_SV_CRED_01_aRenewedKeyCannotReplayAnOrder() public {
@@ -1215,8 +1215,8 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   /**
    * SV-TIER-04 — revoking a master key takes every session key under it
    * @dev The approval row itself is left standing, so the owner re-approving the identical
-   * credential revives the keys that master had minted. The refusal in between names the master key
-   * rather than the session key, because the master is the thing no longer approved.
+   * credential revives the keys that master had minted. The refusal in between reports the master
+   * key rather than the session key, because the master is the thing no longer approved.
    */
   function test_SV_TIER_04_revokingTheMasterKeyTakesItsSessionKeys() public {
     _delegateKeyThroughHub(key);
@@ -1310,9 +1310,9 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   /**
-   * SV-TIER-07 — the approval names the account it is for
+   * SV-TIER-07 — the approval specifies the account it is for
    * @dev The same credential can be a master key for two accounts, so the decision carries the
-   * owner. The second step submits the very same signature for the account it does name, so the
+   * owner. The second step submits the very same signature for the account it does specify, so the
    * refusal is evidence about `owner` rather than about a bad signature.
    */
   function test_SV_TIER_07_theApprovalNamesTheAccountItIsFor() public {
@@ -1424,8 +1424,8 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
    * SV-TIER-10 — a key holding both approvals may be presented under either
    * @dev Nothing stops one credential from holding the owner's approval and a master key's at once,
    * and the tier it is presented as decides which one settles it. Each therefore stands on its own:
-   * revoking the master key closes the session route — a refusal naming that master — and leaves
-   * the owner's approval; revoking the owner's closes that one and leaves the session route.
+   * revoking the master key closes the session route — a refusal that reports that master — and
+   * leaves the owner's approval; revoking the owner's closes that one and leaves the session route.
    */
   function test_SV_TIER_10_eachApprovalIsUsableOnItsOwnTier() public {
     _delegateKeyThroughHub(key);
@@ -1477,7 +1477,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
 
   /**
    * SV-TIER-11 — the tier hint is trusted for nothing
-   * @dev It picks which mapping settles the key, so naming the wrong one finds no approval there
+   * @dev It picks which mapping settles the key, so choosing the wrong one finds no approval there
    * and is refused. A master key offered as a session key has no master key behind it; a session
    * key offered as a master key holds no approval of its own. Both steps then settle under the tier
    * they do hold, so the refusals are about the hint and not about the keys.
@@ -1838,7 +1838,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _executeViaAuthenticator(key, masterKeyPk, nonce, deadline, true);
   }
 
-  /// SV-NREV-04 — the revocation must be signed by the key, for the nonce and deadline it names
+  /// SV-NREV-04 — the revocation must be signed by the key, for the nonce and deadline it specifies
   function test_SV_NREV_04_theKeyMustHaveSignedThisNonce() public {
     uint256 nonce = 90;
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
@@ -1968,7 +1968,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     );
   }
 
-  /// SV-FUZZ-NREV — a revocation spends exactly the nonce it names, in the key's namespace
+  /// SV-FUZZ-NREV — a revocation spends exactly the nonce it specifies, in the key's namespace
   function testFuzz_SV_FUZZ_NREV_revokeNonce(uint256 nonce, uint256 deadlineOffset) public {
     uint256 deadline = vm.getBlockTimestamp() + bound(deadlineOffset, 0, 365 days);
     bytes memory sig = _signNonceRevocation(key, nonce, deadline, masterKeyPk);
@@ -2033,9 +2033,9 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
 
   /**
    * SV-OWN-03 — an ERC-1271 owner authenticates through its wallet, and the wallet may refuse
-   * @dev The order names the wallet as owner, and the wallet's signer signs the digest. The nonce
-   * is spent in the wallet's address namespace. In the second step the wallet is set to return the
-   * wrong magic value for the same valid signature.
+   * @dev The order specifies the wallet as owner, and the wallet's signer signs the digest. The
+   * nonce is spent in the wallet's address namespace. In the second step the wallet is set to
+   * return the wrong magic value for the same valid signature.
    */
   function test_SV_OWN_03_erc1271OwnerAuthenticatesAndMayRefuse() public {
     (ERC1271WalletMock wallet, uint256 walletSignerPk) = _walletOwner();
@@ -2585,7 +2585,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _executeViaAuthenticator(key, signerKey, nonce, deadline, expectSuccess, false);
   }
 
-  /// @dev As above, naming the tier the key is presented as
+  /// @dev As above, with the tier the key is presented as
   function _executeViaAuthenticator(
     AuthKey memory key,
     uint256 signerKey,
@@ -2611,7 +2611,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _fulfillViaAuthenticator(key, signerKey, nonce, deadline, false);
   }
 
-  /// @dev As above, naming the tier the key is presented as
+  /// @dev As above, with the tier the key is presented as
   function _fulfillViaAuthenticator(
     AuthKey memory sessionKey,
     uint256 signerKey,

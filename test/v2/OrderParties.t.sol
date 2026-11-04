@@ -21,7 +21,7 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 /**
  * @title OrderPartiesTest
- * @notice ORD-02b..04 — the delegated rails honour the parties the order names
+ * @notice ORD-02b..04 — the delegated rails honour the parties the order specifies
  * @dev `relayer` and `solver` say who may submit an order on every rail, not only the Permit2 ones
  * that `ORD-02` and `ORD-03` cover. A credential authenticates the owner; it does not say who may
  * submit the order, so an authenticator that checked nothing of the sort would leave the field
@@ -45,7 +45,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     return IERC20(token18).balanceOf(address(router));
   }
 
-  /// ORD-02b — the delegated execution rail refuses a submitter the order did not name
+  /// ORD-02b — the delegated execution rail refuses a submitter the order did not specify
   function test_ORD_02b_delegatedExecutionHonoursTheNamedRelayer() public {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC721Transfer[] memory noNfts = new ERC721Transfer[](0);
@@ -76,7 +76,8 @@ contract OrderPartiesTest is AuthenticatorBase {
       third, address(authenticator), _authData(key, hex'00'), false
     );
 
-    // The same stranger settles an order that names nobody, so the refusals were about the pin
+    // The same stranger settles an order that specifies no relayer, so the refusals were about the
+    // pin
     ExecutionOrder memory open = _openExecutionOrder(erc20s, noCalls, 73, expiration);
     before = _routerWeth();
     vm.prank(solver);
@@ -95,10 +96,10 @@ contract OrderPartiesTest is AuthenticatorBase {
   }
 
   /**
-   * ORD-04 — the account the order draws on is the one the signature named
+   * ORD-04 — the account the order draws on is the one the signature specified
    * @dev A key may be approved by more than one account, and the digest carries no second place
    * for the submitter to point it. The two steps are the same signature against the account it
-   * names and against another that approved the same key.
+   * specifies and against another that approved the same key.
    */
   function test_ORD_04_delegatedExecutionDrawsOnTheNamedOwner() public {
     address other = makeAddr('other owner');
@@ -131,7 +132,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     assertEq(IERC20(token18).balanceOf(other), otherBefore, 'and the other one did not');
   }
 
-  /// ORD-03b — the delegated fulfillment rail refuses a submitter the order did not name
+  /// ORD-03b — the delegated fulfillment rail refuses a submitter the order did not specify
   function test_ORD_03b_delegatedFulfillmentHonoursTheNamedSolver() public {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     ERC721Approval[] memory noNfts = new ERC721Approval[](0);

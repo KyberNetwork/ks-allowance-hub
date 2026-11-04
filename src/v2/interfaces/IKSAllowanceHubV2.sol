@@ -13,19 +13,21 @@ import {NativeTransfer} from '../types/NativeTransfer.sol';
 /// @title IKSAllowanceHubV2
 /// @notice Interface of {KSAllowanceHubV2}
 interface IKSAllowanceHubV2 {
-  /// @notice The caller is neither the order's owner nor its relayer, and the order names a relayer
+  /// @notice The caller is neither the order's owner nor its relayer, and the order specifies a
+  /// relayer
   error CallerNotRelayer(address caller);
 
-  /// @notice The caller is neither the order's owner nor its solver, and the order names a solver
+  /// @notice The caller is neither the order's owner nor its solver, and the order specifies a
+  /// solver
   error CallerNotSolver(address caller);
 
-  /// @notice The solution signature is not valid for the `solutionApprover` the order names
+  /// @notice The solution signature is not valid for the `solutionApprover` the order specifies
   error InvalidSolutionSignature();
 
   /**
    * @notice Emitted once for each settled order, before its assets move and its calls run
    * @dev For a fulfillment, each ERC20 and ERC721 entry pairs a transfer of the order with the
-   * target the solution names for it. `nativeTransfers` lists only the calls that carry native
+   * target the solution specifies for it. `nativeTransfers` lists only the calls that carry native
    * value, the solver's calls before the owner's, and is empty when no call carries value.
    *
    * An order settled by a router call of an execution emits its event after the execution's and
@@ -91,15 +93,15 @@ interface IKSAllowanceHubV2 {
    * @notice Settles a fulfillment order authenticated by an {IOrderAuthenticator} the owner has
    * delegated, along the route in `solution`
    * @dev The settlement runs in this order: the solution approval is checked, each validator's
-   * `beforeExecution` runs, the assets move to the targets `solution` names, `solution.solverCalls`
-   * run, each validator's `afterExecution` runs, and `order.ownerCalls` run. The validators do not
-   * observe the effects of `order.ownerCalls`.
+   * `beforeExecution` runs, the assets move to the targets `solution` specifies,
+   * `solution.solverCalls` run, each validator's `afterExecution` runs, and `order.ownerCalls` run.
+   * The validators do not observe the effects of `order.ownerCalls`.
    *
-   * `solution` must name one target and one amount for each transfer and must not have passed its
-   * own expiration. Each ERC20 transfer sends `solution.erc20Amounts[i]`, at most its allowance. The
-   * approval is checked against `order.solutionApprover`, and is not required when that is the
-   * dead address. The approval carries no nonce, so it remains valid until the settlement of its
-   * order.
+   * `solution` must specify one target and one amount for each transfer and must not have passed
+   * its own expiration. Each ERC20 transfer sends `solution.erc20Amounts[i]`, at most its
+   * allowance. The approval is checked against `order.solutionApprover`, and is not required when
+   * that is the dead address. The approval carries no nonce, so it remains valid until the
+   * settlement of its order.
    *
    * The caller and the authenticator are treated as in {executeOrderWithDelegatedAuthentication},
    * with `order.solver` in place of `order.relayer`. When the caller is `order.owner`, the solution
