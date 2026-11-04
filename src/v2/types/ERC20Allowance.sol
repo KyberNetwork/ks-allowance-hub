@@ -5,8 +5,6 @@ import {DynamicArrayLibExt} from '../libraries/DynamicArrayLibExt.sol';
 
 import {ERC20Transfer} from './ERC20Transfer.sol';
 
-import {IKSAllowanceHubV2} from '../interfaces/IKSAllowanceHubV2.sol';
-
 import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 
@@ -34,6 +32,9 @@ library ERC20AllowanceLib {
   using DynamicArrayLibExt for uint256;
   using EfficientHashLib for *;
   using TokenHelper for address;
+
+  /// @notice The amount the solution names for an ERC20 transfer exceeds its allowance
+  error ERC20AmountExceedsAllowance(uint256 index, uint256 amount, uint256 allowance);
 
   bytes32 internal constant ERC20_ALLOWANCE_TYPEHASH =
     keccak256('ERC20Allowance(address token,uint160 amount)');
@@ -155,7 +156,7 @@ library ERC20AllowanceLib {
   /// @dev Reverts when the amount at `index` exceeds the allowance of its transfer
   function _checkAmount(uint256 index, uint160 amount, uint160 allowance) private pure {
     if (amount > allowance) {
-      revert IKSAllowanceHubV2.ERC20AmountExceedsAllowance(index, amount, allowance);
+      revert ERC20AmountExceedsAllowance(index, amount, allowance);
     }
   }
 }

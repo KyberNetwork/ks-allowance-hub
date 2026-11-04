@@ -11,7 +11,7 @@ import {ERC20Mock} from 'test/v2/mocks/TokenMocks.sol';
 
 import {AuthKey} from 'src/base/types/AuthKey.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
-import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
+import {ERC20Allowance, ERC20AllowanceLib} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
 import {ERC721Approval} from 'src/v2/types/ERC721Approval.sol';
 import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
@@ -610,7 +610,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
     returns (bytes memory)
   {
     return abi.encodeWithSelector(
-      IKSAllowanceHubV2.ERC20AmountExceedsAllowance.selector, index, amount, allowance
+      ERC20AllowanceLib.ERC20AmountExceedsAllowance.selector, index, amount, allowance
     );
   }
 

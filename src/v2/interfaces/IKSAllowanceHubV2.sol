@@ -19,9 +19,6 @@ interface IKSAllowanceHubV2 {
   /// @notice The caller is neither the order's owner nor its solver, and the order names a solver
   error CallerNotSolver(address caller);
 
-  /// @notice The amount the solution names for an ERC20 transfer exceeds its allowance
-  error ERC20AmountExceedsAllowance(uint256 index, uint256 amount, uint256 allowance);
-
   /// @notice The solution signature is not valid for the `solutionApprover` the order names
   error InvalidSolutionSignature();
 
