@@ -14,7 +14,6 @@ abstract contract DeadlineChecker {
 
   /// @dev Reverts when the current block timestamp is later than `deadline`
   function _checkDeadline(uint256 deadline) internal view {
-    // forge-lint: disable-next-line(block-timestamp)
     if (block.timestamp > deadline) {
       revert DeadlinePassed(deadline, block.timestamp);
     }

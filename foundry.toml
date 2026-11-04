@@ -48,6 +48,16 @@ single_line_statement_blocks = 'multi'
 
 [lint]
 lint_on_build = false
+exclude_lints = [
+    "calls-loop",
+    "block-timestamp",
+    "locked-ether",
+    "missing-zero-check",
+    "reentrancy-events",
+    "delegatecall-loop",
+    "reentrancy-balance",
+    "require-revert-in-loop",
+]
 
 [rpc_endpoints]
 mainnet = "${RPC_1}"
@@ -71,4 +81,8 @@ monad_mainnet = "${RPC_143}"
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 
 [bind_json]
-include = ['**/src/v2/types/*.sol', '**/src/v2/authenticators/types/*.sol', '**/src/base/types/*.sol']
+include = [
+    '**/src/v2/types/*.sol',
+    '**/src/v2/authenticators/types/*.sol',
+    '**/src/base/types/*.sol',
+]
