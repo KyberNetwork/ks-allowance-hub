@@ -4,7 +4,7 @@ pragma solidity 0.8.38;
 import {DeadlineChecker} from '../../base/DeadlineChecker.sol';
 import {UnorderedNonce} from '../../base/UnorderedNonce.sol';
 
-import {AuthKey} from '../../base/types/AuthKey.sol';
+import {AuthKey, AuthKeyLib} from '../../base/types/AuthKey.sol';
 
 import {IOrderAuthenticator} from '../interfaces/IOrderAuthenticator.sol';
 
@@ -68,7 +68,7 @@ contract TwoTiersOrderAuthenticator is
    * @dev `data` is `abi.encode(AuthKey masterKey)`, which is approved as a master key
    */
   function initAuthentication(address owner, bytes calldata data) external onlyAuthorizedCaller {
-    AuthKey calldata masterKey = _decodeKey(data, 0);
+    AuthKey calldata masterKey = AuthKeyLib.decode(data, 0);
     _checkDeadline(masterKey.expiration);
 
     bytes32 masterKeyHash = masterKey.hash();
@@ -101,7 +101,7 @@ contract TwoTiersOrderAuthenticator is
     bytes calldata signature
   ) external checkDeadline(deadline) {
     if (data.decodeUint256(0) <= 0x40) {
-      AuthKey calldata masterKey = _decodeKey(data, 0);
+      AuthKey calldata masterKey = AuthKeyLib.decode(data, 0);
       // Read as a word, so any non-zero value approves
       bool approved = data.decodeUint256(1) != 0;
       if (approved) {
@@ -128,8 +128,8 @@ contract TwoTiersOrderAuthenticator is
 
       emit UpdateMasterKey(owner, masterKeyHash, masterKey, approved);
     } else {
-      AuthKey calldata sessionKey = _decodeKey(data, 0);
-      AuthKey calldata masterKey = _decodeKey(data, 1);
+      AuthKey calldata sessionKey = AuthKeyLib.decode(data, 0);
+      AuthKey calldata masterKey = AuthKeyLib.decode(data, 1);
       bool approved = data.decodeUint256(2) != 0;
       // A session key that expires no later than its master key is live only while the master
       // key is live
@@ -242,7 +242,7 @@ contract TwoTiersOrderAuthenticator is
       return;
     }
 
-    AuthKey calldata key = _decodeKey(data, 0);
+    AuthKey calldata key = AuthKeyLib.decode(data, 0);
     _checkDeadline(key.expiration);
 
     bytes32 keyHash = key.hash();
@@ -265,17 +265,6 @@ contract TwoTiersOrderAuthenticator is
     bytes calldata signature = data.decodeBytes(2);
     if (!key.verify(digest, signature)) {
       revert InvalidOrderSignature();
-    }
-  }
-
-  /// @dev The key located at the offset stored in word `index` of `data`
-  function _decodeKey(bytes calldata data, uint256 index)
-    private
-    pure
-    returns (AuthKey calldata key)
-  {
-    assembly ('memory-safe') {
-      key := add(data.offset, calldataload(add(data.offset, shl(5, index))))
     }
   }
 }

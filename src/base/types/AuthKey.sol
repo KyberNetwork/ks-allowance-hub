@@ -41,6 +41,21 @@ library AuthKeyLib {
   bytes32 internal constant AUTH_KEY_TYPEHASH =
     keccak256('AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)');
 
+  /**
+   * @dev Decodes the key located at the offset stored in word `_arg` of `_bytes`
+   * @param _bytes The ABI-encoded payload that holds the key
+   * @param _arg The index of the argument to decode
+   */
+  function decode(bytes calldata _bytes, uint256 _arg)
+    internal
+    pure
+    returns (AuthKey calldata key)
+  {
+    assembly ('memory-safe') {
+      key := add(_bytes.offset, calldataload(add(_bytes.offset, shl(5, _arg))))
+    }
+  }
+
   /// @dev EIP-712 hash of the key, covering its public key, type and expiry
   function hash(AuthKey calldata key) internal pure returns (bytes32) {
     return keccak256(
