@@ -18,6 +18,8 @@ import {GenericCall, GenericCallLib} from './GenericCall.sol';
  * @param erc20Amounts Amount of each ERC20 transfer, in order; each is at most its allowance
  * @param erc721Targets Target of each ERC721 transfer, in order
  * @param solverCalls Router calls of the route
+ * @param nonce Nonce of the solution approval, spent in the `solutionApprover`'s namespace of the
+ * hub's nonces when the approval is checked; ignored when `solutionApprover` is the dead address
  * @param expiration Last timestamp at which the solution may settle
  */
 struct FulfillmentSolution {
@@ -25,6 +27,7 @@ struct FulfillmentSolution {
   uint160[] erc20Amounts;
   address[] erc721Targets;
   GenericCall[] solverCalls;
+  uint256 nonce;
   uint256 expiration;
 }
 
@@ -36,7 +39,7 @@ library FulfillmentSolutionLib {
   using GenericCallLib for GenericCall[];
 
   bytes32 internal constant FULFILLMENT_SOLUTION_TYPEHASH = keccak256(
-    'FulfillmentSolution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,GenericCall[] solverCalls,uint256 expiration)'
+    'FulfillmentSolution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,GenericCall[] solverCalls,uint256 nonce,uint256 expiration)'
     'GenericCall(address router,uint256 value,bytes data)'
   );
 
@@ -49,6 +52,7 @@ library FulfillmentSolutionLib {
         self.erc20Amounts.hash(),
         self.erc721Targets.hash(),
         self.solverCalls.hash(),
+        self.nonce,
         self.expiration
       )
     );
@@ -63,6 +67,7 @@ library FulfillmentSolutionLib {
         self.erc20Amounts.hashMemory(),
         self.erc721Targets.hashMemory(),
         self.solverCalls.hashMemory(),
+        self.nonce,
         self.expiration
       )
     );

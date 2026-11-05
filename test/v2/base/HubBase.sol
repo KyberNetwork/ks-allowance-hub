@@ -299,6 +299,7 @@ abstract contract HubBase is V2TestBase {
     out[0] = a;
   }
 
+  /// @dev A solution with nonce 0
   function _solution(
     address[] memory erc20Targets,
     uint160[] memory erc20Amounts,
@@ -306,11 +307,24 @@ abstract contract HubBase is V2TestBase {
     GenericCall[] memory solverCalls,
     uint256 expiration
   ) internal pure returns (FulfillmentSolution memory) {
+    return _solution(erc20Targets, erc20Amounts, erc721Targets, solverCalls, 0, expiration);
+  }
+
+  /// @dev A solution with nonce `nonce`
+  function _solution(
+    address[] memory erc20Targets,
+    uint160[] memory erc20Amounts,
+    address[] memory erc721Targets,
+    GenericCall[] memory solverCalls,
+    uint256 nonce,
+    uint256 expiration
+  ) internal pure returns (FulfillmentSolution memory) {
     return FulfillmentSolution({
       erc20Targets: erc20Targets,
       erc20Amounts: erc20Amounts,
       erc721Targets: erc721Targets,
       solverCalls: solverCalls,
+      nonce: nonce,
       expiration: expiration
     });
   }
@@ -322,6 +336,7 @@ abstract contract HubBase is V2TestBase {
   function _solution(
     FulfillmentOrder memory order,
     GenericCall[] memory solverCalls,
+    uint256 nonce,
     uint256 expiration
   ) internal view returns (FulfillmentSolution memory) {
     address[] memory erc20Targets = new address[](order.erc20Allowances.length);
@@ -334,7 +349,16 @@ abstract contract HubBase is V2TestBase {
     for (uint256 i = 0; i < erc721Targets.length; i++) {
       erc721Targets[i] = address(router2);
     }
-    return _solution(erc20Targets, erc20Amounts, erc721Targets, solverCalls, expiration);
+    return _solution(erc20Targets, erc20Amounts, erc721Targets, solverCalls, nonce, expiration);
+  }
+
+  /// @dev As above, with solution nonce 0
+  function _solution(
+    FulfillmentOrder memory order,
+    GenericCall[] memory solverCalls,
+    uint256 expiration
+  ) internal view returns (FulfillmentSolution memory) {
+    return _solution(order, solverCalls, 0, expiration);
   }
 
   /// @dev The route a solver supplies for `order` when the owner pinned nothing, valid for an hour
@@ -343,7 +367,16 @@ abstract contract HubBase is V2TestBase {
     view
     returns (FulfillmentSolution memory)
   {
-    return _solution(order, solverCalls, vm.getBlockTimestamp() + 1 hours);
+    return _route(order, solverCalls, 0);
+  }
+
+  /// @dev As above, with the solution nonce `nonce`
+  function _route(FulfillmentOrder memory order, GenericCall[] memory solverCalls, uint256 nonce)
+    internal
+    view
+    returns (FulfillmentSolution memory)
+  {
+    return _solution(order, solverCalls, nonce, vm.getBlockTimestamp() + 1 hours);
   }
 
   // ---------------------------------------------------------------------------------------------

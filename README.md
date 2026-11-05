@@ -47,7 +47,8 @@ A fulfillment settles in this order:
 
 The validators do not observe the effects of `ownerCalls`. The solution approval is an EIP-712
 `SolutionApproval(FulfillmentOrder order,FulfillmentSolution solution)` signed by
-`solutionApprover`. It carries no nonce, so it is valid for every settlement of its order.
+`solutionApprover`. It spends `solution.nonce` in the approver's namespace, so each approval settles
+at most once. No nonce is spent when `solutionApprover` is the dead address.
 
 An order with no validators and a dead-address `solutionApprover` places no constraint on the
 solver: the solver chooses every target and every router call.
@@ -158,6 +159,10 @@ anything a key signs. The credential hash excludes the expiry, so all approvals 
 nonces.
 `revokeNonce(AuthKey, nonce, deadline, signature)` spends a key's nonce on the key's signature,
 whether or not the key is still approved or unexpired.
+
+The hub spends a solution approval's `solution.nonce` in the `solutionApprover`'s address namespace
+in the hub, shared with that address's `updateDelegation` nonces. The approver revokes an unused
+approval with the hub's `revokeNonce(nonce)`.
 
 ### Relayed approvals
 

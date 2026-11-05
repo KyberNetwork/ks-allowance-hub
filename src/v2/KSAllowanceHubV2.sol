@@ -378,13 +378,16 @@ contract KSAllowanceHubV2 is
       .permitWitnessTransferFrom(permit, details, owner, witness, witnessTypeString, signature);
   }
 
-  /// @dev Reverts unless `solutionApprover` signed `solution` for the order with hash `orderHash`
+  /// @dev Reverts unless `solutionApprover` signed `solution` for the order with hash `orderHash`,
+  /// and spends `solution.nonce` in the approver's namespace
   function _checkSolutionApproval(
     address solutionApprover,
     bytes32 orderHash,
     FulfillmentSolution calldata solution,
     bytes calldata solutionSignature
-  ) internal view {
+  ) internal {
+    _useUnorderedNonce(solutionApprover, solution.nonce);
+
     bytes32 digest = _hashTypedDataV4(SolutionApprovalLib.hash(orderHash, solution));
     if (!SignatureChecker.isValidSignatureNow(solutionApprover, digest, solutionSignature)) {
       revert InvalidSolutionSignature();

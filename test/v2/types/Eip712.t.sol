@@ -208,6 +208,13 @@ contract Eip712Test is V2TestBase {
 
     assertEq(solution.hashMemory(), expected, 'memory hasher');
     assertEq(this.extHashSolution(solution), expected, 'calldata hasher');
+
+    FulfillmentSolution memory otherNonce = _sampleSolution();
+    otherNonce.nonce += 1;
+    bytes32 changed = SchemaHash.fulfillmentSolution(otherNonce);
+    assertTrue(changed != expected, 'the nonce changes the solution hash');
+    assertEq(otherNonce.hashMemory(), changed, 'memory hasher, changed nonce');
+    assertEq(this.extHashSolution(otherNonce), changed, 'calldata hasher, changed nonce');
   }
 
   /**
@@ -235,6 +242,13 @@ contract Eip712Test is V2TestBase {
     assertTrue(
       lSolutionApproval(order, otherTargets) != expected, 'the targets change the approval'
     );
+
+    FulfillmentSolution memory otherNonce = _sampleSolution();
+    otherNonce.nonce += 1;
+    bytes32 changed = lSolutionApproval(order, otherNonce);
+    assertTrue(changed != expected, 'the nonce changes the approval');
+    assertEq(SolutionApprovalLib.hashMemory(orderHash, otherNonce), changed, 'memory, new nonce');
+    assertEq(this.extHashSolutionApproval(orderHash, otherNonce), changed, 'calldata, new nonce');
   }
 
   /// @dev An allowance carries no target, so its two members are all the struct encodes
@@ -490,6 +504,7 @@ contract Eip712Test is V2TestBase {
       erc20Amounts: erc20Amounts,
       erc721Targets: erc721Targets,
       solverCalls: calls,
+      nonce: 3456,
       expiration: 9012
     });
   }

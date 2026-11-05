@@ -28,7 +28,7 @@ import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessCon
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 /**
- * @notice `AUTH-01b`, `AUTH-07..07b`, `AUTH-16..18`, `SOL-01..04`, `OWN-01..06` and `VAL-01..04` —
+ * @notice `AUTH-01b`, `AUTH-07..07b`, `AUTH-16..18`, `SOL-01..12`, `OWN-01..06` and `VAL-01..04` —
  * both fulfillment rails, the solution approval and the validator bracket.
  * @dev A fulfillment splits in two: the owner fixes `ownerCalls` and the validators, a solver
  * supplies the {FulfillmentSolution}, and the `solutionApprover` the order specifies is who may
@@ -36,6 +36,9 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  */
 contract FulfillOrderTest is AuthenticatorBase {
   uint160 internal constant AMOUNT = 5 ether;
+
+  /// @dev A solution nonce away from word 0 and bit 0, so a wrong word or bit is observable
+  uint256 internal constant SOLUTION_NONCE = 0x107;
 
   /// @dev Permit2 does not expose this in the vendored interface, so it is written out here
   bytes4 internal constant PERMIT2_INVALID_SIGNER = bytes4(keccak256('InvalidSigner()'));
@@ -95,8 +98,9 @@ contract FulfillOrderTest is AuthenticatorBase {
     FulfillmentOrder memory again = _fulfillmentOrder(
       ANY, erc20s, new ERC721Approval[](0), vs, new GenericCall[](0), approver, 62, deadline
     );
+    // a fresh solution nonce, so the refusal comes from the signature and not from the spent nonce
     FulfillmentSolution memory otherRoute =
-      _solution(again, _calls(_routerCall(0, hex'02')), deadline);
+      _solution(again, _calls(_routerCall(0, hex'02')), 1, deadline);
     bytes memory permitSig2 = _signPlainPermit(erc20s, 62, deadline);
 
     vm.prank(owner);
@@ -173,7 +177,7 @@ contract FulfillOrderTest is AuthenticatorBase {
       32,
       deadline
     );
-    FulfillmentSolution memory route2 = _solution(swapped, solverCalls, deadline);
+    FulfillmentSolution memory route2 = _solution(swapped, solverCalls, 1, deadline);
     bytes memory approval2 = _signSolutionApproval(approverKey, swapped, route2);
     // the owner signed a witness that specifies no solver, so the approver in the order is not the
     // one signed
@@ -429,17 +433,25 @@ contract FulfillOrderTest is AuthenticatorBase {
     FulfillmentOrder memory withTailB = _orderWithTail(_calls(_routerCall(0, hex'bb')), deadline);
     assertTrue(SchemaHash.fulfillmentOrder(withTailB) != hashA, 'the two orders really do differ');
 
+    // a fresh solution nonce, as the first approval spent nonce 0
+    FulfillmentSolution memory routeB = _solution(
+      _addresses(address(router)), _amounts(AMOUNT), new address[](0), solverCalls, 1, deadline
+    );
+    bytes memory approvalOfAForB = _signSolutionApproval(approverKey, withTailA, routeB);
+
     vm.prank(owner);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.fulfillOrderWithDelegatedAuthentication(withTailB, address(0), '', route, approvalA, false);
+    hub.fulfillOrderWithDelegatedAuthentication(
+      withTailB, address(0), '', routeB, approvalOfAForB, false
+    );
 
     assertEq(router.callCount(), 2, 'the refused order ran nothing');
 
     // the same order with its own approval does settle, so the refusal was the approval's doing
-    bytes memory approvalB = _signSolutionApproval(approverKey, withTailB, route);
+    bytes memory approvalB = _signSolutionApproval(approverKey, withTailB, routeB);
 
     vm.prank(owner);
-    hub.fulfillOrderWithDelegatedAuthentication(withTailB, address(0), '', route, approvalB, false);
+    hub.fulfillOrderWithDelegatedAuthentication(withTailB, address(0), '', routeB, approvalB, false);
     assertEq(router.callCount(), 4, 'route and tail ran for the second order too');
   }
 
@@ -499,19 +511,19 @@ contract FulfillOrderTest is AuthenticatorBase {
   }
 
   /**
-   * SOL-06 — an approval spends no nonce of its own, and is spent with its order
-   * @dev The approval specifies the order, so it can settle only that order, and only as often as
-   * the order itself does. Relayed over Permit2, the order spends its Permit2 nonce: a second
-   * submission of the same order and approval is refused there, and the approver's namespace in
-   * the hub is never touched.
+   * SOL-06 — an approval is spent when it settles, so it settles at most once
+   * @dev The hub spends `solution.nonce` in the approver's namespace once the signature checks.
+   * Relayed over Permit2, a second submission of the same order and approval is refused by the
+   * approver's nonce before Permit2 sees its own nonce again.
    */
-  function test_SOL_06_anApprovalIsSpentWithItsOrder() public {
+  function test_SOL_06_anApprovalSettlesOnce() public {
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     FulfillmentSolution memory route = _solution(
       _addresses(address(router)),
       _amounts(AMOUNT),
       new address[](0),
       _calls(_routerCall(0, hex'01')),
+      SOLUTION_NONCE,
       deadline
     );
 
@@ -532,10 +544,18 @@ contract FulfillOrderTest is AuthenticatorBase {
     vm.prank(relayer);
     hub.fulfillOrderWithPermit2Signature(named, witness, route, approval);
     assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the order settled');
-    assertEq(hub.nonces(lNonceKey(approver), 0), 0, "the approver's namespace is untouched");
+    assertEq(
+      hub.nonces(lNonceKey(approver), SOLUTION_NONCE >> 8),
+      1 << (SOLUTION_NONCE & 0xff),
+      "exactly the solution nonce is spent in the approver's namespace"
+    );
 
     vm.prank(relayer);
-    vm.expectRevert(PERMIT2_INVALID_NONCE);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(approver), SOLUTION_NONCE
+      )
+    );
     hub.fulfillOrderWithPermit2Signature(named, witness, route, approval);
   }
 
@@ -617,8 +637,8 @@ contract FulfillOrderTest is AuthenticatorBase {
 
   /**
    * SOL-04 — one authenticated fulfillment settles at most once
-   * @dev The approval itself carries no nonce; replay is bounded by the order nonce, which the
-   * authenticator burns. Identical calldata a second time is refused there.
+   * @dev The order nonce is burned by the authenticator, which refuses identical calldata a second
+   * time before the solution approval is checked.
    */
   function test_SOL_04_anAuthenticatedFulfillmentCannotSettleTwice() public {
     _delegateKeyThroughHub(key);
@@ -656,6 +676,154 @@ contract FulfillOrderTest is AuthenticatorBase {
     );
 
     assertEq(router.callCount(), 1, 'and not a second time');
+  }
+
+  /**
+   * SOL-07 — the owner settles an order twice; each settlement needs a fresh approval nonce
+   * @dev The owner's own submission skips the authenticator, so the order itself settles again.
+   * The same approval is refused on the second settlement, and an approval of the same route with
+   * another nonce settles.
+   */
+  function test_SOL_07_anApprovalCannotBeReplayedOnTheOwnerRail() public {
+    FulfillmentOrder memory order = _approverOrder(90);
+    GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
+    FulfillmentSolution memory route = _route(order, calls, 4);
+    bytes memory approval = _signSolutionApproval(approverKey, order, route);
+
+    vm.prank(owner);
+    hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', route, approval, false);
+    assertEq(router.callCount(), 1, 'the first settlement ran');
+
+    vm.prank(owner);
+    vm.expectRevert(
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(approver), 4)
+    );
+    hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', route, approval, false);
+    assertEq(router.callCount(), 1, 'the replay ran nothing');
+
+    FulfillmentSolution memory fresh = _route(order, calls, 5);
+    bytes memory freshApproval = _signSolutionApproval(approverKey, order, fresh);
+    vm.prank(owner);
+    hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', fresh, freshApproval, false);
+    assertEq(router.callCount(), 2, 'an approval with a fresh nonce settles');
+    assertEq(hub.nonces(lNonceKey(approver), 0), (1 << 4) | (1 << 5), 'both nonces are spent');
+  }
+
+  /// SOL-08 — the approver revokes an unused approval with `revokeNonce`
+  function test_SOL_08_theApproverRevokesAnApproval() public {
+    FulfillmentOrder memory order = _approverOrder(91);
+    FulfillmentSolution memory route = _route(order, _calls(_routerCall(0, hex'01')), 9);
+    bytes memory approval = _signSolutionApproval(approverKey, order, route);
+
+    vm.expectEmit(address(hub));
+    emit IUnorderedNonce.RevokeNonce(lNonceKey(approver), 9);
+    vm.prank(approver);
+    hub.revokeNonce(9);
+
+    vm.prank(owner);
+    vm.expectRevert(
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(approver), 9)
+    );
+    hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', route, approval, false);
+    assertEq(router.callCount(), 0, 'the revoked approval ran nothing');
+  }
+
+  /// SOL-09 — the dead-address approver spends no nonce, so the same nonce repeats
+  function test_SOL_09_theSentinelApproverSpendsNothing() public {
+    FulfillmentOrder memory open = _openFulfillmentOrder(
+      new ERC20Allowance[](0),
+      new ValidationParams[](0),
+      new GenericCall[](0),
+      0,
+      vm.getBlockTimestamp() + 1 hours
+    );
+    FulfillmentSolution memory route = _route(open, _calls(_routerCall(0, hex'01')), 7);
+
+    vm.startPrank(owner);
+    hub.fulfillOrderWithDelegatedAuthentication(open, address(0), '', route, '', false);
+    hub.fulfillOrderWithDelegatedAuthentication(open, address(0), '', route, '', false);
+    vm.stopPrank();
+
+    assertEq(router.callCount(), 2, 'both settlements ran with the same nonce');
+    assertEq(hub.nonces(lNonceKey(ANY), 0), 0, "the dead address's namespace is untouched");
+  }
+
+  /// SOL-10 — the Permit2 rail spends the approval nonce as the delegated rail does
+  function test_SOL_10_thePermit2RailSpendsTheApprovalNonce() public {
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
+    ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
+    FulfillmentOrder memory order = _fulfillmentOrder(
+      ANY,
+      erc20s,
+      new ERC721Approval[](0),
+      new ValidationParams[](0),
+      new GenericCall[](0),
+      approver,
+      92,
+      deadline
+    );
+    FulfillmentSolution memory route = _route(order, _calls(_routerCall(0, hex'01')), 6);
+    bytes memory approval = _signSolutionApproval(approverKey, order, route);
+    bytes memory permitSig = _signPlainPermit(erc20s, 92, deadline);
+
+    assertEq(hub.nonces(lNonceKey(approver), 0), 0, 'nothing is spent before the settlement');
+
+    vm.prank(owner);
+    hub.fulfillOrderWithPermit2Signature(order, permitSig, route, approval);
+
+    assertEq(hub.nonces(lNonceKey(approver), 0), 1 << 6, "the approver's bit is set");
+  }
+
+  /**
+   * SOL-11 — exactly the solution nonce is spent, and a replay reports it
+   * @dev The word and the bit are derived from the drawn nonce with plain shifts, so a wrong word
+   * or bit shows as a different namespace state.
+   */
+  function testFuzz_SOL_11_exactlyTheSolutionNonceIsSpent(SolutionNonceFuzz memory f) public {
+    FulfillmentOrder memory order = _approverOrder(93);
+    FulfillmentSolution memory route = _route(order, _calls(_routerCall(0, hex'01')), f.nonce);
+    bytes memory approval = _signSolutionApproval(approverKey, order, route);
+
+    vm.prank(owner);
+    hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', route, approval, false);
+
+    assertEq(
+      hub.nonces(lNonceKey(approver), f.nonce >> 8),
+      1 << (f.nonce & 0xff),
+      "exactly the solution nonce is set in the approver's namespace"
+    );
+
+    vm.prank(owner);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(approver), f.nonce
+      )
+    );
+    hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', route, approval, false);
+  }
+
+  /**
+   * SOL-12 — the approver's namespace is shared with its `updateDelegation` nonces
+   * @dev The approver, acting as an owner, spends nonce 11 on a relayed delegation update. An
+   * approval with the same nonce is then refused.
+   */
+  function test_SOL_12_theApproverNamespaceIsSharedWithDelegationNonces() public {
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
+    bytes memory sig =
+      _signAuthDelegation(approverKey, approver, address(authenticator), false, '', 11, deadline);
+    vm.prank(relayer);
+    hub.updateDelegation(approver, address(authenticator), false, '', 11, deadline, sig);
+    assertEq(hub.nonces(lNonceKey(approver), 0), 1 << 11, 'the delegation spent nonce 11');
+
+    FulfillmentOrder memory order = _approverOrder(94);
+    FulfillmentSolution memory route = _route(order, _calls(_routerCall(0, hex'01')), 11);
+    bytes memory approval = _signSolutionApproval(approverKey, order, route);
+
+    vm.prank(owner);
+    vm.expectRevert(
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(approver), 11)
+    );
+    hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', route, approval, false);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -1124,9 +1292,9 @@ contract FulfillOrderTest is AuthenticatorBase {
       'the authenticator burned exactly the order nonce'
     );
     assertEq(
-      hub.nonces(lNonceKey(approver), f.nonce >> 8),
-      0,
-      'and the approval spent nothing of the approver\'s'
+      hub.nonces(lNonceKey(approver), 0),
+      f.approveSolution ? 1 : 0,
+      "and the approval spent solution nonce 0 of the approver's namespace, unless waived"
     );
   }
 
@@ -1167,6 +1335,25 @@ contract FulfillOrderTest is AuthenticatorBase {
   // -------------------------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------------------------
+
+  /// @dev Parameters of the SOL-11 fuzz
+  struct SolutionNonceFuzz {
+    uint256 nonce;
+  }
+
+  /// @dev An order with no transfers whose approver is `approver`, valid for an hour
+  function _approverOrder(uint256 nonce) private view returns (FulfillmentOrder memory) {
+    return _fulfillmentOrder(
+      ANY,
+      new ERC20Allowance[](0),
+      new ERC721Approval[](0),
+      new ValidationParams[](0),
+      new GenericCall[](0),
+      approver,
+      nonce,
+      vm.getBlockTimestamp() + 1 hours
+    );
+  }
 
   /// @dev An owner-submitted fulfillment carrying both call lists and nothing else
   function _fulfillWithTail(GenericCall[] memory ownerCalls, GenericCall[] memory solverCalls)

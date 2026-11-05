@@ -100,8 +100,9 @@ interface IKSAllowanceHubV2 {
    * `solution` must specify one target and one amount for each transfer and must not have passed
    * its own expiration. Each ERC20 transfer sends `solution.erc20Amounts[i]`, at most its
    * allowance. The approval is checked against `order.solutionApprover`, and is not required when
-   * that is the dead address. The approval carries no nonce, so it remains valid until the
-   * settlement of its order.
+   * that is the dead address. The approval spends `solution.nonce` in the namespace of
+   * `order.solutionApprover`, so each approval settles at most once. No nonce is spent when
+   * `order.solutionApprover` is the dead address.
    *
    * The caller and the authenticator are treated as in {executeOrderWithDelegatedAuthentication},
    * with `order.solver` in place of `order.relayer`. When the caller is `order.owner`, the solution
