@@ -68,19 +68,37 @@ library FulfillmentOrderLib {
 
   /// @dev EIP-712 hash of the order
   function hash(FulfillmentOrder calldata order) internal pure returns (bytes32) {
+    return hash(
+      order,
+      order.erc721Approvals.hash(),
+      order.validationParams.hash(),
+      order.ownerCalls.hash(),
+      order.extraData.hashCalldata()
+    );
+  }
+
+  /// @dev As {hash}, from the already computed hashes of `erc721Approvals`, `validationParams`,
+  /// `ownerCalls` and `extraData`
+  function hash(
+    FulfillmentOrder calldata order,
+    bytes32 erc721ApprovalsHash,
+    bytes32 validationParamsHash,
+    bytes32 ownerCallsHash,
+    bytes32 extraDataHash
+  ) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(
         FULFILLMENT_ORDER_TYPEHASH,
         order.owner,
         order.solver,
         order.erc20Allowances.hash(),
-        order.erc721Approvals.hash(),
-        order.validationParams.hash(),
-        order.ownerCalls.hash(),
+        erc721ApprovalsHash,
+        validationParamsHash,
+        ownerCallsHash,
         order.solutionApprover,
         order.nonce,
         order.expiration,
-        order.extraData.hashCalldata()
+        extraDataHash
       )
     );
   }

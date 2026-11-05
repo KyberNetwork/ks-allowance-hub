@@ -55,17 +55,30 @@ library ExecutionOrderLib {
 
   /// @dev EIP-712 hash of the order
   function hash(ExecutionOrder calldata order) internal pure returns (bytes32) {
+    return hash(
+      order, order.erc721Transfers.hash(), order.genericCalls.hash(), order.extraData.hashCalldata()
+    );
+  }
+
+  /// @dev As {hash}, from the already computed hashes of `erc721Transfers`, `genericCalls` and
+  /// `extraData`
+  function hash(
+    ExecutionOrder calldata order,
+    bytes32 erc721TransfersHash,
+    bytes32 genericCallsHash,
+    bytes32 extraDataHash
+  ) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(
         EXECUTION_ORDER_TYPEHASH,
         order.owner,
         order.relayer,
         order.erc20Transfers.hash(),
-        order.erc721Transfers.hash(),
-        order.genericCalls.hash(),
+        erc721TransfersHash,
+        genericCallsHash,
         order.nonce,
         order.expiration,
-        order.extraData.hashCalldata()
+        extraDataHash
       )
     );
   }

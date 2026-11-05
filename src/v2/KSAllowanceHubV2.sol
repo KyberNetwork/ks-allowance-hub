@@ -42,6 +42,8 @@ import {
   SignatureChecker
 } from 'openzeppelin-contracts/contracts/utils/cryptography/SignatureChecker.sol';
 
+import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
+
 /**
  * @title KSAllowanceHubV2
  * @notice Single approval target for KyberSwap. It transfers an owner's ERC20 and ERC721 tokens
@@ -69,6 +71,7 @@ contract KSAllowanceHubV2 is
 {
   using CalldataDecoder for bytes;
   using DynamicArrayLibExt for uint256;
+  using EfficientHashLib for bytes;
   using ERC20AllowanceLib for ERC20Allowance[];
   using ERC20TransferLib for ERC20Transfer[];
   using ERC721ApprovalLib for ERC721Approval[];
@@ -154,7 +157,10 @@ contract KSAllowanceHubV2 is
     guardNativeSpend
     returns (bytes[] memory results)
   {
-    _announceExecution(order, order.hash());
+    bytes32 erc721TransfersHash = order.erc721Transfers.hash();
+    bytes32 genericCallsHash = order.genericCalls.hash();
+    bytes32 extraDataHash = order.extraData.hashCalldata();
+    _announceExecution(order, order.hash(erc721TransfersHash, genericCallsHash, extraDataHash));
 
     ISignatureTransfer.PermitBatchTransferFrom memory permit =
       order.erc20Transfers.toPermitBatchTransferFrom(order.nonce, order.expiration);
@@ -168,9 +174,9 @@ contract KSAllowanceHubV2 is
       bytes32 witness = ExecutionWitnessLib.hash(
         order.relayer,
         order.erc20Transfers.targetsHash(),
-        order.erc721Transfers,
-        order.genericCalls,
-        order.extraData
+        erc721TransfersHash,
+        genericCallsHash,
+        extraDataHash
       );
 
       _permitWitnessTransferFrom(
@@ -258,7 +264,12 @@ contract KSAllowanceHubV2 is
     guardNativeSpend
     returns (bytes[] memory results)
   {
-    bytes32 orderHash = order.hash();
+    bytes32 erc721ApprovalsHash = order.erc721Approvals.hash();
+    bytes32 validationParamsHash = order.validationParams.hash();
+    bytes32 ownerCallsHash = order.ownerCalls.hash();
+    bytes32 extraDataHash = order.extraData.hashCalldata();
+    bytes32 orderHash =
+      order.hash(erc721ApprovalsHash, validationParamsHash, ownerCallsHash, extraDataHash);
     // A dead-address approver accepts any solution
     if (order.solutionApprover != Constants.DEAD_ADDRESS) {
       _checkSolutionApproval(order.solutionApprover, orderHash, solution, solutionSignature);
@@ -280,11 +291,11 @@ contract KSAllowanceHubV2 is
     } else if (msg.sender == order.solver || order.solver == Constants.DEAD_ADDRESS) {
       bytes32 witness = FulfillmentWitnessLib.hash(
         order.solver,
-        order.erc721Approvals,
-        order.ownerCalls,
-        order.validationParams,
+        erc721ApprovalsHash,
+        ownerCallsHash,
+        validationParamsHash,
         order.solutionApprover,
-        order.extraData
+        extraDataHash
       );
 
       _permitWitnessTransferFrom(

@@ -77,15 +77,34 @@ library FulfillmentWitnessLib {
     address callsSigner,
     bytes calldata extraData
   ) internal pure returns (bytes32) {
+    return hash(
+      solver,
+      erc721Approvals.hash(),
+      ownerCalls.hash(),
+      validationParams.hash(),
+      callsSigner,
+      extraData.hashCalldata()
+    );
+  }
+
+  /// @dev As {hash}, from the already computed hashes of the array and bytes members
+  function hash(
+    address solver,
+    bytes32 erc721ApprovalsHash,
+    bytes32 ownerCallsHash,
+    bytes32 validationParamsHash,
+    address callsSigner,
+    bytes32 extraDataHash
+  ) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(
         FULFILLMENT_WITNESS_TYPEHASH,
         solver,
-        erc721Approvals.hash(),
-        ownerCalls.hash(),
-        validationParams.hash(),
+        erc721ApprovalsHash,
+        ownerCallsHash,
+        validationParamsHash,
         callsSigner,
-        extraData.hashCalldata()
+        extraDataHash
       )
     );
   }

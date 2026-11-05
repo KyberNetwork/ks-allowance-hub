@@ -73,14 +73,31 @@ library ExecutionWitnessLib {
     GenericCall[] calldata genericCalls,
     bytes calldata extraData
   ) internal pure returns (bytes32) {
+    return hash(
+      relayer,
+      erc20TargetsHash,
+      erc721Transfers.hash(),
+      genericCalls.hash(),
+      extraData.hashCalldata()
+    );
+  }
+
+  /// @dev As {hash}, from the already computed hashes of the array and bytes members
+  function hash(
+    address relayer,
+    bytes32 erc20TargetsHash,
+    bytes32 erc721TransfersHash,
+    bytes32 genericCallsHash,
+    bytes32 extraDataHash
+  ) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(
         EXECUTION_WITNESS_TYPEHASH,
         relayer,
         erc20TargetsHash,
-        erc721Transfers.hash(),
-        genericCalls.hash(),
-        extraData.hashCalldata()
+        erc721TransfersHash,
+        genericCallsHash,
+        extraDataHash
       )
     );
   }
