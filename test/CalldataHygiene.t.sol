@@ -1,0 +1,132 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol';
+
+import {AuthKey} from 'src/base/types/AuthKey.sol';
+import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
+import {ERC721Approval} from 'src/types/ERC721Approval.sol';
+import {ERC721Transfer} from 'src/types/ERC721Transfer.sol';
+import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
+import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
+import {GenericCall} from 'src/types/GenericCall.sol';
+import {ValidationParams} from 'src/types/ValidationParams.sol';
+
+/**
+ * @title CalldataHygieneTest
+ * @notice DIRTY-01..04 — an order hash is taken from unmasked calldata on every rail
+ * @dev The leaf hashes copy their struct's calldata words without masking them, which is only
+ * sound because settling the order reads the same fields through Solidity, and that read rejects a
+ * word carrying dirty high bits. These cases hold that: a rail that stopped reading the fields, or
+ * only needed the digest, would let a dirty payload through and fail here.
+ */
+contract CalldataHygieneTest is AuthenticatorBase {
+  uint160 internal constant AMOUNT = 5 ether;
+
+  AuthKey internal key;
+
+  function setUp() public override {
+    super.setUp();
+    key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
+  }
+
+  /// DIRTY-01 — the delegated execution rail
+  function test_DIRTY_01_delegatedExecution() public {
+    _assertDirtyTokenWordIsRefused(
+      owner,
+      abi.encodeCall(
+        IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
+        (
+          _openExecutionOrder(
+            _erc20s(_tokenTransfer(AMOUNT)),
+            _calls(_routerCall(0, hex'01')),
+            90,
+            vm.getBlockTimestamp()
+          ),
+          address(0),
+          '',
+          false
+        )
+      )
+    );
+  }
+
+  /// DIRTY-02 — the Permit2-signature execution rail, where the witness binds the same transfers
+  function test_DIRTY_02_permit2Execution() public {
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
+    ExecutionOrder memory order = _executionOrder(
+      ANY,
+      _erc20s(_tokenTransfer(AMOUNT)),
+      new ERC721Transfer[](0),
+      _calls(_routerCall(0, hex'01')),
+      91,
+      deadline
+    );
+
+    _assertDirtyTokenWordIsRefused(
+      relayer,
+      abi.encodeCall(
+        IKSAllowanceHubV2.executeOrderWithPermit2Signature, (order, _signExecutionWitness(order))
+      )
+    );
+  }
+
+  /// DIRTY-03 — the delegated fulfillment rail
+  function test_DIRTY_03_delegatedFulfillment() public {
+    _delegateKeyThroughHub(key);
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
+    FulfillmentOrder memory order = _order(92, deadline);
+
+    _assertDirtyTokenWordIsRefused(
+      relayer,
+      abi.encodeCall(
+        IKSAllowanceHubV2.fulfillOrderWithDelegatedAuthentication,
+        (
+          order,
+          address(authenticator),
+          _fulfillmentAuthData(order, key, masterKeyPk),
+          _solution(order, _calls(_routerCall(0, hex'01')), deadline),
+          '',
+          false
+        )
+      )
+    );
+  }
+
+  /// DIRTY-04 — the Permit2-signature fulfillment rail
+  function test_DIRTY_04_permit2Fulfillment() public {
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
+    FulfillmentOrder memory order = _order(93, deadline);
+
+    _assertDirtyTokenWordIsRefused(
+      owner,
+      abi.encodeCall(
+        IKSAllowanceHubV2.fulfillOrderWithPermit2Signature,
+        (
+          order,
+          _signPlainPermit(_allowances(_tokenAllowance(AMOUNT)), 93, deadline),
+          _solution(order, _calls(_routerCall(0, hex'02')), deadline),
+          ''
+        )
+      )
+    );
+  }
+
+  /// @dev The sentinel approver, so no approval signature stands between the rail and the hash
+  function _order(uint256 nonce, uint256 expiration)
+    internal
+    view
+    returns (FulfillmentOrder memory)
+  {
+    return _fulfillmentOrder(
+      ANY,
+      _allowances(_tokenAllowance(AMOUNT)),
+      new ERC721Approval[](0),
+      new ValidationParams[](0),
+      new GenericCall[](0),
+      ANY,
+      nonce,
+      expiration
+    );
+  }
+}

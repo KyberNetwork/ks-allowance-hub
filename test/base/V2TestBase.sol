@@ -9,28 +9,28 @@ import {PermitHash} from 'test/libraries/PermitHash.sol';
 
 import {
   PermitBatchWitnessTransferFrom as Permit2ExecutionWitness
-} from 'src/v2/types/ExecutionWitness.sol';
+} from 'src/types/ExecutionWitness.sol';
 import {
   PermitBatchWitnessTransferFrom as Permit2FulfillmentWitness
-} from 'src/v2/types/FulfillmentWitness.sol';
+} from 'src/types/FulfillmentWitness.sol';
 
+import {MasterKeyUpdate} from 'src/authenticators/types/MasterKeyUpdate.sol';
+import {NonceRevocation} from 'src/authenticators/types/NonceRevocation.sol';
+import {SessionKeyUpdate} from 'src/authenticators/types/SessionKeyUpdate.sol';
 import {AuthKey} from 'src/base/types/AuthKey.sol';
 import {KeyType} from 'src/base/types/KeyType.sol';
-import {MasterKeyUpdate} from 'src/v2/authenticators/types/MasterKeyUpdate.sol';
-import {NonceRevocation} from 'src/v2/authenticators/types/NonceRevocation.sol';
-import {SessionKeyUpdate} from 'src/v2/authenticators/types/SessionKeyUpdate.sol';
-import {AuthDelegation} from 'src/v2/types/AuthDelegation.sol';
-import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
-import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
-import {ERC721Approval} from 'src/v2/types/ERC721Approval.sol';
-import {ERC721Transfer} from 'src/v2/types/ERC721Transfer.sol';
-import {ExecutionWitness} from 'src/v2/types/ExecutionWitness.sol';
-import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
-import {FulfillmentSolution} from 'src/v2/types/FulfillmentSolution.sol';
-import {FulfillmentWitness} from 'src/v2/types/FulfillmentWitness.sol';
-import {GenericCall} from 'src/v2/types/GenericCall.sol';
-import {SolutionApproval} from 'src/v2/types/SolutionApproval.sol';
-import {ValidationParams} from 'src/v2/types/ValidationParams.sol';
+import {AuthDelegation} from 'src/types/AuthDelegation.sol';
+import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
+import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
+import {ERC721Approval} from 'src/types/ERC721Approval.sol';
+import {ERC721Transfer} from 'src/types/ERC721Transfer.sol';
+import {ExecutionWitness} from 'src/types/ExecutionWitness.sol';
+import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
+import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
+import {FulfillmentWitness} from 'src/types/FulfillmentWitness.sol';
+import {GenericCall} from 'src/types/GenericCall.sol';
+import {SolutionApproval} from 'src/types/SolutionApproval.sol';
+import {ValidationParams} from 'src/types/ValidationParams.sol';
 
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 
@@ -41,7 +41,7 @@ import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer
  * {SchemaHash} over the `forge bind-json` schemas. Nothing here may import a production constant or
  * hashing library: Permit2 derives its typehash from the string the hub passes it, so a test that
  * signs with the same production constant would agree with a wrong type string as readily as with
- * a right one. The schemas are the independent oracle, and `test/v2/types/SchemaAudit.t.sol`
+ * a right one. The schemas are the independent oracle, and `test/types/SchemaAudit.t.sol`
  * compares the production constants against them.
  *
  * The struct types are imported for their ABI shape only. Each one carries a `using ... global`

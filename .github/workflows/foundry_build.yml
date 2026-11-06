@@ -32,17 +32,13 @@ jobs:
           version: v1.9.0
           cache: false
 
-      - name: Run Forge Build for v1
-        id: build-v1
+      - name: Run Forge Build with solar
+        id: build-solar
         run: |
           forge --version
-          forge build src/v1 --sizes
+          FOUNDRY_PROFILE=solar forge build src --sizes
 
-      - name: Run Forge Build for v2 with solar
-        id: build-v2
-        run: FOUNDRY_PROFILE=solar forge build src/v2 --sizes
-
-      # The bound types all live under `src/v2` and `src/base`, which the step above has compiled
+      # The bound types all live under `src`, which the step above has compiled
       - name: Check the EIP-712 bindings are current
         run: |
           FOUNDRY_PROFILE=solar forge bind-json

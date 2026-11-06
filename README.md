@@ -7,13 +7,6 @@ order and then calls whitelisted routers.
 Only routers holding `WHITELISTED_ROUTER_ROLE` can be called, so no other contract can reach the
 owners' allowances to the hub. Guardians can revoke that role without the admin.
 
-Two hubs can be deployed side by side:
-
-| Contract | Description |
-|---|---|
-| `KSAllowanceHub` | The legacy hub |
-| `KSAllowanceHubV2` | Signed orders, solver fulfillment, delegated authentication and relayed approvals |
-
 ## KSAllowanceHubV2
 
 ### Orders
@@ -216,31 +209,34 @@ Each domain is published through ERC-5267's `eip712Domain()`.
 
 ```
 src/
-  base/            contracts shared by both hubs
-  v1/              KSAllowanceHub
-  v2/              KSAllowanceHubV2, its delegator and multicall, CallsForwarder, types and libraries
-  v2/authenticators/  TwoTiersOrderAuthenticator and its key types
+  *.sol            KSAllowanceHubV2, its delegator and multicall, and CallsForwarder
+  base/            contracts shared by the hub and the authenticators
+  authenticators/  TwoTiersOrderAuthenticator and its key types
+  interfaces/      interfaces of the hub, the delegator, the forwarder and the authenticators
+  libraries/       array and hashing helpers
+  types/           order, witness and transfer types
 test/
+  *.t.sol          KSAllowanceHubV2 suites
   base/            shared test base, EIP-712 oracles and the Permit2 artifact check
-  v1/              KSAllowanceHub suite, on a mainnet fork
-  v2/              KSAllowanceHubV2 and TwoTiersOrderAuthenticator suites, on a local chain
+  authenticators/  TwoTiersOrderAuthenticator suites
+  mocks/           mock tokens, router and validator
+  types/           EIP-712 type and schema suites
   libraries/       Permit2 hashing and array helpers
   artifacts/       Permit2 creation code
 script/
-  v1/, v2/         deployment and router whitelisting
+  *.s.sol          deployment and router whitelisting
+  config/          per-chain deployment parameters
 ```
 
 ## Testing
 
 ```shell
 forge test                                 # the whole suite
-forge test --match-path 'test/v1/*'        # KSAllowanceHub only
 FOUNDRY_PROFILE=deep forge test            # 10,000 fuzz runs per property
 forge coverage --ir-minimum --report summary
 ```
 
-The V1 suite forks mainnet and requires `RPC_1`, through `.env` locally and repository secrets in
-CI. The V2 suite deploys Permit2 from `test/artifacts/Permit2.json` and needs no RPC.
+The suite deploys Permit2 from `test/artifacts/Permit2.json` and needs no RPC.
 
 CI runs `forge test -vvv --isolate`, which executes each top-level call as its own transaction.
 Transient state such as the account `msgSender()` returns is cleared between calls, so it can only
@@ -283,13 +279,10 @@ See [Foundry's contract documentation guide](https://www.getfoundry.sh/forge/doc
 The scripts deploy with CREATE3 and read `script/config/*.json` per chain.
 
 ```shell
-forge script script/v1/DeployKSAllowanceHub.s.sol             --sig 'run(string[])' '[1,56]' --broadcast
-forge script script/v1/AddWhitelistedRouters.s.sol            --sig 'run(string[])' '[1,56]' --broadcast
-
-forge script script/v2/DeployCallsForwarder.s.sol             --sig 'run(string[])' '[1,56]' --broadcast
-forge script script/v2/DeployKSAllowanceHubV2.s.sol           --sig 'run(string[])' '[1,56]' --broadcast
-forge script script/v2/DeployTwoTiersOrderAuthenticator.s.sol  --sig 'run(string[])' '[1,56]' --broadcast
-forge script script/v2/AddWhitelistedRoutersV2.s.sol          --sig 'run(string[])' '[1,56]' --broadcast
+forge script script/DeployCallsForwarder.s.sol             --sig 'run(string[])' '[1,56]' --broadcast
+forge script script/DeployKSAllowanceHubV2.s.sol           --sig 'run(string[])' '[1,56]' --broadcast
+forge script script/DeployTwoTiersOrderAuthenticator.s.sol  --sig 'run(string[])' '[1,56]' --broadcast
+forge script script/AddWhitelistedRoutersV2.s.sol          --sig 'run(string[])' '[1,56]' --broadcast
 ```
 
 `DeployCallsForwarder` writes the forwarder's address to `calls-forwarder.json`, which
@@ -299,8 +292,7 @@ the hub's address to `allowance-hub-v2.json`, which `DeployTwoTiersOrderAuthenti
 `AddWhitelistedRoutersV2` grants the missing routers in one transaction through the hub's
 `multicall`.
 
-The two hubs use different router roles: V1 grants `WHITELIST_ROUTER_ROLE` and V2 grants
-`WHITELISTED_ROUTER_ROLE`, so their scripts are not interchangeable.
+`AddWhitelistedRoutersV2` grants `WHITELISTED_ROUTER_ROLE`.
 
 Each deploy script's `salt` is part of the CREATE3 salt, so changing it changes the deployed address
 on every chain.

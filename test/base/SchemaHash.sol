@@ -7,24 +7,24 @@ import {JsonBindings} from 'utils/JsonBindings.sol';
 
 import {
   PermitBatchWitnessTransferFrom as Permit2ExecutionWitness
-} from 'src/v2/types/ExecutionWitness.sol';
+} from 'src/types/ExecutionWitness.sol';
 import {
   PermitBatchWitnessTransferFrom as Permit2FulfillmentWitness
-} from 'src/v2/types/FulfillmentWitness.sol';
+} from 'src/types/FulfillmentWitness.sol';
 
+import {MasterKeyUpdate} from 'src/authenticators/types/MasterKeyUpdate.sol';
+import {NonceRevocation} from 'src/authenticators/types/NonceRevocation.sol';
+import {SessionKeyUpdate} from 'src/authenticators/types/SessionKeyUpdate.sol';
 import {AuthKey} from 'src/base/types/AuthKey.sol';
-import {MasterKeyUpdate} from 'src/v2/authenticators/types/MasterKeyUpdate.sol';
-import {NonceRevocation} from 'src/v2/authenticators/types/NonceRevocation.sol';
-import {SessionKeyUpdate} from 'src/v2/authenticators/types/SessionKeyUpdate.sol';
-import {AuthDelegation} from 'src/v2/types/AuthDelegation.sol';
-import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
-import {ERC721Approval} from 'src/v2/types/ERC721Approval.sol';
-import {ExecutionOrder} from 'src/v2/types/ExecutionOrder.sol';
-import {ExecutionWitness} from 'src/v2/types/ExecutionWitness.sol';
-import {FulfillmentOrder} from 'src/v2/types/FulfillmentOrder.sol';
-import {FulfillmentSolution} from 'src/v2/types/FulfillmentSolution.sol';
-import {FulfillmentWitness} from 'src/v2/types/FulfillmentWitness.sol';
-import {SolutionApproval} from 'src/v2/types/SolutionApproval.sol';
+import {AuthDelegation} from 'src/types/AuthDelegation.sol';
+import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
+import {ERC721Approval} from 'src/types/ERC721Approval.sol';
+import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
+import {ExecutionWitness} from 'src/types/ExecutionWitness.sol';
+import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
+import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
+import {FulfillmentWitness} from 'src/types/FulfillmentWitness.sol';
+import {SolutionApproval} from 'src/types/SolutionApproval.sol';
 
 /**
  * @title SchemaHash

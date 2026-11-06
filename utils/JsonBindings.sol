@@ -3,24 +3,24 @@
 pragma solidity >=0.6.2 <0.9.0;
 pragma experimental ABIEncoderV2;
 
+import {MasterKeyUpdate} from "src/authenticators/types/MasterKeyUpdate.sol";
+import {NonceRevocation} from "src/authenticators/types/NonceRevocation.sol";
+import {SessionKeyUpdate} from "src/authenticators/types/SessionKeyUpdate.sol";
 import {AuthKey} from "src/base/types/AuthKey.sol";
-import {MasterKeyUpdate} from "src/v2/authenticators/types/MasterKeyUpdate.sol";
-import {NonceRevocation} from "src/v2/authenticators/types/NonceRevocation.sol";
-import {SessionKeyUpdate} from "src/v2/authenticators/types/SessionKeyUpdate.sol";
-import {AuthDelegation} from "src/v2/types/AuthDelegation.sol";
-import {ERC20Allowance} from "src/v2/types/ERC20Allowance.sol";
-import {ERC20Transfer} from "src/v2/types/ERC20Transfer.sol";
-import {ERC721Approval} from "src/v2/types/ERC721Approval.sol";
-import {ERC721Transfer} from "src/v2/types/ERC721Transfer.sol";
-import {ExecutionOrder} from "src/v2/types/ExecutionOrder.sol";
-import {ExecutionWitness, PermitBatchWitnessTransferFrom as PermitBatchWitnessTransferFrom_0} from "src/v2/types/ExecutionWitness.sol";
-import {FulfillmentOrder} from "src/v2/types/FulfillmentOrder.sol";
-import {FulfillmentSolution} from "src/v2/types/FulfillmentSolution.sol";
-import {FulfillmentWitness, PermitBatchWitnessTransferFrom as PermitBatchWitnessTransferFrom_1} from "src/v2/types/FulfillmentWitness.sol";
-import {GenericCall} from "src/v2/types/GenericCall.sol";
-import {NativeTransfer} from "src/v2/types/NativeTransfer.sol";
-import {SolutionApproval} from "src/v2/types/SolutionApproval.sol";
-import {ValidationParams} from "src/v2/types/ValidationParams.sol";
+import {AuthDelegation} from "src/types/AuthDelegation.sol";
+import {ERC20Allowance} from "src/types/ERC20Allowance.sol";
+import {ERC20Transfer} from "src/types/ERC20Transfer.sol";
+import {ERC721Approval} from "src/types/ERC721Approval.sol";
+import {ERC721Transfer} from "src/types/ERC721Transfer.sol";
+import {ExecutionOrder} from "src/types/ExecutionOrder.sol";
+import {ExecutionWitness, PermitBatchWitnessTransferFrom as PermitBatchWitnessTransferFrom_0} from "src/types/ExecutionWitness.sol";
+import {FulfillmentOrder} from "src/types/FulfillmentOrder.sol";
+import {FulfillmentSolution} from "src/types/FulfillmentSolution.sol";
+import {FulfillmentWitness, PermitBatchWitnessTransferFrom as PermitBatchWitnessTransferFrom_1} from "src/types/FulfillmentWitness.sol";
+import {GenericCall} from "src/types/GenericCall.sol";
+import {NativeTransfer} from "src/types/NativeTransfer.sol";
+import {SolutionApproval} from "src/types/SolutionApproval.sol";
+import {ValidationParams} from "src/types/ValidationParams.sol";
 
 interface Vm {
     function parseJsonTypeArray(string calldata json, string calldata key, string calldata typeDescription) external pure returns (bytes memory);
