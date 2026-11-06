@@ -3,12 +3,8 @@ pragma solidity ^0.8.0;
 
 import {AuthenticatorBase} from 'test/v2/authenticators/base/AuthenticatorBase.sol';
 
-import {ReentrantRouterMock} from 'test/v2/mocks/RouterMock.sol';
-
 import {NativeSpendGuard} from 'src/base/NativeSpendGuard.sol';
-import {IMsgSender} from 'src/base/interfaces/IMsgSender.sol';
 import {IAuthDelegator} from 'src/v2/interfaces/IAuthDelegator.sol';
-import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
 import {IOrderAuthenticator} from 'src/v2/interfaces/IOrderAuthenticator.sol';
 import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/v2/types/ERC20Transfer.sol';
@@ -60,8 +56,8 @@ contract OrderAuthenticatorMock is IOrderAuthenticator {
 }
 
 /**
- * @notice `GUARD-01..06`, `GATE-01`, `MC-01..06` and `MC-FUZZ` — pause, expiration, native spend,
- * the reentrancy lock and the batching surface.
+ * @notice `GUARD-01..06`, `GATE-01`, `MC-01..06` and `MC-FUZZ` — pause, expiration, native spend
+ * and the batching surface.
  * @dev Role identifiers are written out rather than imported, so a changed production constant
  * cannot agree with the expectation undetected.
  *
@@ -73,7 +69,8 @@ contract OrderAuthenticatorMock is IOrderAuthenticator {
  *
  * The four entry points carry twenty modifier applications between them. `GUARD-*` takes the
  * execution rail, `GATE-01` takes `fulfillOrderWithPermit2Signature` and `GATE-02` takes the
- * applications neither of those reaches, so every one of the twenty is observed somewhere.
+ * applications neither of those reaches. `NEST-03` of {SettlementTest} observes `setMsgSender` on
+ * all four, so every one of the twenty is observed somewhere.
  */
 contract GuardsTest is AuthenticatorBase {
   uint160 internal constant AMOUNT = 1 ether;
@@ -252,17 +249,16 @@ contract GuardsTest is AuthenticatorBase {
   }
 
   // -----------------------------------------------------------------------------------------
-  // GATE-01 — the four modifiers on `fulfillOrderWithPermit2Signature`
+  // GATE-01 — the three modifiers on `fulfillOrderWithPermit2Signature`
   // -----------------------------------------------------------------------------------------
 
   /**
-   * GATE-01 — the fulfillment Permit2 rail is pausable, expiration-checked, locked and
-   * native-guarded
-   * @dev Four modifiers, one step each, on the entry point they were added to. The control at the
-   * top is what makes the four refusals evidence: the same shape of order settles when none of them
+   * GATE-01 — the fulfillment Permit2 rail is pausable, expiration-checked and native-guarded
+   * @dev Three modifiers, one step each, on the entry point they were added to. The control at the
+   * top is what makes the three refusals evidence: the same shape of order settles when none of them
    * fires, so each step differs from a settling order in exactly the one thing its modifier reads.
    */
-  function test_GATE_01_fulfillPermit2CarriesTheFourModifiers() public {
+  function test_GATE_01_fulfillPermit2CarriesTheThreeModifiers() public {
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
 
@@ -309,33 +305,6 @@ contract GuardsTest is AuthenticatorBase {
       stale, staleSig, _route(stale, _calls(_routerCall(0, hex'01'))), ''
     );
 
-    // lock
-    ReentrantRouterMock evil = new ReentrantRouterMock(address(hub));
-    vm.prank(admin);
-    hub.grantRole(ROUTER_ROLE, address(evil));
-
-    FulfillmentOrder memory locked = _openFulfillmentOrder(
-      erc20s, new ValidationParams[](0), new GenericCall[](0), 103, expiration
-    );
-    bytes memory lockedSig = _signFulfillmentWitness(locked);
-    evil.setReentry(
-      abi.encodeCall(
-        IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
-        (
-          _openExecutionOrder(new ERC20Transfer[](0), new GenericCall[](0), 0, expiration),
-          address(0),
-          '',
-          false
-        )
-      )
-    );
-    FulfillmentSolution memory reentrantRoute =
-      _route(locked, _calls(GenericCall({router: address(evil), value: 0, data: hex''})));
-
-    vm.prank(solver);
-    vm.expectRevert(abi.encodeWithSelector(IMsgSender.AlreadyLocked.selector, owner));
-    hub.fulfillOrderWithPermit2Signature(locked, lockedSig, reentrantRoute, '');
-
     // guardNativeSpend
     vm.deal(address(hub), PREFUND);
     vm.deal(solver, VALUE);
@@ -362,8 +331,7 @@ contract GuardsTest is AuthenticatorBase {
    * GATE-02 — the modifier applications no other case watches
    * @dev One step each for `guardNativeSpend` on `executeOrderWithPermit2Signature`, and for
    * `checkDelegation` and the native guard on `fulfillOrderWithDelegatedAuthentication`. Each step
-   * is written so that only its own modifier can produce the result. The lock on the fulfillment
-   * rails is covered by LOCK-03 and LOCK-06.
+   * is written so that only its own modifier can produce the result.
    */
   function test_GATE_02_theUnwatchedModifierApplications() public {
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;

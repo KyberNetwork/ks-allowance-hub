@@ -178,6 +178,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
     bytes memory routersApproval = _signSolutionApproval(approverKey, order, toRouters);
     uint256 ownerBefore = _balance(owner);
 
+    // The refused attempt reverts, so the solution nonce it carries stays unspent for the valid one
     vm.prank(owner);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
@@ -391,6 +392,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
     FulfillmentSolution memory lower = _amountSolution(2 ether);
     bytes memory approval = _signSolutionApproval(approverKey, order, approved);
 
+    // The refused attempt reverts, so the solution nonce it carries stays unspent for the valid one
     vm.prank(owner);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
     hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', lower, approval, false);

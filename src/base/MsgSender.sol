@@ -11,44 +11,22 @@ import {TransientSlot} from 'openzeppelin-contracts/contracts/utils/TransientSlo
  * @title MsgSender
  * @notice Records the account a call is acting for, so that a contract it calls can identify that
  * account. A call that sets the account may run inside another, and the account set before it is
- * restored when it returns. No call that sets the account may run inside a locked one.
- * @dev The slot holds the account in its low 160 bits and the lock in bit 160.
+ * restored when it returns.
  */
 abstract contract MsgSender is IMsgSender {
   using TransientSlot for *;
 
   /// @dev Sets `sender` as {msgSender} for the call
   modifier setMsgSender(address sender) {
-    uint256 previous = _setMsgSender(uint160(sender));
+    TransientSlot.AddressSlot slot = Constants.MSG_SENDER_SLOT.asAddress();
+    address previous = slot.tload();
+    slot.tstore(sender);
     _;
-    Constants.MSG_SENDER_SLOT.asUint256().tstore(previous);
-  }
-
-  /// @dev Sets `sender` as {msgSender} for the call, and holds the lock until it returns
-  modifier setMsgSenderAndLock(address sender) {
-    uint256 previous = _setMsgSender(Constants.LOCKED_FLAG | uint160(sender));
-    _;
-    Constants.MSG_SENDER_SLOT.asUint256().tstore(previous);
-  }
-
-  /**
-   * @dev Stores `value` in the slot and returns the value stored before it, reverting while the
-   * lock is held
-   */
-  function _setMsgSender(uint256 value) internal returns (uint256 previous) {
-    TransientSlot.Uint256Slot slot = Constants.MSG_SENDER_SLOT.asUint256();
-    previous = slot.tload();
-    if (previous & Constants.LOCKED_FLAG != 0) {
-      // forge-lint: disable-next-line(unsafe-typecast)
-      revert AlreadyLocked(address(uint160(previous)));
-    }
-
-    slot.tstore(value);
+    slot.tstore(previous);
   }
 
   /// @inheritdoc IMsgSender
   function msgSender() public view returns (address sender) {
-    // forge-lint: disable-next-line(unsafe-typecast)
-    return address(uint160(Constants.MSG_SENDER_SLOT.asUint256().tload()));
+    return Constants.MSG_SENDER_SLOT.asAddress().tload();
   }
 }

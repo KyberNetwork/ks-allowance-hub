@@ -12,7 +12,6 @@ import {ReentrantReceiverMock} from 'test/v2/mocks/TokenMocks.sol';
 
 import {NativeSpendGuard} from 'src/base/NativeSpendGuard.sol';
 import {IKSGenericRouter} from 'src/base/interfaces/IKSGenericRouter.sol';
-import {IMsgSender} from 'src/base/interfaces/IMsgSender.sol';
 import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
 import {IKSAllowanceHubV2} from 'src/v2/interfaces/IKSAllowanceHubV2.sol';
 import {ERC20Allowance} from 'src/v2/types/ERC20Allowance.sol';
@@ -30,7 +29,7 @@ import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessCon
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 /**
- * @notice `SET-01..04`, `OWN-07`, `ROUTER-01..03` and `LOCK-02..07` — the final settlement steps
+ * @notice `SET-01..04`, `OWN-07`, `ROUTER-01..03` and `NEST-01..05` — the final settlement steps
  * shared by all four entry points.
  * @dev The role constant, the `TransferTokens` topic and the router's own function signature are
  * written out rather than imported: an expected value taken from the contract under test would
@@ -46,17 +45,19 @@ contract SettlementTest is HubBase {
   uint256 internal constant PREFUND = 1 ether;
   uint256 internal constant VALUE = 1 ether;
 
-  /// @dev Inputs of {testFuzz_LOCK_02_nestedOrdersRestoreEachOwner}
+  /// @dev Inputs of {testFuzz_NEST_01_nestedOrdersRestoreEachOwner}
   struct NestingParams {
     uint256 depth;
     bool innermostIsFulfillment;
     bool topViaPermit2;
   }
 
-  /// @dev Inputs of {testFuzz_LOCK_06_noOrderSettlesInsideAFulfillment}
-  struct LockedReentryParams {
-    uint256 entry;
-    bool viaExecution;
+  /// @dev Inputs of {testFuzz_NEST_03_anOrderSettlesInsideAnotherOnEveryEntryPoint}
+  struct NestedEntryParams {
+    bool outerIsFulfillment;
+    bool outerViaPermit2;
+    uint256 nestedEntry;
+    bool wrapped;
   }
 
   /// @dev Transcribed from {IKSGenericRouter}, so a wrong production selector cannot agree with it
@@ -329,19 +330,20 @@ contract SettlementTest is HubBase {
   }
 
   // -----------------------------------------------------------------------------------------
-  // LOCK — the transient msg sender, which is both the identity channel and the fulfillment lock
+  // NEST — the transient msg sender identifies the order owner to a router, and an order may settle
+  // inside another
   // -----------------------------------------------------------------------------------------
 
   /**
-   * LOCK-02 — orders nested inside execution router calls settle, and each level sees its owner
-   * @dev Level 0 is `owner`'s execution, submitted by `owner` on the delegated rail or by `relayer`
-   * on the Permit2 rail. Level `k` below the innermost calls `evils[k]`, which settles level
-   * `k + 1` as an order it owns. The innermost level is an execution or a fulfillment and calls
-   * `router`. Each `evils[k]` reads {msgSender} before and after its nested order, and level 0
-   * calls `router2` last, so a level that did not restore its predecessor's sender is detected at
+   * NEST-01 — orders nested inside execution router calls settle, and each level sees its owner
+   * @dev Level 0 is `owner`'s execution, submitted by `owner` on the delegated rail or by
+   * `relayer` on the Permit2 rail. Level `k` below the innermost calls `evils[k]`, which settles
+   * level `k + 1` as an order it owns. The innermost level is an execution or a fulfillment and
+   * calls `router`. Each `evils[k]` reads {msgSender} before and after its nested order, and level
+   * 0 calls `router2` last, so a level that did not restore its predecessor's sender is detected at
    * the next read.
    */
-  function testFuzz_LOCK_02_nestedOrdersRestoreEachOwner(NestingParams memory p) public {
+  function testFuzz_NEST_01_nestedOrdersRestoreEachOwner(NestingParams memory p) public {
     uint256 depth = bound(p.depth, 1, 6);
 
     ReentrantRouterMock[] memory evils = new ReentrantRouterMock[](depth);
@@ -386,10 +388,17 @@ contract SettlementTest is HubBase {
     assertEq(hub.msgSender(), address(0), 'nothing is recorded after the call');
   }
 
-  /// LOCK-03 — the ERC721 receiver hook of a fulfillment cannot settle an order
-  function test_LOCK_03_receiverHookIsRefusedInsideAFulfillment() public {
+  /**
+   * NEST-02 — the ERC721 receiver hook of a fulfillment may settle an order
+   * @dev The NFT target of the fulfillment is a receiver whose hook settles an execution it owns
+   * and that calls `router` once. The hub emits `TransferTokens` for an order before it moves any
+   * asset of it, so the fulfillment's log precedes the log of the order settled by the hook.
+   */
+  function test_NEST_02_receiverHookSettlesAnOrderInsideAFulfillment() public {
     ReentrantReceiverMock receiver = new ReentrantReceiverMock(address(hub));
-    receiver.setReentry(_executionCall(_ownedExecution(address(receiver), new GenericCall[](0))));
+    ExecutionOrder memory nested =
+      _ownedExecution(address(receiver), _calls(_routerCall(0, hex'01')));
+    receiver.setReentry(_executionCall(nested));
 
     ERC721Approval[] memory approvals = new ERC721Approval[](1);
     approvals[0] = _nftApproval();
@@ -414,19 +423,121 @@ contract SettlementTest is HubBase {
       vm.getBlockTimestamp() + 1 hours
     );
 
+    vm.recordLogs();
+
     vm.prank(owner);
-    vm.expectRevert(abi.encodeWithSelector(IMsgSender.AlreadyLocked.selector, owner));
     hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', solution, '', false);
 
-    assertEq(nft.ownerOf(NFT_ID), owner, 'the NFT never moved');
+    assertEq(nft.ownerOf(NFT_ID), address(receiver), 'the NFT moved to the receiver');
+    assertEq(router.callCount(), 1, 'the router call of the nested order ran');
+    assertEq(router.seenMsgSender(), address(receiver), 'under the nested owner');
+
+    // The fulfillment announces itself before it moves the NFT, and the hook runs during the move
+    Vm.Log[] memory logs = _transferTokensLogs();
+    assertEq(logs.length, 2, 'one TransferTokens per order');
+    assertEq(logs[0].topics.length, 4, 'caller, owner and the order hash are indexed');
+    assertEq(_topicAddress(logs[0].topics[1]), owner, 'the fulfillment caller');
+    assertEq(_topicAddress(logs[0].topics[2]), owner, 'the fulfillment owner');
+    assertEq(logs[0].topics[3], SchemaHash.fulfillmentOrder(order), 'the fulfillment order hash');
+    _assertEmptySettlement(
+      logs[1], address(receiver), address(receiver), SchemaHash.executionOrder(nested)
+    );
+
+    assertEq(hub.msgSender(), address(0), 'nothing is recorded after the call');
   }
 
   /**
-   * LOCK-04 — `revokeNonce` is outside the lock, so a router can reach it mid-order
-   * @dev Recorded deliberately: the nonce is burned against the router, not the owner, so the
-   * surface is reachable but does not let a router spend the owner's nonces.
+   * NEST-03 — an order settles inside another on every entry point, as outer and as nested order
+   * @dev The outer order is an execution or a fulfillment whose single call is `evil`, which
+   * settles the nested order. On the delegated rail the outer order is owned and submitted by
+   * `evilOuter`. On the Permit2 rail it is owned by `owner`, signed open to any submitter and
+   * submitted by `evilOuter`. With `wrapped`, an execution of `owner` calls `evilOuter`, which
+   * submits the outer order from inside it.
+   *
+   * The nested order calls `router` once and is submitted by `evil`. Entry 0 is an execution and
+   * entry 2 a fulfillment on the delegated rail, owned by `evil`. Entries 1 and 3 are the same on
+   * the Permit2 rail, owned by `nestedOwner` and signed with its key. No order moves a token, so
+   * Permit2 verifies the signature and spends the nonce of an empty batch. The owner of the outer
+   * order and the owner of the nested order differ in every combination.
+   * @param p The type and rail of the outer order, the nested entry point, and whether the outer
+   * order is wrapped
    */
-  function test_LOCK_04_revokeNonceIsReachableFromInsideAnOrder() public {
+  function testFuzz_NEST_03_anOrderSettlesInsideAnotherOnEveryEntryPoint(NestedEntryParams memory p)
+    public
+  {
+    uint256 entry = bound(p.nestedEntry, 0, 3);
+
+    ReentrantRouterMock evil = _newReentrantRouter();
+    ReentrantRouterMock evilOuter = _newReentrantRouter();
+    (address nestedOwner, uint256 nestedOwnerKey) = makeAddrAndKey('nestedOwner');
+
+    address outerOwner = p.outerViaPermit2 ? owner : address(evilOuter);
+    address nestedOrderOwner = entry % 2 == 1 ? nestedOwner : address(evil);
+    assertNotEq(outerOwner, nestedOrderOwner, 'the two owners differ');
+
+    (bytes memory nestedCall, bytes32 nestedHash) = _orderCall(
+      entry >= 2,
+      entry % 2 == 1,
+      nestedOrderOwner,
+      nestedOwnerKey,
+      2,
+      _calls(_routerCall(0, hex'01'))
+    );
+    evil.setReentry(nestedCall);
+
+    (bytes memory outerCall, bytes32 outerHash) = _orderCall(
+      p.outerIsFulfillment,
+      p.outerViaPermit2,
+      outerOwner,
+      ownerKey,
+      1,
+      _calls(_callTo(address(evil)))
+    );
+
+    address submitter = address(evilOuter);
+    bytes memory submitted = outerCall;
+    bytes32 topHash;
+    if (p.wrapped) {
+      ExecutionOrder memory top = _ownedExecution(owner, _calls(_callTo(address(evilOuter))));
+      topHash = SchemaHash.executionOrder(top);
+      evilOuter.setReentry(outerCall);
+      submitter = owner;
+      submitted = _executionCall(top);
+    }
+
+    vm.recordLogs();
+
+    vm.prank(submitter);
+    (bool ok,) = address(hub).call(submitted);
+    assertTrue(ok, 'the outer order settled');
+
+    assertEq(evil.seenBefore(), outerOwner, 'the router is called under the outer owner');
+    assertEq(evil.seenAfter(), outerOwner, 'and the outer owner is restored');
+    if (p.wrapped) {
+      assertEq(evilOuter.seenBefore(), owner, 'the wrapping call runs under its owner');
+      assertEq(evilOuter.seenAfter(), owner, 'and its owner is restored');
+    }
+    assertEq(router.callCount(), 1, 'the nested router ran once');
+    assertEq(router.seenMsgSender(), nestedOrderOwner, 'under the nested owner');
+
+    Vm.Log[] memory logs = _transferTokensLogs();
+    uint256 base = p.wrapped ? 1 : 0;
+    assertEq(logs.length, base + 2, 'one TransferTokens per order');
+    if (p.wrapped) {
+      _assertEmptySettlement(logs[0], owner, owner, topHash);
+    }
+    _assertEmptySettlement(logs[base], address(evilOuter), outerOwner, outerHash);
+    _assertEmptySettlement(logs[base + 1], address(evil), nestedOrderOwner, nestedHash);
+
+    assertEq(hub.msgSender(), address(0), 'nothing is recorded after the call');
+  }
+
+  /**
+   * NEST-04 — `revokeNonce` is reachable from inside an order
+   * @dev A router may call `revokeNonce` inside an order. The nonce is spent in the router's
+   * namespace, not the owner's.
+   */
+  function test_NEST_04_revokeNonceIsReachableFromInsideAnOrder() public {
     ReentrantRouterMock evil = new ReentrantRouterMock(address(hub));
     vm.prank(admin);
     hub.grantRole(ROUTER_ROLE, address(evil));
@@ -434,14 +545,12 @@ contract SettlementTest is HubBase {
     evil.setReentry(abi.encodeCall(IUnorderedNonce.revokeNonce, (7)));
 
     GenericCall[] memory calls = _calls(GenericCall({router: address(evil), value: 0, data: hex''}));
+    ExecutionOrder memory order =
+      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, vm.getBlockTimestamp());
 
     vm.prank(owner);
-    bytes[] memory results = hub.executeOrderWithDelegatedAuthentication(
-      _openExecutionOrder(new ERC20Transfer[](0), calls, 0, vm.getBlockTimestamp()),
-      address(0),
-      '',
-      false
-    );
+    bytes[] memory results =
+      hub.executeOrderWithDelegatedAuthentication(order, address(0), '', false);
 
     assertEq(results.length, 1, 'the order settled');
     assertEq(results[0].length, 0, 'revokeNonce returns nothing');
@@ -449,97 +558,15 @@ contract SettlementTest is HubBase {
       hub.nonces(lNonceKey(address(evil)), 0), 1 << 7, "burned against the router's own bitmap"
     );
     assertEq(hub.nonces(lNonceKey(owner), 0), 0, "and not against the owner's");
-    assertEq(hub.msgSender(), address(0), 'the lock still released cleanly');
-  }
-
-  /**
-   * LOCK-05 — a fulfillment nested in an execution releases its lock for the next sibling
-   * @dev `evilA` settles a fulfillment and `evilB` then settles an execution, both inside the one
-   * execution of `owner`. Both routers read {msgSender} as `owner` on either side of their nested
-   * order, and the fulfillment's router sees `evilA`.
-   */
-  function test_LOCK_05_fulfillmentLockIsReleasedForTheNextSibling() public {
-    ReentrantRouterMock evilA = _newReentrantRouter();
-    ReentrantRouterMock evilB = _newReentrantRouter();
-
-    FulfillmentOrder memory fulfillment = _ownedFulfillment(address(evilA));
-    evilA.setReentry(_fulfillmentCall(fulfillment, _calls(_routerCall(0, hex'01'))));
-
-    ExecutionOrder memory sibling = _ownedExecution(address(evilB), new GenericCall[](0));
-    evilB.setReentry(_executionCall(sibling));
-
-    GenericCall[] memory calls = new GenericCall[](3);
-    calls[0] = _callTo(address(evilA));
-    calls[1] = _callTo(address(evilB));
-    calls[2] = GenericCall({router: address(router2), value: 0, data: hex'02'});
-    ExecutionOrder memory top = _ownedExecution(owner, calls);
-
-    vm.recordLogs();
-
-    vm.prank(owner);
-    hub.executeOrderWithDelegatedAuthentication(top, address(0), '', false);
-
-    assertEq(router.seenMsgSender(), address(evilA), 'the fulfillment router sees its owner');
-    assertEq(evilA.seenBefore(), owner, 'evilA is called under owner');
-    assertEq(evilA.seenAfter(), owner, 'and owner is restored after its fulfillment');
-    assertEq(evilB.seenBefore(), owner, 'evilB is called under owner');
-    assertEq(evilB.seenAfter(), owner, 'and its execution settled after the fulfillment released');
-    assertEq(router2.seenMsgSender(), owner, 'the trailing call runs under owner');
-
-    Vm.Log[] memory logs = _transferTokensLogs();
-    assertEq(logs.length, 3, 'one TransferTokens per order');
-    _assertEmptySettlement(logs[0], owner, owner, SchemaHash.executionOrder(top));
-    _assertEmptySettlement(
-      logs[1], address(evilA), address(evilA), SchemaHash.fulfillmentOrder(fulfillment)
-    );
-    _assertEmptySettlement(
-      logs[2], address(evilB), address(evilB), SchemaHash.executionOrder(sibling)
-    );
-
     assertEq(hub.msgSender(), address(0), 'nothing is recorded after the call');
   }
 
   /**
-   * LOCK-06 — no entry point settles an order inside a fulfillment, at depth one or two
-   * @dev The refusal reports the owner of the fulfillment in progress, never the reentering
-   * order's. Through an execution, that fulfillment is the nested one owned by `evilOuter`.
+   * NEST-05 — a nested order cannot spend the outer order's value
+   * @dev With the hub holding a native balance, the outer execution may spend its own value after
+   * a nested order returned, but a nested order sent no value cannot spend the outer order's.
    */
-  function testFuzz_LOCK_06_noOrderSettlesInsideAFulfillment(LockedReentryParams memory p) public {
-    uint256 entry = bound(p.entry, 0, 3);
-    ReentrantRouterMock evil = _newReentrantRouter();
-    evil.setReentry(_wellFormedCall(entry, address(evil)));
-    GenericCall[] memory solverCalls = _calls(_callTo(address(evil)));
-
-    if (!p.viaExecution) {
-      vm.prank(owner);
-      vm.expectRevert(abi.encodeWithSelector(IMsgSender.AlreadyLocked.selector, owner));
-      hub.fulfillOrderWithDelegatedAuthentication(
-        _ownedFulfillment(owner),
-        address(0),
-        '',
-        _route(_ownedFulfillment(owner), solverCalls),
-        '',
-        false
-      );
-      return;
-    }
-
-    ReentrantRouterMock evilOuter = _newReentrantRouter();
-    evilOuter.setReentry(_fulfillmentCall(_ownedFulfillment(address(evilOuter)), solverCalls));
-
-    vm.prank(owner);
-    vm.expectRevert(abi.encodeWithSelector(IMsgSender.AlreadyLocked.selector, address(evilOuter)));
-    hub.executeOrderWithDelegatedAuthentication(
-      _ownedExecution(owner, _calls(_callTo(address(evilOuter)))), address(0), '', false
-    );
-  }
-
-  /**
-   * LOCK-07 — a nested order spends only value the nested call was sent
-   * @dev With the hub holding a native balance, the outer execution may spend its own value after a
-   * nested order returned, but a nested order sent no value cannot spend the outer order's.
-   */
-  function test_LOCK_07_nestedOrderCannotSpendTheOuterValue() public {
+  function test_NEST_05_nestedOrderCannotSpendTheOuterValue() public {
     ReentrantRouterMock evil = _newReentrantRouter();
     vm.deal(address(hub), PREFUND);
     uint256 routerBalanceBefore = address(router).balance;
@@ -595,7 +622,7 @@ contract SettlementTest is HubBase {
   }
 
   /**
-   * @dev An execution order owned by `orderOwner`, with no transfers, so it takes the owner path
+   * @dev An execution order owned by `orderOwner` with no transfers, so it takes the owner path
    * when `orderOwner` submits it
    */
   function _ownedExecution(address orderOwner, GenericCall[] memory calls)
@@ -641,31 +668,49 @@ contract SettlementTest is HubBase {
   }
 
   /**
-   * @dev A well-formed order owned by `orderOwner` for settlement entry point `entry`: 0 and 1 are
-   * the execution rails, 2 and 3 the fulfillment rails, each pair delegated then Permit2. Only the
-   * lock can refuse it.
+   * @dev The call of an order owned by `orderOwner` with its order hash: an execution or a
+   * fulfillment whose router calls or solver calls are `calls`. The call is delegated, or carries
+   * the open witness signature of `signerKey` for the Permit2 rail, where the order moves no token
+   * and spends `nonce`.
    */
-  function _wellFormedCall(uint256 entry, address orderOwner) internal view returns (bytes memory) {
-    ExecutionOrder memory execution = _ownedExecution(orderOwner, new GenericCall[](0));
-    FulfillmentOrder memory fulfillment = _ownedFulfillment(orderOwner);
-    FulfillmentSolution memory solution = _route(fulfillment, new GenericCall[](0));
-
-    if (entry == 0) {
-      return _executionCall(execution);
+  function _orderCall(
+    bool isFulfillment,
+    bool viaPermit2,
+    address orderOwner,
+    uint256 signerKey,
+    uint256 nonce,
+    GenericCall[] memory calls
+  ) internal view returns (bytes memory data, bytes32 orderHash) {
+    if (isFulfillment) {
+      FulfillmentOrder memory fulfillment = _ownedFulfillment(orderOwner);
+      fulfillment.nonce = nonce;
+      orderHash = SchemaHash.fulfillmentOrder(fulfillment);
+      data = viaPermit2
+        ? abi.encodeCall(
+          IKSAllowanceHubV2.fulfillOrderWithPermit2Signature,
+          (
+            fulfillment,
+            _signFulfillmentWitness(fulfillment, signerKey),
+            _route(fulfillment, calls),
+            ''
+          )
+        )
+        : _fulfillmentCall(fulfillment, calls);
+    } else {
+      ExecutionOrder memory execution = _ownedExecution(orderOwner, calls);
+      execution.nonce = nonce;
+      orderHash = SchemaHash.executionOrder(execution);
+      data = viaPermit2
+        ? abi.encodeCall(
+          IKSAllowanceHubV2.executeOrderWithPermit2Signature,
+          (execution, _signExecutionWitness(execution, signerKey))
+        )
+        : _executionCall(execution);
     }
-    if (entry == 1) {
-      return abi.encodeCall(IKSAllowanceHubV2.executeOrderWithPermit2Signature, (execution, ''));
-    }
-    if (entry == 2) {
-      return _fulfillmentCall(fulfillment, new GenericCall[](0));
-    }
-    return abi.encodeCall(
-      IKSAllowanceHubV2.fulfillOrderWithPermit2Signature, (fulfillment, '', solution, '')
-    );
   }
 
   /**
-   * @dev Builds the nested orders of {testFuzz_LOCK_02_nestedOrdersRestoreEachOwner} and arms each
+   * @dev Builds the nested orders of {testFuzz_NEST_01_nestedOrdersRestoreEachOwner} and arms each
    * of `evils` to settle the next level, returning level 0 and the order hash of every level
    */
   function _buildChain(ReentrantRouterMock[] memory evils, bool innermostIsFulfillment)

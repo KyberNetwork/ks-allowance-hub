@@ -392,11 +392,11 @@ abstract contract HubBase is V2TestBase {
    * amounts, the witness everything else the order pins. `witnessRelayer` is passed separately so a
    * test can sign a witness that disagrees with the order it submits.
    */
-  function _signExecutionWitness(ExecutionOrder memory order, address witnessRelayer)
-    internal
-    view
-    returns (bytes memory)
-  {
+  function _signExecutionWitness(
+    ExecutionOrder memory order,
+    address witnessRelayer,
+    uint256 signerKey
+  ) internal view returns (bytes memory) {
     ExecutionWitness memory witness = ExecutionWitness({
       relayer: witnessRelayer,
       erc20Targets: _targets(order.erc20Transfers),
@@ -408,11 +408,20 @@ abstract contract HubBase is V2TestBase {
     (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(order.erc20Transfers);
 
     return _sign(
-      ownerKey,
+      signerKey,
       lPermit2ExecutionWitnessDigest(
         tokens, amounts, address(hub), order.nonce, order.expiration, witness
       )
     );
+  }
+
+  /// @dev As above, signed by the owner
+  function _signExecutionWitness(ExecutionOrder memory order, address witnessRelayer)
+    internal
+    view
+    returns (bytes memory)
+  {
+    return _signExecutionWitness(order, witnessRelayer, ownerKey);
   }
 
   /// @dev As {_signExecutionWitness}, with the witness specifying the relayer the order specifies
@@ -420,12 +429,22 @@ abstract contract HubBase is V2TestBase {
     return _signExecutionWitness(order, order.relayer);
   }
 
+  /// @dev As above, signed by `signerKey`, for an order owned by the account of that key
+  function _signExecutionWitness(ExecutionOrder memory order, uint256 signerKey)
+    internal
+    view
+    returns (bytes memory)
+  {
+    return _signExecutionWitness(order, order.relayer, signerKey);
+  }
+
   /// @dev The fulfillment witness pins who may choose the route rather than the route itself
   function _signFulfillmentWitness(
     FulfillmentOrder memory order,
     address witnessSolver,
     GenericCall[] memory witnessOwnerCalls,
-    address witnessApprover
+    address witnessApprover,
+    uint256 signerKey
   ) internal view returns (bytes memory) {
     FulfillmentWitness memory witness = FulfillmentWitness({
       solver: witnessSolver,
@@ -439,10 +458,22 @@ abstract contract HubBase is V2TestBase {
     (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(order.erc20Allowances);
 
     return _sign(
-      ownerKey,
+      signerKey,
       lPermit2FulfillmentWitnessDigest(
         tokens, amounts, address(hub), order.nonce, order.expiration, witness
       )
+    );
+  }
+
+  /// @dev As above, signed by the owner
+  function _signFulfillmentWitness(
+    FulfillmentOrder memory order,
+    address witnessSolver,
+    GenericCall[] memory witnessOwnerCalls,
+    address witnessApprover
+  ) internal view returns (bytes memory) {
+    return _signFulfillmentWitness(
+      order, witnessSolver, witnessOwnerCalls, witnessApprover, ownerKey
     );
   }
 
@@ -453,6 +484,17 @@ abstract contract HubBase is V2TestBase {
     returns (bytes memory)
   {
     return _signFulfillmentWitness(order, order.solver, order.ownerCalls, order.solutionApprover);
+  }
+
+  /// @dev As above, signed by `signerKey`, for an order owned by the account of that key
+  function _signFulfillmentWitness(FulfillmentOrder memory order, uint256 signerKey)
+    internal
+    view
+    returns (bytes memory)
+  {
+    return _signFulfillmentWitness(
+      order, order.solver, order.ownerCalls, order.solutionApprover, signerKey
+    );
   }
 
   /// @dev Permit2 self-transfer: the owner submits, so there is no witness to bind

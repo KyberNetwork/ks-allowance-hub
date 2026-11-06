@@ -11,10 +11,6 @@ library Constants {
   /// `solutionApprover` that accepts any solution without an approval
   address internal constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
-  /// @dev Transient slot of {MsgSender}, holding the account in its low 160 bits and the lock in
-  /// bit 160
+  /// @dev Transient slot of {MsgSender}, holding the account a call is acting for
   bytes32 internal constant MSG_SENDER_SLOT = bytes32(erc7201('ks-allowance-hub.msg-sender'));
-
-  /// @dev Bit of {MSG_SENDER_SLOT} that marks the account as locked
-  uint256 internal constant LOCKED_FLAG = 1 << 160;
 }

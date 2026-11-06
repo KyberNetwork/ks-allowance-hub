@@ -777,12 +777,12 @@ contract ForwarderTest is AuthenticatorBase {
 
   /**
    * FWD-REENTRY-01 — a relayed permit may reenter the hub and start an order
-   * @dev Confirmed-intended behaviour, pinned rather than fixed. `forwardCalls` takes no lock: it
-   * moves no assets of its own, and the lock that matters is the one an order entry point takes for
-   * the duration of an order, so a target called from inside a batch may open one, and the
-   * order it opens is authorised on its own merits — here the owner's Permit2 signature over an
-   * open-relayer witness, without which the token contract could not submit it at all. The
-   * assertion is that the reentrant order settled, not merely that nothing reverted.
+   * @dev Confirmed-intended behaviour, pinned rather than fixed. The hub refuses no order that
+   * starts inside a `forwardCalls` batch: `forwardCalls` moves no assets of its own, so a target
+   * called from inside a batch may open an order, and the order it opens is authorised on its own
+   * merits — here the owner's Permit2 signature over an open-relayer witness, without which the
+   * token contract could not submit it at all. The assertion is that the reentrant order settled,
+   * not merely that nothing reverted.
    */
   function test_FWD_REENTRY_01_relayedPermitMayReenterTheHub() public {
     ReentrantPermitMock reentrant = new ReentrantPermitMock(address(hub));
@@ -818,7 +818,7 @@ contract ForwarderTest is AuthenticatorBase {
       IERC20(token18).balanceOf(address(router)) - before, amount, 'the reentrant order settled'
     );
     assertEq(router.callCount(), 1, 'and its router call ran');
-    assertEq(router.seenMsgSender(), owner, 'holding the lock for the owner while it did');
+    assertEq(router.seenMsgSender(), owner, 'with the owner as the sender while it ran');
   }
 
   /// FWD-23 — the forwarder relays a permit and a failing call alike when called directly

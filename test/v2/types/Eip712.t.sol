@@ -183,8 +183,8 @@ contract Eip712Test is V2TestBase {
   }
 
   /**
-   * @dev Both hashers against the same literal, and the `usePermit2Allowances` bit shown to move
-   * the hash, so it is a signed switch rather than a submitter's choice
+   * @dev The memory hasher and the calldata hasher against the same {SchemaHash} value for the
+   * sample execution order
    */
   function test_T712_executionOrderStructHash() public view {
     ExecutionOrder memory order = _sampleExecutionOrder();

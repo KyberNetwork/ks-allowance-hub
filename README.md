@@ -188,11 +188,12 @@ hub.multicall([
 ### Routers and native value
 
 While an order settles, `msgSender()` returns its owner, so a router called by the hub can identify
-the owner. A router call of an execution may settle other orders, and `msgSender()` returns the
-execution's owner again once each returns. No order may settle while a fulfillment is in progress,
-so its validators observe that fulfillment alone. Each router call may spend native value
-only from the `msg.value` sent with the order. The hub has no `receive` function, so a router cannot
-refund native value to it; unspent `msg.value` remains in the hub.
+the owner. A router call of an order may settle another order of either type, and `msgSender()`
+returns the outer order's owner again once it returns. The hub refuses no order for settling inside
+another; a fulfillment that must not run alongside another order enforces it through its
+`ownerCalls`. Each router call may spend native value only from the `msg.value` sent with the order.
+The hub has no `receive` function, so a router cannot refund native value to it; unspent `msg.value`
+remains in the hub.
 
 ### Management
 
@@ -242,8 +243,8 @@ The V1 suite forks mainnet and requires `RPC_1`, through `.env` locally and repo
 CI. The V2 suite deploys Permit2 from `test/artifacts/Permit2.json` and needs no RPC.
 
 CI runs `forge test -vvv --isolate`, which executes each top-level call as its own transaction.
-Transient state such as the `msgSender()` lock is cleared between calls, so it can only be observed
-from inside a router call.
+Transient state such as the account `msgSender()` returns is cleared between calls, so it can only
+be observed from inside a router call.
 
 The EIP-712 type strings are checked against the struct declarations through `forge bind-json`,
 which generates `utils/JsonBindings.sol`. Run it twice after changing a bound struct; CI fails when

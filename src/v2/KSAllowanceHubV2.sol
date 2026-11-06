@@ -58,9 +58,9 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * witness, or by an {IOrderAuthenticator} the owner has delegated through {AuthDelegator}. An
  * owner who submits their own order needs no witness and no authenticator.
  *
- * While an order settles, {msgSender} returns its owner. A router call of an execution may settle
- * other orders, and {msgSender} returns the execution's owner again once each returns. No order may
- * settle while a fulfillment is in progress, so its validators observe that fulfillment alone.
+ * While an order settles, {msgSender} returns its owner. A router call of an order may settle
+ * another order of either type, and {msgSender} returns the outer order's owner again once it
+ * returns.
  */
 contract KSAllowanceHubV2 is
   IKSAllowanceHubV2,
@@ -211,7 +211,7 @@ contract KSAllowanceHubV2 is
     checkLengths(solution.erc20Targets.length, order.erc20Allowances.length)
     checkLengths(solution.erc20Amounts.length, order.erc20Allowances.length)
     checkLengths(solution.erc721Targets.length, order.erc721Approvals.length)
-    setMsgSenderAndLock(order.owner)
+    setMsgSender(order.owner)
     checkDelegation(order.owner, authenticator)
     guardNativeSpend
     returns (bytes[] memory results)
@@ -260,7 +260,7 @@ contract KSAllowanceHubV2 is
     checkLengths(solution.erc20Targets.length, order.erc20Allowances.length)
     checkLengths(solution.erc20Amounts.length, order.erc20Allowances.length)
     checkLengths(solution.erc721Targets.length, order.erc721Approvals.length)
-    setMsgSenderAndLock(order.owner)
+    setMsgSender(order.owner)
     guardNativeSpend
     returns (bytes[] memory results)
   {
