@@ -12,7 +12,7 @@ import {ValidatorMock} from 'test/mocks/ValidatorMock.sol';
 import {CallsForwarder} from 'src/CallsForwarder.sol';
 import {KSAllowanceHubV2} from 'src/KSAllowanceHubV2.sol';
 import {DeadlineChecker} from 'src/base/DeadlineChecker.sol';
-import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
+import {IUnorderedNonce} from 'src/interfaces/base/IUnorderedNonce.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ERC721Approval} from 'src/types/ERC721Approval.sol';

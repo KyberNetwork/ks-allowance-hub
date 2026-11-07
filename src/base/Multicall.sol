@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {NativeSpendGuard} from './base/NativeSpendGuard.sol';
+import {NativeSpendGuard} from './NativeSpendGuard.sol';
 
-import {IMulticall} from './interfaces/IMulticall.sol';
+import {IMulticall} from '../interfaces/base/IMulticall.sol';
 
-import {DynamicArrayLibExt} from './libraries/DynamicArrayLibExt.sol';
+import {DynamicArrayLibExt} from '../libraries/DynamicArrayLibExt.sol';
 
 import {LowLevelCall} from 'openzeppelin-contracts/contracts/utils/LowLevelCall.sol';
 

@@ -3,7 +3,6 @@ pragma solidity ^0.8.0;
 
 import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol';
 
-import {AuthKey} from 'src/base/types/AuthKey.sol';
 import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
 import {ERC721Approval} from 'src/types/ERC721Approval.sol';
 import {ERC721Transfer} from 'src/types/ERC721Transfer.sol';
@@ -11,6 +10,7 @@ import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
 import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
 import {GenericCall} from 'src/types/GenericCall.sol';
 import {ValidationParams} from 'src/types/ValidationParams.sol';
+import {AuthKey} from 'src/types/base/AuthKey.sol';
 
 /**
  * @title CalldataHygieneTest

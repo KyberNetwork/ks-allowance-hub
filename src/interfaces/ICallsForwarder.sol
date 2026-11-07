@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {PackedBits} from '../base/types/PackedBits.sol';
+import {PackedBits} from '../types/base/PackedBits.sol';
 
 /// @title ICallsForwarder
 /// @notice Interface of {CallsForwarder}

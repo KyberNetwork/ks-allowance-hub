@@ -12,15 +12,13 @@ import {
 } from 'test/mocks/PermitTokenMocks.sol';
 import {ERC20Mock} from 'test/mocks/TokenMocks.sol';
 
+import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
+import {IOrderAuthenticator} from 'src/interfaces/authenticators/IOrderAuthenticator.sol';
 import {
   ITwoTiersOrderAuthenticator
-} from 'src/authenticators/interfaces/ITwoTiersOrderAuthenticator.sol';
-import {AuthKey} from 'src/base/types/AuthKey.sol';
-import {PackedBits} from 'src/base/types/PackedBits.sol';
-import {IAuthDelegator} from 'src/interfaces/IAuthDelegator.sol';
-import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
-import {IMulticall} from 'src/interfaces/IMulticall.sol';
-import {IOrderAuthenticator} from 'src/interfaces/IOrderAuthenticator.sol';
+} from 'src/interfaces/authenticators/ITwoTiersOrderAuthenticator.sol';
+import {IAuthDelegator} from 'src/interfaces/base/IAuthDelegator.sol';
+import {IMulticall} from 'src/interfaces/base/IMulticall.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
@@ -28,6 +26,8 @@ import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
 import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
 import {GenericCall} from 'src/types/GenericCall.sol';
 import {ValidationParams} from 'src/types/ValidationParams.sol';
+import {AuthKey} from 'src/types/base/AuthKey.sol';
+import {PackedBits} from 'src/types/base/PackedBits.sol';
 
 import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
 import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';

@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import 'ks-common-sc/script/Base.s.sol';
 import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
-import {IMulticall} from 'src/interfaces/IMulticall.sol';
+import {IMulticall} from 'src/interfaces/base/IMulticall.sol';
 
 contract AddWhitelistedRoutersV2Script is BaseScript {
   /// @dev Must match KSAllowanceHubV2.WHITELISTED_ROUTER_ROLE

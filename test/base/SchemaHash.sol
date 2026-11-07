@@ -12,10 +12,6 @@ import {
   PermitBatchWitnessTransferFrom as Permit2FulfillmentWitness
 } from 'src/types/FulfillmentWitness.sol';
 
-import {MasterKeyUpdate} from 'src/authenticators/types/MasterKeyUpdate.sol';
-import {NonceRevocation} from 'src/authenticators/types/NonceRevocation.sol';
-import {SessionKeyUpdate} from 'src/authenticators/types/SessionKeyUpdate.sol';
-import {AuthKey} from 'src/base/types/AuthKey.sol';
 import {AuthDelegation} from 'src/types/AuthDelegation.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
 import {ERC721Approval} from 'src/types/ERC721Approval.sol';
@@ -25,6 +21,10 @@ import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
 import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
 import {FulfillmentWitness} from 'src/types/FulfillmentWitness.sol';
 import {SolutionApproval} from 'src/types/SolutionApproval.sol';
+import {MasterKeyUpdate} from 'src/types/authenticators/MasterKeyUpdate.sol';
+import {NonceRevocation} from 'src/types/authenticators/NonceRevocation.sol';
+import {SessionKeyUpdate} from 'src/types/authenticators/SessionKeyUpdate.sol';
+import {AuthKey} from 'src/types/base/AuthKey.sol';
 
 /**
  * @title SchemaHash

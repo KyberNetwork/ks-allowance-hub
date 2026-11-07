@@ -3,11 +3,10 @@ pragma solidity ^0.8.0;
 
 import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol';
 
+import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
 import {
   ITwoTiersOrderAuthenticator
-} from 'src/authenticators/interfaces/ITwoTiersOrderAuthenticator.sol';
-import {AuthKey} from 'src/base/types/AuthKey.sol';
-import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
+} from 'src/interfaces/authenticators/ITwoTiersOrderAuthenticator.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ERC721Approval} from 'src/types/ERC721Approval.sol';
@@ -16,6 +15,7 @@ import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
 import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
 import {GenericCall} from 'src/types/GenericCall.sol';
 import {ValidationParams} from 'src/types/ValidationParams.sol';
+import {AuthKey} from 'src/types/base/AuthKey.sol';
 
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 

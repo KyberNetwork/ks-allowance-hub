@@ -14,11 +14,6 @@ import {
   PermitBatchWitnessTransferFrom as Permit2FulfillmentWitness
 } from 'src/types/FulfillmentWitness.sol';
 
-import {MasterKeyUpdate} from 'src/authenticators/types/MasterKeyUpdate.sol';
-import {NonceRevocation} from 'src/authenticators/types/NonceRevocation.sol';
-import {SessionKeyUpdate} from 'src/authenticators/types/SessionKeyUpdate.sol';
-import {AuthKey} from 'src/base/types/AuthKey.sol';
-import {KeyType} from 'src/base/types/KeyType.sol';
 import {AuthDelegation} from 'src/types/AuthDelegation.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
@@ -31,6 +26,11 @@ import {FulfillmentWitness} from 'src/types/FulfillmentWitness.sol';
 import {GenericCall} from 'src/types/GenericCall.sol';
 import {SolutionApproval} from 'src/types/SolutionApproval.sol';
 import {ValidationParams} from 'src/types/ValidationParams.sol';
+import {MasterKeyUpdate} from 'src/types/authenticators/MasterKeyUpdate.sol';
+import {NonceRevocation} from 'src/types/authenticators/NonceRevocation.sol';
+import {SessionKeyUpdate} from 'src/types/authenticators/SessionKeyUpdate.sol';
+import {AuthKey} from 'src/types/base/AuthKey.sol';
+import {KeyType} from 'src/types/base/KeyType.sol';
 
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 

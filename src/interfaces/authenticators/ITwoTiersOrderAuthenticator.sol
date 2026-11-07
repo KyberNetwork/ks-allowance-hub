@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {AuthKey} from '../../base/types/AuthKey.sol';
+import {AuthKey} from '../../types/base/AuthKey.sol';
 
 /// @title ITwoTiersOrderAuthenticator
 /// @notice Interface of {TwoTiersOrderAuthenticator}

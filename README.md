@@ -209,12 +209,12 @@ Each domain is published through ERC-5267's `eip712Domain()`.
 
 ```
 src/
-  *.sol            KSAllowanceHubV2, its delegator and multicall, and CallsForwarder
-  base/            contracts shared by the hub and the authenticators
-  authenticators/  TwoTiersOrderAuthenticator and its key types
-  interfaces/      interfaces of the hub, the delegator, the forwarder and the authenticators
-  libraries/       array and hashing helpers
-  types/           order, witness and transfer types
+  *.sol            KSAllowanceHubV2 and CallsForwarder
+  base/            AuthDelegator, Multicall and the contracts shared with the authenticators
+  authenticators/  TwoTiersOrderAuthenticator and its base
+  interfaces/      interfaces of the hub and the forwarder; base/ and authenticators/ for theirs
+  libraries/       constants, array and hashing helpers
+  types/           order, witness and transfer types; base/ and authenticators/ for key types
 test/
   *.t.sol          KSAllowanceHubV2 suites
   base/            shared test base, EIP-712 oracles and the Permit2 artifact check

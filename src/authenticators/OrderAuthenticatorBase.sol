@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IOrderAuthenticator} from '../interfaces/IOrderAuthenticator.sol';
+import {IOrderAuthenticator} from '../interfaces/authenticators/IOrderAuthenticator.sol';
 
 /**
  * @title OrderAuthenticatorBase

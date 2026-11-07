@@ -7,10 +7,6 @@ import {JsonBindings} from 'utils/JsonBindings.sol';
 
 import {PermitHash} from 'test/libraries/PermitHash.sol';
 
-import {MasterKeyUpdateLib} from 'src/authenticators/types/MasterKeyUpdate.sol';
-import {NonceRevocationLib} from 'src/authenticators/types/NonceRevocation.sol';
-import {SessionKeyUpdateLib} from 'src/authenticators/types/SessionKeyUpdate.sol';
-import {AuthKeyLib} from 'src/base/types/AuthKey.sol';
 import {AuthDelegationLib} from 'src/types/AuthDelegation.sol';
 import {ERC20AllowanceLib} from 'src/types/ERC20Allowance.sol';
 import {ERC20TransferLib} from 'src/types/ERC20Transfer.sol';
@@ -24,6 +20,10 @@ import {FulfillmentWitnessLib} from 'src/types/FulfillmentWitness.sol';
 import {GenericCallLib} from 'src/types/GenericCall.sol';
 import {SolutionApprovalLib} from 'src/types/SolutionApproval.sol';
 import {ValidationParamsLib} from 'src/types/ValidationParams.sol';
+import {MasterKeyUpdateLib} from 'src/types/authenticators/MasterKeyUpdate.sol';
+import {NonceRevocationLib} from 'src/types/authenticators/NonceRevocation.sol';
+import {SessionKeyUpdateLib} from 'src/types/authenticators/SessionKeyUpdate.sol';
+import {AuthKeyLib} from 'src/types/base/AuthKey.sol';
 
 /**
  * @title SchemaAuditTest

@@ -11,9 +11,9 @@ import {EchoRouterMock, ReentrantRouterMock, RouterMock} from 'test/mocks/Router
 import {ReentrantReceiverMock} from 'test/mocks/TokenMocks.sol';
 
 import {NativeSpendGuard} from 'src/base/NativeSpendGuard.sol';
-import {IKSGenericRouter} from 'src/base/interfaces/IKSGenericRouter.sol';
-import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
 import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
+import {IKSGenericRouter} from 'src/interfaces/base/IKSGenericRouter.sol';
+import {IUnorderedNonce} from 'src/interfaces/base/IUnorderedNonce.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ERC721Approval} from 'src/types/ERC721Approval.sol';

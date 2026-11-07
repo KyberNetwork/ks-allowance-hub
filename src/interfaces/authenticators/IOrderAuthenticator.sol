@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {ExecutionOrder} from '../types/ExecutionOrder.sol';
-import {FulfillmentOrder} from '../types/FulfillmentOrder.sol';
-import {FulfillmentSolution} from '../types/FulfillmentSolution.sol';
+import {ExecutionOrder} from '../../types/ExecutionOrder.sol';
+import {FulfillmentOrder} from '../../types/FulfillmentOrder.sol';
+import {FulfillmentSolution} from '../../types/FulfillmentSolution.sol';
 
 /// @title IOrderAuthenticator
 /// @notice Interface an authenticator must implement to be delegated through {AuthDelegator}

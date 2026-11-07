@@ -4,9 +4,9 @@ pragma solidity 0.8.38;
 import {DeadlineChecker} from '../base/DeadlineChecker.sol';
 import {UnorderedNonce} from '../base/UnorderedNonce.sol';
 
-import {AuthKey, AuthKeyLib} from '../base/types/AuthKey.sol';
+import {AuthKey, AuthKeyLib} from '../types/base/AuthKey.sol';
 
-import {IOrderAuthenticator} from '../interfaces/IOrderAuthenticator.sol';
+import {IOrderAuthenticator} from '../interfaces/authenticators/IOrderAuthenticator.sol';
 
 import {ExecutionOrder} from '../types/ExecutionOrder.sol';
 import {FulfillmentOrder} from '../types/FulfillmentOrder.sol';
@@ -14,11 +14,13 @@ import {FulfillmentSolution} from '../types/FulfillmentSolution.sol';
 
 import {OrderAuthenticatorBase} from './OrderAuthenticatorBase.sol';
 
-import {ITwoTiersOrderAuthenticator} from './interfaces/ITwoTiersOrderAuthenticator.sol';
+import {
+  ITwoTiersOrderAuthenticator
+} from '../interfaces/authenticators/ITwoTiersOrderAuthenticator.sol';
 
-import {MasterKeyUpdateLib} from './types/MasterKeyUpdate.sol';
-import {NonceRevocationLib} from './types/NonceRevocation.sol';
-import {SessionKeyUpdateLib} from './types/SessionKeyUpdate.sol';
+import {MasterKeyUpdateLib} from '../types/authenticators/MasterKeyUpdate.sol';
+import {NonceRevocationLib} from '../types/authenticators/NonceRevocation.sol';
+import {SessionKeyUpdateLib} from '../types/authenticators/SessionKeyUpdate.sol';
 
 import {CalldataDecoder} from 'ks-common-sc/src/libraries/calldata/CalldataDecoder.sol';
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IKSGenericRouter} from '../base/interfaces/IKSGenericRouter.sol';
+import {IKSGenericRouter} from '../interfaces/base/IKSGenericRouter.sol';
 
 import {DynamicArrayLibExt} from '../libraries/DynamicArrayLibExt.sol';
 

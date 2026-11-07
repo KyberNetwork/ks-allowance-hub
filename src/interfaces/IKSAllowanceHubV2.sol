@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {PackedBits} from '../base/types/PackedBits.sol';
+import {PackedBits} from '../types/base/PackedBits.sol';
 
 import {ERC20Transfer} from '../types/ERC20Transfer.sol';
 import {ERC721Transfer} from '../types/ERC721Transfer.sol';

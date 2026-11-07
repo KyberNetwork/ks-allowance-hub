@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {DeadlineChecker} from './base/DeadlineChecker.sol';
-import {UnorderedNonce} from './base/UnorderedNonce.sol';
+import {DeadlineChecker} from './DeadlineChecker.sol';
+import {UnorderedNonce} from './UnorderedNonce.sol';
 
-import {IAuthDelegator} from './interfaces/IAuthDelegator.sol';
-import {IOrderAuthenticator} from './interfaces/IOrderAuthenticator.sol';
+import {IOrderAuthenticator} from '../interfaces/authenticators/IOrderAuthenticator.sol';
+import {IAuthDelegator} from '../interfaces/base/IAuthDelegator.sol';
 
-import {AuthDelegationLib} from './types/AuthDelegation.sol';
+import {AuthDelegationLib} from '../types/AuthDelegation.sol';
 
 import {EIP712} from 'openzeppelin-contracts/contracts/utils/cryptography/EIP712.sol';
 import {

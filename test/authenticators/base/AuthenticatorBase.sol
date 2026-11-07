@@ -6,10 +6,10 @@ import {SchemaHash} from 'test/base/SchemaHash.sol';
 import {HubBase} from 'test/base/HubBase.sol';
 
 import {TwoTiersOrderAuthenticator} from 'src/authenticators/TwoTiersOrderAuthenticator.sol';
-import {AuthKey} from 'src/base/types/AuthKey.sol';
-import {KeyType} from 'src/base/types/KeyType.sol';
 import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
 import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
+import {AuthKey} from 'src/types/base/AuthKey.sol';
+import {KeyType} from 'src/types/base/KeyType.sol';
 
 /**
  * @title AuthenticatorBase

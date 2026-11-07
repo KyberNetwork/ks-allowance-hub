@@ -5,20 +5,20 @@ import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol'
 
 import {RouterMock} from 'test/mocks/RouterMock.sol';
 
-import {
-  ITwoTiersOrderAuthenticator
-} from 'src/authenticators/interfaces/ITwoTiersOrderAuthenticator.sol';
 import {NativeSpendGuard} from 'src/base/NativeSpendGuard.sol';
-import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
-import {AuthKey} from 'src/base/types/AuthKey.sol';
-import {PackedBits} from 'src/base/types/PackedBits.sol';
-import {IAuthDelegator} from 'src/interfaces/IAuthDelegator.sol';
 import {ICallsForwarder} from 'src/interfaces/ICallsForwarder.sol';
 import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
-import {IOrderAuthenticator} from 'src/interfaces/IOrderAuthenticator.sol';
+import {IOrderAuthenticator} from 'src/interfaces/authenticators/IOrderAuthenticator.sol';
+import {
+  ITwoTiersOrderAuthenticator
+} from 'src/interfaces/authenticators/ITwoTiersOrderAuthenticator.sol';
+import {IAuthDelegator} from 'src/interfaces/base/IAuthDelegator.sol';
+import {IUnorderedNonce} from 'src/interfaces/base/IUnorderedNonce.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
 import {GenericCall} from 'src/types/GenericCall.sol';
+import {AuthKey} from 'src/types/base/AuthKey.sol';
+import {PackedBits} from 'src/types/base/PackedBits.sol';
 
 import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';

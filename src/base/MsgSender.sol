@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IMsgSender} from './interfaces/IMsgSender.sol';
+import {IMsgSender} from '../interfaces/base/IMsgSender.sol';
 
-import {Constants} from './libraries/Constants.sol';
+import {Constants} from '../libraries/Constants.sol';
 
 import {TransientSlot} from 'openzeppelin-contracts/contracts/utils/TransientSlot.sol';
 

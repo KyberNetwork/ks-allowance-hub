@@ -3,11 +3,11 @@ pragma solidity ^0.8.0;
 
 import {V2TestBase} from 'test/base/V2TestBase.sol';
 
-import {MasterKeyUpdateLib} from 'src/authenticators/types/MasterKeyUpdate.sol';
-import {NonceRevocationLib} from 'src/authenticators/types/NonceRevocation.sol';
-import {SessionKeyUpdateLib} from 'src/authenticators/types/SessionKeyUpdate.sol';
-import {AuthKey} from 'src/base/types/AuthKey.sol';
-import {KeyType} from 'src/base/types/KeyType.sol';
+import {MasterKeyUpdateLib} from 'src/types/authenticators/MasterKeyUpdate.sol';
+import {NonceRevocationLib} from 'src/types/authenticators/NonceRevocation.sol';
+import {SessionKeyUpdateLib} from 'src/types/authenticators/SessionKeyUpdate.sol';
+import {AuthKey} from 'src/types/base/AuthKey.sol';
+import {KeyType} from 'src/types/base/KeyType.sol';
 
 /**
  * @notice T712-09..12 — the four authenticator-side EIP-712 types.

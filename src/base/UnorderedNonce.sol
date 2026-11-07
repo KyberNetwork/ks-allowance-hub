@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IUnorderedNonce} from './interfaces/IUnorderedNonce.sol';
+import {IUnorderedNonce} from '../interfaces/base/IUnorderedNonce.sol';
 
 /**
  * @title UnorderedNonce

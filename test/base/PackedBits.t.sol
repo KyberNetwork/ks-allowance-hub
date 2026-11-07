@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import {Test} from 'forge-std/Test.sol';
 
-import {PackedBits} from 'src/base/types/PackedBits.sol';
+import {PackedBits} from 'src/types/base/PackedBits.sol';
 
 /**
  * @title PackedBitsTest

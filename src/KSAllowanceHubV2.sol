@@ -3,16 +3,16 @@ pragma solidity 0.8.38;
 
 import {MsgSender} from './base/MsgSender.sol';
 
-import {Constants} from './base/libraries/Constants.sol';
+import {Constants} from './libraries/Constants.sol';
 
-import {PackedBits} from './base/types/PackedBits.sol';
+import {PackedBits} from './types/base/PackedBits.sol';
 
-import {AuthDelegator} from './AuthDelegator.sol';
-import {Multicall} from './Multicall.sol';
+import {AuthDelegator} from './base/AuthDelegator.sol';
+import {Multicall} from './base/Multicall.sol';
 
 import {ICallsForwarder} from './interfaces/ICallsForwarder.sol';
 import {IKSAllowanceHubV2} from './interfaces/IKSAllowanceHubV2.sol';
-import {IOrderAuthenticator} from './interfaces/IOrderAuthenticator.sol';
+import {IOrderAuthenticator} from './interfaces/authenticators/IOrderAuthenticator.sol';
 
 import {DynamicArrayLibExt} from './libraries/DynamicArrayLibExt.sol';
 

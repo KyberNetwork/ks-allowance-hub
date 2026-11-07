@@ -3,10 +3,10 @@ pragma solidity ^0.8.0;
 
 import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol';
 
-import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
-import {AuthKey} from 'src/base/types/AuthKey.sol';
+import {IUnorderedNonce} from 'src/interfaces/base/IUnorderedNonce.sol';
 import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
 import {GenericCall} from 'src/types/GenericCall.sol';
+import {AuthKey} from 'src/types/base/AuthKey.sol';
 
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 

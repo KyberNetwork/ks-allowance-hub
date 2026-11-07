@@ -9,7 +9,6 @@ import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol'
 
 import {ERC20Mock} from 'test/mocks/TokenMocks.sol';
 
-import {AuthKey} from 'src/base/types/AuthKey.sol';
 import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
 import {ERC20Allowance, ERC20AllowanceLib} from 'src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
@@ -20,6 +19,7 @@ import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
 import {GenericCall} from 'src/types/GenericCall.sol';
 import {NativeTransfer} from 'src/types/NativeTransfer.sol';
 import {ValidationParams} from 'src/types/ValidationParams.sol';
+import {AuthKey} from 'src/types/base/AuthKey.sol';
 
 import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
 

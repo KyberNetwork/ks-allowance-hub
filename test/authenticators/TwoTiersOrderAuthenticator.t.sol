@@ -9,13 +9,11 @@ import {KeyFixtures} from 'test/authenticators/mocks/KeyFixtures.sol';
 
 import {ERC1271WalletMock, ERC20Mock} from 'test/mocks/TokenMocks.sol';
 
+import {IOrderAuthenticator} from 'src/interfaces/authenticators/IOrderAuthenticator.sol';
 import {
   ITwoTiersOrderAuthenticator
-} from 'src/authenticators/interfaces/ITwoTiersOrderAuthenticator.sol';
-import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
-import {AuthKey} from 'src/base/types/AuthKey.sol';
-import {KeyType} from 'src/base/types/KeyType.sol';
-import {IOrderAuthenticator} from 'src/interfaces/IOrderAuthenticator.sol';
+} from 'src/interfaces/authenticators/ITwoTiersOrderAuthenticator.sol';
+import {IUnorderedNonce} from 'src/interfaces/base/IUnorderedNonce.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/types/ERC721Transfer.sol';
@@ -24,6 +22,8 @@ import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
 import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
 import {GenericCall} from 'src/types/GenericCall.sol';
 import {ValidationParams} from 'src/types/ValidationParams.sol';
+import {AuthKey} from 'src/types/base/AuthKey.sol';
+import {KeyType} from 'src/types/base/KeyType.sol';
 
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 import {

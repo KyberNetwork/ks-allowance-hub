@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IKSGenericRouter} from 'src/base/interfaces/IKSGenericRouter.sol';
-import {IMsgSender} from 'src/base/interfaces/IMsgSender.sol';
+import {IKSGenericRouter} from 'src/interfaces/base/IKSGenericRouter.sol';
+import {IMsgSender} from 'src/interfaces/base/IMsgSender.sol';
 
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 import {ERC721Holder} from 'openzeppelin-contracts/contracts/token/ERC721/utils/ERC721Holder.sol';

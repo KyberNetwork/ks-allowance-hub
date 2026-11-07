@@ -5,16 +5,16 @@ import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol'
 
 import {ERC1271WalletMock} from 'test/mocks/TokenMocks.sol';
 
+import {IOrderAuthenticator} from 'src/interfaces/authenticators/IOrderAuthenticator.sol';
 import {
   ITwoTiersOrderAuthenticator
-} from 'src/authenticators/interfaces/ITwoTiersOrderAuthenticator.sol';
-import {IUnorderedNonce} from 'src/base/interfaces/IUnorderedNonce.sol';
-import {AuthKey} from 'src/base/types/AuthKey.sol';
-import {IAuthDelegator} from 'src/interfaces/IAuthDelegator.sol';
-import {IOrderAuthenticator} from 'src/interfaces/IOrderAuthenticator.sol';
+} from 'src/interfaces/authenticators/ITwoTiersOrderAuthenticator.sol';
+import {IAuthDelegator} from 'src/interfaces/base/IAuthDelegator.sol';
+import {IUnorderedNonce} from 'src/interfaces/base/IUnorderedNonce.sol';
 import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
 import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
 import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
+import {AuthKey} from 'src/types/base/AuthKey.sol';
 
 /// @notice Authenticator that can be switched to reverting, to show a withdrawal never calls it
 contract RevertingAuthenticator is IOrderAuthenticator {

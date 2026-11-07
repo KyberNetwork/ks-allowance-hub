@@ -6,14 +6,14 @@ import {Vm} from 'forge-std/Vm.sol';
 import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol';
 
 import {KSAllowanceHubV2} from 'src/KSAllowanceHubV2.sol';
+import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
 import {
   ITwoTiersOrderAuthenticator
-} from 'src/authenticators/interfaces/ITwoTiersOrderAuthenticator.sol';
-import {AuthKey} from 'src/base/types/AuthKey.sol';
-import {IAuthDelegator} from 'src/interfaces/IAuthDelegator.sol';
-import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
+} from 'src/interfaces/authenticators/ITwoTiersOrderAuthenticator.sol';
+import {IAuthDelegator} from 'src/interfaces/base/IAuthDelegator.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/types/ERC721Transfer.sol';
+import {AuthKey} from 'src/types/base/AuthKey.sol';
 
 import {IManagementSimple} from 'ks-common-sc/src/interfaces/IManagementSimple.sol';
 

@@ -67,6 +67,6 @@ monad_mainnet = "${RPC_143}"
 [bind_json]
 include = [
     '**/src/types/*.sol',
-    '**/src/authenticators/types/*.sol',
-    '**/src/base/types/*.sol',
+    '**/src/types/authenticators/*.sol',
+    '**/src/types/base/*.sol',
 ]

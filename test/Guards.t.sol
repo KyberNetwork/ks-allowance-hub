@@ -4,8 +4,8 @@ pragma solidity ^0.8.0;
 import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol';
 
 import {NativeSpendGuard} from 'src/base/NativeSpendGuard.sol';
-import {IAuthDelegator} from 'src/interfaces/IAuthDelegator.sol';
-import {IOrderAuthenticator} from 'src/interfaces/IOrderAuthenticator.sol';
+import {IOrderAuthenticator} from 'src/interfaces/authenticators/IOrderAuthenticator.sol';
+import {IAuthDelegator} from 'src/interfaces/base/IAuthDelegator.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
