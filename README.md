@@ -30,7 +30,8 @@ FulfillmentSolution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc7
 
 A fulfillment settles in this order:
 
-1. the solution approval is checked, unless `solutionApprover` is the dead address;
+1. the solution approval is checked, unless `solutionApprover` is the dead address or the caller is
+   the owner;
 2. each validator's `beforeExecution` runs;
 3. each transfer is sent to the target the solution names for it, an ERC20 transfer in the amount
    the solution names, at most its allowance;
@@ -41,7 +42,7 @@ A fulfillment settles in this order:
 The validators do not observe the effects of `ownerCalls`. The solution approval is an EIP-712
 `SolutionApproval(FulfillmentOrder order,FulfillmentSolution solution)` signed by
 `solutionApprover`. It spends `solution.nonce` in the approver's namespace, so each approval settles
-at most once. No nonce is spent when `solutionApprover` is the dead address.
+at most once. No nonce is spent when no approval is checked.
 
 An order with no validators and a dead-address `solutionApprover` places no constraint on the
 solver: the solver chooses every target and every router call.
@@ -84,7 +85,7 @@ When the caller is `order.owner`, the call itself authorises the order:
 - on the delegated entry points, the authenticator is not called, `authenticationData` is ignored
   and no nonce is spent, so the same order may settle more than once. `authenticator` may be the
   zero address in this case only;
-- a fulfillment still requires its solution approval.
+- `solutionApprover` does not apply: no solution approval is checked and no approval nonce is spent.
 
 ### Delegation
 

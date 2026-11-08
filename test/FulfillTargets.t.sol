@@ -179,16 +179,17 @@ contract FulfillTargetsTest is AuthenticatorBase {
     uint256 ownerBefore = _balance(owner);
 
     // The refused attempt reverts, so the solution nonce it carries stays unspent for the valid one
-    vm.prank(owner);
+    bytes memory auth = _authOf(order);
+    vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
     hub.fulfillOrderWithDelegatedAuthentication(
-      order, address(0), '', toSolver, routersApproval, false
+      order, address(authenticator), auth, toSolver, routersApproval, false
     );
 
     bytes memory solverApproval = _signSolutionApproval(approverKey, order, toSolver);
-    vm.prank(owner);
+    vm.prank(relayer);
     hub.fulfillOrderWithDelegatedAuthentication(
-      order, address(0), '', toSolver, solverApproval, false
+      order, address(authenticator), auth, toSolver, solverApproval, false
     );
     _assertLanded(ownerBefore);
   }
@@ -393,13 +394,18 @@ contract FulfillTargetsTest is AuthenticatorBase {
     bytes memory approval = _signSolutionApproval(approverKey, order, approved);
 
     // The refused attempt reverts, so the solution nonce it carries stays unspent for the valid one
-    vm.prank(owner);
+    bytes memory auth = _authOf(order);
+    vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', lower, approval, false);
+    hub.fulfillOrderWithDelegatedAuthentication(
+      order, address(authenticator), auth, lower, approval, false
+    );
 
     uint256 ownerBefore = _balance(owner);
-    vm.prank(owner);
-    hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', approved, approval, false);
+    vm.prank(relayer);
+    hub.fulfillOrderWithDelegatedAuthentication(
+      order, address(authenticator), auth, approved, approval, false
+    );
     assertEq(ownerBefore - _balance(owner), AMOUNT, 'the approved amounts settle');
   }
 
@@ -444,6 +450,13 @@ contract FulfillTargetsTest is AuthenticatorBase {
   // -------------------------------------------------------------------------------------------
   // helpers
   // -------------------------------------------------------------------------------------------
+
+  /// @dev Delegates `key` and returns the authentication data of `order` for a submitter other than
+  /// the owner
+  function _authOf(FulfillmentOrder memory order) private returns (bytes memory) {
+    _delegateKeyThroughHub(key);
+    return _fulfillmentAuthData(order, key, masterKeyPk);
+  }
 
   /// @dev One ERC20 transfer of `AMOUNT` and the NFT, open to any submitter, with no route of its
   /// own

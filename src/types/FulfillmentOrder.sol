@@ -15,11 +15,10 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * of the solution, and `solutionApprover` may be required to approve it. The validators do not
  * observe the effects of `ownerCalls`.
  *
- * When `owner` submits the order, `solver` does not apply and no authentication is required
- * beyond the call itself, except that a Permit2 entry point still requires the owner's permit
- * signature, without a witness. The solution approval is required whoever submits. On a delegated
- * entry point the owner's own submission spends no nonce, so the same order may settle more than
- * once.
+ * When `owner` submits the order, `solver` and `solutionApprover` do not apply and no
+ * authentication is required beyond the call itself, except that a Permit2 entry point still
+ * requires the owner's permit signature, without a witness. On a delegated entry point the owner's
+ * own submission spends no nonce, so the same order may settle more than once.
  * @param owner Account the assets are transferred from
  * @param solver Account that may submit the order besides the owner; the dead address allows any
  * account
@@ -30,8 +29,8 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * @param validationParams Validators run before the transfers are executed and after the solver's
  * calls
  * @param ownerCalls Router calls fixed by the owner, run after the validators
- * @param solutionApprover Account whose signature the solution requires; the dead address
- * requires none
+ * @param solutionApprover Account whose signature the solution requires when the owner does not
+ * submit the order; the dead address requires none
  * @param nonce Permit2 nonce on the Permit2 entry points; on the delegated entry points, for the
  * authenticator to spend
  * @param expiration Last timestamp at which the order may settle

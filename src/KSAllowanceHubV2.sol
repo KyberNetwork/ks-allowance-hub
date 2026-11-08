@@ -217,18 +217,18 @@ contract KSAllowanceHubV2 is
     returns (bytes[] memory results)
   {
     bytes32 orderHash = order.hash();
-    // The owner's call is its own authentication; any other caller needs the authenticator's
+    // The owner's call is its own authentication and approves its own solution; any other caller
+    // needs the authenticator's authentication and, unless the approver is the dead address, the
+    // solution approval
     if (msg.sender != order.owner) {
       if (msg.sender != order.solver && order.solver != Constants.DEAD_ADDRESS) {
         revert CallerNotSolver(msg.sender);
       }
       IOrderAuthenticator(authenticator)
         .authenticateFulfillment(order, orderHash, solution, authenticationData);
-    }
-
-    // A dead-address approver accepts any solution
-    if (order.solutionApprover != Constants.DEAD_ADDRESS) {
-      _checkSolutionApproval(order.solutionApprover, orderHash, solution, solutionSignature);
+      if (order.solutionApprover != Constants.DEAD_ADDRESS) {
+        _checkSolutionApproval(order.solutionApprover, orderHash, solution, solutionSignature);
+      }
     }
 
     // Run before any asset moves, so that each validator observes the state before settlement
@@ -270,8 +270,8 @@ contract KSAllowanceHubV2 is
     bytes32 extraDataHash = order.extraData.hashCalldata();
     bytes32 orderHash =
       order.hash(erc721ApprovalsHash, validationParamsHash, ownerCallsHash, extraDataHash);
-    // A dead-address approver accepts any solution
-    if (order.solutionApprover != Constants.DEAD_ADDRESS) {
+    // The owner's call approves its own solution, and a dead-address approver accepts any solution
+    if (msg.sender != order.owner && order.solutionApprover != Constants.DEAD_ADDRESS) {
       _checkSolutionApproval(order.solutionApprover, orderHash, solution, solutionSignature);
     }
 

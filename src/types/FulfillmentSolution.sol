@@ -13,13 +13,14 @@ import {GenericCall, GenericCallLib} from './GenericCall.sol';
  * `order.erc20Allowances[i]` and `erc721Targets[i]` receives `order.erc721Approvals[i]`. The
  * solution specifies a target and an amount for each ERC20 transfer and a target for each ERC721
  * transfer, so each target array and `erc20Amounts` must have one entry per transfer. No approval
- * is required when the order's `solutionApprover` is the dead address.
+ * is required when the order's `solutionApprover` is the dead address or the order's owner submits
+ * it.
  * @param erc20Targets Target of each ERC20 transfer, in order
  * @param erc20Amounts Amount of each ERC20 transfer, in order; each is at most its allowance
  * @param erc721Targets Target of each ERC721 transfer, in order
  * @param solverCalls Router calls of the route
  * @param nonce Nonce of the solution approval, spent in the `solutionApprover`'s namespace of the
- * hub's nonces when the approval is checked; ignored when `solutionApprover` is the dead address
+ * hub's nonces when the approval is checked; ignored when it is not
  * @param expiration Last timestamp at which the solution may settle
  */
 struct FulfillmentSolution {

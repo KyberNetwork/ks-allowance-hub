@@ -92,27 +92,28 @@ interface IKSAllowanceHubV2 {
   /**
    * @notice Settles a fulfillment order authenticated by an {IOrderAuthenticator} the owner has
    * delegated, along the route in `solution`
-   * @dev The settlement runs in this order: the solution approval is checked, each validator's
-   * `beforeExecution` runs, the assets move to the targets `solution` specifies,
+   * @dev The settlement runs in this order: the solution approval, when required, is checked,
+   * each validator's `beforeExecution` runs, the assets move to the targets `solution` specifies,
    * `solution.solverCalls` run, each validator's `afterExecution` runs, and `order.ownerCalls` run.
    * The validators do not observe the effects of `order.ownerCalls`.
    *
    * `solution` must specify one target and one amount for each transfer and must not have passed
    * its own expiration. Each ERC20 transfer sends `solution.erc20Amounts[i]`, at most its
    * allowance. The approval is checked against `order.solutionApprover`, and is not required when
-   * that is the dead address. The approval spends `solution.nonce` in the namespace of
-   * `order.solutionApprover`, so each approval settles at most once. No nonce is spent when
-   * `order.solutionApprover` is the dead address.
+   * that is the dead address or the caller is `order.owner`. The approval spends `solution.nonce`
+   * in the namespace of `order.solutionApprover`, so each approval settles at most once. No nonce
+   * is spent when no approval is required.
    *
    * The caller and the authenticator are treated as in {executeOrderWithDelegatedAuthentication},
    * with `order.solver` in place of `order.relayer`. When the caller is `order.owner`, the solution
-   * approval is still required.
+   * approval is not checked.
    * @param order The order to settle
    * @param authenticator The authenticator that checks `authenticationData`
    * @param authenticationData Credential and signature, in the encoding the authenticator reads
    * @param solution The route, the target of each transfer and the amount of each ERC20 transfer
    * the solver chose
-   * @param solutionSignature The `solutionApprover`'s signature over the {SolutionApproval}
+   * @param solutionSignature The `solutionApprover`'s signature over the {SolutionApproval}; not
+   * read when the caller is `order.owner` or `order.solutionApprover` is the dead address
    * @param usePermit2Allowances Whether the ERC20 transfers are drawn from the owner's Permit2
    * allowances instead of the owner's allowances to this hub
    * @return results Return data of each router call, the solver's calls first
@@ -142,7 +143,8 @@ interface IKSAllowanceHubV2 {
    * @param permit2Signature The owner's Permit2 signature
    * @param solution The route, the target of each transfer and the amount of each ERC20 transfer
    * the solver chose
-   * @param solutionSignature The `solutionApprover`'s signature over the {SolutionApproval}
+   * @param solutionSignature The `solutionApprover`'s signature over the {SolutionApproval}; not
+   * read when the caller is `order.owner` or `order.solutionApprover` is the dead address
    * @return results Return data of each router call, the solver's calls first
    */
   function fulfillOrderWithPermit2Signature(
