@@ -152,4 +152,78 @@ contract SchemaAuditTest is Test {
       'FulfillmentWitness permit'
     );
   }
+
+  /**
+   * @dev The four type strings that carry `clientData`, written out here, against the production
+   * typehashes
+   */
+  function test_T712_SCHEMA_clientDataTypeStringsWrittenOut() public pure {
+    string memory generic = 'GenericCall(address router,uint256 value,bytes data)';
+    string memory validation =
+      'ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)';
+
+    assertEq(
+      ExecutionOrderLib.EXECUTION_ORDER_TYPEHASH,
+      keccak256(
+        abi.encodePacked(
+          'ExecutionOrder(address owner,address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 expiration,bytes extraData,bytes clientData)',
+          'ERC20Transfer(address token,address target,uint160 amount)',
+          'ERC721Transfer(address token,uint256 tokenId,address target)',
+          generic
+        )
+      ),
+      'ExecutionOrder'
+    );
+    assertEq(
+      FulfillmentOrderLib.FULFILLMENT_ORDER_TYPEHASH,
+      keccak256(
+        abi.encodePacked(
+          'FulfillmentOrder(address owner,address solver,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,ValidationParams[] validationParams,GenericCall[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes extraData,bytes clientData)',
+          'ERC20Allowance(address token,uint160 amount)',
+          'ERC721Approval(address token,uint256 tokenId)',
+          generic,
+          validation
+        )
+      ),
+      'FulfillmentOrder'
+    );
+    assertEq(
+      ExecutionWitnessLib.EXECUTION_WITNESS_TYPEHASH,
+      keccak256(
+        abi.encodePacked(
+          'ExecutionWitness(address relayer,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,bytes extraData,bytes clientData)',
+          'ERC721Transfer(address token,uint256 tokenId,address target)',
+          generic
+        )
+      ),
+      'ExecutionWitness'
+    );
+    assertEq(
+      FulfillmentWitnessLib.FULFILLMENT_WITNESS_TYPEHASH,
+      keccak256(
+        abi.encodePacked(
+          'FulfillmentWitness(address solver,ERC721Approval[] erc721Approvals,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner,bytes extraData,bytes clientData)',
+          'ERC721Approval(address token,uint256 tokenId)',
+          generic,
+          validation
+        )
+      ),
+      'FulfillmentWitness'
+    );
+    assertEq(
+      SolutionApprovalLib.SOLUTION_APPROVAL_TYPEHASH,
+      keccak256(
+        abi.encodePacked(
+          'SolutionApproval(FulfillmentOrder order,FulfillmentSolution solution)',
+          'ERC20Allowance(address token,uint160 amount)',
+          'ERC721Approval(address token,uint256 tokenId)',
+          'FulfillmentOrder(address owner,address solver,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,ValidationParams[] validationParams,GenericCall[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes extraData,bytes clientData)',
+          'FulfillmentSolution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,GenericCall[] solverCalls,uint256 nonce,uint256 expiration)',
+          generic,
+          validation
+        )
+      ),
+      'SolutionApproval'
+    );
+  }
 }

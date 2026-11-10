@@ -160,7 +160,10 @@ contract KSAllowanceHubV2 is
     bytes32 erc721TransfersHash = order.erc721Transfers.hash();
     bytes32 genericCallsHash = order.genericCalls.hash();
     bytes32 extraDataHash = order.extraData.hashCalldata();
-    _announceExecution(order, order.hash(erc721TransfersHash, genericCallsHash, extraDataHash));
+    bytes32 clientDataHash = order.clientData.hashCalldata();
+    _announceExecution(
+      order, order.hash(erc721TransfersHash, genericCallsHash, extraDataHash, clientDataHash)
+    );
 
     ISignatureTransfer.PermitBatchTransferFrom memory permit =
       order.erc20Transfers.toPermitBatchTransferFrom(order.nonce, order.expiration);
@@ -176,7 +179,8 @@ contract KSAllowanceHubV2 is
         order.erc20Transfers.targetsHash(),
         erc721TransfersHash,
         genericCallsHash,
-        extraDataHash
+        extraDataHash,
+        clientDataHash
       );
 
       _permitWitnessTransferFrom(
@@ -268,8 +272,10 @@ contract KSAllowanceHubV2 is
     bytes32 validationParamsHash = order.validationParams.hash();
     bytes32 ownerCallsHash = order.ownerCalls.hash();
     bytes32 extraDataHash = order.extraData.hashCalldata();
-    bytes32 orderHash =
-      order.hash(erc721ApprovalsHash, validationParamsHash, ownerCallsHash, extraDataHash);
+    bytes32 clientDataHash = order.clientData.hashCalldata();
+    bytes32 orderHash = order.hash(
+      erc721ApprovalsHash, validationParamsHash, ownerCallsHash, extraDataHash, clientDataHash
+    );
     // The owner's call approves its own solution, and a dead-address approver accepts any solution
     if (msg.sender != order.owner && order.solutionApprover != Constants.DEAD_ADDRESS) {
       _checkSolutionApproval(order.solutionApprover, orderHash, solution, solutionSignature);
@@ -295,7 +301,8 @@ contract KSAllowanceHubV2 is
         ownerCallsHash,
         validationParamsHash,
         order.solutionApprover,
-        extraDataHash
+        extraDataHash,
+        clientDataHash
       );
 
       _permitWitnessTransferFrom(
@@ -345,7 +352,8 @@ contract KSAllowanceHubV2 is
       orderHash,
       order.erc20Transfers,
       order.erc721Transfers,
-      order.genericCalls.toNativeTransfers()
+      order.genericCalls.toNativeTransfers(),
+      order.clientData
     );
   }
 
@@ -362,7 +370,8 @@ contract KSAllowanceHubV2 is
       orderHash,
       order.erc20Allowances.toTransfers(solution.erc20Targets, solution.erc20Amounts),
       order.erc721Approvals.toTransfers(solution.erc721Targets),
-      solution.solverCalls.toNativeTransfers(order.ownerCalls)
+      solution.solverCalls.toNativeTransfers(order.ownerCalls),
+      order.clientData
     );
   }
 

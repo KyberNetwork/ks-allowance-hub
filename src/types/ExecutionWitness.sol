@@ -20,6 +20,7 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * @param erc721Transfers ERC721 transfers
  * @param genericCalls Router calls
  * @param extraData The order's extra data
+ * @param clientData The order's client data
  */
 struct ExecutionWitness {
   address relayer;
@@ -27,6 +28,7 @@ struct ExecutionWitness {
   ERC721Transfer[] erc721Transfers;
   GenericCall[] genericCalls;
   bytes extraData;
+  bytes clientData;
 }
 
 /**
@@ -55,12 +57,12 @@ library ExecutionWitnessLib {
 
   string internal constant EXECUTION_WITNESS_PERMIT2_TYPE_STRING = 'ExecutionWitness witness)'
     'ERC721Transfer(address token,uint256 tokenId,address target)'
-    'ExecutionWitness(address relayer,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,bytes extraData)'
+    'ExecutionWitness(address relayer,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,bytes extraData,bytes clientData)'
     'GenericCall(address router,uint256 value,bytes data)'
     'TokenPermissions(address token,uint256 amount)';
 
   bytes32 internal constant EXECUTION_WITNESS_TYPEHASH = keccak256(
-    'ExecutionWitness(address relayer,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,bytes extraData)'
+    'ExecutionWitness(address relayer,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,bytes extraData,bytes clientData)'
     'ERC721Transfer(address token,uint256 tokenId,address target)'
     'GenericCall(address router,uint256 value,bytes data)'
   );
@@ -71,14 +73,16 @@ library ExecutionWitnessLib {
     bytes32 erc20TargetsHash,
     ERC721Transfer[] calldata erc721Transfers,
     GenericCall[] calldata genericCalls,
-    bytes calldata extraData
+    bytes calldata extraData,
+    bytes calldata clientData
   ) internal pure returns (bytes32) {
     return hash(
       relayer,
       erc20TargetsHash,
       erc721Transfers.hash(),
       genericCalls.hash(),
-      extraData.hashCalldata()
+      extraData.hashCalldata(),
+      clientData.hashCalldata()
     );
   }
 
@@ -88,7 +92,8 @@ library ExecutionWitnessLib {
     bytes32 erc20TargetsHash,
     bytes32 erc721TransfersHash,
     bytes32 genericCallsHash,
-    bytes32 extraDataHash
+    bytes32 extraDataHash,
+    bytes32 clientDataHash
   ) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(
@@ -97,7 +102,8 @@ library ExecutionWitnessLib {
         erc20TargetsHash,
         erc721TransfersHash,
         genericCallsHash,
-        extraDataHash
+        extraDataHash,
+        clientDataHash
       )
     );
   }
@@ -108,7 +114,8 @@ library ExecutionWitnessLib {
     address[] memory erc20Targets,
     ERC721Transfer[] memory erc721Transfers,
     GenericCall[] memory genericCalls,
-    bytes memory extraData
+    bytes memory extraData,
+    bytes memory clientData
   ) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(
@@ -117,7 +124,8 @@ library ExecutionWitnessLib {
         erc20Targets.hashMemory(),
         erc721Transfers.hashMemory(),
         genericCalls.hashMemory(),
-        keccak256(extraData)
+        keccak256(extraData),
+        keccak256(clientData)
       )
     );
   }

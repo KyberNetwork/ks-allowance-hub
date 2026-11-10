@@ -25,7 +25,9 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * @param nonce Permit2 nonce on the Permit2 entry points; on the delegated entry points, for the
  * authenticator to spend
  * @param expiration Last timestamp at which the order may settle
- * @param extraData Data the hub does not read, covered by the order's signature
+ * @param extraData Additional data the hub does not read, for the authenticator or other
+ * contracts
+ * @param clientData Data for off-chain clients, emitted in {IKSAllowanceHubV2-TransferTokens}
  */
 struct ExecutionOrder {
   address owner;
@@ -36,6 +38,7 @@ struct ExecutionOrder {
   uint256 nonce;
   uint256 expiration;
   bytes extraData;
+  bytes clientData;
 }
 
 using ExecutionOrderLib for ExecutionOrder global;
@@ -47,7 +50,7 @@ library ExecutionOrderLib {
   using GenericCallLib for GenericCall[];
 
   bytes32 internal constant EXECUTION_ORDER_TYPEHASH = keccak256(
-    'ExecutionOrder(address owner,address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 expiration,bytes extraData)'
+    'ExecutionOrder(address owner,address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 expiration,bytes extraData,bytes clientData)'
     'ERC20Transfer(address token,address target,uint160 amount)'
     'ERC721Transfer(address token,uint256 tokenId,address target)'
     'GenericCall(address router,uint256 value,bytes data)'
@@ -56,17 +59,22 @@ library ExecutionOrderLib {
   /// @dev EIP-712 hash of the order
   function hash(ExecutionOrder calldata order) internal pure returns (bytes32) {
     return hash(
-      order, order.erc721Transfers.hash(), order.genericCalls.hash(), order.extraData.hashCalldata()
+      order,
+      order.erc721Transfers.hash(),
+      order.genericCalls.hash(),
+      order.extraData.hashCalldata(),
+      order.clientData.hashCalldata()
     );
   }
 
-  /// @dev As {hash}, from the already computed hashes of `erc721Transfers`, `genericCalls` and
-  /// `extraData`
+  /// @dev As {hash}, from the already computed hashes of `erc721Transfers`, `genericCalls`,
+  /// `extraData` and `clientData`
   function hash(
     ExecutionOrder calldata order,
     bytes32 erc721TransfersHash,
     bytes32 genericCallsHash,
-    bytes32 extraDataHash
+    bytes32 extraDataHash,
+    bytes32 clientDataHash
   ) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(
@@ -78,7 +86,8 @@ library ExecutionOrderLib {
         genericCallsHash,
         order.nonce,
         order.expiration,
-        extraDataHash
+        extraDataHash,
+        clientDataHash
       )
     );
   }
@@ -95,7 +104,8 @@ library ExecutionOrderLib {
         order.genericCalls.hashMemory(),
         order.nonce,
         order.expiration,
-        keccak256(order.extraData)
+        keccak256(order.extraData),
+        keccak256(order.clientData)
       )
     );
   }

@@ -1,6 +1,6 @@
 [profile.default]
 optimizer = true
-optimizer_runs = 20_000
+optimizer_runs = 7_500
 fs_permissions = [{ access = "read-write", path = "./" }]
 verbosity = 3
 via_ir = true
@@ -11,8 +11,6 @@ bytecode_hash = "none"
 # Solar build of the same sources. Run with `FOUNDRY_PROFILE=solar`.
 [profile.solar]
 solc = "solar"
-optimizer_runs = 7_500
-
 
 [fuzz]
 runs = 32

@@ -248,7 +248,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
     assertEq(entry.topics[3], SchemaHash.fulfillmentOrder(order), 'the fulfillment order hash');
     assertEq(
       entry.data,
-      abi.encode(expectedErc20s, expectedNfts, new NativeTransfer[](0)),
+      abi.encode(expectedErc20s, expectedNfts, new NativeTransfer[](0), bytes('')),
       'each transfer with its target'
     );
 
@@ -291,7 +291,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
       expected[0] = ERC20Transfer({token: token18, target: solverWallet, amount: chosen});
       assertEq(
         entry.data,
-        abi.encode(expected, new ERC721Transfer[](0), new NativeTransfer[](0)),
+        abi.encode(expected, new ERC721Transfer[](0), new NativeTransfer[](0), bytes('')),
         'the event lists the chosen amount'
       );
       if (path == PATH_PERMIT2_ALLOWANCE) {
@@ -348,7 +348,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
     expected[1] = ERC20Transfer({token: token6, target: solverWallet, amount: sixAllowance});
     assertEq(
       entry.data,
-      abi.encode(expected, new ERC721Transfer[](0), new NativeTransfer[](0)),
+      abi.encode(expected, new ERC721Transfer[](0), new NativeTransfer[](0), bytes('')),
       'the event lists the zero amount'
     );
   }

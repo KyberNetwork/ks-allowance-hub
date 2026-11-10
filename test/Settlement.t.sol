@@ -5,13 +5,16 @@ import {Vm} from 'forge-std/Vm.sol';
 
 import {SchemaHash} from 'test/base/SchemaHash.sol';
 
-import {HubBase} from 'test/base/HubBase.sol';
+import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol';
 
 import {EchoRouterMock, ReentrantRouterMock, RouterMock} from 'test/mocks/RouterMock.sol';
 import {ReentrantReceiverMock} from 'test/mocks/TokenMocks.sol';
 
 import {NativeSpendGuard} from 'src/base/NativeSpendGuard.sol';
 import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
+import {
+  ITwoTiersOrderAuthenticator
+} from 'src/interfaces/authenticators/ITwoTiersOrderAuthenticator.sol';
 import {IKSGenericRouter} from 'src/interfaces/base/IKSGenericRouter.sol';
 import {IUnorderedNonce} from 'src/interfaces/base/IUnorderedNonce.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
@@ -24,18 +27,19 @@ import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
 import {GenericCall} from 'src/types/GenericCall.sol';
 import {NativeTransfer} from 'src/types/NativeTransfer.sol';
 import {ValidationParams} from 'src/types/ValidationParams.sol';
+import {AuthKey} from 'src/types/base/AuthKey.sol';
 
 import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 /**
- * @notice `SET-01..04`, `OWN-07`, `ROUTER-01..03` and `NEST-01..05` — the final settlement steps
- * shared by all four entry points.
+ * @notice `SET-01..04`, `CLIENT-01..02`, `OWN-07`, `ROUTER-01..03` and `NEST-01..05` — the final
+ * settlement steps shared by all four entry points.
  * @dev The role constant, the `TransferTokens` topic and the router's own function signature are
  * written out rather than imported: an expected value taken from the contract under test would
  * agree with a wrong one. The topic lives in {HubBase}, which is where the log picker needs it.
  */
-contract SettlementTest is HubBase {
+contract SettlementTest is AuthenticatorBase {
   uint160 internal constant AMOUNT = 5 ether;
 
   bytes32 internal constant ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
@@ -44,6 +48,18 @@ contract SettlementTest is HubBase {
   /// overspend
   uint256 internal constant PREFUND = 1 ether;
   uint256 internal constant VALUE = 1 ether;
+
+  /// @dev Permit2 does not expose this in the vendored interface, so it is written out here
+  bytes4 internal constant PERMIT2_INVALID_SIGNER = bytes4(keccak256('InvalidSigner()'));
+
+  AuthKey internal key;
+
+  /// @dev Inputs of {testFuzz_CLIENT_01_clientDataIsEmittedAsGiven} and
+  /// {testFuzz_CLIENT_02_clientDataIsCoveredByTheSignature}; `entryPoint` is bounded to `[0, 3]`
+  struct ClientDataFuzz {
+    uint8 entryPoint;
+    bytes clientData;
+  }
 
   /// @dev Inputs of {testFuzz_NEST_01_nestedOrdersRestoreEachOwner}
   struct NestingParams {
@@ -91,7 +107,182 @@ contract SettlementTest is HubBase {
     assertEq(_topicAddress(entry.topics[2]), owner, 'owner is the account the assets came from');
     assertEq(entry.topics[3], SchemaHash.executionOrder(order), 'the order hash the owner signed');
     // No call carries value, so the native transfers are empty
-    assertEq(entry.data, abi.encode(erc20s, nfts, new NativeTransfer[](0)), 'payload');
+    assertEq(entry.data, abi.encode(erc20s, nfts, new NativeTransfer[](0), bytes('')), 'payload');
+  }
+
+  function setUp() public override {
+    super.setUp();
+    key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
+  }
+
+  // -----------------------------------------------------------------------------------------
+  // CLIENT — the order's client data
+  // -----------------------------------------------------------------------------------------
+
+  /**
+   * CLIENT-01 — the `TransferTokens` of a settled order carries exactly the order's client data
+   * @dev Over the four entry points, and over any client data drawn: delegated execution and
+   * Permit2 execution submitted by the relayer, delegated fulfillment and Permit2 fulfillment
+   * submitted by the solver.
+   */
+  function testFuzz_CLIENT_01_clientDataIsEmittedAsGiven(ClientDataFuzz memory p) public {
+    uint8 entry = uint8(bound(p.entryPoint, 0, 3));
+
+    uint256 before = IERC20(token18).balanceOf(address(router));
+
+    _submitWithClientData(entry, p.clientData, p.clientData, 0);
+
+    assertEq(IERC20(token18).balanceOf(address(router)) - before, AMOUNT, 'the order settled');
+  }
+
+  /**
+   * CLIENT-02 — the owner's signature covers the order's client data
+   * @dev The order is authenticated, or its witness signed, with client data A and submitted with
+   * A and one more byte. Each entry point refuses it with the error of its own check and nothing
+   * moves.
+   */
+  function testFuzz_CLIENT_02_clientDataIsCoveredByTheSignature(ClientDataFuzz memory p) public {
+    uint8 entry = uint8(bound(p.entryPoint, 0, 3));
+    bytes memory submitted = abi.encodePacked(p.clientData, uint8(0x01));
+
+    uint256 before = IERC20(token18).balanceOf(address(router));
+    uint256 ownerBefore = IERC20(token18).balanceOf(owner);
+
+    _submitWithClientData(entry, p.clientData, submitted, 1);
+
+    assertEq(IERC20(token18).balanceOf(address(router)), before, 'nothing reached the router');
+    assertEq(IERC20(token18).balanceOf(owner), ownerBefore, 'nothing left the owner');
+  }
+
+  /// @dev CLIENT-02 with empty signed client data on every entry point, the case a fuzzed draw
+  /// reaches only by chance
+  function test_CLIENT_02b_emptyClientDataIsCoveredByTheSignature() public {
+    for (uint8 entry = 0; entry < 4; entry++) {
+      uint256 snapshot = vm.snapshotState();
+
+      _submitWithClientData(entry, '', hex'01', 1);
+
+      vm.revertToState(snapshot);
+    }
+  }
+
+  /**
+   * @dev Authenticates or signs an order carrying `signedData`, and submits the same order carrying
+   * `submittedData` on the entry point `entry`. When the two are equal the call is expected to emit
+   * `TransferTokens` with that data; otherwise it is expected to revert with the error of the
+   * entry point's own check.
+   */
+  function _submitWithClientData(
+    uint8 entry,
+    bytes memory signedData,
+    bytes memory submittedData,
+    uint256 nonce
+  ) internal {
+    bool matches = keccak256(signedData) == keccak256(submittedData);
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
+    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
+
+    if (entry < 2) {
+      ExecutionOrder memory signed =
+        _openExecutionOrder(erc20s, new GenericCall[](0), nonce, expiration);
+      signed.clientData = signedData;
+      ExecutionOrder memory order =
+        _openExecutionOrder(erc20s, new GenericCall[](0), nonce, expiration);
+      order.clientData = submittedData;
+
+      if (entry == 0) {
+        _delegateKeyThroughHub(key);
+        bytes memory auth = _executionAuthData(signed, key, masterKeyPk);
+        _expectClientData(
+          matches,
+          ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector,
+          relayer,
+          SchemaHash.executionOrder(order),
+          erc20s,
+          submittedData
+        );
+        vm.prank(relayer);
+        hub.executeOrderWithDelegatedAuthentication(order, address(authenticator), auth, false);
+      } else {
+        bytes memory signature = _signExecutionWitness(signed);
+        _expectClientData(
+          matches,
+          PERMIT2_INVALID_SIGNER,
+          relayer,
+          SchemaHash.executionOrder(order),
+          erc20s,
+          submittedData
+        );
+        vm.prank(relayer);
+        hub.executeOrderWithPermit2Signature(order, signature);
+      }
+    } else {
+      ERC20Allowance[] memory allowances = _allowances(_tokenAllowance(AMOUNT));
+      GenericCall[] memory solverCalls = _calls(_routerCall(0, hex'01'));
+      FulfillmentOrder memory signed = _openFulfillmentOrder(
+        allowances, new ValidationParams[](0), new GenericCall[](0), nonce, expiration
+      );
+      signed.clientData = signedData;
+      FulfillmentOrder memory order = _openFulfillmentOrder(
+        allowances, new ValidationParams[](0), new GenericCall[](0), nonce, expiration
+      );
+      order.clientData = submittedData;
+      FulfillmentSolution memory route = _route(order, solverCalls);
+
+      if (entry == 2) {
+        _delegateKeyThroughHub(key);
+        bytes memory auth = _fulfillmentAuthData(signed, key, masterKeyPk);
+        _expectClientData(
+          matches,
+          ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector,
+          solver,
+          SchemaHash.fulfillmentOrder(order),
+          erc20s,
+          submittedData
+        );
+        vm.prank(solver);
+        hub.fulfillOrderWithDelegatedAuthentication(
+          order, address(authenticator), auth, route, '', false
+        );
+      } else {
+        bytes memory signature = _signFulfillmentWitness(signed);
+        _expectClientData(
+          matches,
+          PERMIT2_INVALID_SIGNER,
+          solver,
+          SchemaHash.fulfillmentOrder(order),
+          erc20s,
+          submittedData
+        );
+        vm.prank(solver);
+        hub.fulfillOrderWithPermit2Signature(order, signature, route, '');
+      }
+    }
+  }
+
+  /// @dev Expects the full `TransferTokens` payload when `matches`, and `refusal` otherwise
+  function _expectClientData(
+    bool matches,
+    bytes4 refusal,
+    address caller,
+    bytes32 orderHash,
+    ERC20Transfer[] memory erc20s,
+    bytes memory clientData
+  ) internal {
+    if (matches) {
+      vm.expectEmit(true, true, true, true, address(hub));
+      emit IKSAllowanceHubV2.TransferTokens(
+        caller,
+        owner,
+        orderHash,
+        erc20s,
+        new ERC721Transfer[](0),
+        new NativeTransfer[](0),
+        clientData
+      );
+    } else {
+      vm.expectRevert(refusal);
+    }
   }
 
   /// SET-02 — `[v=0, v=1, v=0]` reaches the event as a single-entry native list
@@ -121,7 +312,7 @@ contract SettlementTest is HubBase {
 
     assertEq(
       entry.data,
-      abi.encode(new ERC20Transfer[](0), new ERC721Transfer[](0), expected),
+      abi.encode(new ERC20Transfer[](0), new ERC721Transfer[](0), expected, bytes('')),
       'only the valued call is listed'
     );
     assertEq(router.callCount(), 3, 'all three calls still ran');
@@ -148,7 +339,9 @@ contract SettlementTest is HubBase {
 
     Vm.Log memory entry = _settlementLog();
     assertEq(
-      entry.data, abi.encode(noErc20s, noNfts, new NativeTransfer[](0)), 'three empty arrays'
+      entry.data,
+      abi.encode(noErc20s, noNfts, new NativeTransfer[](0), bytes('')),
+      'three empty arrays'
     );
   }
 
@@ -224,7 +417,7 @@ contract SettlementTest is HubBase {
     assertEq(entry.topics[3], SchemaHash.fulfillmentOrder(order), 'the fulfillment order hash');
     assertEq(
       entry.data,
-      abi.encode(new ERC20Transfer[](0), new ERC721Transfer[](0), expected),
+      abi.encode(new ERC20Transfer[](0), new ERC721Transfer[](0), expected, bytes('')),
       'solver calls then owner calls, zero-value calls dropped'
     );
 
@@ -791,7 +984,9 @@ contract SettlementTest is HubBase {
     assertEq(entry.topics[3], orderHash, 'the order hash');
     assertEq(
       entry.data,
-      abi.encode(new ERC20Transfer[](0), new ERC721Transfer[](0), new NativeTransfer[](0)),
+      abi.encode(
+        new ERC20Transfer[](0), new ERC721Transfer[](0), new NativeTransfer[](0), bytes('')
+      ),
       'nothing moved'
     );
   }

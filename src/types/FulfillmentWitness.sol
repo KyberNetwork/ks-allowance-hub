@@ -21,6 +21,7 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * @param validationParams Validators of the solution's result
  * @param callsSigner Account whose signature the solution requires; the dead address requires none
  * @param extraData The order's extra data
+ * @param clientData The order's client data
  */
 struct FulfillmentWitness {
   address solver;
@@ -29,6 +30,7 @@ struct FulfillmentWitness {
   ValidationParams[] validationParams;
   address callsSigner;
   bytes extraData;
+  bytes clientData;
 }
 
 /**
@@ -56,13 +58,13 @@ library FulfillmentWitnessLib {
 
   string internal constant FULFILLMENT_WITNESS_PERMIT2_TYPE_STRING = 'FulfillmentWitness witness)'
     'ERC721Approval(address token,uint256 tokenId)'
-    'FulfillmentWitness(address solver,ERC721Approval[] erc721Approvals,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner,bytes extraData)'
+    'FulfillmentWitness(address solver,ERC721Approval[] erc721Approvals,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner,bytes extraData,bytes clientData)'
     'GenericCall(address router,uint256 value,bytes data)'
     'TokenPermissions(address token,uint256 amount)'
     'ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)';
 
   bytes32 internal constant FULFILLMENT_WITNESS_TYPEHASH = keccak256(
-    'FulfillmentWitness(address solver,ERC721Approval[] erc721Approvals,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner,bytes extraData)'
+    'FulfillmentWitness(address solver,ERC721Approval[] erc721Approvals,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner,bytes extraData,bytes clientData)'
     'ERC721Approval(address token,uint256 tokenId)'
     'GenericCall(address router,uint256 value,bytes data)'
     'ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)'
@@ -75,7 +77,8 @@ library FulfillmentWitnessLib {
     GenericCall[] calldata ownerCalls,
     ValidationParams[] calldata validationParams,
     address callsSigner,
-    bytes calldata extraData
+    bytes calldata extraData,
+    bytes calldata clientData
   ) internal pure returns (bytes32) {
     return hash(
       solver,
@@ -83,7 +86,8 @@ library FulfillmentWitnessLib {
       ownerCalls.hash(),
       validationParams.hash(),
       callsSigner,
-      extraData.hashCalldata()
+      extraData.hashCalldata(),
+      clientData.hashCalldata()
     );
   }
 
@@ -94,7 +98,8 @@ library FulfillmentWitnessLib {
     bytes32 ownerCallsHash,
     bytes32 validationParamsHash,
     address callsSigner,
-    bytes32 extraDataHash
+    bytes32 extraDataHash,
+    bytes32 clientDataHash
   ) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(
@@ -104,7 +109,8 @@ library FulfillmentWitnessLib {
         ownerCallsHash,
         validationParamsHash,
         callsSigner,
-        extraDataHash
+        extraDataHash,
+        clientDataHash
       )
     );
   }
@@ -116,7 +122,8 @@ library FulfillmentWitnessLib {
     GenericCall[] memory ownerCalls,
     ValidationParams[] memory validationParams,
     address callsSigner,
-    bytes memory extraData
+    bytes memory extraData,
+    bytes memory clientData
   ) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(
@@ -126,7 +133,8 @@ library FulfillmentWitnessLib {
         ownerCalls.hashMemory(),
         validationParams.hashMemory(),
         callsSigner,
-        keccak256(extraData)
+        keccak256(extraData),
+        keccak256(clientData)
       )
     );
   }

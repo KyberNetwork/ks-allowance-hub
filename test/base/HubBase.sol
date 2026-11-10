@@ -52,7 +52,7 @@ abstract contract HubBase is V2TestBase {
    * taken from the contract under test would agree with a wrong one.
    */
   bytes32 internal constant TRANSFER_TOKENS_TOPIC = keccak256(
-    'TransferTokens(address,address,bytes32,(address,address,uint160)[],(address,uint256,address)[],(address,uint256)[])'
+    'TransferTokens(address,address,bytes32,(address,address,uint160)[],(address,uint256,address)[],(address,uint256)[],bytes)'
   );
 
   function setUp() public virtual {
@@ -234,7 +234,8 @@ abstract contract HubBase is V2TestBase {
       genericCalls: genericCalls,
       nonce: nonce,
       expiration: expiration,
-      extraData: ''
+      extraData: '',
+      clientData: ''
     });
   }
 
@@ -270,7 +271,8 @@ abstract contract HubBase is V2TestBase {
       solutionApprover: solutionApprover,
       nonce: nonce,
       expiration: expiration,
-      extraData: ''
+      extraData: '',
+      clientData: ''
     });
   }
 
@@ -402,7 +404,8 @@ abstract contract HubBase is V2TestBase {
       erc20Targets: _targets(order.erc20Transfers),
       erc721Transfers: order.erc721Transfers,
       genericCalls: order.genericCalls,
-      extraData: order.extraData
+      extraData: order.extraData,
+      clientData: order.clientData
     });
 
     (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(order.erc20Transfers);
@@ -452,7 +455,8 @@ abstract contract HubBase is V2TestBase {
       ownerCalls: witnessOwnerCalls,
       validationParams: order.validationParams,
       callsSigner: witnessApprover,
-      extraData: order.extraData
+      extraData: order.extraData,
+      clientData: order.clientData
     });
 
     (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(order.erc20Allowances);

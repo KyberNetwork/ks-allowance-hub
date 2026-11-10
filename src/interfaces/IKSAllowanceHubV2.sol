@@ -29,6 +29,7 @@ interface IKSAllowanceHubV2 {
    * @dev For a fulfillment, each ERC20 and ERC721 entry pairs a transfer of the order with the
    * target the solution specifies for it. `nativeTransfers` lists only the calls that carry native
    * value, the solver's calls before the owner's, and is empty when no call carries value.
+   * `clientData` is the order's client data.
    *
    * An order settled by a router call of an execution emits its event after the execution's and
    * before the execution's remaining calls run.
@@ -39,7 +40,8 @@ interface IKSAllowanceHubV2 {
     bytes32 indexed orderHash,
     ERC20Transfer[] erc20Transfers,
     ERC721Transfer[] erc721Transfers,
-    NativeTransfer[] nativeTransfers
+    NativeTransfer[] nativeTransfers,
+    bytes clientData
   );
 
   /// @notice Emitted when assets held by the hub are transferred out, with the entries as given

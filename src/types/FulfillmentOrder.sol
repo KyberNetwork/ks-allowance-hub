@@ -34,7 +34,9 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * @param nonce Permit2 nonce on the Permit2 entry points; on the delegated entry points, for the
  * authenticator to spend
  * @param expiration Last timestamp at which the order may settle
- * @param extraData Data the hub does not read, covered by the order's signature
+ * @param extraData Additional data the hub does not read, for the authenticator or other
+ * contracts
+ * @param clientData Data for off-chain clients, emitted in {IKSAllowanceHubV2-TransferTokens}
  */
 struct FulfillmentOrder {
   address owner;
@@ -47,6 +49,7 @@ struct FulfillmentOrder {
   uint256 nonce;
   uint256 expiration;
   bytes extraData;
+  bytes clientData;
 }
 
 using FulfillmentOrderLib for FulfillmentOrder global;
@@ -59,7 +62,7 @@ library FulfillmentOrderLib {
   using ValidationParamsLib for ValidationParams[];
 
   bytes32 internal constant FULFILLMENT_ORDER_TYPEHASH = keccak256(
-    'FulfillmentOrder(address owner,address solver,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,ValidationParams[] validationParams,GenericCall[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes extraData)'
+    'FulfillmentOrder(address owner,address solver,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,ValidationParams[] validationParams,GenericCall[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes extraData,bytes clientData)'
     'ERC20Allowance(address token,uint160 amount)' 'ERC721Approval(address token,uint256 tokenId)'
     'GenericCall(address router,uint256 value,bytes data)'
     'ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)'
@@ -72,18 +75,20 @@ library FulfillmentOrderLib {
       order.erc721Approvals.hash(),
       order.validationParams.hash(),
       order.ownerCalls.hash(),
-      order.extraData.hashCalldata()
+      order.extraData.hashCalldata(),
+      order.clientData.hashCalldata()
     );
   }
 
   /// @dev As {hash}, from the already computed hashes of `erc721Approvals`, `validationParams`,
-  /// `ownerCalls` and `extraData`
+  /// `ownerCalls`, `extraData` and `clientData`
   function hash(
     FulfillmentOrder calldata order,
     bytes32 erc721ApprovalsHash,
     bytes32 validationParamsHash,
     bytes32 ownerCallsHash,
-    bytes32 extraDataHash
+    bytes32 extraDataHash,
+    bytes32 clientDataHash
   ) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(
@@ -97,7 +102,8 @@ library FulfillmentOrderLib {
         order.solutionApprover,
         order.nonce,
         order.expiration,
-        extraDataHash
+        extraDataHash,
+        clientDataHash
       )
     );
   }
@@ -116,7 +122,8 @@ library FulfillmentOrderLib {
         order.solutionApprover,
         order.nonce,
         order.expiration,
-        keccak256(order.extraData)
+        keccak256(order.extraData),
+        keccak256(order.clientData)
       )
     );
   }
