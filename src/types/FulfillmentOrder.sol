@@ -3,8 +3,14 @@ pragma solidity ^0.8.0;
 
 import {ERC20Allowance, ERC20AllowanceLib} from './ERC20Allowance.sol';
 import {ERC721Approval, ERC721ApprovalLib} from './ERC721Approval.sol';
+import {FulfillmentSolution} from './FulfillmentSolution.sol';
 import {GenericCall, GenericCallLib} from './GenericCall.sol';
 import {ValidationParams, ValidationParamsLib} from './ValidationParams.sol';
+
+import {DeadlineChecker} from '../base/DeadlineChecker.sol';
+import {IKSAllowanceHubV2} from '../interfaces/IKSAllowanceHubV2.sol';
+
+import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
 
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
@@ -108,6 +114,69 @@ library FulfillmentOrderLib {
     );
   }
 
+  /// @dev As {hash}, also returning the hashes of the members the order's witness covers
+  function membersHash(FulfillmentOrder calldata order)
+    internal
+    pure
+    returns (
+      bytes32 orderHash,
+      bytes32 erc721ApprovalsHash,
+      bytes32 validationParamsHash,
+      bytes32 ownerCallsHash,
+      bytes32 extraDataHash,
+      bytes32 clientDataHash
+    )
+  {
+    erc721ApprovalsHash = order.erc721Approvals.hash();
+    validationParamsHash = order.validationParams.hash();
+    ownerCallsHash = order.ownerCalls.hash();
+    extraDataHash = order.extraData.hashCalldata();
+    clientDataHash = order.clientData.hashCalldata();
+    orderHash = hash(
+      order,
+      erc721ApprovalsHash,
+      validationParamsHash,
+      ownerCallsHash,
+      extraDataHash,
+      clientDataHash
+    );
+  }
+
+  /**
+   * @dev Emits {IKSAllowanceHubV2-TransferTokens} for the order with hash `orderHash`, pairing
+   * each transfer with the target and amount `solution` specifies for it
+   */
+  function announce(
+    FulfillmentOrder calldata order,
+    bytes32 orderHash,
+    FulfillmentSolution calldata solution
+  ) internal {
+    emit IKSAllowanceHubV2.TransferTokens(
+      msg.sender,
+      order.owner,
+      orderHash,
+      order.erc20Allowances.toTransfers(solution.erc20Targets, solution.erc20Amounts),
+      order.erc721Approvals.toTransfers(solution.erc721Targets),
+      solution.solverCalls.toNativeTransfers(order.ownerCalls),
+      order.clientData
+    );
+  }
+
+  /**
+   * @dev Reverts when the order or `solution` has passed its expiration, or when `solution` does
+   * not specify one target for each transfer and one amount for each ERC20 transfer
+   */
+  function checkFulfillment(FulfillmentOrder calldata order, FulfillmentSolution calldata solution)
+    internal
+    view
+  {
+    _checkDeadline(order.expiration);
+    _checkDeadline(solution.expiration);
+    _checkLengths(solution.erc20Targets.length, order.erc20Allowances.length);
+    _checkLengths(solution.erc20Amounts.length, order.erc20Allowances.length);
+    _checkLengths(solution.erc721Targets.length, order.erc721Approvals.length);
+  }
+
   /// @dev As {hash}, for an order already in memory
   function hashMemory(FulfillmentOrder memory order) internal pure returns (bytes32) {
     return keccak256(
@@ -126,5 +195,19 @@ library FulfillmentOrderLib {
         keccak256(order.clientData)
       )
     );
+  }
+
+  /// @dev Reverts when the current block timestamp is later than `deadline`
+  function _checkDeadline(uint256 deadline) private view {
+    if (block.timestamp > deadline) {
+      revert DeadlineChecker.DeadlinePassed(deadline, block.timestamp);
+    }
+  }
+
+  /// @dev Reverts when `length1` and `length2` differ
+  function _checkLengths(uint256 length1, uint256 length2) private pure {
+    if (length1 != length2) {
+      revert ICommon.MismatchedArrayLengths();
+    }
   }
 }

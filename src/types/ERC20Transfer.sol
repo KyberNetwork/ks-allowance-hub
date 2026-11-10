@@ -80,6 +80,15 @@ library ERC20TransferLib {
     }
   }
 
+  /// @dev As {execute}, through the Permit2 allowances of `owner` at `permit2`
+  function executePermit2(ERC20Transfer[] calldata transfers, address owner, address permit2)
+    internal
+  {
+    IAllowanceTransfer.AllowanceTransferDetails[] memory details =
+      toAllowanceTransferDetails(transfers, owner);
+    IAllowanceTransfer(permit2).transferFrom(details);
+  }
+
   /// @dev Converts the transfers into a Permit2 batch permit
   function toPermitBatchTransferFrom(
     ERC20Transfer[] calldata transfers,

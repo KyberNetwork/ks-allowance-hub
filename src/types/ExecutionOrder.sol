@@ -5,7 +5,7 @@ import {ERC20Transfer, ERC20TransferLib} from './ERC20Transfer.sol';
 import {ERC721Transfer, ERC721TransferLib} from './ERC721Transfer.sol';
 import {GenericCall, GenericCallLib} from './GenericCall.sol';
 
-import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
+import {IKSAllowanceHubV2} from '../interfaces/IKSAllowanceHubV2.sol';
 
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
@@ -89,6 +89,38 @@ library ExecutionOrderLib {
         extraDataHash,
         clientDataHash
       )
+    );
+  }
+
+  /// @dev As {hash}, also returning the hashes of the members the order's witness covers
+  function membersHash(ExecutionOrder calldata order)
+    internal
+    pure
+    returns (
+      bytes32 orderHash,
+      bytes32 erc721TransfersHash,
+      bytes32 genericCallsHash,
+      bytes32 extraDataHash,
+      bytes32 clientDataHash
+    )
+  {
+    erc721TransfersHash = order.erc721Transfers.hash();
+    genericCallsHash = order.genericCalls.hash();
+    extraDataHash = order.extraData.hashCalldata();
+    clientDataHash = order.clientData.hashCalldata();
+    orderHash = hash(order, erc721TransfersHash, genericCallsHash, extraDataHash, clientDataHash);
+  }
+
+  /// @dev Emits {IKSAllowanceHubV2-TransferTokens} for the order with hash `orderHash`
+  function announce(ExecutionOrder calldata order, bytes32 orderHash) internal {
+    emit IKSAllowanceHubV2.TransferTokens(
+      msg.sender,
+      order.owner,
+      orderHash,
+      order.erc20Transfers,
+      order.erc721Transfers,
+      order.genericCalls.toNativeTransfers(),
+      order.clientData
     );
   }
 

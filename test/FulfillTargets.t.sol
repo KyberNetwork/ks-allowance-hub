@@ -626,7 +626,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
     returns (bytes memory)
   {
     return abi.encodeWithSelector(
-      ERC20AllowanceLib.ERC20AllowanceExceeded.selector, index, amount, allowance
+      IKSAllowanceHubV2.ERC20AllowanceExceeded.selector, index, amount, allowance
     );
   }
 

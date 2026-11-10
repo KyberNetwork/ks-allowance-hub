@@ -67,10 +67,10 @@ contract OrderAuthenticatorMock is IOrderAuthenticator {
  * over-spend step therefore needs the hub to hold native of its own beforehand, or there is
  * nothing left to over-spend.
  *
- * The four entry points carry twenty modifier applications between them. `GUARD-*` takes the
+ * The four entry points carry eighteen modifier applications between them. `GUARD-*` takes the
  * execution rail, `GATE-01` takes `fulfillOrderWithPermit2Signature` and `GATE-02` takes the
  * applications neither of those reaches. `NEST-03` of {SettlementTest} observes `setMsgSender` on
- * all four, so every one of the twenty is observed somewhere.
+ * all four, so every one of the eighteen is observed somewhere.
  */
 contract GuardsTest is AuthenticatorBase {
   uint160 internal constant AMOUNT = 1 ether;
@@ -293,7 +293,7 @@ contract GuardsTest is AuthenticatorBase {
     vm.prank(admin);
     hub.unpause();
 
-    // checkDeadline
+    // checkFulfillment
     FulfillmentOrder memory stale = _openFulfillmentOrder(
       erc20s, new ValidationParams[](0), new GenericCall[](0), 102, vm.getBlockTimestamp() - 1
     );

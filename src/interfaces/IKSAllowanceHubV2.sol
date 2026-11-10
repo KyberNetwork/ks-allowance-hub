@@ -24,6 +24,9 @@ interface IKSAllowanceHubV2 {
   /// @notice The solution signature is not valid for the `solutionApprover` the order specifies
   error InvalidSolutionSignature();
 
+  /// @notice The amount the solution specifies for an ERC20 transfer exceeds its allowance
+  error ERC20AllowanceExceeded(uint256 index, uint256 amount, uint256 allowance);
+
   /**
    * @notice Emitted once for each settled order, before its assets move and its calls run
    * @dev For a fulfillment, each ERC20 and ERC721 entry pairs a transfer of the order with the

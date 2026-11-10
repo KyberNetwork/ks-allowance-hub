@@ -31,7 +31,6 @@ import {ValidationParams, ValidationParamsLib} from './types/ValidationParams.so
 
 import {ManagementSimple} from 'ks-common-sc/src/base/ManagementSimple.sol';
 
-import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 
 import {KSRoles} from 'ks-common-sc/src/libraries/KSRoles.sol';
@@ -84,6 +83,15 @@ contract KSAllowanceHubV2 is
 
   address internal immutable CALLS_FORWARDER;
 
+  /// @dev Runs {FulfillmentOrderLib-checkFulfillment} before the function body
+  modifier checkFulfillment(
+    FulfillmentOrder calldata order,
+    FulfillmentSolution calldata solution
+  ) {
+    order.checkFulfillment(solution);
+    _;
+  }
+
   /**
    * @param initialAdmin Holder of the default admin role
    * @param initialGuardians Accounts that may pause the hub and revoke routers
@@ -124,8 +132,8 @@ contract KSAllowanceHubV2 is
     payable
     whenNotPaused
     checkDeadline(order.expiration)
-    setMsgSender(order.owner)
     checkDelegation(order.owner, authenticator)
+    setMsgSender(order.owner)
     guardNativeSpend
     returns (bytes[] memory results)
   {
@@ -138,9 +146,14 @@ contract KSAllowanceHubV2 is
       IOrderAuthenticator(authenticator).authenticateExecution(order, orderHash, authenticationData);
     }
 
-    _announceExecution(order, orderHash);
+    order.announce(orderHash);
 
-    _transferERC20s(order.owner, order.erc20Transfers, usePermit2Allowances);
+    if (usePermit2Allowances) {
+      order.erc20Transfers.executePermit2(order.owner, PERMIT2);
+    } else {
+      order.erc20Transfers.execute(order.owner);
+    }
+
     return _settleExecution(order);
   }
 
@@ -157,13 +170,14 @@ contract KSAllowanceHubV2 is
     guardNativeSpend
     returns (bytes[] memory results)
   {
-    bytes32 erc721TransfersHash = order.erc721Transfers.hash();
-    bytes32 genericCallsHash = order.genericCalls.hash();
-    bytes32 extraDataHash = order.extraData.hashCalldata();
-    bytes32 clientDataHash = order.clientData.hashCalldata();
-    _announceExecution(
-      order, order.hash(erc721TransfersHash, genericCallsHash, extraDataHash, clientDataHash)
-    );
+    (
+      bytes32 orderHash,
+      bytes32 erc721TransfersHash,
+      bytes32 genericCallsHash,
+      bytes32 extraDataHash,
+      bytes32 clientDataHash
+    ) = order.membersHash();
+    order.announce(orderHash);
 
     ISignatureTransfer.PermitBatchTransferFrom memory permit =
       order.erc20Transfers.toPermitBatchTransferFrom(order.nonce, order.expiration);
@@ -172,7 +186,7 @@ contract KSAllowanceHubV2 is
 
     // The owner signs the permit alone; for any other caller the order is signed as the witness
     if (msg.sender == order.owner) {
-      _permitTransferFrom(order.owner, permit, details, permit2Signature);
+      ISignatureTransfer(PERMIT2).permitTransferFrom(permit, details, order.owner, permit2Signature);
     } else if (msg.sender == order.relayer || order.relayer == Constants.DEAD_ADDRESS) {
       bytes32 witness = ExecutionWitnessLib.hash(
         order.relayer,
@@ -183,14 +197,15 @@ contract KSAllowanceHubV2 is
         clientDataHash
       );
 
-      _permitWitnessTransferFrom(
-        order.owner,
-        permit,
-        details,
-        witness,
-        ExecutionWitnessLib.EXECUTION_WITNESS_PERMIT2_TYPE_STRING,
-        permit2Signature
-      );
+      ISignatureTransfer(PERMIT2)
+        .permitWitnessTransferFrom(
+          permit,
+          details,
+          order.owner,
+          witness,
+          ExecutionWitnessLib.EXECUTION_WITNESS_PERMIT2_TYPE_STRING,
+          permit2Signature
+        );
     } else {
       revert CallerNotRelayer(msg.sender);
     }
@@ -210,13 +225,9 @@ contract KSAllowanceHubV2 is
     external
     payable
     whenNotPaused
-    checkDeadline(order.expiration)
-    checkDeadline(solution.expiration)
-    checkLengths(solution.erc20Targets.length, order.erc20Allowances.length)
-    checkLengths(solution.erc20Amounts.length, order.erc20Allowances.length)
-    checkLengths(solution.erc721Targets.length, order.erc721Approvals.length)
-    setMsgSender(order.owner)
+    checkFulfillment(order, solution)
     checkDelegation(order.owner, authenticator)
+    setMsgSender(order.owner)
     guardNativeSpend
     returns (bytes[] memory results)
   {
@@ -238,14 +249,15 @@ contract KSAllowanceHubV2 is
     // Run before any asset moves, so that each validator observes the state before settlement
     bytes[] memory beforeExecutionOutputs = order.validationParams.beforeExecution();
 
-    _announceFulfillment(order, orderHash, solution);
-    _transferERC20s(
-      order.owner,
-      order.erc20Allowances,
-      solution.erc20Targets,
-      solution.erc20Amounts,
-      usePermit2Allowances
-    );
+    order.announce(orderHash, solution);
+
+    if (usePermit2Allowances) {
+      order.erc20Allowances
+        .executePermit2(order.owner, solution.erc20Targets, solution.erc20Amounts, PERMIT2);
+    } else {
+      order.erc20Allowances.execute(order.owner, solution.erc20Targets, solution.erc20Amounts);
+    }
+
     return _settleFulfillment(order, solution, beforeExecutionOutputs);
   }
 
@@ -259,23 +271,20 @@ contract KSAllowanceHubV2 is
     external
     payable
     whenNotPaused
-    checkDeadline(order.expiration)
-    checkDeadline(solution.expiration)
-    checkLengths(solution.erc20Targets.length, order.erc20Allowances.length)
-    checkLengths(solution.erc20Amounts.length, order.erc20Allowances.length)
-    checkLengths(solution.erc721Targets.length, order.erc721Approvals.length)
+    checkFulfillment(order, solution)
     setMsgSender(order.owner)
     guardNativeSpend
     returns (bytes[] memory results)
   {
-    bytes32 erc721ApprovalsHash = order.erc721Approvals.hash();
-    bytes32 validationParamsHash = order.validationParams.hash();
-    bytes32 ownerCallsHash = order.ownerCalls.hash();
-    bytes32 extraDataHash = order.extraData.hashCalldata();
-    bytes32 clientDataHash = order.clientData.hashCalldata();
-    bytes32 orderHash = order.hash(
-      erc721ApprovalsHash, validationParamsHash, ownerCallsHash, extraDataHash, clientDataHash
-    );
+    (
+      bytes32 orderHash,
+      bytes32 erc721ApprovalsHash,
+      bytes32 validationParamsHash,
+      bytes32 ownerCallsHash,
+      bytes32 extraDataHash,
+      bytes32 clientDataHash
+    ) = order.membersHash();
+
     // The owner's call approves its own solution, and a dead-address approver accepts any solution
     if (msg.sender != order.owner && order.solutionApprover != Constants.DEAD_ADDRESS) {
       _checkSolutionApproval(order.solutionApprover, orderHash, solution, solutionSignature);
@@ -284,7 +293,7 @@ contract KSAllowanceHubV2 is
     // Run before any asset moves, so that each validator observes the state before settlement
     bytes[] memory beforeExecutionOutputs = order.validationParams.beforeExecution();
 
-    _announceFulfillment(order, orderHash, solution);
+    order.announce(orderHash, solution);
 
     ISignatureTransfer.PermitBatchTransferFrom memory permit =
       order.erc20Allowances.toPermitBatchTransferFrom(order.nonce, order.expiration);
@@ -293,7 +302,7 @@ contract KSAllowanceHubV2 is
 
     // The owner signs the permit alone; for any other caller the order is signed as the witness
     if (msg.sender == order.owner) {
-      _permitTransferFrom(order.owner, permit, details, permit2Signature);
+      ISignatureTransfer(PERMIT2).permitTransferFrom(permit, details, order.owner, permit2Signature);
     } else if (msg.sender == order.solver || order.solver == Constants.DEAD_ADDRESS) {
       bytes32 witness = FulfillmentWitnessLib.hash(
         order.solver,
@@ -305,14 +314,15 @@ contract KSAllowanceHubV2 is
         clientDataHash
       );
 
-      _permitWitnessTransferFrom(
-        order.owner,
-        permit,
-        details,
-        witness,
-        FulfillmentWitnessLib.FULFILLMENT_WITNESS_PERMIT2_TYPE_STRING,
-        permit2Signature
-      );
+      ISignatureTransfer(PERMIT2)
+        .permitWitnessTransferFrom(
+          permit,
+          details,
+          order.owner,
+          witness,
+          FulfillmentWitnessLib.FULFILLMENT_WITNESS_PERMIT2_TYPE_STRING,
+          permit2Signature
+        );
     } else {
       revert CallerNotSolver(msg.sender);
     }
@@ -339,63 +349,10 @@ contract KSAllowanceHubV2 is
       uint256 amount = transfer.amount == 0 ? transfer.token.selfBalance() : transfer.amount;
       transfer.token.safeTransfer(transfer.target, amount);
     }
+
     erc721Transfers.execute(address(this));
 
     emit RescueTokens(erc20Transfers, erc721Transfers);
-  }
-
-  /// @dev Emits {TransferTokens} for an execution order
-  function _announceExecution(ExecutionOrder calldata order, bytes32 orderHash) internal {
-    emit TransferTokens(
-      msg.sender,
-      order.owner,
-      orderHash,
-      order.erc20Transfers,
-      order.erc721Transfers,
-      order.genericCalls.toNativeTransfers(),
-      order.clientData
-    );
-  }
-
-  /// @dev Emits {TransferTokens} for a fulfillment order, pairing each transfer with the target and
-  /// amount the solution specifies for it
-  function _announceFulfillment(
-    FulfillmentOrder calldata order,
-    bytes32 orderHash,
-    FulfillmentSolution calldata solution
-  ) internal {
-    emit TransferTokens(
-      msg.sender,
-      order.owner,
-      orderHash,
-      order.erc20Allowances.toTransfers(solution.erc20Targets, solution.erc20Amounts),
-      order.erc721Approvals.toTransfers(solution.erc721Targets),
-      solution.solverCalls.toNativeTransfers(order.ownerCalls),
-      order.clientData
-    );
-  }
-
-  /// @dev Executes the ERC20 transfers through a Permit2 permit signed without a witness
-  function _permitTransferFrom(
-    address owner,
-    ISignatureTransfer.PermitBatchTransferFrom memory permit,
-    ISignatureTransfer.SignatureTransferDetails[] memory details,
-    bytes calldata signature
-  ) internal {
-    ISignatureTransfer(PERMIT2).permitTransferFrom(permit, details, owner, signature);
-  }
-
-  /// @dev Executes the ERC20 transfers through a Permit2 permit that also signs `witness`
-  function _permitWitnessTransferFrom(
-    address owner,
-    ISignatureTransfer.PermitBatchTransferFrom memory permit,
-    ISignatureTransfer.SignatureTransferDetails[] memory details,
-    bytes32 witness,
-    string memory witnessTypeString,
-    bytes calldata signature
-  ) internal {
-    ISignatureTransfer(PERMIT2)
-      .permitWitnessTransferFrom(permit, details, owner, witness, witnessTypeString, signature);
   }
 
   /// @dev Reverts unless `solutionApprover` signed `solution` for the order with hash `orderHash`,
@@ -411,40 +368,6 @@ contract KSAllowanceHubV2 is
     bytes32 digest = _hashTypedDataV4(SolutionApprovalLib.hash(orderHash, solution));
     if (!SignatureChecker.isValidSignatureNow(solutionApprover, digest, solutionSignature)) {
       revert InvalidSolutionSignature();
-    }
-  }
-
-  /// @dev Executes the ERC20 transfers from `owner` through Permit2 allowances or allowances to
-  /// this hub
-  function _transferERC20s(
-    address owner,
-    ERC20Transfer[] calldata erc20Transfers,
-    bool usePermit2Allowances
-  ) internal {
-    if (usePermit2Allowances) {
-      IAllowanceTransfer.AllowanceTransferDetails[] memory details =
-        erc20Transfers.toAllowanceTransferDetails(owner);
-      IAllowanceTransfer(PERMIT2).transferFrom(details);
-    } else {
-      erc20Transfers.execute(owner);
-    }
-  }
-
-  /// @dev As {_transferERC20s}, for a fulfillment's allowances and the targets and amounts its
-  /// solution specifies
-  function _transferERC20s(
-    address owner,
-    ERC20Allowance[] calldata erc20Allowances,
-    address[] calldata targets,
-    uint160[] calldata amounts,
-    bool usePermit2Allowances
-  ) internal {
-    if (usePermit2Allowances) {
-      IAllowanceTransfer.AllowanceTransferDetails[] memory details =
-        erc20Allowances.toAllowanceTransferDetails(owner, targets, amounts);
-      IAllowanceTransfer(PERMIT2).transferFrom(details);
-    } else {
-      erc20Allowances.execute(owner, targets, amounts);
     }
   }
 
