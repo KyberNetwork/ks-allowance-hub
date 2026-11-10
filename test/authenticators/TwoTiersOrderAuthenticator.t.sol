@@ -82,6 +82,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   // SV-01 — the happy path: a session key authenticates a relayed order
   // -------------------------------------------------------------------------------------------
 
+  /// SV-01 — a relayed order signed by a delegated session key moves tokens and spends its nonce
   function test_SV_01_sessionKeyAuthenticatesRelayedOrder() public {
     _delegateKeyThroughHub(key);
 
@@ -124,7 +125,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     assertEq(authenticator.nonces(lNonceKey(owner), 0), 0, 'no nonce spent without a signature');
   }
 
-  /// SV-02b — but not on someone else's behalf
+  /// SV-02b — an empty signature from a non-owner reverts with `InvalidUpdateSignature`
   function test_SV_02b_strangerCannotApproveWithoutSignature() public {
     AuthKey memory fresh = _secpKey(recipient, vm.getBlockTimestamp() + 10 days);
 
@@ -149,7 +150,10 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     authenticator.updateAuthentication(owner, _approveKey(fresh), 4, deadline, sig);
   }
 
-  /// SV-04 — the approval deadline is enforced by the authenticator itself
+  /**
+   * SV-04 — an approval submitted after its deadline reverts with `DeadlinePassed`
+   * @dev The deadline is enforced by the authenticator itself.
+   */
   function test_SV_04_directApprovalExpired() public {
     AuthKey memory fresh = _secpKey(recipient, vm.getBlockTimestamp() + 10 days);
     uint256 deadline = vm.getBlockTimestamp() - 1;
@@ -201,7 +205,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   /**
-   * SV-REV-03 — neither instruction can be submitted as the other
+   * SV-REV-03 — a signature is refused when submitted under the opposite direction
    * @dev Each half submits one signature twice: once under the flipped direction, which must be
    * refused, and then under its own, which must succeed on the same nonce. The second submission
    * is what makes the first one evidence about the direction — a signature that had simply been
@@ -326,7 +330,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   /**
-   * SV-UPD-02 — an update that writes the value already stored still emits
+   * SV-UPD-02 — an update writing the stored value again still emits its update event
    * @dev The master-key rail approves a key that is already approved, and the session-key rail
    * revokes a session key that no master key approved. Both leave the state unchanged and emit
    * the same event as a transition.
@@ -477,7 +481,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     );
   }
 
-  /// SV-10b — and the fulfillment shape is what that entry point does accept
+  /// SV-10b — a signature over the fulfillment shape settles a fulfillment
   function test_SV_10b_fulfillmentSignatureSettlesAFulfillment() public {
     _delegateKeyThroughHub(key);
 
@@ -504,7 +508,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   /**
-   * SV-06b — the approval gate guards the fulfillment path too, not just the execution one
+   * SV-06b — an unapproved key is refused on the fulfillment path as on the execution path
    * @dev Both entry points share one `_authenticate`, so what this constrains beyond `SV-06` is the
    * hub-side wiring: that the fulfillment path reaches it at all, over the fulfillment shape. The
    * second step is the control — the same order shape under the approved key settles.
@@ -554,6 +558,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   // SV-11 — the approval binds the whole key, not just its public half
   // -------------------------------------------------------------------------------------------
 
+  /// SV-11 — a key with the approved signer and a later expiry is refused as not approved
   function test_SV_11_changingExpiryBreaksTheApproval() public {
     _delegateKeyThroughHub(key);
 
@@ -743,7 +748,8 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _submitExecutionRaw(p256, malleable, 18, deadline);
   }
 
-  /// SV-KEY-WEBAUTHN-01..03
+  /// SV-KEY-WEBAUTHN-01..03 — a user-verified assertion settles; a presence-only or
+  /// undecodable one reverts with `InvalidOrderSignature`
   function test_SV_KEY_WebAuthn() public {
     AuthKey memory wa = AuthKey({
       publicKey: KeyFixtures.p256PublicKey(),
@@ -887,7 +893,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     assertTrue(_verifyWithKeyTail(exact, '', digest, sig), 'the full key verifies');
   }
 
-  /// SV-KEY-LEN-04 — and a WebAuthn key the same
+  /// SV-KEY-LEN-04 — a WebAuthn key one byte short is refused, even when completed from after it
   function test_SV_KEY_LEN_04_aShortWebAuthnKeyIsRefused() public {
     bytes memory full = KeyFixtures.p256PublicKey();
     bytes32 digest = keccak256('a digest');
@@ -973,7 +979,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _submitExecutionRaw(renewed, sig, nonce, deadline);
   }
 
-  /// SV-CRED-02 — the same holds across tiers: a key settled as a session key is spent as a master
+  /// SV-CRED-02 — a nonce spent as a session key reverts with `NonceAlreadyUsed` as a master key
   function test_SV_CRED_02_theNonceIsSharedAcrossTiers() public {
     _delegateKeyThroughHub(key);
     AuthKey memory asSession = _secpKey(sessionSigner, key.expiration);
@@ -1031,7 +1037,10 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   // SV-DOMAIN / SV-FUZZ
   // -------------------------------------------------------------------------------------------
 
-  /// @dev The separator itself, and that it differs from the hub's, is `DOM-01` in Management
+  /**
+   * SV-DOMAIN — the EIP-712 domain returns the written-out name, version, chain and contract
+   * @dev The separator itself, and that it differs from the hub's, is `DOM-01` in Management
+   */
   function test_SV_DOMAIN_matchesTheWrittenOutDomain() public view {
     (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
       authenticator.eip712Domain();
@@ -1093,6 +1102,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     );
   }
 
+  /// SV-FUZZ-VER — a fuzzed nonce, deadline and expiry settle and spend the exact nonce bit
   function testFuzz_SV_FUZZ_VER_nonceAndDeadline(SessionVerifyFuzz memory f) public {
     uint256 nonce = f.nonce;
     uint256 deadline = vm.getBlockTimestamp() + bound(f.deadlineOffset, 0, 30 days);
@@ -1152,7 +1162,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     );
   }
 
-  /// SV-TIER-01b — and on the fulfillment rail, which reaches the same check from the other side
+  /// SV-TIER-01b — a session key approved by a master key signs a fulfillment that settles
   function test_SV_TIER_01b_sessionKeySignsAFulfillment() public {
     _delegateKeyThroughHub(key);
     AuthKey memory sessionKey = _secpKey(sessionSigner, key.expiration);
@@ -1194,7 +1204,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     assertFalse(authenticator.masterKeys(owner, _keyHash(grandchild)), 'and nothing promoted');
   }
 
-  /// SV-TIER-03 — nor can a key the owner never approved at all
+  /// SV-TIER-03 — an unapproved key approving a session key reverts with `MasterKeyNotApproved`
   function test_SV_TIER_03_anUnapprovedKeyCannotApprove() public {
     _delegateKeyThroughHub(key);
 
@@ -1310,7 +1320,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   /**
-   * SV-TIER-07 — the approval specifies the account it is for
+   * SV-TIER-07 — a master-key approval signed for one account reverts when submitted for another
    * @dev The same credential can be a master key for two accounts, so the decision carries the
    * owner. The second step submits the very same signature for the account it does specify, so the
    * refusal is evidence about `owner` rather than about a bad signature.
@@ -1476,7 +1486,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   /**
-   * SV-TIER-11 — the tier hint is trusted for nothing
+   * SV-TIER-11 — a key presented under the tier it does not hold is refused
    * @dev It picks which mapping settles the key, so choosing the wrong one finds no approval there
    * and is refused. A master key offered as a session key has no master key behind it; a session
    * key offered as a master key holds no approval of its own. Both steps then settle under the tier
@@ -1534,7 +1544,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   /**
-   * SV-TIER-12b — nor will a master key approve one, and an expired master key can approve nothing
+   * SV-TIER-12b — an expired master key approves no session key but still revokes one
    * @dev The expiry bound and this check together leave an expired master key no reachable
    * approval: a session key inside its bound is expired as well, and one outside it breaks the
    * bound. So the master key needs no expiry check of its own.
@@ -1645,7 +1655,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   // -------------------------------------------------------------------------------------------
 
   /**
-   * SV-ORD-01 — on the owner's rail, ahead of the owner's signature
+   * SV-ORD-01 — an expired key reverts with `DeadlinePassed` before the owner's signature check
    * @dev The second step presents the same bad signature for a live key and is refused for the
    * signature, so the first step's refusal is about the order of the checks.
    */
@@ -1666,7 +1676,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   /**
-   * SV-ORD-02 — on the master key's rail, ahead of the master key's own approval
+   * SV-ORD-02 — an expired key reverts with `DeadlinePassed` before the master key's approval
    * @dev `key` is never approved here. A live session key under it is refused for that, so the
    * expired one's refusal is about the order of the checks.
    */
@@ -1697,7 +1707,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
   }
 
   /**
-   * SV-ORD-03 — on the authentication path, ahead of the key's approval
+   * SV-ORD-03 — an expired key reverts with `DeadlinePassed` before its own approval is checked
    * @dev Neither key is approved for the owner. The live one is refused for that, so the expired
    * one's refusal is about the order of the checks.
    */
@@ -1716,7 +1726,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     _executeViaAuthenticator(live, sessionKeyPk, 92, deadline, false, false);
   }
 
-  /// SV-FUZZ-TIER — the master key rail over its whole domain
+  /// SV-FUZZ-TIER — a master key sets a session key's approval for any nonce, deadline and expiry
   function testFuzz_SV_FUZZ_TIER_masterKeyRail(TierFuzz memory f) public {
     uint256 masterExpiration =
       vm.getBlockTimestamp() + bound(f.masterExpirationOffset, 1 hours, 365 days);
@@ -2012,7 +2022,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     assertEq(hub.nonces(lNonceKey(owner), 1), 0, 'hub nonce untouched on this rail');
   }
 
-  /// SV-OWN-02 — and the same through the fulfillment entry point
+  /// SV-OWN-02 — the owner's signature authenticates a relayed fulfillment
   function test_SV_OWN_02_ownerSignatureAuthenticatesAFulfillment() public {
     _delegateWithoutKey(owner);
 
@@ -2173,7 +2183,7 @@ contract TwoTiersOrderAuthenticatorTest is AuthenticatorBase {
     assertEq(authenticator.nonces(lNonceKey(owner), 0), 1 << 72, 'only the revocation spent it');
   }
 
-  /// SV-OWN-06c — a key's nonce is spent under its credential, so it does not block the owner's
+  /// SV-OWN-06c — a nonce spent by a key leaves the same nonce usable on the owner's rail
   function test_SV_OWN_06c_aKeyNonceDoesNotBlockTheOwnersRail() public {
     _delegateKeyThroughHub(key);
 

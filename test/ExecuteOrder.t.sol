@@ -69,7 +69,10 @@ contract ExecuteOrderTest is AuthenticatorBase {
     assertEq(IERC20(token18).balanceOf(address(router)) - balanceBefore, AMOUNT);
   }
 
-  /// AUTH-02 — a relayer submits, and the witness carries everything the permit does not
+  /**
+   * AUTH-02 — a relayer submits a Permit2-signed order and its transfers and call execute
+   * @dev The witness carries everything the permit does not.
+   */
   function test_AUTH_02_permit2RelayedWithWitness() public {
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC721Transfer[] memory nfts = _erc721s(_nftTransfer(address(router)));
@@ -211,7 +214,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     assertEq(IERC20(token18).balanceOf(address(router)) - balanceBefore, AMOUNT);
   }
 
-  /// AUTH-06b — the same, pulled through the owner's Permit2 allowance instead
+  /// AUTH-06b — an owner's own call without an authenticator draws on the Permit2 allowance
   function test_AUTH_06b_ownerCallerViaPermit2Allowance() public {
     _grantPermit2Allowance(token18, 100 ether);
 
@@ -488,7 +491,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
   }
 
   /**
-   * EX-FUZZ — `executeOrderWithDelegatedAuthentication` over a relayed session-key credential
+   * EX-FUZZ — `executeOrderWithDelegatedAuthentication` settles a relayed session-key order
    * @dev `pinSubmitter` and `usePermit2Allowances` are never read as control flow on this rail, but
    * both sit inside `order.hash()`, so the emitted order hash is what makes them matter: a hub that
    * reported a hash over anything but the order it settled would fail here.
@@ -556,7 +559,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
   }
 
   /**
-   * EX-FUZZ — `executeOrderWithPermit2Signature`, relayed, where the witness is the binding
+   * EX-FUZZ — `executeOrderWithPermit2Signature` settles a relayed order and spends its nonce
    * @dev `pinSubmitter` is live control flow here: it decides whether the gate compares the
    * submitter against a specified relayer or against the sentinel, and it changes the witness
    * either way. The Permit2 nonce is the replay oracle.

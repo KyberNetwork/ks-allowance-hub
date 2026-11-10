@@ -154,8 +154,11 @@ contract SettlementTest is AuthenticatorBase {
     assertEq(IERC20(token18).balanceOf(owner), ownerBefore, 'nothing left the owner');
   }
 
-  /// @dev CLIENT-02 with empty signed client data on every entry point, the case a fuzzed draw
-  /// reaches only by chance
+  /**
+   * CLIENT-02b — client data submitted against empty signed client data reverts on every entry
+   * @dev CLIENT-02 with empty signed client data on every entry point, the case a fuzzed draw
+   * reaches only by chance
+   */
   function test_CLIENT_02b_emptyClientDataIsCoveredByTheSignature() public {
     for (uint8 entry = 0; entry < 4; entry++) {
       uint256 snapshot = vm.snapshotState();
@@ -726,7 +729,7 @@ contract SettlementTest is AuthenticatorBase {
   }
 
   /**
-   * NEST-04 — `revokeNonce` is reachable from inside an order
+   * NEST-04 — a router's `revokeNonce` inside an order spends the nonce in the router's namespace
    * @dev A router may call `revokeNonce` inside an order. The nonce is spent in the router's
    * namespace, not the owner's.
    */

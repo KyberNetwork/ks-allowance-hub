@@ -87,7 +87,7 @@ contract GuardsTest is AuthenticatorBase {
   // GUARD — pause
   // -----------------------------------------------------------------------------------------
 
-  /// GUARD-01 — `paused()` tracks both transitions, and each one announces itself
+  /// GUARD-01 — pause and unpause set `paused()` and emit `Paused` and `Unpaused`
   function test_GUARD_01_pauseUnpauseRoundTrip() public {
     assertFalse(hub.paused(), 'starts live');
 
@@ -328,10 +328,11 @@ contract GuardsTest is AuthenticatorBase {
   }
 
   /**
-   * GATE-02 — the modifier applications no other case watches
-   * @dev One step each for `guardNativeSpend` on `executeOrderWithPermit2Signature`, and for
-   * `checkDelegation` and the native guard on `fulfillOrderWithDelegatedAuthentication`. Each step
-   * is written so that only its own modifier can produce the result.
+   * GATE-02 — overspent native and an undelegated authenticator are refused on three entry points
+   * @dev These are the modifier applications no other case watches. One step each for
+   * `guardNativeSpend` on `executeOrderWithPermit2Signature`, and for `checkDelegation` and the
+   * native guard on `fulfillOrderWithDelegatedAuthentication`. Each step is written so that only
+   * its own modifier can produce the result.
    */
   function test_GATE_02_theUnwatchedModifierApplications() public {
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;

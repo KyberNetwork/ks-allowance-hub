@@ -35,8 +35,11 @@ contract Eip712Test is V2TestBase {
   // T712-08b..12 — struct and array encodings, against the schemas the structs declare
   // -------------------------------------------------------------------------------------------
 
-  /// @dev Both directions, because `delegated` is what separates a delegation from a withdrawal,
-  /// and both owners, because `owner` is what ties the decision to one account
+  /**
+   * T712-08b — the {AuthDelegation} hash matches the independent hash and moves with its inputs
+   * @dev Both directions, because `delegated` is what separates a delegation from a withdrawal, and
+   * both owners, because `owner` is what ties the decision to one account
+   */
   function test_T712_08b_authDelegationStructHash() public pure {
     address delegator = address(0xA11CE);
     address authenticatorAddress = address(0xBEEF);
@@ -105,6 +108,7 @@ contract Eip712Test is V2TestBase {
   // Struct hashing agrees with the independent encoding, not just the typehash
   // -------------------------------------------------------------------------------------------
 
+  /// The execution witness hash matches the independent encoding with empty extra and client data
   function test_T712_executionWitnessStructHash() public pure {
     (address[] memory targets, ERC721Transfer[] memory nfts, GenericCall[] memory calls) = _sample();
 
@@ -114,7 +118,10 @@ contract Eip712Test is V2TestBase {
     );
   }
 
-  /// @dev The owner's tail is non-empty here, so that member is encoded
+  /**
+   * The fulfillment witness hash matches the independent encoding with empty extra and client data
+   * @dev The owner's tail is non-empty here, so that member is encoded
+   */
   function test_T712_fulfillmentWitnessStructHash() public pure {
     (,, GenericCall[] memory ownerCalls) = _sample();
     ERC721Approval[] memory nfts = _sampleApprovals();
@@ -126,8 +133,11 @@ contract Eip712Test is V2TestBase {
     );
   }
 
-  /// @dev Non-empty extra data is encoded by both hashers of the execution witness and moves the
-  /// hash
+  /**
+   * Both execution witness hashers match the independent encoding, and extra data moves the hash
+   * @dev Non-empty extra data is encoded by both hashers of the execution witness and moves the
+   * hash
+   */
   function test_T712_executionWitnessExtraDataStructHash() public view {
     (address[] memory targets, ERC721Transfer[] memory nfts, GenericCall[] memory calls) = _sample();
     bytes32 expected = lExecutionWitness(ANY, targets, nfts, calls, EXTRA_DATA, '');
@@ -143,7 +153,10 @@ contract Eip712Test is V2TestBase {
     );
   }
 
-  /// @dev The fulfillment counterpart of {test_T712_executionWitnessExtraDataStructHash}
+  /**
+   * Both fulfillment witness hashers match the independent encoding, and extra data moves the hash
+   * @dev The fulfillment counterpart of {test_T712_executionWitnessExtraDataStructHash}
+   */
   function test_T712_fulfillmentWitnessExtraDataStructHash() public view {
     (,, GenericCall[] memory ownerCalls) = _sample();
     ERC721Approval[] memory nfts = _sampleApprovals();
@@ -165,7 +178,10 @@ contract Eip712Test is V2TestBase {
     );
   }
 
-  /// @dev Both order hashers with non-empty extra data, and the extra data moves the hash
+  /**
+   * Both order hashers match {SchemaHash} with extra data, and clearing it moves the hash
+   * @dev Both order hashers with non-empty extra data, and the extra data moves the hash
+   */
   function test_T712_ordersExtraDataStructHash() public view {
     ExecutionOrder memory execution = _sampleExecutionOrder();
     FulfillmentOrder memory fulfillment = _sampleFulfillmentOrder();
@@ -191,7 +207,10 @@ contract Eip712Test is V2TestBase {
     );
   }
 
-  /// @dev Non-empty client data is encoded by both hashers of each witness and moves the hash
+  /**
+   * Both hashers of each witness match the independent encoding, and client data moves the hash
+   * @dev Non-empty client data is encoded by both hashers of each witness and moves the hash
+   */
   function test_T712_witnessClientDataStructHash() public view {
     (address[] memory targets, ERC721Transfer[] memory nfts, GenericCall[] memory calls) = _sample();
     ERC721Approval[] memory approvals = _sampleApprovals();
@@ -236,7 +255,10 @@ contract Eip712Test is V2TestBase {
     );
   }
 
-  /// @dev Both order hashers with non-empty client data, and the client data moves the hash
+  /**
+   * Both order hashers match {SchemaHash} with client data, and clearing it moves the hash
+   * @dev Both order hashers with non-empty client data, and the client data moves the hash
+   */
   function test_T712_ordersClientDataStructHash() public view {
     ExecutionOrder memory execution = _sampleExecutionOrder();
     FulfillmentOrder memory fulfillment = _sampleFulfillmentOrder();
@@ -259,6 +281,7 @@ contract Eip712Test is V2TestBase {
   }
 
   /**
+   * The memory and calldata hashers of the execution order match {SchemaHash}
    * @dev The memory hasher and the calldata hasher against the same {SchemaHash} value for the
    * sample execution order
    */
@@ -270,6 +293,7 @@ contract Eip712Test is V2TestBase {
     assertEq(this.extHashExecutionOrder(order), expected, 'calldata hasher');
   }
 
+  /// The memory and calldata hashers of the fulfillment order match {SchemaHash}
   function test_T712_fulfillmentOrderStructHash() public view {
     FulfillmentOrder memory order = _sampleFulfillmentOrder();
     bytes32 expected = SchemaHash.fulfillmentOrder(order);
@@ -278,6 +302,7 @@ contract Eip712Test is V2TestBase {
     assertEq(this.extHashFulfillmentOrder(order), expected, 'calldata hasher');
   }
 
+  /// Both solution hashers match {SchemaHash}, and a changed nonce moves the hash
   function test_T712_fulfillmentSolutionStructHash() public view {
     FulfillmentSolution memory solution = _sampleSolution();
     bytes32 expected = SchemaHash.fulfillmentSolution(solution);
@@ -294,9 +319,10 @@ contract Eip712Test is V2TestBase {
   }
 
   /**
-   * @dev The whole order is a member, encoded by its own struct hash, so the production hasher takes
-   * that hash and the expected side nests the order. One approval ties to one order and to the
-   * targets it specifies.
+   * Both approval hashers match the independent encoding, and the order, targets and nonce move it
+   * @dev The whole order is a member, encoded by its own struct hash, so the production hasher
+   * takes that hash and the expected side nests the order. One approval ties to one order and to
+   * the targets it specifies.
    */
   function test_T712_solutionApprovalStructHash() public view {
     FulfillmentOrder memory order = _sampleFulfillmentOrder();
@@ -327,7 +353,10 @@ contract Eip712Test is V2TestBase {
     assertEq(this.extHashSolutionApproval(orderHash, otherNonce), changed, 'calldata, new nonce');
   }
 
-  /// @dev An allowance carries no target, so its two members are all the struct encodes
+  /**
+   * Both hashers of each sample {ERC20Allowance} match {SchemaHash}
+   * @dev An allowance carries no target, so its two members are all the struct encodes
+   */
   function test_T712_erc20AllowanceStructHash() public view {
     ERC20Allowance[] memory allowances = _sampleAllowances();
     for (uint256 i = 0; i < allowances.length; i++) {
@@ -337,6 +366,7 @@ contract Eip712Test is V2TestBase {
     }
   }
 
+  /// Both hashers of a sample {ERC721Approval} match {SchemaHash}
   function test_T712_erc721ApprovalStructHash() public view {
     ERC721Approval memory approval = _sampleApprovals()[0];
     bytes32 expected = SchemaHash.erc721Approval(approval);
@@ -349,6 +379,7 @@ contract Eip712Test is V2TestBase {
   // T712-ARRAY — the packed address encoding equals the per-element encoding
   // -------------------------------------------------------------------------------------------
 
+  /// T712-ARRAY — the packed encoding of an address array equals the per-element encoding
   function test_T712_ARRAY_addressArrayEncoding() public pure {
     address a0 = address(0x1111111111111111111111111111111111111111);
     address a1 = address(0x2222222222222222222222222222222222222222);
@@ -363,7 +394,10 @@ contract Eip712Test is V2TestBase {
     assertEq(keccak256(abi.encodePacked(arr)), keccak256(abi.encode(a0, a1, a2)));
   }
 
-  /// @dev Both {EfficientHashLibExt} hashers against the words of the array, written one by one
+  /**
+   * T712-ARRAY — both address array hashers equal the hash of the words encoded one by one
+   * @dev Both {EfficientHashLibExt} hashers against the words of the array, written one by one
+   */
   function testFuzz_T712_ARRAY_efficientHashLibExt(address[] memory arr) public view {
     bytes memory words;
     for (uint256 i = 0; i < arr.length; i++) {
@@ -379,34 +413,42 @@ contract Eip712Test is V2TestBase {
   // T712-DIFF — the calldata and memory variants must never drift apart
   // -------------------------------------------------------------------------------------------
 
+  /// T712-DIFF — the calldata and memory hashers of {GenericCall} return the same hash
   function testFuzz_T712_DIFF_genericCall(GenericCall memory c) public view {
     assertEq(this.extHashCall(c), c.hashMemory());
   }
 
+  /// T712-DIFF — the calldata and memory hashers of {ERC20Transfer} return the same hash
   function testFuzz_T712_DIFF_erc20Transfer(ERC20Transfer memory t) public view {
     assertEq(this.extHashErc20(t), t.hashMemory());
   }
 
+  /// T712-DIFF — the calldata and memory hashers of {ERC721Transfer} return the same hash
   function testFuzz_T712_DIFF_erc721Transfer(ERC721Transfer memory t) public view {
     assertEq(this.extHashErc721(t), t.hashMemory());
   }
 
+  /// T712-DIFF — the calldata and memory hashers of {ERC20Allowance} return the same hash
   function testFuzz_T712_DIFF_erc20Allowance(ERC20Allowance memory a) public view {
     assertEq(this.extHashAllowance(a), a.hashMemory());
   }
 
+  /// T712-DIFF — the calldata and memory hashers of {ERC721Approval} return the same hash
   function testFuzz_T712_DIFF_erc721Approval(ERC721Approval memory a) public view {
     assertEq(this.extHashApproval(a), a.hashMemory());
   }
 
+  /// T712-DIFF — the calldata and memory hashers of {ValidationParams} return the same hash
   function testFuzz_T712_DIFF_validationParams(ValidationParams memory v) public view {
     assertEq(this.extHashValidation(v), v.hashMemory());
   }
 
+  /// T712-DIFF — the calldata and memory hashers of {ExecutionOrder} return the same hash
   function testFuzz_T712_DIFF_executionOrder(ExecutionOrder memory o) public view {
     assertEq(this.extHashExecutionOrder(o), o.hashMemory());
   }
 
+  /// T712-DIFF — the calldata and memory hashers of {FulfillmentOrder} return the same hash
   function testFuzz_T712_DIFF_fulfillmentOrder(FulfillmentOrder memory o) public view {
     assertEq(this.extHashFulfillmentOrder(o), o.hashMemory());
   }

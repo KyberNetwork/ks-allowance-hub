@@ -38,6 +38,7 @@ import {AuthKeyLib} from 'src/types/base/AuthKey.sol';
  * added to the set appears only on the following run.
  */
 contract SchemaAuditTest is Test {
+  /// T712-SCHEMA — each typehash equals the hash of the schema derived from its struct
   function test_T712_SCHEMA_typehashesMatchTheirStructs() public pure {
     assertEq(
       ERC20TransferLib.ERC20_TRANSFER_TYPEHASH,
@@ -123,12 +124,11 @@ contract SchemaAuditTest is Test {
   }
 
   /**
-   * @dev T712-SCHEMA-PERMIT2 — the witness type strings the hub supplies Permit2. Permit2
-   * completes its
-   * own stub with the string it is given and hashes the concatenation, so the two together must
-   * reproduce the schema `bind-json` derived from the struct. This also pins which colliding
-   * schema {SchemaHash} reads for which rail: the suffixes follow discovery order, and a swap
-   * fails here.
+   * T712-SCHEMA-PERMIT2 — the Permit2 stub plus each witness type string equals its struct schema
+   * @dev Permit2 completes its own stub with the string it is given and hashes the concatenation,
+   * so the two together must reproduce the schema `bind-json` derived from the struct. This also
+   * pins which colliding schema {SchemaHash} reads for which rail: the suffixes follow discovery
+   * order, and a swap fails here.
    */
   function test_T712_SCHEMA_PERMIT2_witnessTypeStringsMatchTheirStructs() public pure {
     assertEq(
@@ -154,6 +154,7 @@ contract SchemaAuditTest is Test {
   }
 
   /**
+   * T712-SCHEMA — the four typehashes carrying client data match their written-out strings
    * @dev The four type strings that carry `clientData`, written out here, against the production
    * typehashes
    */

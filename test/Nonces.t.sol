@@ -60,7 +60,7 @@ contract NoncesTest is AuthenticatorBase {
   // NONCE — the unordered bitmap
   // -------------------------------------------------------------------------------------------
 
-  /// NONCE-01 / NONCE-FUZZ — a nonce lands on exactly one bit, at the position it specifies
+  /// NONCE-01 / NONCE-FUZZ — revoking any nonce sets exactly the bit at its position
   function testFuzz_NONCE_FUZZ_revokeSetsExactlyOneBit(uint256 nonce) public {
     vm.expectEmit(address(hub));
     emit IUnorderedNonce.RevokeNonce(lNonceKey(owner), nonce);
@@ -72,7 +72,7 @@ contract NoncesTest is AuthenticatorBase {
     assertEq(hub.nonces(lNonceKey(owner), (nonce >> 8) + 1), 0, 'neighbouring word clean');
   }
 
-  /// NONCE-01 — the documented boundaries
+  /// NONCE-01 — revoking nonces 0, 255, 256 and the maximum sets one bit each in the right word
   function test_NONCE_01_bitmapBoundaries() public {
     uint256[4] memory nonces = [uint256(0), 255, 256, type(uint256).max];
 

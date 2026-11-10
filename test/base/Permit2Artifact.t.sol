@@ -21,6 +21,7 @@ contract Permit2ArtifactTest is Test {
 
   address internal constant CANONICAL_PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
+  /// ART-01 — the artifact creation code maps to the canonical Permit2 address under CREATE2
   function test_ART_01_artifactIsTheCanonicalPermit2() public view {
     bytes memory creationCode = vm.getCode('test/artifacts/Permit2.json');
 
@@ -31,7 +32,7 @@ contract Permit2ArtifactTest is Test {
     );
   }
 
-  /// @dev ART-02 — deploying it locally gives a working contract with a domain of its own
+  /// ART-02 — the artifact deploys locally with code and a non-zero `DOMAIN_SEPARATOR()`
   function test_ART_02_deploysAndScopesItsOwnDomain() public {
     address permit2 = vm.deployCode('test/artifacts/Permit2.json');
 

@@ -57,7 +57,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
   // -------------------------------------------------------------------------------------------
 
   /**
-   * TGT-01 / LEN-01 — the delegated rail, submitted by the owner, pulled on the plain approval
+   * TGT-01 / LEN-01 — delegated rail: mismatched target counts revert, matching counts settle
    * @dev First the four solutions without exactly one target per transfer — 0 or 2 ERC20 targets,
    * then 0 or 2 NFT targets — are each refused, moving nothing; then the solution with one each
    * settles, so the refusals were about the counts.
@@ -84,7 +84,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
     assertEq(_balance(address(router)), routerBefore, 'no router received the transfer');
   }
 
-  /// TGT-02 — the same, pulled through the owner's Permit2 allowance
+  /// TGT-02 — on the delegated rail, a Permit2 allowance pull pays the targets the solution names
   function test_TGT_02_solverTargetsOnThePermit2AllowancePull() public {
     _grantPermit2Allowance(token18, AMOUNT);
     FulfillmentOrder memory order = _bothTransfers(ANY, 0);
@@ -100,7 +100,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
   }
 
   /**
-   * TGT-03 / LEN-02 — relayed over Permit2: the owner's witness carries no ERC20 target
+   * TGT-03 / LEN-02 — over Permit2, one witness accepts any ERC20 targets; wrong counts revert
    * @dev The four solutions without exactly one target per transfer are refused first, ahead of the
    * permit. Then one witness signature settles the order once with the transfers sent one way and,
    * from the same pre-state, once with them sent another, so nothing the owner signed specifies a
@@ -382,7 +382,7 @@ contract FulfillTargetsTest is AuthenticatorBase {
   }
 
   /**
-   * AMT-05 — the approval covers the amounts
+   * AMT-05 — an approval signed for amounts of 5 ether is refused for a solution with 2 ether
    * @dev The approver signs amounts of 5 ether. The same solution with 2 ether is refused, and the
    * one it signed settles.
    */

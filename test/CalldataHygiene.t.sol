@@ -30,7 +30,7 @@ contract CalldataHygieneTest is AuthenticatorBase {
     key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
   }
 
-  /// DIRTY-01 — the delegated execution rail
+  /// DIRTY-01 — a dirty token address word is refused on the delegated execution rail
   function test_DIRTY_01_delegatedExecution() public {
     _assertDirtyTokenWordIsRefused(
       owner,
@@ -51,7 +51,10 @@ contract CalldataHygieneTest is AuthenticatorBase {
     );
   }
 
-  /// DIRTY-02 — the Permit2-signature execution rail, where the witness binds the same transfers
+  /**
+   * DIRTY-02 — a dirty token address word is refused on the Permit2-signature execution rail
+   * @dev The witness binds the same transfers.
+   */
   function test_DIRTY_02_permit2Execution() public {
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     ExecutionOrder memory order = _executionOrder(
@@ -71,7 +74,7 @@ contract CalldataHygieneTest is AuthenticatorBase {
     );
   }
 
-  /// DIRTY-03 — the delegated fulfillment rail
+  /// DIRTY-03 — a dirty token address word is refused on the delegated fulfillment rail
   function test_DIRTY_03_delegatedFulfillment() public {
     _delegateKeyThroughHub(key);
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
@@ -93,7 +96,7 @@ contract CalldataHygieneTest is AuthenticatorBase {
     );
   }
 
-  /// DIRTY-04 — the Permit2-signature fulfillment rail
+  /// DIRTY-04 — a dirty token address word is refused on the Permit2-signature fulfillment rail
   function test_DIRTY_04_permit2Fulfillment() public {
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     FulfillmentOrder memory order = _order(93, deadline);

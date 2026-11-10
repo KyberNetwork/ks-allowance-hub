@@ -84,7 +84,7 @@ contract ManagementTest is AuthenticatorBase {
     assertTrue(authenticator.masterKeys(owner, _keyHash(fresh)), "the new chain's approval");
   }
 
-  /// MGMT-01 — everything the constructor is responsible for, including its one event
+  /// MGMT-01 — the constructor grants the initial roles, sets the owner and emits one event
   function test_MGMT_01_constructorWiring() public {
     // `permit2` is an internal immutable with no getter, so the constructor argument is only
     // observable through the rails that use it, which the AUTH-* cases exercise
@@ -122,7 +122,10 @@ contract ManagementTest is AuthenticatorBase {
     assertTrue(found, 'RoleRevokerChanged emitted once at deploy');
   }
 
-  /// MGMT-02 — the EIP-712 domain the order signatures live under
+  /**
+   * MGMT-02 — `eip712Domain()` returns the hub's name, version, chain id and address, no salt
+   * @dev The order signatures are made under this domain.
+   */
   function test_MGMT_02_eip712Domain() public view {
     (
       bytes1 fields,
@@ -143,7 +146,10 @@ contract ManagementTest is AuthenticatorBase {
     assertEq(extensions.length, 0, 'no extensions');
   }
 
-  /// MGMT-03 — ERC-165, against interface ids rebuilt from hand-written selectors
+  /**
+   * MGMT-03 — `supportsInterface` accepts the ERC-165 and AccessControl ids, not the admin rules
+   * @dev The interface ids are rebuilt from hand-written selectors.
+   */
   function test_MGMT_03_supportsInterface() public view {
     bytes4 erc165 = bytes4(keccak256('supportsInterface(bytes4)'));
 
@@ -201,7 +207,7 @@ contract ManagementTest is AuthenticatorBase {
     assertEq(hub.roleRevokers(TEST_ROLE), GUARDIAN_ROLE, 'revoker recorded');
   }
 
-  /// MGMT-06 — `revokeRole` reports both roles it would have accepted
+  /// MGMT-06 — `revokeRole` by a stranger reverts with both accepted roles, the admin may revoke
   function test_MGMT_06_revokeRoleNeedsRevokerOrAdmin() public {
     bytes32[] memory neededRoles = new bytes32[](2);
     neededRoles[0] = GUARDIAN_ROLE; // the nominated revoker
@@ -288,7 +294,7 @@ contract ManagementTest is AuthenticatorBase {
     assertEq(IERC20(token6).balanceOf(address(hub)), 400e6, 'the rest stays put');
   }
 
-  /// MGMT-08b — native leaves under either native sentinel
+  /// MGMT-08b — `rescueTokens` sends native balance under both native sentinels
   function test_MGMT_08b_rescueStrandedNative() public {
     // The hub has no `receive`, so native can only be planted on it — by a coinbase payment, a
     // selfdestruct, or the cheatcode standing in for either
@@ -346,7 +352,10 @@ contract ManagementTest is AuthenticatorBase {
     assertEq(IERC20(token18).balanceOf(recipient), 1 ether, 'the admin rescued');
   }
 
-  /// MGMT-09 — an NFT can only be stranded by an unsafe transfer, since the hub has no hook
+  /**
+   * MGMT-09 — an NFT sent to the hub by `transferFrom` is recovered by `rescueTokens`
+   * @dev An NFT can only be stranded by an unsafe transfer, since the hub has no hook.
+   */
   function test_MGMT_09_rescueErc721s() public {
     nft.mint(owner, STRANDED_NFT_ID);
 

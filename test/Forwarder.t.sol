@@ -119,7 +119,7 @@ contract ForwarderTest is AuthenticatorBase {
   // PF-01..05 — one case per self-authorising `permit` shape that a token or Permit2 answers
   // -----------------------------------------------------------------------------------------------
 
-  /// PF-01 — an EIP-2612 permit is relayed to the token and lands as an allowance
+  /// PF-01 — a relayed EIP-2612 permit sets the token allowance and spends the permit nonce
   function test_PF_01_eip2612PermitForwarded() public {
     uint256 value = 123 ether;
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
@@ -138,7 +138,10 @@ contract ForwarderTest is AuthenticatorBase {
     assertEq(results[0].length, 0, 'an EIP-2612 permit returns nothing');
   }
 
-  /// PF-02 — the DAI-flavoured permit, whose `allowed` flag is a direction not an amount
+  /**
+   * PF-02 — a relayed DAI-style permit sets the maximum allowance and spends the permit nonce
+   * @dev The `allowed` flag is all-or-nothing, not an amount.
+   */
   function test_PF_02_daiStylePermitForwarded() public {
     uint256 nonce = _daiNonce(owner);
     uint256 expiry = vm.getBlockTimestamp() + 1 hours;
@@ -161,7 +164,7 @@ contract ForwarderTest is AuthenticatorBase {
     assertEq(_daiNonce(owner), nonce + 1, 'nonce consumed');
   }
 
-  /// PF-03 — the ERC-721 permit as Uniswap v3 defines it, with the signature split into v/r/s
+  /// PF-03 — a relayed Uniswap v3 ERC-721 permit with a v/r/s signature sets the approval
   function test_PF_03_erc721V3PermitForwarded() public {
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
@@ -185,7 +188,7 @@ contract ForwarderTest is AuthenticatorBase {
     assertEq(nftV3.nonces(PERMIT_NFT_ID), 1, 'nonce consumed');
   }
 
-  /// PF-04 — and as v4 defines it, with an unordered nonce and a packed signature
+  /// PF-04 — a relayed Uniswap v4 ERC-721 permit with an unordered nonce sets the approval
   function test_PF_04_erc721V4PermitForwarded() public {
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     uint256 nonce = 99;
@@ -200,7 +203,10 @@ contract ForwarderTest is AuthenticatorBase {
     assertTrue(nftV4.nonceUsed(owner, nonce), 'nonce consumed');
   }
 
-  /// PF-05 — Permit2's batch `permit`, one of the two Permit2 overloads
+  /**
+   * PF-05 — a relayed Permit2 batch `permit` sets the allowance, expiration and nonce
+   * @dev One of the two Permit2 overloads.
+   */
   function test_PF_05_permit2BatchPermitForwarded() public {
     uint160 amount = 42 ether;
     uint48 expiration = uint48(vm.getBlockTimestamp() + 1 days);
@@ -320,7 +326,7 @@ contract ForwarderTest is AuthenticatorBase {
   // PF-08..09 — the two directions of a failure bit
   // -----------------------------------------------------------------------------------------------
 
-  /// PF-08 — with its bit clear, a failing call bubbles its own revert and takes the batch with it
+  /// PF-08 — with its bit clear, a failing call reverts the batch with its own revert data
   function test_PF_08_failingCallBubblesWhenNotAllowed() public {
     uint256 value = 7 ether;
     uint256 expired = vm.getBlockTimestamp() - 1;
@@ -335,7 +341,7 @@ contract ForwarderTest is AuthenticatorBase {
     assertEq(permitToken.nonces(owner), 0, 'nothing consumed');
   }
 
-  /// PF-09 — with its bit set, the same failure is recorded as a result and the batch carries on
+  /// PF-09 — with its bit set, a failing call is recorded as a result and the batch continues
   function test_PF_09_failingCallIsCarriedPastWhenAllowed() public {
     uint256 value = 7 ether;
     uint256 expired = vm.getBlockTimestamp() - 1;
@@ -485,7 +491,7 @@ contract ForwarderTest is AuthenticatorBase {
   }
 
   /**
-   * FWD-20 — the same relay carries a master key's approval, not only the owner's
+   * FWD-20 — a relayed `updateAuthentication` signed by a master key approves a session key
    * @dev Both rails share one selector, so the second tier is relayable without any change to the
    * forwarder. The nonce spent is in the master key's bitmap: the owner neither signed nor
    * submitted, so nothing of theirs is spent.
@@ -523,7 +529,7 @@ contract ForwarderTest is AuthenticatorBase {
   }
 
   /**
-   * FWD-14 — the same call with an empty signature is refused even when the owner sends it
+   * FWD-14 — a relayed `updateAuthentication` with an empty signature is refused for an owner
    * @dev `forwardCalls` does `targets[i].call(...)`, so the `msg.sender` the authenticator sees is
    * the hub, never the account that submitted the transaction. The authenticator's owner branch is
    * therefore out of reach from here, and the empty signature that branch would have accepted is
@@ -674,7 +680,7 @@ contract ForwarderTest is AuthenticatorBase {
   // -----------------------------------------------------------------------------------------------
 
   /**
-   * FWD-17 — Permit2's single `permit`, the other Permit2 overload
+   * FWD-17 — a relayed Permit2 single `permit` sets the allowance
    * @dev The two overloads differ only in whether `details` is an array, so they hash to different
    * selectors that no `.selector` expression can tell apart. PF-05 covers the batch; this covers
    * the single form, and fails if the two signature strings are transposed.
@@ -857,7 +863,7 @@ contract ForwarderTest is AuthenticatorBase {
     assertEq(permitToken.nonces(owner), 1, 'the permit ahead of the failure rolled back');
   }
 
-  /// FWD-24 — `hub.forwardCalls` reaches the target through the forwarder, which is the caller seen
+  /// FWD-24 — `hub.forwardCalls` calls the target with the forwarder as the caller
   function test_FWD_24_hubForwardsThroughTheForwarder() public {
     CallerRecorderMock recorder = new CallerRecorderMock();
 

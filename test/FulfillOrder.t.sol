@@ -112,7 +112,10 @@ contract FulfillOrderTest is AuthenticatorBase {
     assertEq(hub.nonces(lNonceKey(approver), 0), 0, 'no approval nonce is spent');
   }
 
-  /// AUTH-07 — a solver submits, and the witness specifies who may choose the route, not the route
+  /**
+   * AUTH-07 — a solver settles a witnessed order under the sentinel approver with its own route
+   * @dev The witness specifies who may choose the route, not the route.
+   */
   function test_AUTH_07_fulfillmentPermit2Witness() public {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     ValidationParams[] memory vs = _validations(_validation(validator));
@@ -321,7 +324,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   }
 
   /**
-   * ORD-03 — `solver` says who may submit a fulfillment, and the sentinel says anybody may
+   * ORD-03 — only the named `solver` may submit a Permit2 fulfillment, the sentinel admits anyone
    * @dev The mirror of `ORD-02` on this family, and it has to exist separately: the witness binds
    * `solver` as the order specifies it, not as the caller presents itself, so the hub's own gate is
    * the only thing between a stranger and a settled order here. The gate runs before Permit2, so
@@ -466,7 +469,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   }
 
   /**
-   * SOL-05 — the route carries its own expiration, checked on both rails whatever the approver
+   * SOL-05 — a route past its own expiration is refused on both rails under any approver
    * @dev The check is a modifier, not part of the approval, so it binds even under the sentinel
    * approver where no approval is presented at all. Inclusive at the boundary, like the order's own
    * expiration: the expiration second itself still settles, and the second after it does not.
@@ -1038,7 +1041,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   }
 
   /**
-   * OWN-03 — the same binding on the delegated rail, through the order the authenticator receives
+   * OWN-03 — a tail swapped after the authenticator's signature is refused on the delegated rail
    * @dev Carries validators as well as a tail, so both of those signed members are exercised. As in
    * OWN-02 the first step is the control.
    */
@@ -1082,7 +1085,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   }
 
   /**
-   * OWN-04 — the whitelist gate covers the tail exactly as it covers the route
+   * OWN-04 — a tail call to a router without the role reverts, as a route call does
    * @dev The first step also shows the refusal unwinds the solver calls that had already run. The
    * last step is the control: granting the role and changing nothing else lets the very same tail
    * through, so the two refusals are about the role rather than about the router.
@@ -1120,7 +1123,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   }
 
   /**
-   * OWN-05 — an empty tail adds nothing
+   * OWN-05 — an empty tail runs no extra call and returns no extra result
    * @dev What is left to say here is that an empty tail costs no call and no result, and that the
    * route settles as it does through the entry point that has no tail at all.
    */
@@ -1249,8 +1252,7 @@ contract FulfillOrderTest is AuthenticatorBase {
   }
 
   /**
-   * VAL-02 — on the Permit2 rail too, the pre-hook runs before any asset moves and the post-hook
-   * between the two call lists
+   * VAL-02 — on the Permit2 rail, the pre-hook precedes the pull and the post-hook the tail
    * @dev The rail matters: here the ERC20s move inside Permit2 rather than through the hub's own
    * transfer, and `beforeExecution()` is called before that permit. Both ends are established by
    * what the hook could see rather than by call order. The owner's tail pays the same amount away
@@ -1323,7 +1325,7 @@ contract FulfillOrderTest is AuthenticatorBase {
     assertEq(router.callCount(), 0, 'router call rolled back');
   }
 
-  /// VAL-04 — no validators is a legal order
+  /// VAL-04 — an order with no validators settles and runs its router call
   function test_VAL_04_noValidators() public {
     FulfillmentOrder memory order = _openFulfillmentOrder(
       new ERC20Allowance[](0),
@@ -1361,12 +1363,13 @@ contract FulfillOrderTest is AuthenticatorBase {
   }
 
   /**
-   * FU-FUZZ — `fulfillOrderWithDelegatedAuthentication` over a relayed session-key credential
-   * @dev Both call lists range over empty and non-empty, and they go to different routers so each
-   * has a counter of its own. `approveSolution` switches between a specified approver with a real
-   * approval and the sentinel; `usePermit2Allowances` picks the pull rail; `pinSubmitter` and the
-   * nonce are covered by the order hash the event reports and by the authenticator's bitmap. The
-   * solver's two targets are drawn, and receive the transfers.
+   * FU-FUZZ — a relayed session-key fulfillment settles for any drawn order and spends its nonce
+   * @dev Entry point `fulfillOrderWithDelegatedAuthentication`. Both call lists range over empty
+   * and non-empty, and they go to different routers so each has a counter of its own.
+   * `approveSolution` switches between a specified approver with a real approval and the
+   * sentinel; `usePermit2Allowances` picks the pull rail; `pinSubmitter` and the nonce are covered
+   * by the order hash the event reports and by the authenticator's bitmap. The solver's two
+   * targets are drawn, and receive the transfers.
    */
   function testFuzz_FU_FUZZ_delegatedRail(FulfillFuzz memory f) public {
     _delegateKeyThroughHub(key);
@@ -1408,8 +1411,9 @@ contract FulfillOrderTest is AuthenticatorBase {
   }
 
   /**
-   * FU-FUZZ — `fulfillOrderWithPermit2Signature`, relayed, where the witness is the binding
-   * @dev `pinSubmitter` is live control flow here: it decides whether the gate compares the
+   * FU-FUZZ — a relayed Permit2 fulfillment settles for any drawn order and spends its nonce
+   * @dev Entry point `fulfillOrderWithPermit2Signature`, where the witness is the binding.
+   * `pinSubmitter` is live control flow here: it decides whether the gate compares the
    * submitter against a specified solver or against the sentinel, and it changes the witness either
    * way. The Permit2 nonce is the replay oracle.
    */

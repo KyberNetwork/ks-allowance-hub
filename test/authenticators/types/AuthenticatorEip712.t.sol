@@ -21,6 +21,7 @@ contract AuthenticatorEip712Test is V2TestBase {
   // T712-09 — AuthKey
   // -------------------------------------------------------------------------------------------
 
+  /// T712-09 — both hashers of an {AuthKey} return the independent struct hash
   function test_T712_09_authKeyStructHash() public view {
     AuthKey memory key = _sampleKey();
 
@@ -33,6 +34,7 @@ contract AuthenticatorEip712Test is V2TestBase {
   // T712-10 — MasterKeyUpdate
   // -------------------------------------------------------------------------------------------
 
+  /// T712-10 — the {MasterKeyUpdate} hash matches the independent hash and moves with its inputs
   function test_T712_10_masterKeyUpdateStructHash() public pure {
     address keyOwner = address(0xA11CE);
     AuthKey memory key = _sampleKey();
@@ -64,7 +66,10 @@ contract AuthenticatorEip712Test is V2TestBase {
   // T712-11 — SessionKeyUpdate
   // -------------------------------------------------------------------------------------------
 
-  /// @dev The two keys and the account are all distinct members, so each must move the digest
+  /**
+   * T712-11 — the {SessionKeyUpdate} hash matches the independent hash and moves with its inputs
+   * @dev The two keys and the account are all distinct members, so each must move the digest
+   */
   function test_T712_11_sessionKeyUpdateStructHash() public pure {
     AuthKey memory masterKey = _sampleKey();
     AuthKey memory sessionKey = _otherKey();
@@ -104,6 +109,7 @@ contract AuthenticatorEip712Test is V2TestBase {
   // T712-12 — NonceRevocation
   // -------------------------------------------------------------------------------------------
 
+  /// T712-12 — the {NonceRevocation} hash matches the independent hash and moves with its inputs
   function test_T712_12_nonceRevocationStructHash() public pure {
     AuthKey memory key = _sampleKey();
     bytes32 revocation = NonceRevocationLib.hashMemory(key, 7, 99);

@@ -54,7 +54,7 @@ contract PackedBitsTest is Test {
   }
 
   /**
-   * PB-01b — the whole domain, against the same value reached by division
+   * PB-01b — `pos` equals `word / 2**i % 2` for any word and index, and reads false from 256
    * @dev `word / 2**i % 2` is the definition a shift implements, computed without shifting, so a
    * broken mask or a wrong shift direction cannot agree with it. Indices of 256 and above have no
    * divisor inside a word, which is exactly why they must read as false.

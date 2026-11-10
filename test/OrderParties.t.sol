@@ -96,7 +96,7 @@ contract OrderPartiesTest is AuthenticatorBase {
   }
 
   /**
-   * ORD-04 — the account the order draws on is the one the signature specified
+   * ORD-04 — an order repointed to another owner who approved the same key reverts
    * @dev A key may be approved by more than one account, and the digest carries no second place
    * for the submitter to point it. The two steps are the same signature against the account it
    * specifies and against another that approved the same key.

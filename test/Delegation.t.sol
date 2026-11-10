@@ -147,7 +147,7 @@ contract DelegationTest is AuthenticatorBase {
     );
   }
 
-  /// DEL-04 — a contract owner authorises through ERC-1271
+  /// DEL-04 — an ERC-1271 owner's signature delegates, and a wrong magic value reverts
   function test_DEL_04_erc1271Owner() public {
     (address walletSigner, uint256 walletSignerKey) = makeAddrAndKey('wallet signer');
     ERC1271WalletMock wallet = new ERC1271WalletMock(walletSigner);
@@ -176,7 +176,7 @@ contract DelegationTest is AuthenticatorBase {
     );
   }
 
-  /// DEL-05 — the delegation deadline is enforced
+  /// DEL-05 — a relayed delegation past its deadline reverts with `DeadlinePassed`
   function test_DEL_05_expiredDelegation() public {
     uint256 deadline = vm.getBlockTimestamp() - 1;
     bytes memory sig = _signAuthDelegation(
@@ -449,9 +449,9 @@ contract DelegationTest is AuthenticatorBase {
   }
 
   /**
-   * DEL-16 — a delegation signed for one account is refused for another account the same signer
-   * controls: two ERC-1271 wallets sharing one signer accept the same signatures, so only the
-   * signed `owner` tells them apart.
+   * DEL-16 — a delegation signed for one account is refused for another account of one signer
+   * @dev Two ERC-1271 wallets sharing one signer accept the same signatures, so only the signed
+   * `owner` tells them apart.
    */
   function test_DEL_16_delegationIsBoundToItsOwner() public {
     (address sharedSigner, uint256 sharedSignerKey) = makeAddrAndKey('shared signer');
@@ -475,8 +475,8 @@ contract DelegationTest is AuthenticatorBase {
   }
 
   /**
-   * DEL-17 — the owner's own call takes no signature: one is refused, so a signed delegation the
-   * owner submits never leaves its nonce unspent for a later replay
+   * DEL-17 — a signature on the owner's own delegation call reverts with `UnexpectedSignature`
+   * @dev A signed delegation the owner submits never leaves its nonce unspent for a later replay.
    */
   function test_DEL_17_ownerCallTakesNoSignature() public {
     uint256 deadline = vm.getBlockTimestamp() + 1 days;
@@ -493,7 +493,7 @@ contract DelegationTest is AuthenticatorBase {
     assertEq(hub.nonces(lNonceKey(owner), 0), 0, 'no nonce spent');
   }
 
-  /// DEL-FUZZ — the delegation nonce bitmap behaves across its whole domain
+  /// DEL-FUZZ — a relayed delegation sets the delegation and exactly its nonce bit
   function testFuzz_DEL_FUZZ_relayedDelegation(DelegationFuzz memory f) public {
     uint256 nonce = f.nonce;
     uint256 deadline = vm.getBlockTimestamp() + bound(f.deadlineOffset, 0, 30 days);
