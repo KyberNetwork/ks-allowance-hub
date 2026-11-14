@@ -189,6 +189,21 @@ another; a fulfillment that must not run alongside another order enforces it thr
 The hub has no `receive` function, so a router cannot refund native value to it; unspent `msg.value`
 remains in the hub.
 
+### Reentrancy and validators
+
+Reentrancy is a design choice of the hub: a router call of an order may settle another order, and
+the hub does not refuse it. A validator that compares balances before and after the solver's calls
+also counts the assets that a nested order delivers in the same interval. Two fulfillment orders
+with the same recipient can each pass a validator that checks the recipient's balance increase,
+while the recipient receives the output of only one of them.
+
+An order therefore protects the owner's intent by combining validators with `ownerCalls`, not by
+validators alone. In a swap, the solver's calls deliver the output to an account the order
+specifies, and the last call in `ownerCalls` transfers the output from that account to the
+recipient. The owner signs that transfer and its amount, so the funds the recipient receives are
+moved by this order's own call. Each such transfer removes its amount from the account, so the
+output of another order with the same recipient cannot satisfy it.
+
 ### Management
 
 The hub inherits `ManagementSimple` from `ks-common-sc`. The owner holds the default admin role,
