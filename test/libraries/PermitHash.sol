@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import {console} from 'forge-std/console.sol';
+
 import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
-
-import {console} from 'forge-std/console.sol';
 
 library PermitHash {
   bytes32 public constant _PERMIT_DETAILS_TYPEHASH =

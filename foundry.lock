@@ -1,8 +1,23 @@
 {
+  "lib/forge-std": {
+    "tag": {
+      "name": "v1.17.0",
+      "rev": "f3dae6e6ee381f25eb6a246f7da9b85c91a68219"
+    }
+  },
+  "lib/ks-action-validator-sc": {
+    "rev": "1cb53355dccfe58c3be9090fa7e18b5fe571d744"
+  },
   "lib/ks-common-sc": {
     "tag": {
-      "name": "v2.5.1",
-      "rev": "4c43ae4e8357f29625c4fc24c07a6d66ed8fc66f"
+      "name": "v2.9.1",
+      "rev": "7373b74619aae5d00c7f46ff18087c99c5ba4996"
+    }
+  },
+  "lib/solady": {
+    "tag": {
+      "name": "v0.1.26",
+      "rev": "acd959aa4bd04720d640bf4e6a5c71037510cc4b"
     }
   }
 }
