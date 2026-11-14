@@ -104,7 +104,7 @@ contract ManagementTest is AuthenticatorBase {
     // The construction event is only observable on a fresh deployment
     vm.recordLogs();
     new KSAllowanceHubV2(
-      admin, _one(guardian), _one(rescuer), _one(address(router)), permit2, address(callsForwarder)
+      admin, _one(guardian), _one(rescuer), _one(address(router)), permit2, multicall3
     );
     Vm.Log[] memory logs = vm.getRecordedLogs();
 

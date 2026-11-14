@@ -50,7 +50,7 @@ import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer
  */
 
 abstract contract V2TestBase is Test {
-  /// @dev The real Permit2, deployed from its checked-in creation code; `ART-01` ties the two
+  /// @dev The real Permit2, deployed from its checked-in creation code
   address internal permit2;
 
   /// @dev The suite's two ERC20s, 18 decimals and 6

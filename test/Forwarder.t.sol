@@ -12,13 +12,13 @@ import {
 } from 'test/mocks/PermitTokenMocks.sol';
 import {ERC20Mock} from 'test/mocks/TokenMocks.sol';
 
+import {IMulticall3} from 'forge-std/interfaces/IMulticall3.sol';
 import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
 import {IOrderAuthenticator} from 'src/interfaces/authenticators/IOrderAuthenticator.sol';
 import {
   ITwoTiersOrderAuthenticator
 } from 'src/interfaces/authenticators/ITwoTiersOrderAuthenticator.sol';
 import {IAuthDelegator} from 'src/interfaces/base/IAuthDelegator.sol';
-import {IMulticall} from 'src/interfaces/base/IMulticall.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
@@ -27,10 +27,8 @@ import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
 import {GenericCall} from 'src/types/GenericCall.sol';
 import {ValidationParams} from 'src/types/ValidationParams.sol';
 import {AuthKey} from 'src/types/base/AuthKey.sol';
-import {PackedBits} from 'src/types/base/PackedBits.sol';
 
 import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
-import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
 
 import {IERC20Errors} from 'openzeppelin-contracts/contracts/interfaces/draft-IERC6093.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
@@ -38,11 +36,11 @@ import {ERC20Permit} from 'openzeppelin-contracts/contracts/token/ERC20/extensio
 
 /**
  * @title ForwarderTest
- * @notice `PF-01..09`, `PF-FUZZ`, `FWD-13`, `FWD-14`, `FWD-16..18`, `FWD-20..25` and
- * `FWD-PAUSE/VALUE/REENTRY`: the calls {ICallsForwarder-forwardCalls} relays that carry their own
- * authorisation, its per-entry failure bits, the calls their target refuses and the checks it does
- * not perform.
- * @dev `forwardCalls` makes a plain `call` per entry, so the observable oracle is never the return
+ * @notice `PF-01..06b`, `PF-08..09`, `PF-FUZZ`, `FWD-13`, `FWD-14`, `FWD-16..18`, `FWD-20..24` and
+ * `FWD-PAUSE/VALUE/REENTRY`: the calls {IKSAllowanceHubV2-forwardCalls} relays through Multicall3
+ * that carry their own authorisation, the `allowFailure` flag of each call, the calls their target
+ * refuses and the checks it does not perform.
+ * @dev Multicall3 makes a plain `call` per entry, so the observable oracle is never the return
  * value: it is the allowance, approval or nonce the target holds afterwards. Every digest here is
  * built from a type string written out in this file from EIP-2612, the DAI permit and the ERC-721
  * permit drafts, and every relayed call is assembled from a hand-written function signature — no
@@ -127,15 +125,16 @@ contract ForwarderTest is AuthenticatorBase {
     bytes[] memory data = new bytes[](1);
     data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
 
-    // anyone may relay someone else's permit: the signature inside is the authorisation, and the
-    // forwarder — not the relayer — is the `msg.sender` the token sees
+    // anyone may relay someone else's permit: the signature inside is the authorisation, and
+    // Multicall3, not the relayer, is the `msg.sender` the token sees
     vm.prank(relayer);
-    bytes[] memory results = hub.forwardCalls(_one(address(permitToken)), data, _bits(0));
+    IMulticall3.Result[] memory results =
+      hub.forwardCalls(_call3s(_one(address(permitToken)), data, 0));
 
     assertEq(permitToken.allowance(owner, address(hub)), value, 'allowance');
     assertEq(permitToken.nonces(owner), 1, 'nonce consumed');
     assertEq(results.length, 1, 'one result per entry');
-    assertEq(results[0].length, 0, 'an EIP-2612 permit returns nothing');
+    assertEq(results[0].returnData.length, 0, 'an EIP-2612 permit returns nothing');
   }
 
   /**
@@ -157,7 +156,7 @@ contract ForwarderTest is AuthenticatorBase {
       abi.encodeWithSignature(S_DAI_PERMIT, owner, address(hub), nonce, expiry, true, v, r, s);
 
     vm.prank(relayer);
-    hub.forwardCalls(_one(address(daiToken)), data, _bits(0));
+    hub.forwardCalls(_call3s(_one(address(daiToken)), data, 0));
 
     // DAI reads `allowed` as all-or-nothing rather than as an amount
     assertEq(_daiAllowance(owner, address(hub)), type(uint256).max, 'allowance');
@@ -182,7 +181,7 @@ contract ForwarderTest is AuthenticatorBase {
       abi.encodeWithSignature(S_ERC721_V3_PERMIT, address(hub), PERMIT_NFT_ID, deadline, v, r, s);
 
     vm.prank(relayer);
-    hub.forwardCalls(_one(address(nftV3)), data, _bits(0));
+    hub.forwardCalls(_call3s(_one(address(nftV3)), data, 0));
 
     assertEq(nftV3.getApproved(PERMIT_NFT_ID), address(hub), 'approval');
     assertEq(nftV3.nonces(PERMIT_NFT_ID), 1, 'nonce consumed');
@@ -197,7 +196,7 @@ contract ForwarderTest is AuthenticatorBase {
     data[0] = _erc721V4Call(address(hub), deadline, nonce);
 
     vm.prank(relayer);
-    hub.forwardCalls(_one(address(nftV4)), data, _bits(0));
+    hub.forwardCalls(_call3s(_one(address(nftV4)), data, 0));
 
     assertEq(nftV4.getApproved(PERMIT_NFT_ID), address(hub), 'approval');
     assertTrue(nftV4.nonceUsed(owner, nonce), 'nonce consumed');
@@ -220,7 +219,7 @@ contract ForwarderTest is AuthenticatorBase {
     data[0] = abi.encodeWithSignature(S_PERMIT2_BATCH_PERMIT, owner, batch, signature);
 
     vm.prank(relayer);
-    hub.forwardCalls(_one(permit2), data, _bits(0));
+    hub.forwardCalls(_call3s(_one(permit2), data, 0));
 
     (uint160 allowed, uint48 storedExpiration, uint48 storedNonce) =
       IAllowanceTransfer(permit2).allowance(owner, token18, address(hub));
@@ -231,36 +230,38 @@ contract ForwarderTest is AuthenticatorBase {
   }
 
   // -----------------------------------------------------------------------------------------------
-  // PF-06..07 — a relayed call carries no authority of its own, and the length guard
+  // PF-06 — a relayed call carries no authority of its own
   // -----------------------------------------------------------------------------------------------
 
   /**
    * PF-06 — a relayed call that proves no authority is refused by its target
-   * @dev The forwarder holds no allowance, role or asset, so a call relayed through it carries no
-   * authority beyond what its own payload proves. `transfer` moves the forwarder's own balance,
-   * which is zero, so the token refuses it; a payload too short to hold a selector reaches a target
-   * with no fallback and reverts without data. A set failure bit lets the batch continue.
+   * @dev Multicall3 holds no allowance, role or asset, so a call relayed through it carries no
+   * authority beyond what its own payload proves. `transfer` moves Multicall3's own balance, which
+   * is zero, so the token refuses it; a payload too short to hold a selector reaches a target with
+   * no fallback and reverts without data. With `allowFailure` true the batch continues and the
+   * refusal is the call's result; with it false the batch reverts with Multicall3's own error.
    */
   function test_PF_06_relayedCallWithoutAuthorityIsRefusedByItsTarget() public {
     uint256 relayerBalance = permitToken.balanceOf(relayer);
-    bytes memory insufficient = abi.encodeWithSelector(
-      IERC20Errors.ERC20InsufficientBalance.selector, address(callsForwarder), 0, 1
-    );
+    bytes memory insufficient =
+      abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, multicall3, 0, 1);
 
     bytes[] memory data = new bytes[](1);
     data[0] = abi.encodeCall(IERC20.transfer, (relayer, 1));
 
     vm.prank(relayer);
-    vm.expectRevert(insufficient);
-    hub.forwardCalls(_one(address(permitToken)), data, _bits(0));
+    vm.expectRevert(_callFailed());
+    hub.forwardCalls(_call3s(_one(address(permitToken)), data, 0));
     assertEq(permitToken.balanceOf(relayer), relayerBalance, 'the relayer gained nothing');
 
-    // with the entry's bit set the same refusal is recorded as that entry's result
+    // with `allowFailure` true the same refusal is recorded as that entry's result
     vm.prank(relayer);
-    bytes[] memory results = hub.forwardCalls(_one(address(permitToken)), data, _bits(1));
-    assertEq(results[0], insufficient, 'the result holds the token revert data');
+    IMulticall3.Result[] memory results =
+      hub.forwardCalls(_call3s(_one(address(permitToken)), data, 1));
+    assertFalse(results[0].success, 'the entry is recorded as failed');
+    assertEq(results[0].returnData, insufficient, 'the result holds the token revert data');
     assertEq(permitToken.balanceOf(relayer), relayerBalance, 'and the relayer still gained nothing');
-    assertEq(permitToken.balanceOf(address(callsForwarder)), 0, 'the forwarder holds nothing');
+    assertEq(permitToken.balanceOf(multicall3), 0, 'Multicall3 holds nothing');
 
     // an empty payload, a payload shorter than a selector and a zero selector all reach a token
     // with no fallback, which reverts without data
@@ -274,13 +275,13 @@ contract ForwarderTest is AuthenticatorBase {
       single[0] = shapes[i];
 
       vm.prank(relayer);
-      vm.expectRevert(bytes(''));
-      hub.forwardCalls(_one(address(permitToken)), single, _bits(0));
+      vm.expectRevert(_callFailed());
+      hub.forwardCalls(_call3s(_one(address(permitToken)), single, 0));
 
       vm.prank(relayer);
-      results = hub.forwardCalls(_one(address(permitToken)), single, _bits(1));
+      results = hub.forwardCalls(_call3s(_one(address(permitToken)), single, 1));
       assertEq(results.length, 1, 'the batch carried on');
-      assertEq(results[0].length, 0, 'and the entry returned no data');
+      assertEq(results[0].returnData.length, 0, 'and the entry returned no data');
     }
   }
 
@@ -298,50 +299,33 @@ contract ForwarderTest is AuthenticatorBase {
     data[1] = abi.encodeCall(IERC20.transfer, (relayer, 1));
 
     vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        IERC20Errors.ERC20InsufficientBalance.selector, address(callsForwarder), 0, 1
-      )
-    );
-    hub.forwardCalls(targets, data, _bits(0));
+    vm.expectRevert(_callFailed());
+    hub.forwardCalls(_call3s(targets, data, 0));
 
     assertEq(permitToken.allowance(owner, address(hub)), 0, 'the earlier permit rolled back');
     assertEq(permitToken.nonces(owner), 0, 'and burned nothing');
   }
 
-  /// PF-07 — the two arrays are walked in step, so a mismatch is refused before any call
-  function test_PF_07_mismatchedArrayLengths() public {
-    address[] memory twoTargets = new address[](2);
-    twoTargets[0] = address(permitToken);
-    twoTargets[1] = address(permitToken2);
-
-    vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-    hub.forwardCalls(twoTargets, new bytes[](1), _bits(0));
-
-    vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-    hub.forwardCalls(_one(address(permitToken)), new bytes[](2), _bits(0));
-  }
-
   // -----------------------------------------------------------------------------------------------
-  // PF-08..09 — the two directions of a failure bit
+  // PF-08..09 — the two directions of `allowFailure`
   // -----------------------------------------------------------------------------------------------
 
-  /// PF-08 — with its bit clear, a failing call reverts the batch with its own revert data
-  function test_PF_08_failingCallBubblesWhenNotAllowed() public {
+  /// PF-08 — with `allowFailure` false, a failing call reverts the batch with Multicall3's error
+  function test_PF_08_failingCallRevertsWithMulticall3ErrorWhenNotAllowed() public {
     uint256 value = 7 ether;
     uint256 expired = vm.getBlockTimestamp() - 1;
 
     (address[] memory targets, bytes[] memory data) = _goodThenExpired(value, expired);
 
     vm.prank(relayer);
-    vm.expectRevert(abi.encodeWithSelector(ERC20Permit.ERC2612ExpiredSignature.selector, expired));
-    hub.forwardCalls(targets, data, _bits(0));
+    vm.expectRevert(_callFailed());
+    hub.forwardCalls(_call3s(targets, data, 0));
 
     assertEq(permitToken.allowance(owner, address(hub)), 0, 'the good permit rolled back too');
     assertEq(permitToken.nonces(owner), 0, 'nothing consumed');
   }
 
-  /// PF-09 — with its bit set, a failing call is recorded as a result and the batch continues
+  /// PF-09 — with `allowFailure` true, a failing call is recorded and the batch continues
   function test_PF_09_failingCallIsCarriedPastWhenAllowed() public {
     uint256 value = 7 ether;
     uint256 expired = vm.getBlockTimestamp() - 1;
@@ -349,15 +333,17 @@ contract ForwarderTest is AuthenticatorBase {
     (address[] memory targets, bytes[] memory data) = _goodThenExpired(value, expired);
 
     vm.prank(relayer);
-    bytes[] memory results = hub.forwardCalls(targets, data, _bits(1 << 1));
+    IMulticall3.Result[] memory results = hub.forwardCalls(_call3s(targets, data, 1 << 1));
 
     assertEq(permitToken.allowance(owner, address(hub)), value, 'the good permit landed');
     assertEq(permitToken.nonces(owner), 1, 'and consumed exactly its own nonce');
 
     assertEq(results.length, 2, 'one result per entry');
-    assertEq(results[0].length, 0, 'the permit that worked returned nothing');
+    assertTrue(results[0].success, 'the permit that worked succeeded');
+    assertEq(results[0].returnData.length, 0, 'the permit that worked returned nothing');
+    assertFalse(results[1].success, 'the one that failed is recorded as failed');
     assertEq(
-      results[1],
+      results[1].returnData,
       abi.encodeWithSelector(ERC20Permit.ERC2612ExpiredSignature.selector, expired),
       'the one that failed returned its revert data'
     );
@@ -368,7 +354,7 @@ contract ForwarderTest is AuthenticatorBase {
   // -----------------------------------------------------------------------------------------------
 
   /**
-   * PF-FUZZ — a batch settles exactly when every entry that fails has its own bit set
+   * PF-FUZZ — a batch settles exactly when every entry that fails has `allowFailure` true
    * @dev Each entry is an EIP-2612 permit against the same token: a valid one carries the next
    * sequential nonce, an invalid one is past its deadline and so consumes nothing, which keeps
    * that sequence intact whichever entries are skipped. The token's own allowance and nonce
@@ -378,7 +364,6 @@ contract ForwarderTest is AuthenticatorBase {
     uint256 count = bound(f.entryCount, 1, 4);
     uint256 deadline = vm.getBlockTimestamp() + bound(f.deadlineOffset, 1, 30 days);
     uint256 expired = vm.getBlockTimestamp() - 1;
-    PackedBits allowFailure = _bits(f.allowFailure);
 
     address[] memory targets = new address[](count);
     bytes[] memory data = new bytes[](count);
@@ -401,8 +386,8 @@ contract ForwarderTest is AuthenticatorBase {
       } else {
         data[i] =
           _erc2612Call('Permit Token', address(permitToken), address(hub), 1 ether, 0, expired);
-        // the first unallowed failure is what the whole batch reverts with
-        if (!allowFailure.pos(i)) {
+        // one failure that is not allowed reverts the whole batch
+        if ((f.allowFailure >> i) & 1 == 0) {
           bubbles = true;
         }
       }
@@ -410,8 +395,8 @@ contract ForwarderTest is AuthenticatorBase {
 
     if (bubbles) {
       vm.prank(relayer);
-      vm.expectRevert(abi.encodeWithSelector(ERC20Permit.ERC2612ExpiredSignature.selector, expired));
-      hub.forwardCalls(targets, data, allowFailure);
+      vm.expectRevert(_callFailed());
+      hub.forwardCalls(_call3s(targets, data, f.allowFailure));
 
       assertEq(permitToken.allowance(owner, address(hub)), 0, 'the whole batch rolled back');
       assertEq(permitToken.nonces(owner), 0, 'and burned no nonce');
@@ -419,7 +404,7 @@ contract ForwarderTest is AuthenticatorBase {
     }
 
     vm.prank(relayer);
-    bytes[] memory results = hub.forwardCalls(targets, data, allowFailure);
+    IMulticall3.Result[] memory results = hub.forwardCalls(_call3s(targets, data, f.allowFailure));
 
     assertEq(results.length, count, 'one result per entry');
     assertEq(permitToken.nonces(owner), validCount, 'one nonce per permit that worked');
@@ -432,10 +417,10 @@ contract ForwarderTest is AuthenticatorBase {
     for (uint256 i = 0; i < count; i++) {
       bool valid = (uint256(f.validMask) >> i) & 1 == 1;
       if (valid) {
-        assertEq(results[i].length, 0, 'a permit that worked returns nothing');
+        assertEq(results[i].returnData.length, 0, 'a permit that worked returns nothing');
       } else {
         assertEq(
-          results[i],
+          results[i].returnData,
           abi.encodeWithSelector(ERC20Permit.ERC2612ExpiredSignature.selector, expired),
           'a skipped entry carries its revert data'
         );
@@ -445,7 +430,7 @@ contract ForwarderTest is AuthenticatorBase {
 
   // -----------------------------------------------------------------------------------------------
   // FWD-13, FWD-14, FWD-16 — a relayed `updateAuthentication`, and the authenticator calls that
-  // refuse the forwarder as caller
+  // refuse Multicall3 as caller
   // -----------------------------------------------------------------------------------------------
 
   /**
@@ -454,9 +439,9 @@ contract ForwarderTest is AuthenticatorBase {
    * the credential that may sign for them, relayed so the approval and the order that uses it fit
    * in one transaction. The authenticator owns the replay protection for it, so its nonce bitmap
    * changes and the hub's does not: the hub only relays the call and spends nothing of its own. The
-   * forwarder reaches an authenticator the owner never delegated, and the relay leaves it
-   * undelegated: the order rails gate on the delegation, but `updateAuthentication` carries the
-   * owner's own signature, so the forwarder needs no such gate.
+   * relay reaches an authenticator the owner never delegated, and leaves it undelegated: the order
+   * rails gate on the delegation, but `updateAuthentication` carries the owner's own signature, so
+   * the relay needs no such gate.
    */
   function test_FWD_13_updateAuthenticationIsRelayedAndApprovesTheKey() public {
     AuthKey memory fresh = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
@@ -475,7 +460,8 @@ contract ForwarderTest is AuthenticatorBase {
     );
 
     vm.prank(relayer);
-    bytes[] memory results = hub.forwardCalls(_one(address(authenticator)), data, _bits(0));
+    IMulticall3.Result[] memory results =
+      hub.forwardCalls(_call3s(_one(address(authenticator)), data, 0));
 
     assertTrue(authenticator.masterKeys(owner, freshHash), 'the key is approved');
     assertEq(
@@ -486,14 +472,14 @@ contract ForwarderTest is AuthenticatorBase {
     assertEq(
       hub.nonces(lNonceKey(owner), nonce >> 8), 0, 'and the hub burned nothing on this route'
     );
-    assertEq(results[0].length, 0, 'updateAuthentication returns nothing');
+    assertEq(results[0].returnData.length, 0, 'updateAuthentication returns nothing');
     assertFalse(hub.authDelegated(owner, address(authenticator)), 'and still nothing is delegated');
   }
 
   /**
    * FWD-20 — a relayed `updateAuthentication` signed by a master key approves a session key
    * @dev Both rails share one selector, so the second tier is relayable without any change to the
-   * forwarder. The nonce spent is in the master key's bitmap: the owner neither signed nor
+   * relay. The nonce spent is in the master key's bitmap: the owner neither signed nor
    * submitted, so nothing of theirs is spent.
    */
   function test_FWD_20_updateAuthenticationIsRelayedOnTheMasterKeyRail() public {
@@ -513,7 +499,7 @@ contract ForwarderTest is AuthenticatorBase {
     );
 
     vm.prank(relayer);
-    hub.forwardCalls(_one(address(authenticator)), data, _bits(0));
+    hub.forwardCalls(_call3s(_one(address(authenticator)), data, 0));
 
     assertEq(
       authenticator.sessionKeyMaster(owner, _keyHash(ephemeral)),
@@ -530,8 +516,8 @@ contract ForwarderTest is AuthenticatorBase {
 
   /**
    * FWD-14 — a relayed `updateAuthentication` with an empty signature is refused for an owner
-   * @dev `forwardCalls` does `targets[i].call(...)`, so the `msg.sender` the authenticator sees is
-   * the hub, never the account that submitted the transaction. The authenticator's owner branch is
+   * @dev Multicall3 makes the call, so the `msg.sender` the authenticator sees is Multicall3, never
+   * the account that submitted the transaction. The authenticator's owner branch is
    * therefore out of reach from here, and the empty signature that branch would have accepted is
    * checked instead — and fails. This is the line that stops the hub being a trusted authenticator
    * for anybody: if the authenticator took the hub's word for who the owner was, this call would
@@ -553,14 +539,19 @@ contract ForwarderTest is AuthenticatorBase {
     address[] memory targets = _one(address(authenticator));
 
     vm.prank(owner);
-    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidUpdateSignature.selector);
-    hub.forwardCalls(targets, data, _bits(0));
+    IMulticall3.Result[] memory results = hub.forwardCalls(_call3s(targets, data, 1));
 
+    assertFalse(results[0].success, 'the relayed call failed');
+    assertEq(
+      results[0].returnData,
+      abi.encodeWithSelector(ITwoTiersOrderAuthenticator.InvalidUpdateSignature.selector),
+      'on the empty signature'
+    );
     assertFalse(authenticator.masterKeys(owner, freshHash), 'nothing was approved');
 
     // the same instruction, from the same account, directly at the authenticator: there the owner
     // is `msg.sender` and the empty signature is accepted, so the refusal above is evidence about
-    // the hop through the hub rather than about the payload
+    // the hop through the relay rather than about the payload
     vm.prank(owner);
     authenticator.updateAuthentication(owner, _approveKey(fresh), nonce, deadline, noSignature);
     assertTrue(authenticator.masterKeys(owner, freshHash), 'accepted when the owner calls directly');
@@ -580,7 +571,7 @@ contract ForwarderTest is AuthenticatorBase {
     );
 
     vm.prank(relayer);
-    hub.forwardCalls(_one(address(hub)), data, _bits(0));
+    hub.forwardCalls(_call3s(_one(address(hub)), data, 0));
 
     assertTrue(hub.authDelegated(owner, address(authenticator)), 'delegated');
     assertEq(
@@ -590,8 +581,8 @@ contract ForwarderTest is AuthenticatorBase {
 
   /**
    * FWD-22 — a relayed `updateDelegation` needs the owner's signature even when the owner relays it
-   * @dev The hub sees the forwarder as the caller, never the owner, so an owner forwarding their
-   * own delegation must sign it.
+   * @dev The hub sees Multicall3 as the caller, never the owner, so an owner forwarding their own
+   * delegation must sign it.
    */
   function test_FWD_22_relayedDelegationNeedsTheOwnersSignature() public {
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
@@ -601,20 +592,26 @@ contract ForwarderTest is AuthenticatorBase {
       IAuthDelegator.updateDelegation, (owner, address(authenticator), true, '', 0, deadline, '')
     );
     vm.prank(owner);
-    vm.expectRevert(IAuthDelegator.InvalidDelegationSignature.selector);
-    hub.forwardCalls(_one(address(hub)), data, _bits(0));
+    IMulticall3.Result[] memory results = hub.forwardCalls(_call3s(_one(address(hub)), data, 1));
+    assertFalse(results[0].success, 'the relayed call failed');
+    assertEq(
+      results[0].returnData,
+      abi.encodeWithSelector(IAuthDelegator.InvalidDelegationSignature.selector),
+      'on the missing signature'
+    );
     assertFalse(hub.authDelegated(owner, address(authenticator)), 'the owner is not delegated');
   }
 
   /**
-   * FWD-16 — the forwarder relays `initAuthentication` and the `authenticate*` calls, and the
+   * FWD-16 — Multicall3 relays `initAuthentication` and the `authenticate*` calls, and the
    * authenticator refuses it as the caller because it is not the hub
    * @dev `initAuthentication`, `authenticateExecution` and `authenticateFulfillment` trust only the
-   * hub. A relay makes the forwarder their caller, so each reverts with
-   * {IOrderAuthenticator-CallerNotAuthorized} reporting the forwarder and the authenticator's state
-   * is unchanged. With the failure bit set the refusal is recorded as that entry's result.
+   * hub. A relay makes Multicall3 their caller, so each is refused with
+   * {IOrderAuthenticator-CallerNotAuthorized} reporting Multicall3 and the authenticator's state
+   * is unchanged. With `allowFailure` true the refusal is recorded as that entry's result; with it
+   * false the batch reverts with Multicall3's own error.
    */
-  function test_FWD_16_authenticatorRefusesTheForwarderOnHubOnlyCalls() public {
+  function test_FWD_16_authenticatorRefusesMulticall3OnHubOnlyCalls() public {
     AuthKey memory victimKey = _secpKey(relayer, vm.getBlockTimestamp() + 30 days);
     bytes32 victimHash = _keyHash(victimKey);
     bytes memory payload = _encodeKey(victimKey);
@@ -650,29 +647,28 @@ contract ForwarderTest is AuthenticatorBase {
     _assertReachesTheHubOnlyGate(executionData[0], 'authenticateExecution');
     _assertReachesTheHubOnlyGate(fulfillmentData[0], 'authenticateFulfillment');
 
-    bytes memory refusal = abi.encodeWithSelector(
-      IOrderAuthenticator.CallerNotAuthorized.selector, address(callsForwarder)
-    );
+    bytes memory refusal =
+      abi.encodeWithSelector(IOrderAuthenticator.CallerNotAuthorized.selector, multicall3);
 
     vm.prank(relayer);
-    vm.expectRevert(refusal);
-    hub.forwardCalls(targets, initData, _bits(0));
+    vm.expectRevert(_callFailed());
+    hub.forwardCalls(_call3s(targets, initData, 0));
 
     assertFalse(authenticator.masterKeys(owner, victimHash), 'no key was planted on the owner');
 
-    // a set failure bit records the refusal as the entry's result
+    // `allowFailure` true records the refusal as the entry's result
     vm.prank(relayer);
-    bytes[] memory results = hub.forwardCalls(targets, initData, _bits(type(uint256).max));
-    assertEq(results[0], refusal, 'the result holds the authenticator refusal');
+    IMulticall3.Result[] memory results = hub.forwardCalls(_call3s(targets, initData, 1));
+    assertEq(results[0].returnData, refusal, 'the result holds the authenticator refusal');
     assertFalse(authenticator.masterKeys(owner, victimHash), 'and still no key was planted');
 
     vm.prank(relayer);
-    vm.expectRevert(refusal);
-    hub.forwardCalls(targets, executionData, _bits(0));
+    results = hub.forwardCalls(_call3s(targets, executionData, 1));
+    assertEq(results[0].returnData, refusal, 'authenticateExecution is refused the same way');
 
     vm.prank(relayer);
-    vm.expectRevert(refusal);
-    hub.forwardCalls(targets, fulfillmentData, _bits(0));
+    results = hub.forwardCalls(_call3s(targets, fulfillmentData, 1));
+    assertEq(results[0].returnData, refusal, 'and so is authenticateFulfillment');
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -704,7 +700,7 @@ contract ForwarderTest is AuthenticatorBase {
     data[0] = abi.encodeWithSignature(S_PERMIT2_SINGLE_PERMIT, owner, single, signature);
 
     vm.prank(relayer);
-    hub.forwardCalls(_one(permit2), data, _bits(0));
+    hub.forwardCalls(_call3s(_one(permit2), data, 0));
 
     (uint160 allowed, uint48 storedExpiration, uint48 storedNonce) =
       IAllowanceTransfer(permit2).allowance(owner, token6, address(hub));
@@ -717,15 +713,9 @@ contract ForwarderTest is AuthenticatorBase {
   /// FWD-18 — an empty batch is a legal no-op rather than an error
   function test_FWD_18_emptyBatchIsANoOp() public {
     vm.prank(relayer);
-    bytes[] memory results = hub.forwardCalls(new address[](0), new bytes[](0), _bits(0));
+    IMulticall3.Result[] memory results = hub.forwardCalls(new IMulticall3.Call3[](0));
 
     assertEq(results.length, 0, 'no entries, no results');
-
-    // the length check passes on two empties, so the failure bits are never consulted either
-    vm.prank(relayer);
-    bytes[] memory withBits =
-      hub.forwardCalls(new address[](0), new bytes[](0), _bits(type(uint256).max));
-    assertEq(withBits.length, 0, 'and the bits change nothing about that');
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -733,7 +723,7 @@ contract ForwarderTest is AuthenticatorBase {
   // -----------------------------------------------------------------------------------------------
 
   /**
-   * FWD-PAUSE-01 — a pause does not close the forwarder
+   * FWD-PAUSE-01 — a pause does not close `forwardCalls`
    * @dev Intended: relaying a permit moves nobody's assets, it only records an allowance, and an
    * allowance granted during a pause cannot be spent while the pause holds. Keeping `forwardCalls`
    * open lets the approval in a user's transaction still be submitted.
@@ -749,18 +739,18 @@ contract ForwarderTest is AuthenticatorBase {
     hub.pause();
 
     vm.prank(relayer);
-    hub.forwardCalls(_one(address(permitToken)), data, _bits(0));
+    hub.forwardCalls(_call3s(_one(address(permitToken)), data, 0));
 
     assertTrue(hub.paused(), 'the hub is still paused');
     assertEq(permitToken.allowance(owner, address(hub)), value, 'and the permit was relayed');
   }
 
   /**
-   * FWD-VALUE-01 — value sent with `forwardCalls` remains in the hub, not the forwarder
+   * FWD-VALUE-01 — value sent with `forwardCalls` remains in the hub, not Multicall3
    * @dev `forwardCalls` is payable and carries no native-spend guard, because none of the calls
-   * relayed here takes value: it forwards `data` only, never `msg.value`. Value sent with the call
-   * remains in the hub, which has no refund path. A rescuer can recover it, and a caller receives
-   * no refund.
+   * relayed here takes value: `forwardCalls` passes `calls` only, never `msg.value`. Value sent
+   * with the call remains in the hub, which has no refund path. A rescuer can recover it, and a
+   * caller receives no refund.
    */
   function test_FWD_VALUE_01_valueSentWithForwardIsStranded() public {
     uint256 value = 5 ether;
@@ -773,10 +763,10 @@ contract ForwarderTest is AuthenticatorBase {
     assertEq(address(hub).balance, 0, 'the hub starts empty');
 
     vm.prank(relayer);
-    hub.forwardCalls{value: 1 ether}(_one(address(permitToken)), data, _bits(0));
+    hub.forwardCalls{value: 1 ether}(_call3s(_one(address(permitToken)), data, 0));
 
     assertEq(address(hub).balance, 1 ether, 'every wei of it stayed behind');
-    assertEq(address(callsForwarder).balance, 0, 'and none reached the forwarder');
+    assertEq(multicall3.balance, 0, 'and none reached Multicall3');
     assertEq(relayer.balance, 0, 'and none came back to the sender');
     assertEq(permitToken.allowance(owner, address(hub)), value, 'the permit itself still landed');
   }
@@ -817,9 +807,9 @@ contract ForwarderTest is AuthenticatorBase {
     uint256 before = IERC20(token18).balanceOf(address(router));
 
     vm.prank(relayer);
-    hub.forwardCalls(_one(address(reentrant)), data, _bits(0));
+    hub.forwardCalls(_call3s(_one(address(reentrant)), data, 0));
 
-    assertEq(reentrant.permitCount(), 1, 'the forwarder did relay the permit');
+    assertEq(reentrant.permitCount(), 1, '`forwardCalls` did relay the permit');
     assertEq(
       IERC20(token18).balanceOf(address(router)) - before, amount, 'the reentrant order settled'
     );
@@ -827,8 +817,8 @@ contract ForwarderTest is AuthenticatorBase {
     assertEq(router.seenMsgSender(), owner, 'with the owner as the sender while it ran');
   }
 
-  /// FWD-23 — the forwarder relays a permit and a failing call alike when called directly
-  function test_FWD_23_forwarderRelaysWhenCalledDirectly() public {
+  /// FWD-23 — Multicall3 relays a permit and a failing call alike when called directly
+  function test_FWD_23_multicall3RelaysWhenCalledDirectly() public {
     uint256 value = 17 ether;
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
@@ -836,14 +826,15 @@ contract ForwarderTest is AuthenticatorBase {
     data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
 
     vm.prank(relayer);
-    bytes[] memory results = callsForwarder.forwardCalls(_one(address(permitToken)), data, _bits(0));
+    IMulticall3.Result[] memory results =
+      IMulticall3(multicall3).aggregate3(_call3s(_one(address(permitToken)), data, 0));
 
     assertEq(permitToken.allowance(owner, address(hub)), value, 'allowance');
     assertEq(permitToken.nonces(owner), 1, 'nonce consumed');
     assertEq(results.length, 1, 'one result per entry');
 
-    // a permit followed by a transfer of tokens the forwarder does not hold reverts with the
-    // token's own error, whatever ran ahead of it
+    // a permit followed by a transfer of tokens Multicall3 does not hold reverts with Multicall3's
+    // own error, whatever ran ahead of it
     bytes[] memory failing = new bytes[](2);
     failing[0] =
       _erc2612Call('Permit Token', address(permitToken), address(hub), value, 1, deadline);
@@ -854,17 +845,13 @@ contract ForwarderTest is AuthenticatorBase {
     targets[1] = address(permitToken);
 
     vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        IERC20Errors.ERC20InsufficientBalance.selector, address(callsForwarder), 0, 1
-      )
-    );
-    callsForwarder.forwardCalls(targets, failing, _bits(0));
+    vm.expectRevert(_callFailed());
+    IMulticall3(multicall3).aggregate3(_call3s(targets, failing, 0));
     assertEq(permitToken.nonces(owner), 1, 'the permit ahead of the failure rolled back');
   }
 
-  /// FWD-24 — `hub.forwardCalls` calls the target with the forwarder as the caller
-  function test_FWD_24_hubForwardsThroughTheForwarder() public {
+  /// FWD-24 — `hub.forwardCalls` calls the target with Multicall3 as the caller
+  function test_FWD_24_hubForwardsThroughMulticall3() public {
     CallerRecorderMock recorder = new CallerRecorderMock();
 
     bytes[] memory data = new bytes[](1);
@@ -880,22 +867,10 @@ contract ForwarderTest is AuthenticatorBase {
     );
 
     vm.prank(relayer);
-    hub.forwardCalls(_one(address(recorder)), data, _bits(0));
+    hub.forwardCalls(_call3s(_one(address(recorder)), data, 0));
 
     assertEq(recorder.permitCount(), 1, 'the target was called once');
-    assertEq(recorder.lastCaller(), address(callsForwarder), 'the forwarder is the caller');
-  }
-
-  /// FWD-25 — the forwarder has no `multicall`, so a batch to it cannot run
-  function test_FWD_25_forwarderHasNoMulticall() public {
-    bytes memory callData = abi.encodeCall(IMulticall.multicall, (new bytes[](0)));
-
-    (bool success,) = address(callsForwarder).call(callData);
-    assertFalse(success, 'the forwarder answers no multicall');
-
-    // the same calldata succeeds on the hub, so the failure above is not a malformed call
-    (success,) = address(hub).call(callData);
-    assertTrue(success, 'the hub answers it');
+    assertEq(recorder.lastCaller(), multicall3, 'Multicall3 is the caller');
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -958,8 +933,9 @@ contract ForwarderTest is AuthenticatorBase {
     data[1] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 1, expired);
   }
 
-  function _bits(uint256 raw) internal pure returns (PackedBits) {
-    return PackedBits.wrap(bytes32(raw));
+  /// @dev The revert of Multicall3 when a call whose `allowFailure` is false fails
+  function _callFailed() internal pure returns (bytes memory) {
+    return abi.encodeWithSignature('Error(string)', 'Multicall3: call failed');
   }
 
   function _erc2612Digest(
@@ -978,7 +954,7 @@ contract ForwarderTest is AuthenticatorBase {
     return lTypedDataHash(lDomainSeparator(name, '1', token), structHash);
   }
 
-  /// @dev A whole EIP-2612 `permit` call, ready for the forwarder to relay
+  /// @dev A whole EIP-2612 `permit` call, ready for `forwardCalls` to relay
   function _erc2612Call(
     string memory name,
     address token,

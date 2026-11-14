@@ -9,7 +9,7 @@ import {RouterMock} from 'test/mocks/RouterMock.sol';
 import {ERC20Mock, ERC721Mock} from 'test/mocks/TokenMocks.sol';
 import {ValidatorMock} from 'test/mocks/ValidatorMock.sol';
 
-import {CallsForwarder} from 'src/CallsForwarder.sol';
+import {IMulticall3} from 'forge-std/interfaces/IMulticall3.sol';
 import {KSAllowanceHubV2} from 'src/KSAllowanceHubV2.sol';
 import {DeadlineChecker} from 'src/base/DeadlineChecker.sol';
 import {IUnorderedNonce} from 'src/interfaces/base/IUnorderedNonce.sol';
@@ -37,7 +37,6 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  */
 abstract contract HubBase is V2TestBase {
   KSAllowanceHubV2 internal hub;
-  CallsForwarder internal callsForwarder;
 
   RouterMock internal router;
   RouterMock internal router2;
@@ -46,6 +45,9 @@ abstract contract HubBase is V2TestBase {
   ValidatorMock internal validator2;
 
   uint256 internal constant NFT_ID = 1;
+
+  /// @dev The canonical Multicall3 address, written out rather than imported
+  address internal multicall3 = 0xcA11bde05977b3631167028862bE2a173976CA11;
 
   /**
    * @dev Transcribed from {IKSAllowanceHubV2-TransferTokens}, never imported: an expected topic
@@ -76,18 +78,32 @@ abstract contract HubBase is V2TestBase {
     routers[0] = address(router);
     routers[1] = address(router2);
 
-    callsForwarder = new CallsForwarder();
-    hub =
-      new KSAllowanceHubV2(admin, guardians, rescuers, routers, permit2, address(callsForwarder));
+    vm.etch(multicall3, vm.getDeployedCode('test/artifacts/Multicall3.json'));
+    hub = new KSAllowanceHubV2(admin, guardians, rescuers, routers, permit2, multicall3);
 
     _fundOwner();
 
     vm.label(address(hub), 'hub');
-    vm.label(address(callsForwarder), 'callsForwarder');
+    vm.label(multicall3, 'multicall3');
     vm.label(address(router), 'router');
     vm.label(permit2, 'permit2');
     vm.label(token18, 'token18');
     vm.label(token6, 'token6');
+  }
+
+  /// @dev One {IMulticall3-Call3} per target and payload; the entry at index `i` allows failure
+  /// when bit `i` of `allowFailureMask` is set
+  function _call3s(address[] memory targets, bytes[] memory data, uint256 allowFailureMask)
+    internal
+    pure
+    returns (IMulticall3.Call3[] memory out)
+  {
+    out = new IMulticall3.Call3[](targets.length);
+    for (uint256 i = 0; i < targets.length; i++) {
+      out[i] = IMulticall3.Call3({
+        target: targets[i], allowFailure: (allowFailureMask >> i) & 1 == 1, callData: data[i]
+      });
+    }
   }
 
   function _fundOwner() internal {

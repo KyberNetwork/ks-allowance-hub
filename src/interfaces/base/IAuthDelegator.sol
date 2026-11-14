@@ -27,9 +27,9 @@ interface IAuthDelegator {
   /**
    * @notice Delegates `authenticator` to authenticate `owner`'s orders, or withdraws the delegation
    * @dev When the caller is `owner`, the call is the authorisation: `signature` must be empty and
-   * no nonce is spent. Any other caller, including the {CallsForwarder} relaying the call, must
-   * present the owner's signature over the {AuthDelegation}, which spends `nonce` in the owner's
-   * namespace.
+   * no nonce is spent. Any other caller, including Multicall3 relaying the call through
+   * {IKSAllowanceHubV2-forwardCalls}, must present the owner's signature over the
+   * {AuthDelegation}, which spends `nonce` in the owner's namespace.
    *
    * When delegating with non-empty `data`, `data` is passed to
    * {IOrderAuthenticator-initAuthentication}. Withdrawing calls no authenticator and leaves the

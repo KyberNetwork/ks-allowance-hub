@@ -9,7 +9,7 @@ import {ERC721} from 'openzeppelin-contracts/contracts/token/ERC721/ERC721.sol';
 import {ECDSA} from 'openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol';
 
 /**
- * @notice The suite's ERC20, carrying EIP-2612 so the forwarder has a real permit to relay
+ * @notice The suite's ERC20, carrying EIP-2612 so `forwardCalls` has a real permit to relay
  * @dev The width is a constructor argument because the rails are indifferent to it while two of
  * the cases are not: the rescue case moves two tokens of different widths, and a 6-decimal amount
  * reads differently from an 18-decimal one in an event payload.

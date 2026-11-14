@@ -14,11 +14,11 @@ contract DeployKSAllowanceHubV2Script is BaseScript {
     address[] memory rescuers = _readAddressArray('rescuers');
     address[] memory whitelistedRouters = _readAddressArray('whitelisted-routers');
     address permit2 = _readAddress('permit2');
-    address callsForwarder = _readAddress('calls-forwarder');
+    address multicall3 = _readAddress('multicall3');
 
     bytes memory creationCode = abi.encodePacked(
       type(KSAllowanceHubV2).creationCode,
-      abi.encode(admin, guardians, rescuers, whitelistedRouters, permit2, callsForwarder)
+      abi.encode(admin, guardians, rescuers, whitelistedRouters, permit2, multicall3)
     );
 
     (address allowanceHubV2,) =

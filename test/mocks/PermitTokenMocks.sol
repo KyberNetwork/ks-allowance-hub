@@ -13,10 +13,10 @@ import {
 
 /**
  * @title PermitTokenMocks
- * @notice The non-standard permit flavours {CallsForwarder} relays, beside the plain EIP-2612 one
- * {ERC20Mock} carries. Each `permit` here recovers a real EIP-712 signature over its arguments in a
- * fixed order, so a call assembled with its arguments in the wrong order would recover a different
- * signer and fail rather than pass undetected.
+ * @notice The non-standard permit flavours that `forwardCalls` relays, beside the plain EIP-2612
+ * one {ERC20Mock} carries. Each `permit` here recovers a real EIP-712 signature over its
+ * arguments in a fixed order, so a call assembled with its arguments in the wrong order would
+ * recover a different signer and fail rather than pass undetected.
  * @dev The type strings below are transcribed from the DAI permit and the ERC-721 permit drafts;
  * the tests sign against their own copies, never against these.
  */
@@ -148,7 +148,7 @@ contract ERC721PermitV4Mock is ERC721, EIP712 {
 /**
  * @notice A token mock whose EIP-2612 `permit` calls back into the hub before it returns
  * @dev A relayed permit may start an order while the batch that relayed it is still running. That
- * is by design: the forwarder moves no assets of its own and every payload it relays authorises
+ * is by design: `forwardCalls` moves no assets of its own and every payload it relays authorises
  * itself. This mock makes it observable. The permit arguments are ignored, since the subject is
  * the callback rather than a signature check.
  */

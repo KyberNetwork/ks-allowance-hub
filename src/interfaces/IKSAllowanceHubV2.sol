@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {PackedBits} from '../types/base/PackedBits.sol';
-
 import {ERC20Transfer} from '../types/ERC20Transfer.sol';
 import {ERC721Transfer} from '../types/ERC721Transfer.sol';
 import {ExecutionOrder} from '../types/ExecutionOrder.sol';
 import {FulfillmentOrder} from '../types/FulfillmentOrder.sol';
 import {FulfillmentSolution} from '../types/FulfillmentSolution.sol';
 import {NativeTransfer} from '../types/NativeTransfer.sol';
+
+import {IMulticall3} from 'forge-std/interfaces/IMulticall3.sol';
 
 /// @title IKSAllowanceHubV2
 /// @notice Interface of {KSAllowanceHubV2}
@@ -160,18 +160,16 @@ interface IKSAllowanceHubV2 {
   ) external payable returns (bytes[] memory results);
 
   /**
-   * @notice Calls {ICallsForwarder-forwardCalls} on the forwarder set at deployment, so that it can
-   * run in a {IMulticall-multicall} batch
+   * @notice Calls {IMulticall3-aggregate3} with `calls`, so that they can run in a
+   * {IMulticall-multicall} batch
    * @dev Native value sent with the call remains in the hub. Accepted while the hub is paused.
-   * @param targets Passed to the forwarder unchanged
-   * @param data Passed to the forwarder unchanged
-   * @param allowFailure Passed to the forwarder unchanged
-   * @return results The forwarder's results
+   * @param calls Calls for Multicall3 to make
+   * @return results Result of each call
    */
-  function forwardCalls(address[] calldata targets, bytes[] calldata data, PackedBits allowFailure)
+  function forwardCalls(IMulticall3.Call3[] calldata calls)
     external
     payable
-    returns (bytes[] memory results);
+    returns (IMulticall3.Result[] memory results);
 
   /**
    * @notice Transfers assets held by the hub to the given targets; callable by an account with the

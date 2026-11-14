@@ -1,6 +1,6 @@
 # Tests
 
-The suite has 287 tests in 18 contracts. Each row links to a test and gives the
+The suite has 280 tests in 16 contracts. Each row links to a test and gives the
 first sentence of its documentation, or of the section heading above it. A test with neither
 takes its ID and description from its name.
 
@@ -68,31 +68,29 @@ takes its ID and description from its name.
 
 | ID | Test | Description |
 | --- | --- | --- |
-| PF-01 | [`test_PF_01_eip2612PermitForwarded`](Forwarder.t.sol#L123) | A relayed EIP-2612 permit sets the token allowance and spends the permit nonce |
-| PF-02 | [`test_PF_02_daiStylePermitForwarded`](Forwarder.t.sol#L145) | A relayed DAI-style permit sets the maximum allowance and spends the permit nonce |
-| PF-03 | [`test_PF_03_erc721V3PermitForwarded`](Forwarder.t.sol#L168) | A relayed Uniswap v3 ERC-721 permit with a v/r/s signature sets the approval |
-| PF-04 | [`test_PF_04_erc721V4PermitForwarded`](Forwarder.t.sol#L192) | A relayed Uniswap v4 ERC-721 permit with an unordered nonce sets the approval |
-| PF-05 | [`test_PF_05_permit2BatchPermitForwarded`](Forwarder.t.sol#L210) | A relayed Permit2 batch `permit` sets the allowance, expiration and nonce |
+| PF-01 | [`test_PF_01_eip2612PermitForwarded`](Forwarder.t.sol#L121) | A relayed EIP-2612 permit sets the token allowance and spends the permit nonce |
+| PF-02 | [`test_PF_02_daiStylePermitForwarded`](Forwarder.t.sol#L144) | A relayed DAI-style permit sets the maximum allowance and spends the permit nonce |
+| PF-03 | [`test_PF_03_erc721V3PermitForwarded`](Forwarder.t.sol#L167) | A relayed Uniswap v3 ERC-721 permit with a v/r/s signature sets the approval |
+| PF-04 | [`test_PF_04_erc721V4PermitForwarded`](Forwarder.t.sol#L191) | A relayed Uniswap v4 ERC-721 permit with an unordered nonce sets the approval |
+| PF-05 | [`test_PF_05_permit2BatchPermitForwarded`](Forwarder.t.sol#L209) | A relayed Permit2 batch `permit` sets the allowance, expiration and nonce |
 | PF-06 | [`test_PF_06_relayedCallWithoutAuthorityIsRefusedByItsTarget`](Forwarder.t.sol#L244) | A relayed call that proves no authority is refused by its target |
-| PF-06b | [`test_PF_06b_failingTransferUnwindsTheBatch`](Forwarder.t.sol#L288) | A relayed call that fails on its target unwinds the entries that already ran |
-| PF-07 | [`test_PF_07_mismatchedArrayLengths`](Forwarder.t.sol#L313) | The two arrays are walked in step, so a mismatch is refused before any call |
-| PF-08 | [`test_PF_08_failingCallBubblesWhenNotAllowed`](Forwarder.t.sol#L330) | With its bit clear, a failing call reverts the batch with its own revert data |
-| PF-09 | [`test_PF_09_failingCallIsCarriedPastWhenAllowed`](Forwarder.t.sol#L345) | With its bit set, a failing call is recorded as a result and the batch continues |
-| PF-FUZZ | [`testFuzz_PF_FUZZ_allowFailureBits`](Forwarder.t.sol#L377) | A batch settles exactly when every entry that fails has its own bit set |
-| FWD-13 | [`test_FWD_13_updateAuthenticationIsRelayedAndApprovesTheKey`](Forwarder.t.sol#L461) | A relayed `updateAuthentication` approves a session key, on the authenticator's nonce |
-| FWD-20 | [`test_FWD_20_updateAuthenticationIsRelayedOnTheMasterKeyRail`](Forwarder.t.sol#L499) | A relayed `updateAuthentication` signed by a master key approves a session key |
-| FWD-14 | [`test_FWD_14_emptySignatureIsRefusedEvenFromTheOwner`](Forwarder.t.sol#L540) | A relayed `updateAuthentication` with an empty signature is refused for an owner |
-| FWD-21 | [`test_FWD_21_updateDelegationIsRelayed`](Forwarder.t.sol#L570) | A relayed `updateDelegation` delegates on the owner's signature and the hub's nonce |
-| FWD-22 | [`test_FWD_22_relayedDelegationNeedsTheOwnersSignature`](Forwarder.t.sol#L596) | A relayed `updateDelegation` needs the owner's signature even when the owner relays it |
-| FWD-16 | [`test_FWD_16_authenticatorRefusesTheForwarderOnHubOnlyCalls`](Forwarder.t.sol#L617) | The forwarder relays `initAuthentication` and the `authenticate*` calls, and the authenticator refuses it as the caller because it is not the hub |
-| FWD-17 | [`test_FWD_17_permit2SinglePermitForwarded`](Forwarder.t.sol#L688) | A relayed Permit2 single `permit` sets the allowance |
-| FWD-18 | [`test_FWD_18_emptyBatchIsANoOp`](Forwarder.t.sol#L718) | An empty batch is a legal no-op rather than an error |
-| FWD-PAUSE-01 | [`test_FWD_PAUSE_01_forwardStillWorksWhilePaused`](Forwarder.t.sol#L741) | A pause does not close the forwarder |
-| FWD-VALUE-01 | [`test_FWD_VALUE_01_valueSentWithForwardIsStranded`](Forwarder.t.sol#L765) | Value sent with `forwardCalls` remains in the hub, not the forwarder |
-| FWD-REENTRY-01 | [`test_FWD_REENTRY_01_relayedPermitMayReenterTheHub`](Forwarder.t.sol#L793) | A relayed permit may reenter the hub and start an order |
-| FWD-23 | [`test_FWD_23_forwarderRelaysWhenCalledDirectly`](Forwarder.t.sol#L831) | The forwarder relays a permit and a failing call alike when called directly |
-| FWD-24 | [`test_FWD_24_hubForwardsThroughTheForwarder`](Forwarder.t.sol#L867) | `hub.forwardCalls` calls the target with the forwarder as the caller |
-| FWD-25 | [`test_FWD_25_forwarderHasNoMulticall`](Forwarder.t.sol#L890) | The forwarder has no `multicall`, so a batch to it cannot run |
+| PF-06b | [`test_PF_06b_failingTransferUnwindsTheBatch`](Forwarder.t.sol#L289) | A relayed call that fails on its target unwinds the entries that already ran |
+| PF-08 | [`test_PF_08_failingCallRevertsWithMulticall3ErrorWhenNotAllowed`](Forwarder.t.sol#L314) | With `allowFailure` false, a failing call reverts the batch with Multicall3's error |
+| PF-09 | [`test_PF_09_failingCallIsCarriedPastWhenAllowed`](Forwarder.t.sol#L329) | With `allowFailure` true, a failing call is recorded and the batch continues |
+| PF-FUZZ | [`testFuzz_PF_FUZZ_allowFailureBits`](Forwarder.t.sol#L363) | A batch settles exactly when every entry that fails has `allowFailure` true |
+| FWD-13 | [`test_FWD_13_updateAuthenticationIsRelayedAndApprovesTheKey`](Forwarder.t.sol#L446) | A relayed `updateAuthentication` approves a session key, on the authenticator's nonce |
+| FWD-20 | [`test_FWD_20_updateAuthenticationIsRelayedOnTheMasterKeyRail`](Forwarder.t.sol#L485) | A relayed `updateAuthentication` signed by a master key approves a session key |
+| FWD-14 | [`test_FWD_14_emptySignatureIsRefusedEvenFromTheOwner`](Forwarder.t.sol#L526) | A relayed `updateAuthentication` with an empty signature is refused for an owner |
+| FWD-21 | [`test_FWD_21_updateDelegationIsRelayed`](Forwarder.t.sol#L561) | A relayed `updateDelegation` delegates on the owner's signature and the hub's nonce |
+| FWD-22 | [`test_FWD_22_relayedDelegationNeedsTheOwnersSignature`](Forwarder.t.sol#L587) | A relayed `updateDelegation` needs the owner's signature even when the owner relays it |
+| FWD-16 | [`test_FWD_16_authenticatorRefusesMulticall3OnHubOnlyCalls`](Forwarder.t.sol#L614) | Multicall3 relays `initAuthentication` and the `authenticate*` calls, and the authenticator refuses it as the caller because it is not the hub |
+| FWD-17 | [`test_FWD_17_permit2SinglePermitForwarded`](Forwarder.t.sol#L684) | A relayed Permit2 single `permit` sets the allowance |
+| FWD-18 | [`test_FWD_18_emptyBatchIsANoOp`](Forwarder.t.sol#L714) | An empty batch is a legal no-op rather than an error |
+| FWD-PAUSE-01 | [`test_FWD_PAUSE_01_forwardStillWorksWhilePaused`](Forwarder.t.sol#L731) | A pause does not close `forwardCalls` |
+| FWD-VALUE-01 | [`test_FWD_VALUE_01_valueSentWithForwardIsStranded`](Forwarder.t.sol#L755) | Value sent with `forwardCalls` remains in the hub, not Multicall3 |
+| FWD-REENTRY-01 | [`test_FWD_REENTRY_01_relayedPermitMayReenterTheHub`](Forwarder.t.sol#L783) | A relayed permit may reenter the hub and start an order |
+| FWD-23 | [`test_FWD_23_multicall3RelaysWhenCalledDirectly`](Forwarder.t.sol#L821) | Multicall3 relays a permit and a failing call alike when called directly |
+| FWD-24 | [`test_FWD_24_hubForwardsThroughMulticall3`](Forwarder.t.sol#L854) | `hub.forwardCalls` calls the target with Multicall3 as the caller |
 
 ## FulfillOrderTest
 
@@ -195,16 +193,16 @@ takes its ID and description from its name.
 
 | ID | Test | Description |
 | --- | --- | --- |
-| MC-01 | [`test_MC_01_permitAndOrderInOneBatch`](Multicall.t.sol#L54) | A permit and the order that uses the approval share one transaction, with value |
-| MC-02 | [`test_MC_02_batchIsBoundedAsAWhole`](Multicall.t.sol#L98) | Each sub-call may spend the value, but the batch as a whole may not spend it twice |
-| MC-03 | [`test_MC_03_subCallRevertBubbles`](Multicall.t.sol#L131) | A sub-call's revert arrives at the caller with its arguments intact |
-| MC-04 | [`test_MC_04_twoOrdersInOneBatch`](Multicall.t.sol#L158) | Two independent orders in one batch both settle, in the order given |
-| MC-07 | [`test_MC_07_gasIsMeasuredPerEntry`](Multicall.t.sol#L192) | Each entry is measured on its own, not given a running total of the batch |
-| MC-05 | [`test_MC_05_plainNativeTransferIsRefused`](Multicall.t.sol#L223) | The hub has no `receive`, so a bare transfer cannot strand native in it |
-| MC-09 | [`test_MC_09_aFrontRunDelegationDoesNotUnwindTheBatch`](Multicall.t.sol#L241) | A delegation relayed through `forwardCalls` with its failure bit set survives being front-run, so the order batched after it still settles |
-| MC-06 | [`test_MC_06_approveAMasterKeyAndSpendOnItInOneBatch`](Multicall.t.sol#L316) | One batch approves a session key at an authenticator and then spends on it |
-| MC-08 | [`test_MC_08_masterKeyMintsAnEphemeralKeyAndSpendsOnItInOneBatch`](Multicall.t.sol#L397) | One batch mints an ephemeral key from a master key and spends on it |
-| MC-FUZZ | [`testFuzz_MC_FUZZ_valueNeedsAnAllPayableBatch`](Multicall.t.sol#L479) | Value survives a batch exactly when every selector in it is payable |
+| MC-01 | [`test_MC_01_permitAndOrderInOneBatch`](Multicall.t.sol#L52) | A permit and the order that uses the approval share one transaction, with value |
+| MC-02 | [`test_MC_02_batchIsBoundedAsAWhole`](Multicall.t.sol#L95) | Each sub-call may spend the value, but the batch as a whole may not spend it twice |
+| MC-03 | [`test_MC_03_subCallRevertBubbles`](Multicall.t.sol#L128) | A sub-call's revert arrives at the caller with its arguments intact |
+| MC-04 | [`test_MC_04_twoOrdersInOneBatch`](Multicall.t.sol#L155) | Two independent orders in one batch both settle, in the order given |
+| MC-07 | [`test_MC_07_gasIsMeasuredPerEntry`](Multicall.t.sol#L189) | Each entry is measured on its own, not given a running total of the batch |
+| MC-05 | [`test_MC_05_plainNativeTransferIsRefused`](Multicall.t.sol#L220) | The hub has no `receive`, so a bare transfer cannot strand native in it |
+| MC-09 | [`test_MC_09_aFrontRunDelegationDoesNotUnwindTheBatch`](Multicall.t.sol#L238) | A delegation relayed through `forwardCalls` with `allowFailure` set survives being front-run, so the order batched after it still settles |
+| MC-06 | [`test_MC_06_approveAMasterKeyAndSpendOnItInOneBatch`](Multicall.t.sol#L306) | One batch approves a session key at an authenticator and then spends on it |
+| MC-08 | [`test_MC_08_masterKeyMintsAnEphemeralKeyAndSpendsOnItInOneBatch`](Multicall.t.sol#L386) | One batch mints an ephemeral key from a master key and spends on it |
+| MC-FUZZ | [`testFuzz_MC_FUZZ_valueNeedsAnAllPayableBatch`](Multicall.t.sol#L467) | Value survives a batch exactly when every selector in it is payable |
 
 ## NoncesTest
 
@@ -355,25 +353,6 @@ takes its ID and description from its name.
 | T712-10 | [`test_T712_10_masterKeyUpdateStructHash`](authenticators/types/AuthenticatorEip712.t.sol#L38) | The {MasterKeyUpdate} hash matches the independent hash and moves with its inputs |
 | T712-11 | [`test_T712_11_sessionKeyUpdateStructHash`](authenticators/types/AuthenticatorEip712.t.sol#L73) | The {SessionKeyUpdate} hash matches the independent hash and moves with its inputs |
 | T712-12 | [`test_T712_12_nonceRevocationStructHash`](authenticators/types/AuthenticatorEip712.t.sol#L113) | The {NonceRevocation} hash matches the independent hash and moves with its inputs |
-
-## PackedBitsTest
-
-[`base/PackedBits.t.sol`](base/PackedBits.t.sol)
-
-| ID | Test | Description |
-| --- | --- | --- |
-| PB-01 | [`test_PB_01_positionsThatExistAndPositionsThatDoNot`](base/PackedBits.t.sol#L38) | Every position below 256 exists, and nothing at or above it does |
-| PB-01b | [`testFuzz_PB_01b_everyPositionAgreesWithTheWord`](base/PackedBits.t.sol#L62) | `pos` equals `word / 2**i % 2` for any word and index, and reads false from 256 |
-| PB-02 | [`test_PB_02_resultIsACanonicalBool`](base/PackedBits.t.sol#L83) | The result is a canonical bool, not merely a truthy word |
-
-## Permit2ArtifactTest
-
-[`base/Permit2Artifact.t.sol`](base/Permit2Artifact.t.sol)
-
-| ID | Test | Description |
-| --- | --- | --- |
-| ART-01 | [`test_ART_01_artifactIsTheCanonicalPermit2`](base/Permit2Artifact.t.sol#L25) | The artifact creation code maps to the canonical Permit2 address under CREATE2 |
-| ART-02 | [`test_ART_02_deploysAndScopesItsOwnDomain`](base/Permit2Artifact.t.sol#L36) | The artifact deploys locally with code and a non-zero `DOMAIN_SEPARATOR()` |
 
 ## Eip712Test
 

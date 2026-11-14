@@ -24,10 +24,10 @@ interface IOrderAuthenticator {
 
   /**
    * @notice Records, replaces or withdraws the owner's authentication material
-   * @dev Any account may call this, and {ICallsForwarder-forwardCalls} relays it with the
-   * forwarder as `msg.sender`. An implementation must therefore accept only `msg.sender == owner`
+   * @dev Any account may call this, and {IKSAllowanceHubV2-forwardCalls} relays it with
+   * Multicall3 as `msg.sender`. An implementation must therefore accept only `msg.sender == owner`
    * as authentication without a signature, and must verify `signature` for every other caller,
-   * including the forwarder and the hub. The implementation determines which signer may authorise
+   * including Multicall3 and the hub. The implementation determines which signer may authorise
    * an update, and is responsible for replay protection.
    * @param owner Account the material belongs to
    * @param data Implementation-specific payload

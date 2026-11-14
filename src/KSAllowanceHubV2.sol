@@ -5,12 +5,9 @@ import {MsgSender} from './base/MsgSender.sol';
 
 import {Constants} from './libraries/Constants.sol';
 
-import {PackedBits} from './types/base/PackedBits.sol';
-
 import {AuthDelegator} from './base/AuthDelegator.sol';
 import {Multicall} from './base/Multicall.sol';
 
-import {ICallsForwarder} from './interfaces/ICallsForwarder.sol';
 import {IKSAllowanceHubV2} from './interfaces/IKSAllowanceHubV2.sol';
 import {IOrderAuthenticator} from './interfaces/authenticators/IOrderAuthenticator.sol';
 
@@ -28,6 +25,8 @@ import {FulfillmentWitnessLib} from './types/FulfillmentWitness.sol';
 import {GenericCall, GenericCallLib} from './types/GenericCall.sol';
 import {SolutionApprovalLib} from './types/SolutionApproval.sol';
 import {ValidationParams, ValidationParamsLib} from './types/ValidationParams.sol';
+
+import {IMulticall3} from 'forge-std/interfaces/IMulticall3.sol';
 
 import {ManagementSimple} from 'ks-common-sc/src/base/ManagementSimple.sol';
 
@@ -81,7 +80,7 @@ contract KSAllowanceHubV2 is
 
   address internal immutable PERMIT2;
 
-  address internal immutable CALLS_FORWARDER;
+  address internal immutable MULTICALL3;
 
   /// @dev Runs {FulfillmentOrderLib-checkFulfillment} before the function body
   modifier checkFulfillment(
@@ -98,7 +97,7 @@ contract KSAllowanceHubV2 is
    * @param initialRescuers Accounts that may transfer assets held by the hub
    * @param initialWhitelistedRouters Routers callable from the start
    * @param permit2 The canonical Permit2 deployment
-   * @param callsForwarder The {CallsForwarder} that {forwardCalls} relays through
+   * @param multicall3 The Multicall3 deployment that {forwardCalls} calls
    */
   constructor(
     address initialAdmin,
@@ -106,7 +105,7 @@ contract KSAllowanceHubV2 is
     address[] memory initialRescuers,
     address[] memory initialWhitelistedRouters,
     address permit2,
-    address callsForwarder
+    address multicall3
   )
     ManagementSimple(initialAdmin, initialGuardians)
     AuthDelegator('KyberSwap Allowance Hub', '2.0.0')
@@ -118,7 +117,7 @@ contract KSAllowanceHubV2 is
     _setRoleRevoker(Constants.WHITELISTED_ROUTER_ROLE, KSRoles.GUARDIAN_ROLE);
 
     PERMIT2 = permit2;
-    CALLS_FORWARDER = callsForwarder;
+    MULTICALL3 = multicall3;
   }
 
   /// @inheritdoc IKSAllowanceHubV2
@@ -331,12 +330,12 @@ contract KSAllowanceHubV2 is
   }
 
   /// @inheritdoc IKSAllowanceHubV2
-  function forwardCalls(address[] calldata targets, bytes[] calldata data, PackedBits allowFailure)
+  function forwardCalls(IMulticall3.Call3[] calldata calls)
     external
     payable
-    returns (bytes[] memory results)
+    returns (IMulticall3.Result[] memory results)
   {
-    return ICallsForwarder(CALLS_FORWARDER).forwardCalls(targets, data, allowFailure);
+    return IMulticall3(MULTICALL3).aggregate3(calls);
   }
 
   /// @inheritdoc IKSAllowanceHubV2

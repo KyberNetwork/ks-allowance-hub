@@ -6,7 +6,6 @@ import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol'
 import {RouterMock} from 'test/mocks/RouterMock.sol';
 
 import {NativeSpendGuard} from 'src/base/NativeSpendGuard.sol';
-import {ICallsForwarder} from 'src/interfaces/ICallsForwarder.sol';
 import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
 import {IOrderAuthenticator} from 'src/interfaces/authenticators/IOrderAuthenticator.sol';
 import {
@@ -18,7 +17,6 @@ import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
 import {GenericCall} from 'src/types/GenericCall.sol';
 import {AuthKey} from 'src/types/base/AuthKey.sol';
-import {PackedBits} from 'src/types/base/PackedBits.sol';
 
 import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
@@ -64,8 +62,7 @@ contract MulticallTest is AuthenticatorBase {
     GenericCall[] memory calls = _calls(_routerCall(0.5 ether, hex'01'));
 
     bytes[] memory batch = new bytes[](2);
-    batch[0] =
-      abi.encodeCall(ICallsForwarder.forwardCalls, (tokens, permits, PackedBits.wrap(bytes32(0))));
+    batch[0] = abi.encodeCall(IKSAllowanceHubV2.forwardCalls, (_call3s(tokens, permits, 0)));
     batch[1] = abi.encodeCall(
       IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
       (_openExecutionOrder(erc20s, calls, 0, deadline), address(0), '', false)
@@ -191,7 +188,7 @@ contract MulticallTest is AuthenticatorBase {
    */
   function test_MC_07_gasIsMeasuredPerEntry() public {
     bytes memory cheap = abi.encodeCall(
-      ICallsForwarder.forwardCalls, (new address[](0), new bytes[](0), PackedBits.wrap(bytes32(0)))
+      IKSAllowanceHubV2.forwardCalls, (_call3s(new address[](0), new bytes[](0), 0))
     );
 
     bytes[] memory cheapFirst = new bytes[](2);
@@ -232,11 +229,11 @@ contract MulticallTest is AuthenticatorBase {
   }
 
   /**
-   * MC-09 — a delegation relayed through `forwardCalls` with its failure bit set survives being
+   * MC-09 — a delegation relayed through `forwardCalls` with `allowFailure` set survives being
    * front-run, so the order batched after it still settles
    * @dev The front-runner submits the same signed delegation first, which spends its nonce. The
-   * relayer's copy then reverts; with the bit clear that unwinds the whole batch, with it set the
-   * batch carries on, and the delegation is in place either way.
+   * relayer's copy then reverts; with `allowFailure` false that unwinds the whole batch, with it
+   * true the batch carries on, and the delegation is in place either way.
    */
   function test_MC_09_aFrontRunDelegationDoesNotUnwindTheBatch() public {
     AuthKey memory key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
@@ -279,21 +276,14 @@ contract MulticallTest is AuthenticatorBase {
       owner, address(authenticator), true, _encodeKey(key), delegationNonce, deadline, delegationSig
     );
 
-    // with the failure bit clear, the spent nonce unwinds the batch
-    batch[0] =
-      abi.encodeCall(ICallsForwarder.forwardCalls, (targets, relayed, PackedBits.wrap(bytes32(0))));
+    // with `allowFailure` false, the spent nonce unwinds the batch
+    batch[0] = abi.encodeCall(IKSAllowanceHubV2.forwardCalls, (_call3s(targets, relayed, 0)));
     vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(owner), delegationNonce
-      )
-    );
+    vm.expectRevert(abi.encodeWithSignature('Error(string)', 'Multicall3: call failed'));
     hub.multicall(batch);
 
-    // with it set, the batch carries past the delegation and settles the order
-    batch[0] = abi.encodeCall(
-      ICallsForwarder.forwardCalls, (targets, relayed, PackedBits.wrap(bytes32(uint256(1))))
-    );
+    // with it true, the batch carries past the delegation and settles the order
+    batch[0] = abi.encodeCall(IKSAllowanceHubV2.forwardCalls, (_call3s(targets, relayed, 1)));
     uint256 routerBefore = IERC20(token18).balanceOf(address(router));
 
     vm.prank(relayer);
@@ -342,8 +332,7 @@ contract MulticallTest is AuthenticatorBase {
     );
 
     bytes[] memory batch = new bytes[](2);
-    batch[0] =
-      abi.encodeCall(ICallsForwarder.forwardCalls, (targets, relayed, PackedBits.wrap(bytes32(0))));
+    batch[0] = abi.encodeCall(IKSAllowanceHubV2.forwardCalls, (_call3s(targets, relayed, 0)));
     batch[1] = abi.encodeCall(
       IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
       (order, address(authenticator), orderAuth, false)
@@ -427,8 +416,7 @@ contract MulticallTest is AuthenticatorBase {
     );
 
     bytes[] memory batch = new bytes[](2);
-    batch[0] =
-      abi.encodeCall(ICallsForwarder.forwardCalls, (targets, relayed, PackedBits.wrap(bytes32(0))));
+    batch[0] = abi.encodeCall(IKSAllowanceHubV2.forwardCalls, (_call3s(targets, relayed, 0)));
     batch[1] = abi.encodeCall(
       IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
       (order, address(authenticator), orderAuth, false)
@@ -550,7 +538,7 @@ contract MulticallTest is AuthenticatorBase {
     );
   }
 
-  /// @dev A whole EIP-2612 `permit` call for {ICallsForwarder-forwardCalls} to relay to token6
+  /// @dev A whole EIP-2612 `permit` call for {IKSAllowanceHubV2-forwardCalls} to relay to token6
   function _usdcPermitCall(address spender, uint256 value, uint256 deadline)
     internal
     view
