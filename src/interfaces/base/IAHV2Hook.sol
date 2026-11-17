@@ -5,7 +5,7 @@ import {AHV2Order} from '../../types/AHV2Order.sol';
 import {AHV2Solution} from '../../types/AHV2Solution.sol';
 
 /// @title IAHV2Hook
-/// @notice Interface a hook named in an order's `hooks` must implement
+/// @notice Interface a hook in an order's `hooks` must implement
 /// @dev A hook reverts to refuse the order. {IMsgSender-msgSender} returns the order's owner
 /// during both calls.
 interface IAHV2Hook {

@@ -15,11 +15,11 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * @dev Covers the parts of the order the permit does not; the permit covers the ERC20 tokens and
  * amounts. The route and the targets of the transfers are not covered; the witness specifies the
  * exclusive caller, the hooks and the solution approver instead.
- * @param exclusiveCaller Account that may submit the order; the dead address allows any account
+ * @param exclusiveCaller Account that may submit the order; the zero address allows any account
  * @param erc721Approvals ERC721 transfers
  * @param hooks Hooks of the order
  * @param ownerCalls Callee calls fixed by the owner
- * @param solutionApprover Account whose signature the solution requires; the dead address requires
+ * @param solutionApprover Account whose signature the solution requires; the zero address requires
  * none
  * @param clientData The order's client data
  */

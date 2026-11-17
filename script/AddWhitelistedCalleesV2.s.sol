@@ -15,7 +15,6 @@ contract AddWhitelistedCalleesV2Script is BaseScript {
     address allowanceHubV2 = _readAddress('allowance-hub-v2');
     address[] memory whitelistedCallees = _readAddressArray('whitelisted-callees');
 
-    /// @dev Only grant the role to callees that do not already have it
     uint256 count;
     bytes[] memory grants = new bytes[](whitelistedCallees.length);
     for (uint256 i = 0; i < whitelistedCallees.length; i++) {

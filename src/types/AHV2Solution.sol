@@ -13,7 +13,7 @@ import {CallParams, CallParamsLib} from './CallParams.sol';
  * `order.erc20Allowances[i]` and `erc721Targets[i]` receives `order.erc721Approvals[i]`. The
  * solution specifies a target and an amount for each ERC20 transfer and a target for each ERC721
  * transfer, so each target array and `erc20Amounts` must have one entry per transfer. No approval
- * is required when the order's `solutionApprover` is the dead address or the order's owner submits
+ * is required when the order's `solutionApprover` is the zero address or the order's owner submits
  * it.
  * @param erc20Targets Target of each ERC20 transfer, in order
  * @param erc20Amounts Amount of each ERC20 transfer, in order; each is at most its allowance

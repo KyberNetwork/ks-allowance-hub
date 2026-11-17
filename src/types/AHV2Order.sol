@@ -19,14 +19,10 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * @notice An owner's order to transfer assets along a route chosen by a solver
  * @dev The order specifies neither the route, nor the targets of its transfers, nor the amounts of
  * its ERC20 transfers; an {AHV2Solution} supplies them. The hooks constrain the result of the
- * solution, and `solutionApprover` may be required to approve it.
- *
- * When `owner` submits the order, `exclusiveCaller` and `solutionApprover` do not apply and no
- * authentication is required beyond the call itself, except that a Permit2 entry point still
- * requires the owner's permit signature, without a witness. On a delegated entry point the owner's
- * own submission spends no nonce, so the same order may settle more than once.
+ * solution, and `solutionApprover` may be required to approve it. When `owner` submits the order,
+ * `exclusiveCaller` and `solutionApprover` do not apply.
  * @param owner Account the assets are transferred from
- * @param exclusiveCaller Account that may submit the order besides the owner; the dead address
+ * @param exclusiveCaller Account that may submit the order besides the owner; the zero address
  * allows any account
  * @param erc20Allowances ERC20 transfers, each of at most its `amount`, sent from the owner to the
  * target and in the amount the solution specifies for it
@@ -35,7 +31,7 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * @param hooks Hooks called before the assets move and after the owner's calls
  * @param ownerCalls Callee calls fixed by the owner, run after the solver's calls
  * @param solutionApprover Account whose signature the solution requires when the owner does not
- * submit the order; the dead address requires none
+ * submit the order; the zero address requires none
  * @param nonce Permit2 nonce on the Permit2 entry points; on the delegated entry points, for the
  * authenticator to spend
  * @param expiration Last timestamp at which the order may settle
@@ -144,14 +140,13 @@ library AHV2OrderLib {
     );
   }
 
-  /**
-   * @dev Reverts when the order or `solution` has passed its expiration, or when `solution` does
-   * not specify one target for each transfer, one amount for each ERC20 transfer and one entry of
-   * `solverData` for each owner call
-   */
+  /// @dev Checks the expirations of the order and `solution`, and that `solution` fits the order
   function checkSettlement(AHV2Order calldata order, AHV2Solution calldata solution) internal view {
+    // A call at the expiration is accepted
     _checkDeadline(order.expiration);
     _checkDeadline(solution.expiration);
+    // One target and one amount for each ERC20 transfer, one target for each ERC721 transfer and
+    // one `solverData` entry for each owner call
     _checkLengths(solution.erc20Targets.length, order.erc20Allowances.length);
     _checkLengths(solution.erc20Amounts.length, order.erc20Allowances.length);
     _checkLengths(solution.erc721Targets.length, order.erc721Approvals.length);

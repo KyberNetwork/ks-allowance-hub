@@ -7,8 +7,8 @@
   },
   "lib/ks-common-sc": {
     "tag": {
-      "name": "v2.9.1",
-      "rev": "7373b74619aae5d00c7f46ff18087c99c5ba4996"
+      "name": "v2.10.0",
+      "rev": "5ed40b137934a86ef2d2879bfe4869e4378026ce"
     }
   },
   "lib/solady": {

@@ -7,6 +7,8 @@ import {IAuthDelegator} from '../interfaces/base/IAuthDelegator.sol';
 import {DeadlineChecker} from './DeadlineChecker.sol';
 import {UnorderedNonce} from './UnorderedNonce.sol';
 
+import {Constants} from '../libraries/Constants.sol';
+
 import {AuthDelegationLib} from '../types/AuthDelegation.sol';
 
 import {EIP712} from 'openzeppelin-contracts/contracts/utils/cryptography/EIP712.sol';
@@ -33,7 +35,7 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
 
   /// @dev Reverts unless `authenticator` is the zero address or is delegated by `owner`
   modifier checkDelegation(address owner, address authenticator) {
-    if (authenticator != address(0) && !authDelegated[owner][authenticator]) {
+    if (authenticator != Constants.ADDRESS_ZERO && !authDelegated[owner][authenticator]) {
       revert AuthenticatorNotDelegated(authenticator);
     }
     _;
@@ -49,6 +51,9 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
     uint256 deadline,
     bytes calldata signature
   ) external payable checkDeadline(deadline) {
+    // The owner's call is its own authorization: `signature` must be empty and no nonce is spent.
+    // Any other caller, including Multicall3 relaying the call through `forwardCalls`, needs the
+    // owner's signature over the {AuthDelegation}, which spends `nonce` in the owner's namespace.
     if (owner != msg.sender) {
       _useUnorderedNonce(owner, nonce);
 
@@ -62,8 +67,10 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
       revert UnexpectedSignature();
     }
 
-    // Not called on withdrawal; an authenticator that reverts cannot prevent it. The owner
-    // has been authenticated above, since `initAuthentication` takes no signature
+    // Delegating with non-empty `data` passes it to `initAuthentication`, which takes no signature
+    // and relies on the owner having been authenticated above. Withdrawing calls no authenticator,
+    // so an authenticator that reverts cannot prevent it, and leaves the authenticator's own state
+    // unchanged.
     if (delegated && data.length > 0) {
       IAHV2Authenticator(authenticator).initAuthentication(owner, data);
     }

@@ -18,7 +18,7 @@ import {CallParams, CallParamsLib} from './types/CallParams.sol';
 import {ERC20Allowance, ERC20AllowanceLib} from './types/ERC20Allowance.sol';
 import {ERC20Transfer} from './types/ERC20Transfer.sol';
 import {ERC721Approval, ERC721ApprovalLib} from './types/ERC721Approval.sol';
-import {ERC721Transfer, ERC721TransferLib} from './types/ERC721Transfer.sol';
+import {ERC721Transfer} from './types/ERC721Transfer.sol';
 import {HookParams, HookParamsLib} from './types/HookParams.sol';
 import {SolutionApprovalLib} from './types/SolutionApproval.sol';
 
@@ -31,6 +31,7 @@ import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer
 import {KSRoles} from 'ks-common-sc/src/libraries/KSRoles.sol';
 import {TokenHelper} from 'ks-common-sc/src/libraries/token/TokenHelper.sol';
 
+import {IERC721} from 'openzeppelin-contracts/contracts/token/ERC721/IERC721.sol';
 import {
   SignatureChecker
 } from 'openzeppelin-contracts/contracts/utils/cryptography/SignatureChecker.sol';
@@ -40,22 +41,9 @@ import {
  * @notice Single approval target for KyberSwap. It transfers an owner's ERC20 and ERC721 tokens
  * and calls whitelisted callees in one transaction. The owner approves this contract instead of
  * each callee.
- * @dev The owner signs an {AHV2Order}, which specifies the assets that may leave the owner, the
- * account that may submit the order, the hooks that constrain the result and the callee calls the
- * owner fixes. An {AHV2Solution} supplies the targets and amounts of the transfers, the callee
- * calls of the route and the data of each owner call. The solution is not signed by the owner; the
- * order's solution approver may be required to approve it.
- *
- * A settlement calls each hook's `beforeSettlement` before any asset moves, moves the assets, calls
- * the callees of the solution through {IAHV2SolverCallee-solverCall}, calls the callees of the
- * order through {IAHV2OwnerCallee-ownerCall}, and calls each hook's `afterSettlement`.
- *
- * An order is authorized either by the owner's Permit2 signature, which signs the order as its
- * witness, or by an {IAHV2Authenticator} the owner has delegated through {AuthDelegator}. An
- * owner who submits their own order needs no witness and no authenticator.
- *
- * While an order settles, {msgSender} returns its owner. A callee call of an order may settle
- * another order, and {msgSender} returns the outer order's owner again once it returns.
+ * @dev The owner signs an {AHV2Order}, and a solver supplies an {AHV2Solution} for it. The order
+ * is authorized by the owner's Permit2 signature or by an {IAHV2Authenticator} the owner has
+ * delegated through {AuthDelegator}.
  */
 contract KSAllowanceHubV2 is
   IKSAllowanceHubV2,
@@ -68,7 +56,6 @@ contract KSAllowanceHubV2 is
   using DynamicArrayLibExt for uint256;
   using ERC20AllowanceLib for ERC20Allowance[];
   using ERC721ApprovalLib for ERC721Approval[];
-  using ERC721TransferLib for ERC721Transfer[];
   using HookParamsLib for HookParams[];
   using TokenHelper for address;
 
@@ -129,19 +116,28 @@ contract KSAllowanceHubV2 is
     guardNativeSpend
     returns (bytes[] memory results)
   {
+    // The modifiers have checked the expirations, the shape of the solution and that the owner
+    // delegated the authenticator
     bytes32 orderHash = order.hash();
 
-    // The owner's call is its own authentication and approves its own solution; any other caller
-    // needs the authenticator's authentication and, unless the approver is the dead address, the
-    // solution approval
+    // The owner's call is its own authentication and approves its own solution: the authenticator
+    // is not called, `authenticationData`, `solutionSignature` and `order.exclusiveCaller` are
+    // ignored, and no nonce is spent, so the owner may settle the same order more than once
     if (msg.sender != order.owner) {
-      if (msg.sender != order.exclusiveCaller && order.exclusiveCaller != Constants.DEAD_ADDRESS) {
+      // Any other caller must be the exclusive caller, or any account when the exclusive caller is
+      // the zero address
+      if (msg.sender != order.exclusiveCaller && order.exclusiveCaller != Constants.ADDRESS_ZERO) {
         revert NotExclusiveCaller(msg.sender);
       }
 
+      // The hub spends no `order.nonce` and keeps no record of settled orders, so the
+      // authenticator determines whether an order may be settled more than once. The owner has
+      // not signed `solution`, so the authenticator reads it here when it needs to.
       IAHV2Authenticator(authenticator).authenticate(order, orderHash, solution, authenticationData);
 
-      if (order.solutionApprover != Constants.DEAD_ADDRESS) {
+      // The approval is not required when the approver is the zero address. Otherwise it spends
+      // `solution.nonce` in the approver's namespace, so each approval settles at most once.
+      if (order.solutionApprover != Constants.ADDRESS_ZERO) {
         _checkSolutionApproval(order.solutionApprover, orderHash, solution, solutionSignature);
       }
     }
@@ -150,8 +146,11 @@ contract KSAllowanceHubV2 is
     bytes[] memory beforeSettlementResults =
       order.hooks.beforeSettlement(order, orderHash, solution);
 
+    // Emitted before the assets move and the calls run
     order.announce(orderHash, solution);
 
+    // Each ERC20 transfer sends `solution.erc20Amounts[i]`, at most its allowance, drawn from the
+    // owner's Permit2 allowances or from the owner's allowances to this hub
     if (usePermit2Allowances) {
       order.erc20Allowances
         .executePermit2(order.owner, solution.erc20Targets, solution.erc20Amounts, PERMIT2);
@@ -185,27 +184,37 @@ contract KSAllowanceHubV2 is
       bytes32 clientDataHash
     ) = order.membersHash();
 
-    // The owner's call approves its own solution, and a dead-address approver accepts any solution
-    if (msg.sender != order.owner && order.solutionApprover != Constants.DEAD_ADDRESS) {
+    // The modifiers have checked the expirations and the shape of the solution. The owner's call
+    // approves its own solution, and a zero-address approver accepts any solution; otherwise the
+    // approval spends `solution.nonce` in the approver's namespace, so each approval settles at
+    // most once.
+    if (msg.sender != order.owner && order.solutionApprover != Constants.ADDRESS_ZERO) {
       _checkSolutionApproval(order.solutionApprover, orderHash, solution, solutionSignature);
     }
 
-    // Runs before any asset moves; each hook reads the state before settlement
+    // Runs before any asset moves, and before Permit2 checks the owner's signature; each hook
+    // reads the state before settlement
     bytes[] memory beforeSettlementResults =
       order.hooks.beforeSettlement(order, orderHash, solution);
 
+    // Emitted before the assets move and the calls run
     order.announce(orderHash, solution);
 
+    // The permit's nonce is `order.nonce` and its deadline is `order.expiration`, so Permit2
+    // provides the replay protection. Its permitted amounts are the order's allowances, and its
+    // requested amounts are `solution.erc20Amounts`, each at most its allowance.
     ISignatureTransfer.PermitBatchTransferFrom memory permit =
       order.erc20Allowances.toPermitBatchTransferFrom(order.nonce, order.expiration);
     ISignatureTransfer.SignatureTransferDetails[] memory details =
       order.erc20Allowances.toSignatureTransferDetails(solution.erc20Targets, solution.erc20Amounts);
 
-    // The owner signs the permit alone; for any other caller the order is signed as the witness
+    // The owner's signature covers the permit alone when the owner calls. Any other caller must be
+    // the exclusive caller, or any account when the exclusive caller is the zero address, and the
+    // signature then also covers the order's witness.
     if (msg.sender == order.owner) {
       ISignatureTransfer(PERMIT2).permitTransferFrom(permit, details, order.owner, permit2Signature);
     } else if (
-      msg.sender == order.exclusiveCaller || order.exclusiveCaller == Constants.DEAD_ADDRESS
+      msg.sender == order.exclusiveCaller || order.exclusiveCaller == Constants.ADDRESS_ZERO
     ) {
       bytes32 witness = AHV2WitnessLib.hash(
         order.exclusiveCaller,
@@ -238,6 +247,8 @@ contract KSAllowanceHubV2 is
     payable
     returns (IMulticall3.Result[] memory results)
   {
+    // Lets a {multicall} batch include calls to other contracts. Neither the pause state nor the
+    // caller is checked, and native value sent with the call remains in the hub.
     return IMulticall3(MULTICALL3).aggregate3(calls);
   }
 
@@ -248,11 +259,16 @@ contract KSAllowanceHubV2 is
   ) external onlyRoleOrDefaultAdmin(KSRoles.RESCUER_ROLE) {
     for (uint256 i = 0; i < erc20Transfers.length; i++) {
       ERC20Transfer calldata transfer = erc20Transfers[i];
+      // A token that is the native-token address or the zero address transfers native value, and
+      // a zero `amount` transfers the whole balance. A zero `target` is not refused.
       uint256 amount = transfer.amount == 0 ? transfer.token.selfBalance() : transfer.amount;
       transfer.token.safeTransfer(transfer.target, amount);
     }
 
-    erc721Transfers.execute(address(this));
+    for (uint256 i = 0; i < erc721Transfers.length; i++) {
+      ERC721Transfer calldata transfer = erc721Transfers[i];
+      IERC721(transfer.token).safeTransferFrom(address(this), transfer.target, transfer.tokenId);
+    }
 
     emit RescueTokens(erc20Transfers, erc721Transfers);
   }
@@ -273,23 +289,22 @@ contract KSAllowanceHubV2 is
     }
   }
 
-  /**
-   * @dev Makes the ERC721 transfers, runs the solver's calls, runs the owner's calls and runs
-   * the hooks' `afterSettlement`
-   */
+  /// @dev Makes the ERC721 transfers, runs the calls and then the hooks' `afterSettlement`
   function _settle(
     AHV2Order calldata order,
     bytes32 orderHash,
     AHV2Solution calldata solution,
     bytes[] memory beforeSettlementResults
   ) internal returns (bytes[] memory results) {
+    // The ERC721 transfers precede the solver's calls, the solver's calls precede the owner's
+    // calls, and the hooks' `afterSettlement` runs last
     order.erc721Approvals.execute(order.owner, solution.erc721Targets);
 
+    // Return data of the solver's calls first, then of the owner's calls
     results = (solution.solverCalls.length + order.ownerCalls.length).mallocBytes();
     _executeSolverCalls(solution.solverCalls, results);
     _executeOwnerCalls(order.ownerCalls, solution.solverData, results, solution.solverCalls.length);
 
-    // The hooks check the result of the solver's and the owner's calls
     order.hooks.afterSettlement(order, orderHash, solution, beforeSettlementResults);
   }
 
