@@ -4,12 +4,12 @@ pragma solidity ^0.8.0;
 import {Vm} from 'forge-std/Vm.sol';
 
 import {SchemaHash} from 'test/base/SchemaHash.sol';
-
-import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol';
+import {SignerAuthenticatorBase} from 'test/base/SignerAuthenticatorBase.sol';
 
 import {ERC20Mock} from 'test/mocks/TokenMocks.sol';
 
 import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
+
 import {ERC20Allowance, ERC20AllowanceLib} from 'src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ERC721Approval} from 'src/types/ERC721Approval.sol';
@@ -19,7 +19,6 @@ import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
 import {GenericCall} from 'src/types/GenericCall.sol';
 import {NativeTransfer} from 'src/types/NativeTransfer.sol';
 import {ValidationParams} from 'src/types/ValidationParams.sol';
-import {AuthKey} from 'src/types/base/AuthKey.sol';
 
 import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
 
@@ -34,10 +33,8 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  * signed: `solverWallet` for an ERC20 transfer and `nftRecipient` for the NFT, neither of them a
  * router.
  */
-contract FulfillTargetsTest is AuthenticatorBase {
+contract FulfillTargetsTest is SignerAuthenticatorBase {
   uint160 internal constant AMOUNT = 5 ether;
-
-  AuthKey internal key;
 
   address internal approver;
   uint256 internal approverKey;
@@ -46,7 +43,6 @@ contract FulfillTargetsTest is AuthenticatorBase {
 
   function setUp() public override {
     super.setUp();
-    key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
     (approver, approverKey) = makeAddrAndKey('solution approver');
     solverWallet = makeAddr('solver wallet');
     nftRecipient = makeAddr('nft recipient');
@@ -451,11 +447,11 @@ contract FulfillTargetsTest is AuthenticatorBase {
   // helpers
   // -------------------------------------------------------------------------------------------
 
-  /// @dev Delegates `key` and returns the authentication data of `order` for a submitter other than
+  /// @dev Delegates `signer` and returns the authentication data of `order` for a submitter other than
   /// the owner
   function _authOf(FulfillmentOrder memory order) private returns (bytes memory) {
-    _delegateKeyThroughHub(key);
-    return _fulfillmentAuthData(order, key, masterKeyPk);
+    _delegateSignerThroughHub(signer);
+    return _fulfillmentAuthData(order, signer, signerPk);
   }
 
   /// @dev One ERC20 transfer of `AMOUNT` and the NFT, open to any submitter, with no route of its

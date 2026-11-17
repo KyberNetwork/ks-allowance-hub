@@ -3,34 +3,28 @@ pragma solidity ^0.8.0;
 
 import {Test} from 'forge-std/Test.sol';
 
-import {SchemaHash} from 'test/base/SchemaHash.sol';
+import {SchemaHash} from './SchemaHash.sol';
 
-import {PermitHash} from 'test/libraries/PermitHash.sol';
+import {PermitHash} from '../libraries/PermitHash.sol';
 
+import {AuthDelegation} from '../../src/types/AuthDelegation.sol';
+import {ERC20Allowance} from '../../src/types/ERC20Allowance.sol';
+import {ERC20Transfer} from '../../src/types/ERC20Transfer.sol';
+import {ERC721Approval} from '../../src/types/ERC721Approval.sol';
+import {ERC721Transfer} from '../../src/types/ERC721Transfer.sol';
 import {
   PermitBatchWitnessTransferFrom as Permit2ExecutionWitness
-} from 'src/types/ExecutionWitness.sol';
+} from '../../src/types/ExecutionWitness.sol';
+import {ExecutionWitness} from '../../src/types/ExecutionWitness.sol';
+import {FulfillmentOrder} from '../../src/types/FulfillmentOrder.sol';
+import {FulfillmentSolution} from '../../src/types/FulfillmentSolution.sol';
 import {
   PermitBatchWitnessTransferFrom as Permit2FulfillmentWitness
-} from 'src/types/FulfillmentWitness.sol';
-
-import {AuthDelegation} from 'src/types/AuthDelegation.sol';
-import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
-import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
-import {ERC721Approval} from 'src/types/ERC721Approval.sol';
-import {ERC721Transfer} from 'src/types/ERC721Transfer.sol';
-import {ExecutionWitness} from 'src/types/ExecutionWitness.sol';
-import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
-import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
-import {FulfillmentWitness} from 'src/types/FulfillmentWitness.sol';
-import {GenericCall} from 'src/types/GenericCall.sol';
-import {SolutionApproval} from 'src/types/SolutionApproval.sol';
-import {ValidationParams} from 'src/types/ValidationParams.sol';
-import {MasterKeyUpdate} from 'src/types/authenticators/MasterKeyUpdate.sol';
-import {NonceRevocation} from 'src/types/authenticators/NonceRevocation.sol';
-import {SessionKeyUpdate} from 'src/types/authenticators/SessionKeyUpdate.sol';
-import {AuthKey} from 'src/types/base/AuthKey.sol';
-import {KeyType} from 'src/types/base/KeyType.sol';
+} from '../../src/types/FulfillmentWitness.sol';
+import {FulfillmentWitness} from '../../src/types/FulfillmentWitness.sol';
+import {GenericCall} from '../../src/types/GenericCall.sol';
+import {SolutionApproval} from '../../src/types/SolutionApproval.sol';
+import {ValidationParams} from '../../src/types/ValidationParams.sol';
 
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 
@@ -75,10 +69,15 @@ abstract contract V2TestBase is Test {
   address internal owner;
   uint256 internal ownerKey;
 
+  /// @dev Directory of the checked-in Permit2 and Multicall3 artifacts, relative to the project root
+  function _artifactsDir() internal pure virtual returns (string memory) {
+    return 'test/artifacts/';
+  }
+
   /// @dev Deploys the real Permit2 on whatever chain the test is running, constructor and all, so
   /// it scopes its EIP-712 domain to this deployment
   function _deployPermit2() internal returns (address) {
-    return vm.deployCode('test/artifacts/Permit2.json');
+    return vm.deployCode(string.concat(_artifactsDir(), 'Permit2.json'));
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -153,58 +152,6 @@ abstract contract V2TestBase is Test {
         deadline: deadline
       })
     );
-  }
-
-  function lAuthKeyHash(bytes memory publicKey, uint8 keyType, uint256 expiration)
-    internal
-    pure
-    returns (bytes32)
-  {
-    return SchemaHash.authKey(
-      AuthKey({publicKey: publicKey, keyType: KeyType(keyType), expiration: expiration})
-    );
-  }
-
-  function lMasterKeyUpdate(
-    address keyOwner,
-    AuthKey memory masterKey,
-    bool approved,
-    uint256 nonce,
-    uint256 deadline
-  ) internal pure returns (bytes32) {
-    return SchemaHash.masterKeyUpdate(
-      MasterKeyUpdate({
-        owner: keyOwner, masterKey: masterKey, approved: approved, nonce: nonce, deadline: deadline
-      })
-    );
-  }
-
-  function lSessionKeyUpdate(
-    address keyOwner,
-    AuthKey memory masterKey,
-    AuthKey memory sessionKey,
-    bool approved,
-    uint256 nonce,
-    uint256 deadline
-  ) internal pure returns (bytes32) {
-    return SchemaHash.sessionKeyUpdate(
-      SessionKeyUpdate({
-        owner: keyOwner,
-        masterKey: masterKey,
-        sessionKey: sessionKey,
-        approved: approved,
-        nonce: nonce,
-        deadline: deadline
-      })
-    );
-  }
-
-  function lNonceRevocation(AuthKey memory key, uint256 nonce, uint256 deadline)
-    internal
-    pure
-    returns (bytes32)
-  {
-    return SchemaHash.nonceRevocation(NonceRevocation({key: key, nonce: nonce, deadline: deadline}));
   }
 
   // ---------------------------------------------------------------------------------------------

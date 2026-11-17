@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol';
+import {IMulticall3} from 'forge-std/interfaces/IMulticall3.sol';
+
+import {SignerAuthenticatorBase} from 'test/base/SignerAuthenticatorBase.sol';
 
 import {
   CallerRecorderMock,
@@ -10,15 +12,15 @@ import {
   ERC721PermitV4Mock,
   ReentrantPermitMock
 } from 'test/mocks/PermitTokenMocks.sol';
+import {SignerAuthenticatorMock} from 'test/mocks/SignerAuthenticatorMock.sol';
 import {ERC20Mock} from 'test/mocks/TokenMocks.sol';
 
-import {IMulticall3} from 'forge-std/interfaces/IMulticall3.sol';
 import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
-import {IOrderAuthenticator} from 'src/interfaces/authenticators/IOrderAuthenticator.sol';
-import {
-  ITwoTiersOrderAuthenticator
-} from 'src/interfaces/authenticators/ITwoTiersOrderAuthenticator.sol';
+import {IAHV2Authenticator} from 'src/interfaces/base/IAHV2Authenticator.sol';
 import {IAuthDelegator} from 'src/interfaces/base/IAuthDelegator.sol';
+
+import {AHV2AuthenticatorBase} from 'src/base/AHV2AuthenticatorBase.sol';
+
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
@@ -26,7 +28,6 @@ import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
 import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
 import {GenericCall} from 'src/types/GenericCall.sol';
 import {ValidationParams} from 'src/types/ValidationParams.sol';
-import {AuthKey} from 'src/types/base/AuthKey.sol';
 
 import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
 
@@ -36,7 +37,7 @@ import {ERC20Permit} from 'openzeppelin-contracts/contracts/token/ERC20/extensio
 
 /**
  * @title ForwarderTest
- * @notice `PF-01..06b`, `PF-08..09`, `PF-FUZZ`, `FWD-13`, `FWD-14`, `FWD-16..18`, `FWD-20..24` and
+ * @notice `PF-01..06b`, `PF-08..09`, `PF-FUZZ`, `FWD-13`, `FWD-14`, `FWD-16..18`, `FWD-21..24` and
  * `FWD-PAUSE/VALUE/REENTRY`: the calls {IKSAllowanceHubV2-forwardCalls} relays through Multicall3
  * that carry their own authorisation, the `allowFailure` flag of each call, the calls their target
  * refuses and the checks it does not perform.
@@ -47,7 +48,7 @@ import {ERC20Permit} from 'openzeppelin-contracts/contracts/token/ERC20/extensio
  * production constant, and in particular no production selector, appears on the expected side of
  * any assertion.
  */
-contract ForwarderTest is AuthenticatorBase {
+contract ForwarderTest is SignerAuthenticatorBase {
   // -----------------------------------------------------------------------------------------------
   // Literal type strings
   // -----------------------------------------------------------------------------------------------
@@ -434,36 +435,34 @@ contract ForwarderTest is AuthenticatorBase {
   // -----------------------------------------------------------------------------------------------
 
   /**
-   * FWD-13 — a relayed `updateAuthentication` approves a session key, on the authenticator's nonce
+   * FWD-13 — a relayed `updateAuthentication` approves a signer, on the authenticator's nonce
    * @dev This is not a token permit: it is the owner's instruction to an authenticator specifying
-   * the credential that may sign for them, relayed so the approval and the order that uses it fit
+   * the signer that may sign for them, relayed so the approval and the order that uses it fit
    * in one transaction. The authenticator owns the replay protection for it, so its nonce bitmap
    * changes and the hub's does not: the hub only relays the call and spends nothing of its own. The
    * relay reaches an authenticator the owner never delegated, and leaves it undelegated: the order
    * rails gate on the delegation, but `updateAuthentication` carries the owner's own signature, so
    * the relay needs no such gate.
    */
-  function test_FWD_13_updateAuthenticationIsRelayedAndApprovesTheKey() public {
-    AuthKey memory fresh = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
+  function test_FWD_13_updateAuthenticationIsRelayedAndApprovesTheSigner() public {
     uint256 nonce = 300;
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     assertFalse(hub.authDelegated(owner, address(authenticator)), 'the owner never delegated it');
 
-    bytes32 freshHash = _keyHash(fresh);
-    bytes memory approvalSig = _signMasterKeyUpdate(fresh, true, nonce, deadline);
+    bytes memory approvalSig = _signSignerUpdate(signer, true, nonce, deadline);
 
     bytes[] memory data = new bytes[](1);
     data[0] = abi.encodeCall(
-      IOrderAuthenticator.updateAuthentication,
-      (owner, _approveKey(fresh), nonce, deadline, approvalSig)
+      IAHV2Authenticator.updateAuthentication,
+      (owner, _approveSigner(signer), nonce, deadline, approvalSig)
     );
 
     vm.prank(relayer);
     IMulticall3.Result[] memory results =
       hub.forwardCalls(_call3s(_one(address(authenticator)), data, 0));
 
-    assertTrue(authenticator.masterKeys(owner, freshHash), 'the key is approved');
+    assertTrue(authenticator.approvedSigners(owner, signer), 'the signer is approved');
     assertEq(
       authenticator.nonces(lNonceKey(owner), nonce >> 8),
       1 << (nonce & 0xff),
@@ -477,64 +476,24 @@ contract ForwarderTest is AuthenticatorBase {
   }
 
   /**
-   * FWD-20 — a relayed `updateAuthentication` signed by a master key approves a session key
-   * @dev Both rails share one selector, so the second tier is relayable without any change to the
-   * relay. The nonce spent is in the master key's bitmap: the owner neither signed nor
-   * submitted, so nothing of theirs is spent.
-   */
-  function test_FWD_20_updateAuthenticationIsRelayedOnTheMasterKeyRail() public {
-    AuthKey memory masterKey = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
-    AuthKey memory ephemeral = _secpKey(sessionSigner, vm.getBlockTimestamp() + 1 hours);
-    _delegateKeyThroughHub(masterKey);
-
-    uint256 nonce = 310;
-    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
-    bytes memory approvalSig =
-      _signSessionKeyUpdate(masterKey, ephemeral, true, nonce, deadline, masterKeyPk);
-
-    bytes[] memory data = new bytes[](1);
-    data[0] = abi.encodeCall(
-      IOrderAuthenticator.updateAuthentication,
-      (owner, _sessionKeyData(ephemeral, masterKey, true), nonce, deadline, approvalSig)
-    );
-
-    vm.prank(relayer);
-    hub.forwardCalls(_call3s(_one(address(authenticator)), data, 0));
-
-    assertEq(
-      authenticator.sessionKeyMaster(owner, _keyHash(ephemeral)),
-      _keyHash(masterKey),
-      'the approval landed'
-    );
-    assertEq(
-      authenticator.nonces(_credentialHash(masterKey), nonce >> 8),
-      1 << (nonce & 0xff),
-      "the master key's nonce burned"
-    );
-    assertEq(authenticator.nonces(lNonceKey(owner), nonce >> 8), 0, "and not the owner's");
-  }
-
-  /**
    * FWD-14 — a relayed `updateAuthentication` with an empty signature is refused for an owner
    * @dev Multicall3 makes the call, so the `msg.sender` the authenticator sees is Multicall3, never
    * the account that submitted the transaction. The authenticator's owner branch is
    * therefore out of reach from here, and the empty signature that branch would have accepted is
    * checked instead — and fails. This is the line that stops the hub being a trusted authenticator
    * for anybody: if the authenticator took the hub's word for who the owner was, this call would
-   * approve a key for `owner` on nothing but the say-so of whoever paid for the gas.
+   * approve a signer for `owner` on nothing but the say-so of whoever paid for the gas.
    */
   function test_FWD_14_emptySignatureIsRefusedEvenFromTheOwner() public {
-    AuthKey memory fresh = _secpKey(recipient, vm.getBlockTimestamp() + 30 days);
     uint256 nonce = 301;
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
-    bytes32 freshHash = _keyHash(fresh);
     bytes memory noSignature = '';
 
     bytes[] memory data = new bytes[](1);
     data[0] = abi.encodeCall(
-      IOrderAuthenticator.updateAuthentication,
-      (owner, _approveKey(fresh), nonce, deadline, noSignature)
+      IAHV2Authenticator.updateAuthentication,
+      (owner, _approveSigner(recipient), nonce, deadline, noSignature)
     );
     address[] memory targets = _one(address(authenticator));
 
@@ -544,17 +503,21 @@ contract ForwarderTest is AuthenticatorBase {
     assertFalse(results[0].success, 'the relayed call failed');
     assertEq(
       results[0].returnData,
-      abi.encodeWithSelector(ITwoTiersOrderAuthenticator.InvalidUpdateSignature.selector),
+      abi.encodeWithSelector(SignerAuthenticatorMock.InvalidUpdateSignature.selector),
       'on the empty signature'
     );
-    assertFalse(authenticator.masterKeys(owner, freshHash), 'nothing was approved');
+    assertFalse(authenticator.approvedSigners(owner, recipient), 'nothing was approved');
 
     // the same instruction, from the same account, directly at the authenticator: there the owner
     // is `msg.sender` and the empty signature is accepted, so the refusal above is evidence about
     // the hop through the relay rather than about the payload
     vm.prank(owner);
-    authenticator.updateAuthentication(owner, _approveKey(fresh), nonce, deadline, noSignature);
-    assertTrue(authenticator.masterKeys(owner, freshHash), 'accepted when the owner calls directly');
+    authenticator.updateAuthentication(
+      owner, _approveSigner(recipient), nonce, deadline, noSignature
+    );
+    assertTrue(
+      authenticator.approvedSigners(owner, recipient), 'accepted when the owner calls directly'
+    );
   }
 
   /// FWD-21 — a relayed `updateDelegation` delegates on the owner's signature and the hub's nonce
@@ -607,19 +570,17 @@ contract ForwarderTest is AuthenticatorBase {
    * authenticator refuses it as the caller because it is not the hub
    * @dev `initAuthentication`, `authenticateExecution` and `authenticateFulfillment` trust only the
    * hub. A relay makes Multicall3 their caller, so each is refused with
-   * {IOrderAuthenticator-CallerNotAuthorized} reporting Multicall3 and the authenticator's state
+   * {AHV2AuthenticatorBase-CallerNotAuthorized} reporting Multicall3 and the authenticator's state
    * is unchanged. With `allowFailure` true the refusal is recorded as that entry's result; with it
    * false the batch reverts with Multicall3's own error.
    */
   function test_FWD_16_authenticatorRefusesMulticall3OnHubOnlyCalls() public {
-    AuthKey memory victimKey = _secpKey(relayer, vm.getBlockTimestamp() + 30 days);
-    bytes32 victimHash = _keyHash(victimKey);
-    bytes memory payload = _encodeKey(victimKey);
+    bytes memory payload = _encodeSigner(relayer);
 
     address[] memory targets = _one(address(authenticator));
 
     bytes[] memory initData = new bytes[](1);
-    initData[0] = abi.encodeCall(IOrderAuthenticator.initAuthentication, (owner, payload));
+    initData[0] = abi.encodeCall(IAHV2Authenticator.initAuthentication, (owner, payload));
 
     ExecutionOrder memory execOrder =
       _openExecutionOrder(new ERC20Transfer[](0), new GenericCall[](0), 0, vm.getBlockTimestamp());
@@ -633,12 +594,12 @@ contract ForwarderTest is AuthenticatorBase {
 
     bytes[] memory executionData = new bytes[](1);
     executionData[0] =
-      abi.encodeCall(IOrderAuthenticator.authenticateExecution, (execOrder, bytes32(0), payload));
+      abi.encodeCall(IAHV2Authenticator.authenticateExecution, (execOrder, bytes32(0), payload));
 
     FulfillmentSolution memory solution;
     bytes[] memory fulfillmentData = new bytes[](1);
     fulfillmentData[0] = abi.encodeCall(
-      IOrderAuthenticator.authenticateFulfillment, (fulfillOrder, bytes32(0), solution, payload)
+      IAHV2Authenticator.authenticateFulfillment, (fulfillOrder, bytes32(0), solution, payload)
     );
 
     // Sent straight at the authenticator, each of the three reaches its hub-only gate, so the
@@ -648,19 +609,21 @@ contract ForwarderTest is AuthenticatorBase {
     _assertReachesTheHubOnlyGate(fulfillmentData[0], 'authenticateFulfillment');
 
     bytes memory refusal =
-      abi.encodeWithSelector(IOrderAuthenticator.CallerNotAuthorized.selector, multicall3);
+      abi.encodeWithSelector(AHV2AuthenticatorBase.CallerNotAuthorized.selector, multicall3);
 
     vm.prank(relayer);
     vm.expectRevert(_callFailed());
     hub.forwardCalls(_call3s(targets, initData, 0));
 
-    assertFalse(authenticator.masterKeys(owner, victimHash), 'no key was planted on the owner');
+    assertFalse(
+      authenticator.approvedSigners(owner, relayer), 'no signer was approved on the owner'
+    );
 
     // `allowFailure` true records the refusal as the entry's result
     vm.prank(relayer);
     IMulticall3.Result[] memory results = hub.forwardCalls(_call3s(targets, initData, 1));
     assertEq(results[0].returnData, refusal, 'the result holds the authenticator refusal');
-    assertFalse(authenticator.masterKeys(owner, victimHash), 'and still no key was planted');
+    assertFalse(authenticator.approvedSigners(owner, relayer), 'and still no signer was approved');
 
     vm.prank(relayer);
     results = hub.forwardCalls(_call3s(targets, executionData, 1));
@@ -883,7 +846,7 @@ contract ForwarderTest is AuthenticatorBase {
     assertFalse(ok, string.concat(what, ' refused the call'));
     assertEq(
       ret,
-      abi.encodeWithSelector(IOrderAuthenticator.CallerNotAuthorized.selector, address(this)),
+      abi.encodeWithSelector(AHV2AuthenticatorBase.CallerNotAuthorized.selector, address(this)),
       string.concat('and refused it at the hub-only gate, so the payload reached the real ', what)
     );
   }

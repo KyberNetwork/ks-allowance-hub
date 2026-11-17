@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.38;
 
-import {MsgSender} from './base/MsgSender.sol';
-
-import {Constants} from './libraries/Constants.sol';
+import {IKSAllowanceHubV2} from './interfaces/IKSAllowanceHubV2.sol';
+import {IAHV2Authenticator} from './interfaces/base/IAHV2Authenticator.sol';
 
 import {AuthDelegator} from './base/AuthDelegator.sol';
+import {MsgSender} from './base/MsgSender.sol';
 import {Multicall} from './base/Multicall.sol';
 
-import {IKSAllowanceHubV2} from './interfaces/IKSAllowanceHubV2.sol';
-import {IOrderAuthenticator} from './interfaces/authenticators/IOrderAuthenticator.sol';
-
+import {Constants} from './libraries/Constants.sol';
 import {DynamicArrayLibExt} from './libraries/DynamicArrayLibExt.sol';
 
 import {ERC20Allowance, ERC20AllowanceLib} from './types/ERC20Allowance.sol';
@@ -53,7 +51,7 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * {FulfillmentSolution} and constrains the result with validators.
  *
  * An order is authorised either by the owner's Permit2 signature, which signs the order as its
- * witness, or by an {IOrderAuthenticator} the owner has delegated through {AuthDelegator}. An
+ * witness, or by an {IAHV2Authenticator} the owner has delegated through {AuthDelegator}. An
  * owner who submits their own order needs no witness and no authenticator.
  *
  * While an order settles, {msgSender} returns its owner. A router call of an order may settle
@@ -142,7 +140,7 @@ contract KSAllowanceHubV2 is
       if (msg.sender != order.relayer && order.relayer != Constants.DEAD_ADDRESS) {
         revert CallerNotRelayer(msg.sender);
       }
-      IOrderAuthenticator(authenticator).authenticateExecution(order, orderHash, authenticationData);
+      IAHV2Authenticator(authenticator).authenticateExecution(order, orderHash, authenticationData);
     }
 
     order.announce(orderHash);
@@ -238,7 +236,7 @@ contract KSAllowanceHubV2 is
       if (msg.sender != order.solver && order.solver != Constants.DEAD_ADDRESS) {
         revert CallerNotSolver(msg.sender);
       }
-      IOrderAuthenticator(authenticator)
+      IAHV2Authenticator(authenticator)
         .authenticateFulfillment(order, orderHash, solution, authenticationData);
       if (order.solutionApprover != Constants.DEAD_ADDRESS) {
         _checkSolutionApproval(order.solutionApprover, orderHash, solution, solutionSignature);

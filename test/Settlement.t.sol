@@ -4,19 +4,18 @@ pragma solidity ^0.8.0;
 import {Vm} from 'forge-std/Vm.sol';
 
 import {SchemaHash} from 'test/base/SchemaHash.sol';
-
-import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol';
+import {SignerAuthenticatorBase} from 'test/base/SignerAuthenticatorBase.sol';
 
 import {EchoRouterMock, ReentrantRouterMock, RouterMock} from 'test/mocks/RouterMock.sol';
+import {SignerAuthenticatorMock} from 'test/mocks/SignerAuthenticatorMock.sol';
 import {ReentrantReceiverMock} from 'test/mocks/TokenMocks.sol';
 
-import {NativeSpendGuard} from 'src/base/NativeSpendGuard.sol';
 import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
-import {
-  ITwoTiersOrderAuthenticator
-} from 'src/interfaces/authenticators/ITwoTiersOrderAuthenticator.sol';
 import {IKSGenericRouter} from 'src/interfaces/base/IKSGenericRouter.sol';
 import {IUnorderedNonce} from 'src/interfaces/base/IUnorderedNonce.sol';
+
+import {NativeSpendGuard} from 'src/base/NativeSpendGuard.sol';
+
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ERC721Approval} from 'src/types/ERC721Approval.sol';
@@ -27,7 +26,6 @@ import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
 import {GenericCall} from 'src/types/GenericCall.sol';
 import {NativeTransfer} from 'src/types/NativeTransfer.sol';
 import {ValidationParams} from 'src/types/ValidationParams.sol';
-import {AuthKey} from 'src/types/base/AuthKey.sol';
 
 import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
@@ -39,7 +37,7 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  * written out rather than imported: an expected value taken from the contract under test would
  * agree with a wrong one. The topic lives in {HubBase}, which is where the log picker needs it.
  */
-contract SettlementTest is AuthenticatorBase {
+contract SettlementTest is SignerAuthenticatorBase {
   uint160 internal constant AMOUNT = 5 ether;
 
   bytes32 internal constant ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
@@ -51,8 +49,6 @@ contract SettlementTest is AuthenticatorBase {
 
   /// @dev Permit2 does not expose this in the vendored interface, so it is written out here
   bytes4 internal constant PERMIT2_INVALID_SIGNER = bytes4(keccak256('InvalidSigner()'));
-
-  AuthKey internal key;
 
   /// @dev Inputs of {testFuzz_CLIENT_01_clientDataIsEmittedAsGiven} and
   /// {testFuzz_CLIENT_02_clientDataIsCoveredByTheSignature}; `entryPoint` is bounded to `[0, 3]`
@@ -108,11 +104,6 @@ contract SettlementTest is AuthenticatorBase {
     assertEq(entry.topics[3], SchemaHash.executionOrder(order), 'the order hash the owner signed');
     // No call carries value, so the native transfers are empty
     assertEq(entry.data, abi.encode(erc20s, nfts, new NativeTransfer[](0), bytes('')), 'payload');
-  }
-
-  function setUp() public override {
-    super.setUp();
-    key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
   }
 
   // -----------------------------------------------------------------------------------------
@@ -194,11 +185,11 @@ contract SettlementTest is AuthenticatorBase {
       order.clientData = submittedData;
 
       if (entry == 0) {
-        _delegateKeyThroughHub(key);
-        bytes memory auth = _executionAuthData(signed, key, masterKeyPk);
+        _delegateSignerThroughHub(signer);
+        bytes memory auth = _executionAuthData(signed, signer, signerPk);
         _expectClientData(
           matches,
-          ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector,
+          SignerAuthenticatorMock.InvalidOrderSignature.selector,
           relayer,
           SchemaHash.executionOrder(order),
           erc20s,
@@ -233,11 +224,11 @@ contract SettlementTest is AuthenticatorBase {
       FulfillmentSolution memory route = _route(order, solverCalls);
 
       if (entry == 2) {
-        _delegateKeyThroughHub(key);
-        bytes memory auth = _fulfillmentAuthData(signed, key, masterKeyPk);
+        _delegateSignerThroughHub(signer);
+        bytes memory auth = _fulfillmentAuthData(signed, signer, signerPk);
         _expectClientData(
           matches,
-          ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector,
+          SignerAuthenticatorMock.InvalidOrderSignature.selector,
           solver,
           SchemaHash.fulfillmentOrder(order),
           erc20s,
@@ -652,7 +643,7 @@ contract SettlementTest is AuthenticatorBase {
    *
    * The nested order calls `router` once and is submitted by `evil`. Entry 0 is an execution and
    * entry 2 a fulfillment on the delegated rail, owned by `evil`. Entries 1 and 3 are the same on
-   * the Permit2 rail, owned by `nestedOwner` and signed with its key. No order moves a token, so
+   * the Permit2 rail, owned by `nestedOwner` and signed by its own signer. No order moves a token, so
    * Permit2 verifies the signature and spends the nonce of an empty batch. The owner of the outer
    * order and the owner of the nested order differ in every combination.
    * @param p The type and rail of the outer order, the nested entry point, and whether the outer

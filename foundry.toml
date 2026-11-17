@@ -63,8 +63,4 @@ monad_mainnet = "${RPC_143}"
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 
 [bind_json]
-include = [
-    '**/src/types/*.sol',
-    '**/src/types/authenticators/*.sol',
-    '**/src/types/base/*.sol',
-]
+include = ['**/src/types/*.sol']

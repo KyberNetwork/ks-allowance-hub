@@ -3,9 +3,9 @@ pragma solidity ^0.8.0;
 
 import {Test} from 'forge-std/Test.sol';
 
-import {JsonBindings} from 'utils/JsonBindings.sol';
-
 import {PermitHash} from 'test/libraries/PermitHash.sol';
+
+import {JsonBindings} from 'utils/JsonBindings.sol';
 
 import {AuthDelegationLib} from 'src/types/AuthDelegation.sol';
 import {ERC20AllowanceLib} from 'src/types/ERC20Allowance.sol';
@@ -20,10 +20,6 @@ import {FulfillmentWitnessLib} from 'src/types/FulfillmentWitness.sol';
 import {GenericCallLib} from 'src/types/GenericCall.sol';
 import {SolutionApprovalLib} from 'src/types/SolutionApproval.sol';
 import {ValidationParamsLib} from 'src/types/ValidationParams.sol';
-import {MasterKeyUpdateLib} from 'src/types/authenticators/MasterKeyUpdate.sol';
-import {NonceRevocationLib} from 'src/types/authenticators/NonceRevocation.sol';
-import {SessionKeyUpdateLib} from 'src/types/authenticators/SessionKeyUpdate.sol';
-import {AuthKeyLib} from 'src/types/base/AuthKey.sol';
 
 /**
  * @title SchemaAuditTest
@@ -104,22 +100,6 @@ contract SchemaAuditTest is Test {
       AuthDelegationLib.AUTH_DELEGATION_TYPEHASH,
       keccak256(bytes(JsonBindings.schema_AuthDelegation)),
       'AuthDelegation'
-    );
-    assertEq(AuthKeyLib.AUTH_KEY_TYPEHASH, keccak256(bytes(JsonBindings.schema_AuthKey)), 'AuthKey');
-    assertEq(
-      MasterKeyUpdateLib.MASTER_KEY_UPDATE_TYPEHASH,
-      keccak256(bytes(JsonBindings.schema_MasterKeyUpdate)),
-      'MasterKeyUpdate'
-    );
-    assertEq(
-      SessionKeyUpdateLib.SESSION_KEY_UPDATE_TYPEHASH,
-      keccak256(bytes(JsonBindings.schema_SessionKeyUpdate)),
-      'SessionKeyUpdate'
-    );
-    assertEq(
-      NonceRevocationLib.NONCE_REVOCATION_TYPEHASH,
-      keccak256(bytes(JsonBindings.schema_NonceRevocation)),
-      'NonceRevocation'
     );
   }
 

@@ -3,17 +3,17 @@ pragma solidity ^0.8.0;
 
 import {Vm} from 'forge-std/Vm.sol';
 
-import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol';
+import {SignerAuthenticatorBase} from 'test/base/SignerAuthenticatorBase.sol';
+
+import {SignerAuthenticatorMock} from 'test/mocks/SignerAuthenticatorMock.sol';
 
 import {KSAllowanceHubV2} from 'src/KSAllowanceHubV2.sol';
+
 import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
-import {
-  ITwoTiersOrderAuthenticator
-} from 'src/interfaces/authenticators/ITwoTiersOrderAuthenticator.sol';
 import {IAuthDelegator} from 'src/interfaces/base/IAuthDelegator.sol';
+
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/types/ERC721Transfer.sol';
-import {AuthKey} from 'src/types/base/AuthKey.sol';
 
 import {IManagementSimple} from 'ks-common-sc/src/interfaces/IManagementSimple.sol';
 
@@ -30,7 +30,7 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  * written out here rather than imported, so the suite disagrees with the hub whenever the hub is
  * wrong. Interface ids are rebuilt by xor-ing selectors transcribed from the interface source.
  */
-contract ManagementTest is AuthenticatorBase {
+contract ManagementTest is SignerAuthenticatorBase {
   // Role hashes, written out rather than imported
   bytes32 internal constant ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
   bytes32 internal constant GUARDIAN_ROLE = keccak256('GUARDIAN_ROLE');
@@ -51,16 +51,15 @@ contract ManagementTest is AuthenticatorBase {
    * DOM-01 — the hub and the authenticator sign under domains of their own, each scoped to the chain
    * @dev The separator in use is observed through the signatures it accepts: one made for the
    * current chain is refused once the chain id has moved, and one made for the new chain is
-   * accepted. The fields each domain publishes are `MGMT-02` and `SV-DOMAIN`.
+   * accepted. The fields the hub's domain publishes are `MGMT-02`.
    */
   function test_DOM_01_bothDomainsAreChainScoped() public {
     assertTrue(_hubDomain() != _authenticatorDomain(), 'the two domains are not the same');
 
-    AuthKey memory fresh = _secpKey(recipient, vm.getBlockTimestamp() + 10 days);
     uint256 deadline = vm.getBlockTimestamp() + 1 days;
     bytes memory delegationSig =
       _signAuthDelegation(ownerKey, owner, address(authenticator), true, '', 1, deadline);
-    bytes memory approvalSig = _signMasterKeyUpdate(fresh, true, 1, deadline);
+    bytes memory approvalSig = _signSignerUpdate(recipient, true, 1, deadline);
 
     vm.chainId(block.chainid + 1);
 
@@ -69,8 +68,8 @@ contract ManagementTest is AuthenticatorBase {
     hub.updateDelegation(owner, address(authenticator), true, '', 1, deadline, delegationSig);
 
     vm.prank(relayer);
-    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidUpdateSignature.selector);
-    authenticator.updateAuthentication(owner, _approveKey(fresh), 1, deadline, approvalSig);
+    vm.expectRevert(SignerAuthenticatorMock.InvalidUpdateSignature.selector);
+    authenticator.updateAuthentication(owner, _approveSigner(recipient), 1, deadline, approvalSig);
 
     delegationSig =
       _signAuthDelegation(ownerKey, owner, address(authenticator), true, '', 1, deadline);
@@ -78,10 +77,10 @@ contract ManagementTest is AuthenticatorBase {
     hub.updateDelegation(owner, address(authenticator), true, '', 1, deadline, delegationSig);
     assertTrue(hub.authDelegated(owner, address(authenticator)), "the new chain's delegation");
 
-    approvalSig = _signMasterKeyUpdate(fresh, true, 1, deadline);
+    approvalSig = _signSignerUpdate(recipient, true, 1, deadline);
     vm.prank(relayer);
-    authenticator.updateAuthentication(owner, _approveKey(fresh), 1, deadline, approvalSig);
-    assertTrue(authenticator.masterKeys(owner, _keyHash(fresh)), "the new chain's approval");
+    authenticator.updateAuthentication(owner, _approveSigner(recipient), 1, deadline, approvalSig);
+    assertTrue(authenticator.approvedSigners(owner, recipient), "the new chain's approval");
   }
 
   /// MGMT-01 — the constructor grants the initial roles, sets the owner and emits one event

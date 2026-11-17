@@ -5,12 +5,9 @@ import {ExecutionOrder} from '../../types/ExecutionOrder.sol';
 import {FulfillmentOrder} from '../../types/FulfillmentOrder.sol';
 import {FulfillmentSolution} from '../../types/FulfillmentSolution.sol';
 
-/// @title IOrderAuthenticator
+/// @title IAHV2Authenticator
 /// @notice Interface an authenticator must implement to be delegated through {AuthDelegator}
-interface IOrderAuthenticator {
-  /// @notice The caller is not the address this authenticator was deployed for
-  error CallerNotAuthorized(address caller);
-
+interface IAHV2Authenticator {
   /**
    * @notice Records the owner's initial authentication material when the owner delegates this
    * authenticator

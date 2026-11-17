@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import 'ks-common-sc/script/Base.s.sol';
+
 import 'src/KSAllowanceHubV2.sol';
 
 contract DeployKSAllowanceHubV2Script is BaseScript {

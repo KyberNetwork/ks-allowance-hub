@@ -17,10 +17,6 @@ import {GenericCall} from "src/types/GenericCall.sol";
 import {NativeTransfer} from "src/types/NativeTransfer.sol";
 import {SolutionApproval} from "src/types/SolutionApproval.sol";
 import {ValidationParams} from "src/types/ValidationParams.sol";
-import {MasterKeyUpdate} from "src/types/authenticators/MasterKeyUpdate.sol";
-import {NonceRevocation} from "src/types/authenticators/NonceRevocation.sol";
-import {SessionKeyUpdate} from "src/types/authenticators/SessionKeyUpdate.sol";
-import {AuthKey} from "src/types/base/AuthKey.sol";
 
 interface Vm {
     function parseJsonTypeArray(string calldata json, string calldata key, string calldata typeDescription) external pure returns (bytes memory);
@@ -49,10 +45,6 @@ library JsonBindings {
     string constant schema_FulfillmentWitness = "FulfillmentWitness(address solver,ERC721Approval[] erc721Approvals,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner,bytes extraData,bytes clientData)ERC721Approval(address token,uint256 tokenId)GenericCall(address router,uint256 value,bytes data)ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)";
     string constant schema_PermitBatchWitnessTransferFrom_1 = "PermitBatchWitnessTransferFrom(TokenPermissions[] permitted,address spender,uint256 nonce,uint256 deadline,FulfillmentWitness witness)ERC721Approval(address token,uint256 tokenId)FulfillmentWitness(address solver,ERC721Approval[] erc721Approvals,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner,bytes extraData,bytes clientData)GenericCall(address router,uint256 value,bytes data)TokenPermissions(address token,uint256 amount)ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)";
     string constant schema_SolutionApproval = "SolutionApproval(FulfillmentOrder order,FulfillmentSolution solution)ERC20Allowance(address token,uint160 amount)ERC721Approval(address token,uint256 tokenId)FulfillmentOrder(address owner,address solver,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,ValidationParams[] validationParams,GenericCall[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes extraData,bytes clientData)FulfillmentSolution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,GenericCall[] solverCalls,uint256 nonce,uint256 expiration)GenericCall(address router,uint256 value,bytes data)ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)";
-    string constant schema_AuthKey = "AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)";
-    string constant schema_MasterKeyUpdate = "MasterKeyUpdate(address owner,AuthKey masterKey,bool approved,uint256 nonce,uint256 deadline)AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)";
-    string constant schema_NonceRevocation = "NonceRevocation(AuthKey key,uint256 nonce,uint256 deadline)AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)";
-    string constant schema_SessionKeyUpdate = "SessionKeyUpdate(address owner,AuthKey masterKey,AuthKey sessionKey,bool approved,uint256 nonce,uint256 deadline)AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)";
 
     function serialize(ERC721Transfer memory value) internal pure returns (string memory) {
         return vm.serializeJsonType(schema_ERC721Transfer, abi.encode(value));
@@ -372,85 +364,5 @@ library JsonBindings {
 
     function deserializeSolutionApprovalArray(string memory json, string memory path) public pure returns (SolutionApproval[] memory) {
         return abi.decode(vm.parseJsonTypeArray(json, path, schema_SolutionApproval), (SolutionApproval[]));
-    }
-
-    function serialize(AuthKey memory value) internal pure returns (string memory) {
-        return vm.serializeJsonType(schema_AuthKey, abi.encode(value));
-    }
-
-    function serialize(AuthKey memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
-        return vm.serializeJsonType(objectKey, valueKey, schema_AuthKey, abi.encode(value));
-    }
-
-    function deserializeAuthKey(string memory json) public pure returns (AuthKey memory) {
-        return abi.decode(vm.parseJsonType(json, schema_AuthKey), (AuthKey));
-    }
-
-    function deserializeAuthKey(string memory json, string memory path) public pure returns (AuthKey memory) {
-        return abi.decode(vm.parseJsonType(json, path, schema_AuthKey), (AuthKey));
-    }
-
-    function deserializeAuthKeyArray(string memory json, string memory path) public pure returns (AuthKey[] memory) {
-        return abi.decode(vm.parseJsonTypeArray(json, path, schema_AuthKey), (AuthKey[]));
-    }
-
-    function serialize(MasterKeyUpdate memory value) internal pure returns (string memory) {
-        return vm.serializeJsonType(schema_MasterKeyUpdate, abi.encode(value));
-    }
-
-    function serialize(MasterKeyUpdate memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
-        return vm.serializeJsonType(objectKey, valueKey, schema_MasterKeyUpdate, abi.encode(value));
-    }
-
-    function deserializeMasterKeyUpdate(string memory json) public pure returns (MasterKeyUpdate memory) {
-        return abi.decode(vm.parseJsonType(json, schema_MasterKeyUpdate), (MasterKeyUpdate));
-    }
-
-    function deserializeMasterKeyUpdate(string memory json, string memory path) public pure returns (MasterKeyUpdate memory) {
-        return abi.decode(vm.parseJsonType(json, path, schema_MasterKeyUpdate), (MasterKeyUpdate));
-    }
-
-    function deserializeMasterKeyUpdateArray(string memory json, string memory path) public pure returns (MasterKeyUpdate[] memory) {
-        return abi.decode(vm.parseJsonTypeArray(json, path, schema_MasterKeyUpdate), (MasterKeyUpdate[]));
-    }
-
-    function serialize(NonceRevocation memory value) internal pure returns (string memory) {
-        return vm.serializeJsonType(schema_NonceRevocation, abi.encode(value));
-    }
-
-    function serialize(NonceRevocation memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
-        return vm.serializeJsonType(objectKey, valueKey, schema_NonceRevocation, abi.encode(value));
-    }
-
-    function deserializeNonceRevocation(string memory json) public pure returns (NonceRevocation memory) {
-        return abi.decode(vm.parseJsonType(json, schema_NonceRevocation), (NonceRevocation));
-    }
-
-    function deserializeNonceRevocation(string memory json, string memory path) public pure returns (NonceRevocation memory) {
-        return abi.decode(vm.parseJsonType(json, path, schema_NonceRevocation), (NonceRevocation));
-    }
-
-    function deserializeNonceRevocationArray(string memory json, string memory path) public pure returns (NonceRevocation[] memory) {
-        return abi.decode(vm.parseJsonTypeArray(json, path, schema_NonceRevocation), (NonceRevocation[]));
-    }
-
-    function serialize(SessionKeyUpdate memory value) internal pure returns (string memory) {
-        return vm.serializeJsonType(schema_SessionKeyUpdate, abi.encode(value));
-    }
-
-    function serialize(SessionKeyUpdate memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
-        return vm.serializeJsonType(objectKey, valueKey, schema_SessionKeyUpdate, abi.encode(value));
-    }
-
-    function deserializeSessionKeyUpdate(string memory json) public pure returns (SessionKeyUpdate memory) {
-        return abi.decode(vm.parseJsonType(json, schema_SessionKeyUpdate), (SessionKeyUpdate));
-    }
-
-    function deserializeSessionKeyUpdate(string memory json, string memory path) public pure returns (SessionKeyUpdate memory) {
-        return abi.decode(vm.parseJsonType(json, path, schema_SessionKeyUpdate), (SessionKeyUpdate));
-    }
-
-    function deserializeSessionKeyUpdateArray(string memory json, string memory path) public pure returns (SessionKeyUpdate[] memory) {
-        return abi.decode(vm.parseJsonTypeArray(json, path, schema_SessionKeyUpdate), (SessionKeyUpdate[]));
     }
 }

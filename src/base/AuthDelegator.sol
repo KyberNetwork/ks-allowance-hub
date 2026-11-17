@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import {IAHV2Authenticator} from '../interfaces/base/IAHV2Authenticator.sol';
+import {IAuthDelegator} from '../interfaces/base/IAuthDelegator.sol';
+
 import {DeadlineChecker} from './DeadlineChecker.sol';
 import {UnorderedNonce} from './UnorderedNonce.sol';
-
-import {IOrderAuthenticator} from '../interfaces/authenticators/IOrderAuthenticator.sol';
-import {IAuthDelegator} from '../interfaces/base/IAuthDelegator.sol';
 
 import {AuthDelegationLib} from '../types/AuthDelegation.sol';
 
@@ -16,7 +16,7 @@ import {
 
 /**
  * @title AuthDelegator
- * @notice Records which {IOrderAuthenticator} contracts each owner has delegated to authenticate
+ * @notice Records which {IAHV2Authenticator} contracts each owner has delegated to authenticate
  * their orders
  * @dev An authenticator is trusted by the owner who delegates it. This contract checks only that
  * the delegation is in place.
@@ -65,7 +65,7 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
     // Not called on withdrawal, so that an authenticator that reverts cannot prevent it. The owner
     // has been authenticated above, since `initAuthentication` takes no signature
     if (delegated && data.length > 0) {
-      IOrderAuthenticator(authenticator).initAuthentication(owner, data);
+      IAHV2Authenticator(authenticator).initAuthentication(owner, data);
     }
     authDelegated[owner][authenticator] = delegated;
 

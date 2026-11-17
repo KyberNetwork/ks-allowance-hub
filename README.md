@@ -93,7 +93,7 @@ When the caller is `order.owner`, the call itself authorises the order:
 AuthDelegation(address owner,address authenticator,bool delegated,bytes data,uint256 nonce,uint256 deadline)
 ```
 
-`updateDelegation` delegates an `IOrderAuthenticator` or withdraws it. When the owner calls it, the
+`updateDelegation` delegates an `IAHV2Authenticator` or withdraws it. When the owner calls it, the
 signature must be empty and no nonce is spent. Any other caller must present the owner's signature
 over the `AuthDelegation`, which spends `nonce` in the owner's namespace. When delegating with
 non-empty `data`, the hub passes `data` to the authenticator's `initAuthentication`. Withdrawing
@@ -107,56 +107,16 @@ An authenticator has two update functions:
   including Multicall3 relaying it through the hub's `forwardCalls`. An authenticator must
   therefore accept only `msg.sender == owner` without a signature.
 
-### TwoTiersOrderAuthenticator
-
-The reference authenticator. The owner approves keys, and the keys sign orders without the owner's
-wallet.
-
-```
-AuthKey(bytes publicKey,uint8 keyType,uint256 expiration)
-MasterKeyUpdate(address owner,AuthKey masterKey,bool approved,uint256 nonce,uint256 deadline)
-SessionKeyUpdate(address owner,AuthKey masterKey,AuthKey sessionKey,bool approved,uint256 nonce,uint256 deadline)
-NonceRevocation(AuthKey key,uint256 nonce,uint256 deadline)
-```
-
-| `keyType` | `publicKey` | Verification |
-|---|---|---|
-| `Secp256k1` | `abi.encode(address)` | ECDSA recovery |
-| `P256` | `abi.encodePacked(qx, qy)` | P-256 |
-| `WebAuthn` | `abi.encodePacked(qx, qy)` | WebAuthn assertion with user verification |
-| `RSA` | `abi.encode(bytes e, bytes n)` | PKCS#1 v1.5 with SHA-256 |
-| `ERC1271` | `abi.encode(address)` | the contract's `isValidSignature` |
-| `ERC7913` | `abi.encodePacked(verifier, key)` | the verifier's `verify` |
-
-Keys have two tiers. The owner approves **master keys**, through `initAuthentication` when
-delegating or through `updateAuthentication` afterwards. A master key approves **session keys** for
-the same owner, so a passkey can issue short-lived local keys without the wallet. Both tiers sign
-orders.
-
-- A session key may not expire after its master key, and is not accepted once its master key is
-  revoked.
-- A master key may change only a session key it approved, or one that no master key has approved.
-- A key's expiry is checked only when approving, so an expired key can still be revoked.
-
-`updateAuthentication` takes `abi.encode(AuthKey masterKey, bool approved)` for the owner's
-decision, or `abi.encode(AuthKey sessionKey, AuthKey masterKey, bool approved)` for a master key's.
-The owner's decision needs no signature when the owner calls; a master key's decision is always
-signed by the master key. Orders are authenticated with one of two encodings, told apart by the
-offset of the first member. `abi.encode(AuthKey key, bool isSessionKey, bytes signature)` carries
-the key's signature over the order's EIP-712 digest under the authenticator's domain.
-`abi.encode(bytes signature)` carries the owner's own signature over the same digest, verified as
-an ECDSA signature or through ERC-1271, and requires no approved key.
-
-Every signature spends a nonce in its signer's namespace: the owner's address for the owner's own
-signatures, and the key's credential hash, `keccak256(abi.encodePacked(keyType, publicKey))`, for
-anything a key signs. The credential hash excludes the expiry, so all approvals of one key share its
-nonces.
-`revokeNonce(AuthKey, nonce, deadline, signature)` spends a key's nonce on the key's signature,
-whether or not the key is still approved or unexpired.
-
 The hub spends a solution approval's `solution.nonce` in the `solutionApprover`'s address namespace
 in the hub, shared with that address's `updateDelegation` nonces. The approver revokes an unused
 approval with the hub's `revokeNonce(nonce)`.
+
+### Authenticators
+
+`HierarchicalAuthKeyAHV2Authenticator`, in
+[ks-ahv2-authenticator-sc](https://github.com/KyberNetwork/ks-ahv2-authenticator-sc), is an
+authenticator in which the owner approves master keys, a master key approves session keys, and
+both kinds of key sign orders without the owner's wallet.
 
 ### Relayed approvals
 
@@ -218,25 +178,23 @@ token of `0xEeee…EEeE` or the zero address transfers native value.
 | Contract | EIP-712 name | Version |
 |---|---|---|
 | `KSAllowanceHubV2` | `KyberSwap Allowance Hub` | `2.0.0` |
-| `TwoTiersOrderAuthenticator` | `KyberSwap Two Tiers Order Authenticator` | `1.0.0` |
 
-Each domain is published through ERC-5267's `eip712Domain()`.
+The domain is published through ERC-5267's `eip712Domain()`.
 
 ## Layout
 
 ```
 src/
   *.sol            KSAllowanceHubV2
-  base/            AuthDelegator, Multicall and the contracts shared with the authenticators
-  authenticators/  TwoTiersOrderAuthenticator and its base
-  interfaces/      interface of the hub; base/ and authenticators/ for theirs
+  base/            AuthDelegator, Multicall, AHV2AuthenticatorBase and the contracts shared with
+                   the authenticators
+  interfaces/      interface of the hub; base/ for the rest, including IAHV2Authenticator
   libraries/       constants, array and hashing helpers
-  types/           order, witness and transfer types; base/ and authenticators/ for key types
+  types/           order, witness and transfer types
 test/
   *.t.sol          KSAllowanceHubV2 suites
   base/            shared test base and EIP-712 oracles
-  authenticators/  TwoTiersOrderAuthenticator suites
-  mocks/           mock tokens, router and validator
+  mocks/           mock tokens, router, validator and authenticator
   types/           EIP-712 type and schema suites
   libraries/       Permit2 hashing and array helpers
   artifacts/       Permit2 creation code
@@ -254,6 +212,10 @@ forge coverage --ir-minimum --report summary
 ```
 
 The suite deploys Permit2 from `test/artifacts/Permit2.json` and needs no RPC.
+
+The files under `test/base`, `test/mocks` and `test/libraries` import with relative paths, so that
+a repository holding this one as a submodule can inherit them. Such a repository overrides
+`V2TestBase._artifactsDir()` with the path of `test/artifacts/` inside the submodule.
 
 CI runs `forge test -vvv --isolate`, which executes each top-level call as its own transaction.
 Transient state such as the account `msgSender()` returns is cleared between calls, so it can only
@@ -297,14 +259,13 @@ The scripts deploy with CREATE3 and read `script/config/*.json` per chain.
 
 ```shell
 forge script script/DeployKSAllowanceHubV2.s.sol           --sig 'run(string[])' '[1,56]' --broadcast
-forge script script/DeployTwoTiersOrderAuthenticator.s.sol  --sig 'run(string[])' '[1,56]' --broadcast
 forge script script/AddWhitelistedRoutersV2.s.sol          --sig 'run(string[])' '[1,56]' --broadcast
 ```
 
 `DeployKSAllowanceHubV2` reads the Multicall3 address from `multicall3.json`, which holds the
 canonical address by default; a chain where Multicall3 is deployed elsewhere needs its own entry.
 `DeployKSAllowanceHubV2` writes the hub's address to `allowance-hub-v2.json`, which
-`DeployTwoTiersOrderAuthenticator` and `AddWhitelistedRoutersV2` read.
+`AddWhitelistedRoutersV2` reads.
 `AddWhitelistedRoutersV2` grants the missing routers in one transaction through the hub's
 `multicall`.
 

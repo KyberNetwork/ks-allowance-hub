@@ -32,7 +32,7 @@ interface IAuthDelegator {
    * {AuthDelegation}, which spends `nonce` in the owner's namespace.
    *
    * When delegating with non-empty `data`, `data` is passed to
-   * {IOrderAuthenticator-initAuthentication}. Withdrawing calls no authenticator and leaves the
+   * {IAHV2Authenticator-initAuthentication}. Withdrawing calls no authenticator and leaves the
    * authenticator's own state unchanged.
    * @param owner Account whose orders the authenticator may authenticate
    * @param authenticator Authenticator contract

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol';
+import {SignerAuthenticatorBase} from 'test/base/SignerAuthenticatorBase.sol';
+
+import {SignerAuthenticatorMock} from 'test/mocks/SignerAuthenticatorMock.sol';
 
 import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
-import {
-  ITwoTiersOrderAuthenticator
-} from 'src/interfaces/authenticators/ITwoTiersOrderAuthenticator.sol';
+
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ERC721Approval} from 'src/types/ERC721Approval.sol';
@@ -15,7 +15,6 @@ import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
 import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
 import {GenericCall} from 'src/types/GenericCall.sol';
 import {ValidationParams} from 'src/types/ValidationParams.sol';
-import {AuthKey} from 'src/types/base/AuthKey.sol';
 
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
@@ -23,22 +22,19 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  * @title OrderPartiesTest
  * @notice ORD-02b..04 — the delegated rails honour the parties the order specifies
  * @dev `relayer` and `solver` say who may submit an order on every rail, not only the Permit2 ones
- * that `ORD-02` and `ORD-03` cover. A credential authenticates the owner; it does not say who may
- * submit the order, so an authenticator that checked nothing of the sort would leave the field
+ * that `ORD-02` and `ORD-03` cover. An approved signer authenticates the owner; it does not say who
+ * may submit the order, so an authenticator that checked nothing of the sort would leave the field
  * unenforced. The last step of each case shows the exemption still holds: the owner is not subject
  * to a field that exists to bound everybody else. `ORD-04` covers the remaining party,
  * the account the order draws on.
  *
  */
-contract OrderPartiesTest is AuthenticatorBase {
+contract OrderPartiesTest is SignerAuthenticatorBase {
   uint160 internal constant AMOUNT = 1 ether;
-
-  AuthKey internal key;
 
   function setUp() public override {
     super.setUp();
-    key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
-    _delegateKeyThroughHub(key);
+    _delegateSignerThroughHub(signer);
   }
 
   function _routerWeth() private view returns (uint256) {
@@ -56,7 +52,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     uint256 before = _routerWeth();
     vm.prank(relayer);
     hub.executeOrderWithDelegatedAuthentication(
-      pinned, address(authenticator), _executionAuthData(pinned, key, masterKeyPk), false
+      pinned, address(authenticator), _executionAuthData(pinned, signer, signerPk), false
     );
     assertEq(_routerWeth() - before, AMOUNT, 'the named relayer may submit');
 
@@ -64,16 +60,16 @@ contract OrderPartiesTest is AuthenticatorBase {
     vm.prank(solver);
     vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.CallerNotRelayer.selector, solver));
     hub.executeOrderWithDelegatedAuthentication(
-      again, address(authenticator), _executionAuthData(again, key, masterKeyPk), false
+      again, address(authenticator), _executionAuthData(again, signer, signerPk), false
     );
 
-    // The pin is read before the credential, so an unnamed submitter is refused as such even when
-    // the credential it presents could never have passed
+    // The pin is read before the signature, so an unnamed submitter is refused as such even when
+    // the signature it presents could never have passed
     ExecutionOrder memory third = _executionOrder(relayer, erc20s, noNfts, noCalls, 72, expiration);
     vm.prank(solver);
     vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.CallerNotRelayer.selector, solver));
     hub.executeOrderWithDelegatedAuthentication(
-      third, address(authenticator), _authData(key, hex'00'), false
+      third, address(authenticator), _authData(signer, hex'00'), false
     );
 
     // The same stranger settles an order that specifies no relayer, so the refusals were about the
@@ -82,7 +78,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     before = _routerWeth();
     vm.prank(solver);
     hub.executeOrderWithDelegatedAuthentication(
-      open, address(authenticator), _executionAuthData(open, key, masterKeyPk), false
+      open, address(authenticator), _executionAuthData(open, signer, signerPk), false
     );
     assertEq(_routerWeth() - before, AMOUNT, 'the sentinel leaves it open to anyone');
 
@@ -96,10 +92,10 @@ contract OrderPartiesTest is AuthenticatorBase {
   }
 
   /**
-   * ORD-04 — an order repointed to another owner who approved the same key reverts
-   * @dev A key may be approved by more than one account, and the digest carries no second place
+   * ORD-04 — an order repointed to another owner who approved the same signer reverts
+   * @dev A signer may be approved by more than one account, and the digest carries no second place
    * for the submitter to point it. The two steps are the same signature against the account it
-   * specifies and against another that approved the same key.
+   * specifies and against another that approved the same signer.
    */
   function test_ORD_04_delegatedExecutionDrawsOnTheNamedOwner() public {
     address other = makeAddr('other owner');
@@ -108,19 +104,25 @@ contract OrderPartiesTest is AuthenticatorBase {
     IERC20(token18).approve(address(hub), type(uint256).max);
     vm.prank(other);
     hub.updateDelegation(
-      other, address(authenticator), true, _encodeKey(key), 0, vm.getBlockTimestamp() + 1 days, ''
+      other,
+      address(authenticator),
+      true,
+      _encodeSigner(signer),
+      0,
+      vm.getBlockTimestamp() + 1 days,
+      ''
     );
 
     ExecutionOrder memory order = _openExecutionOrder(
       _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 75, vm.getBlockTimestamp() + 1 hours
     );
-    bytes memory authData = _executionAuthData(order, key, masterKeyPk);
+    bytes memory authData = _executionAuthData(order, signer, signerPk);
 
     // Repointed first, because the refusal rolls back the nonce the authenticator burns ahead of
     // the signature check, leaving the second step the same number to spend
     order.owner = other;
     vm.prank(relayer);
-    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
+    vm.expectRevert(SignerAuthenticatorMock.InvalidOrderSignature.selector);
     hub.executeOrderWithDelegatedAuthentication(order, address(authenticator), authData, false);
 
     order.owner = owner;
@@ -147,7 +149,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     hub.fulfillOrderWithDelegatedAuthentication(
       pinned,
       address(authenticator),
-      _fulfillmentAuthData(pinned, key, masterKeyPk),
+      _fulfillmentAuthData(pinned, signer, signerPk),
       _route(pinned, _calls(_routerCall(0, hex'01'))),
       '',
       false
@@ -161,13 +163,13 @@ contract OrderPartiesTest is AuthenticatorBase {
     hub.fulfillOrderWithDelegatedAuthentication(
       again,
       address(authenticator),
-      _fulfillmentAuthData(again, key, masterKeyPk),
+      _fulfillmentAuthData(again, signer, signerPk),
       _route(again, _calls(_routerCall(0, hex'01'))),
       '',
       false
     );
 
-    // As on the execution rail, the pin is read before the credential
+    // As on the execution rail, the pin is read before the signature
     FulfillmentOrder memory third =
       _fulfillmentOrder(solver, erc20s, noNfts, noValidators, noOwnerCalls, ANY, 82, expiration);
     vm.prank(relayer);
@@ -175,7 +177,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     hub.fulfillOrderWithDelegatedAuthentication(
       third,
       address(authenticator),
-      _authData(key, hex'00'),
+      _authData(signer, hex'00'),
       _route(third, _calls(_routerCall(0, hex'01'))),
       '',
       false
@@ -188,7 +190,7 @@ contract OrderPartiesTest is AuthenticatorBase {
     hub.fulfillOrderWithDelegatedAuthentication(
       open,
       address(authenticator),
-      _fulfillmentAuthData(open, key, masterKeyPk),
+      _fulfillmentAuthData(open, signer, signerPk),
       _route(open, _calls(_routerCall(0, hex'01'))),
       '',
       false

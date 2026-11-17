@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import {IKSAllowanceHubV2} from '../interfaces/IKSAllowanceHubV2.sol';
+
+import {DeadlineChecker} from '../base/DeadlineChecker.sol';
+
 import {ERC20Allowance, ERC20AllowanceLib} from './ERC20Allowance.sol';
 import {ERC721Approval, ERC721ApprovalLib} from './ERC721Approval.sol';
 import {FulfillmentSolution} from './FulfillmentSolution.sol';
 import {GenericCall, GenericCallLib} from './GenericCall.sol';
 import {ValidationParams, ValidationParamsLib} from './ValidationParams.sol';
-
-import {DeadlineChecker} from '../base/DeadlineChecker.sol';
-import {IKSAllowanceHubV2} from '../interfaces/IKSAllowanceHubV2.sol';
 
 import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
 

@@ -3,28 +3,23 @@ pragma solidity ^0.8.0;
 
 import {Vm} from 'forge-std/Vm.sol';
 
-import {JsonBindings} from 'utils/JsonBindings.sol';
+import {JsonBindings} from '../../utils/JsonBindings.sol';
 
+import {AuthDelegation} from '../../src/types/AuthDelegation.sol';
+import {ERC20Allowance} from '../../src/types/ERC20Allowance.sol';
+import {ERC721Approval} from '../../src/types/ERC721Approval.sol';
+import {ExecutionOrder} from '../../src/types/ExecutionOrder.sol';
 import {
   PermitBatchWitnessTransferFrom as Permit2ExecutionWitness
-} from 'src/types/ExecutionWitness.sol';
+} from '../../src/types/ExecutionWitness.sol';
+import {ExecutionWitness} from '../../src/types/ExecutionWitness.sol';
+import {FulfillmentOrder} from '../../src/types/FulfillmentOrder.sol';
+import {FulfillmentSolution} from '../../src/types/FulfillmentSolution.sol';
 import {
   PermitBatchWitnessTransferFrom as Permit2FulfillmentWitness
-} from 'src/types/FulfillmentWitness.sol';
-
-import {AuthDelegation} from 'src/types/AuthDelegation.sol';
-import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
-import {ERC721Approval} from 'src/types/ERC721Approval.sol';
-import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
-import {ExecutionWitness} from 'src/types/ExecutionWitness.sol';
-import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
-import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
-import {FulfillmentWitness} from 'src/types/FulfillmentWitness.sol';
-import {SolutionApproval} from 'src/types/SolutionApproval.sol';
-import {MasterKeyUpdate} from 'src/types/authenticators/MasterKeyUpdate.sol';
-import {NonceRevocation} from 'src/types/authenticators/NonceRevocation.sol';
-import {SessionKeyUpdate} from 'src/types/authenticators/SessionKeyUpdate.sol';
-import {AuthKey} from 'src/types/base/AuthKey.sol';
+} from '../../src/types/FulfillmentWitness.sol';
+import {FulfillmentWitness} from '../../src/types/FulfillmentWitness.sol';
+import {SolutionApproval} from '../../src/types/SolutionApproval.sol';
 
 /**
  * @title SchemaHash
@@ -72,22 +67,6 @@ library SchemaHash {
 
   function erc721Approval(ERC721Approval memory a) internal pure returns (bytes32) {
     return VM.eip712HashStruct(JsonBindings.schema_ERC721Approval, abi.encode(a));
-  }
-
-  function authKey(AuthKey memory k) internal pure returns (bytes32) {
-    return VM.eip712HashStruct(JsonBindings.schema_AuthKey, abi.encode(k));
-  }
-
-  function masterKeyUpdate(MasterKeyUpdate memory a) internal pure returns (bytes32) {
-    return VM.eip712HashStruct(JsonBindings.schema_MasterKeyUpdate, abi.encode(a));
-  }
-
-  function sessionKeyUpdate(SessionKeyUpdate memory a) internal pure returns (bytes32) {
-    return VM.eip712HashStruct(JsonBindings.schema_SessionKeyUpdate, abi.encode(a));
-  }
-
-  function nonceRevocation(NonceRevocation memory r) internal pure returns (bytes32) {
-    return VM.eip712HashStruct(JsonBindings.schema_NonceRevocation, abi.encode(r));
   }
 
   /**

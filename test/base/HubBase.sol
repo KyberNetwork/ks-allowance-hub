@@ -2,28 +2,31 @@
 pragma solidity ^0.8.0;
 
 import {Vm} from 'forge-std/Vm.sol';
-
-import {V2TestBase} from 'test/base/V2TestBase.sol';
-
-import {RouterMock} from 'test/mocks/RouterMock.sol';
-import {ERC20Mock, ERC721Mock} from 'test/mocks/TokenMocks.sol';
-import {ValidatorMock} from 'test/mocks/ValidatorMock.sol';
-
 import {IMulticall3} from 'forge-std/interfaces/IMulticall3.sol';
-import {KSAllowanceHubV2} from 'src/KSAllowanceHubV2.sol';
-import {DeadlineChecker} from 'src/base/DeadlineChecker.sol';
-import {IUnorderedNonce} from 'src/interfaces/base/IUnorderedNonce.sol';
-import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
-import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
-import {ERC721Approval} from 'src/types/ERC721Approval.sol';
-import {ERC721Transfer} from 'src/types/ERC721Transfer.sol';
-import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
-import {ExecutionWitness} from 'src/types/ExecutionWitness.sol';
-import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
-import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
-import {FulfillmentWitness} from 'src/types/FulfillmentWitness.sol';
-import {GenericCall} from 'src/types/GenericCall.sol';
-import {ValidationParams} from 'src/types/ValidationParams.sol';
+
+import {V2TestBase} from './V2TestBase.sol';
+
+import {RouterMock} from '../mocks/RouterMock.sol';
+import {ERC20Mock, ERC721Mock} from '../mocks/TokenMocks.sol';
+import {ValidatorMock} from '../mocks/ValidatorMock.sol';
+
+import {KSAllowanceHubV2} from '../../src/KSAllowanceHubV2.sol';
+
+import {IUnorderedNonce} from '../../src/interfaces/base/IUnorderedNonce.sol';
+
+import {DeadlineChecker} from '../../src/base/DeadlineChecker.sol';
+
+import {ERC20Allowance} from '../../src/types/ERC20Allowance.sol';
+import {ERC20Transfer} from '../../src/types/ERC20Transfer.sol';
+import {ERC721Approval} from '../../src/types/ERC721Approval.sol';
+import {ERC721Transfer} from '../../src/types/ERC721Transfer.sol';
+import {ExecutionOrder} from '../../src/types/ExecutionOrder.sol';
+import {ExecutionWitness} from '../../src/types/ExecutionWitness.sol';
+import {FulfillmentOrder} from '../../src/types/FulfillmentOrder.sol';
+import {FulfillmentSolution} from '../../src/types/FulfillmentSolution.sol';
+import {FulfillmentWitness} from '../../src/types/FulfillmentWitness.sol';
+import {GenericCall} from '../../src/types/GenericCall.sol';
+import {ValidationParams} from '../../src/types/ValidationParams.sol';
 
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
@@ -78,7 +81,7 @@ abstract contract HubBase is V2TestBase {
     routers[0] = address(router);
     routers[1] = address(router2);
 
-    vm.etch(multicall3, vm.getDeployedCode('test/artifacts/Multicall3.json'));
+    vm.etch(multicall3, vm.getDeployedCode(string.concat(_artifactsDir(), 'Multicall3.json')));
     hub = new KSAllowanceHubV2(admin, guardians, rescuers, routers, permit2, multicall3);
 
     _fundOwner();

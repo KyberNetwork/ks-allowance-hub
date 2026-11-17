@@ -51,7 +51,7 @@ interface IKSAllowanceHubV2 {
   event RescueTokens(ERC20Transfer[] erc20Transfers, ERC721Transfer[] erc721Transfers);
 
   /**
-   * @notice Settles an execution order authenticated by an {IOrderAuthenticator} the owner has
+   * @notice Settles an execution order authenticated by an {IAHV2Authenticator} the owner has
    * delegated
    * @dev `authenticator` must be delegated by `order.owner`, or be the zero address.
    *
@@ -95,7 +95,7 @@ interface IKSAllowanceHubV2 {
   ) external payable returns (bytes[] memory results);
 
   /**
-   * @notice Settles a fulfillment order authenticated by an {IOrderAuthenticator} the owner has
+   * @notice Settles a fulfillment order authenticated by an {IAHV2Authenticator} the owner has
    * delegated, along the route in `solution`
    * @dev The settlement runs in this order: the solution approval, when required, is checked,
    * each validator's `beforeExecution` runs, the assets move to the targets `solution` specifies,

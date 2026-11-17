@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol';
+import {SignerAuthenticatorBase} from 'test/base/SignerAuthenticatorBase.sol';
 
 import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
+
 import {ERC721Approval} from 'src/types/ERC721Approval.sol';
 import {ERC721Transfer} from 'src/types/ERC721Transfer.sol';
 import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
 import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
 import {GenericCall} from 'src/types/GenericCall.sol';
 import {ValidationParams} from 'src/types/ValidationParams.sol';
-import {AuthKey} from 'src/types/base/AuthKey.sol';
 
 /**
  * @title CalldataHygieneTest
@@ -20,15 +20,8 @@ import {AuthKey} from 'src/types/base/AuthKey.sol';
  * word carrying dirty high bits. These cases hold that: a rail that stopped reading the fields, or
  * only needed the digest, would let a dirty payload through and fail here.
  */
-contract CalldataHygieneTest is AuthenticatorBase {
+contract CalldataHygieneTest is SignerAuthenticatorBase {
   uint160 internal constant AMOUNT = 5 ether;
-
-  AuthKey internal key;
-
-  function setUp() public override {
-    super.setUp();
-    key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
-  }
 
   /// DIRTY-01 — a dirty token address word is refused on the delegated execution rail
   function test_DIRTY_01_delegatedExecution() public {
@@ -76,7 +69,7 @@ contract CalldataHygieneTest is AuthenticatorBase {
 
   /// DIRTY-03 — a dirty token address word is refused on the delegated fulfillment rail
   function test_DIRTY_03_delegatedFulfillment() public {
-    _delegateKeyThroughHub(key);
+    _delegateSignerThroughHub(signer);
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     FulfillmentOrder memory order = _order(92, deadline);
 
@@ -87,7 +80,7 @@ contract CalldataHygieneTest is AuthenticatorBase {
         (
           order,
           address(authenticator),
-          _fulfillmentAuthData(order, key, masterKeyPk),
+          _fulfillmentAuthData(order, signer, signerPk),
           _solution(order, _calls(_routerCall(0, hex'01')), deadline),
           '',
           false

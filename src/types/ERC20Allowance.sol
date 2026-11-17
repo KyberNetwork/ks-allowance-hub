@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import {IKSAllowanceHubV2} from '../interfaces/IKSAllowanceHubV2.sol';
+
 import {DynamicArrayLibExt} from '../libraries/DynamicArrayLibExt.sol';
 
 import {ERC20Transfer} from './ERC20Transfer.sol';
-
-import {IKSAllowanceHubV2} from '../interfaces/IKSAllowanceHubV2.sol';
 
 import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';

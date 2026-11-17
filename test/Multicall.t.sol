@@ -1,22 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol';
+import {SignerAuthenticatorBase} from 'test/base/SignerAuthenticatorBase.sol';
 
 import {RouterMock} from 'test/mocks/RouterMock.sol';
+import {SignerAuthenticatorMock} from 'test/mocks/SignerAuthenticatorMock.sol';
 
-import {NativeSpendGuard} from 'src/base/NativeSpendGuard.sol';
 import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
-import {IOrderAuthenticator} from 'src/interfaces/authenticators/IOrderAuthenticator.sol';
-import {
-  ITwoTiersOrderAuthenticator
-} from 'src/interfaces/authenticators/ITwoTiersOrderAuthenticator.sol';
+import {IAHV2Authenticator} from 'src/interfaces/base/IAHV2Authenticator.sol';
 import {IAuthDelegator} from 'src/interfaces/base/IAuthDelegator.sol';
 import {IUnorderedNonce} from 'src/interfaces/base/IUnorderedNonce.sol';
+
+import {NativeSpendGuard} from 'src/base/NativeSpendGuard.sol';
+
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
 import {GenericCall} from 'src/types/GenericCall.sol';
-import {AuthKey} from 'src/types/base/AuthKey.sol';
 
 import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
@@ -26,12 +25,12 @@ import {
 
 /**
  * @title MulticallTest
- * @notice MC-01..07 and MC-FUZZ — the batching surface
+ * @notice MC-01..07, MC-09 and MC-FUZZ — the batching surface
  * @dev `multicall` runs each entry under the same guards as a direct call and limits the batch as
  * a whole, so one refusal reverts every entry. The native-value cases test this limit: a batch may
  * spend only the value the caller sent, and the hub's own native balance must remain unchanged.
  */
-contract MulticallTest is AuthenticatorBase {
+contract MulticallTest is SignerAuthenticatorBase {
   uint160 internal constant AMOUNT = 1 ether;
 
   bytes32 internal constant ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
@@ -236,17 +235,22 @@ contract MulticallTest is AuthenticatorBase {
    * true the batch carries on, and the delegation is in place either way.
    */
   function test_MC_09_aFrontRunDelegationDoesNotUnwindTheBatch() public {
-    AuthKey memory key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     uint256 delegationNonce = 80;
 
     bytes memory delegationSig = _signAuthDelegation(
-      ownerKey, owner, address(authenticator), true, _encodeKey(key), delegationNonce, deadline
+      ownerKey,
+      owner,
+      address(authenticator),
+      true,
+      _encodeSigner(signer),
+      delegationNonce,
+      deadline
     );
     ExecutionOrder memory order = _openExecutionOrder(
       _erc20s(_tokenTransfer(AMOUNT)), _calls(_routerCall(0, hex'01')), 81, deadline
     );
-    bytes memory orderAuth = _executionAuthData(order, key, masterKeyPk);
+    bytes memory orderAuth = _executionAuthData(order, signer, signerPk);
 
     bytes[] memory relayed = new bytes[](1);
     relayed[0] = abi.encodeCall(
@@ -255,7 +259,7 @@ contract MulticallTest is AuthenticatorBase {
         owner,
         address(authenticator),
         true,
-        _encodeKey(key),
+        _encodeSigner(signer),
         delegationNonce,
         deadline,
         delegationSig
@@ -273,7 +277,13 @@ contract MulticallTest is AuthenticatorBase {
     // the front-runner lands the same signed delegation first
     vm.prank(recipient);
     hub.updateDelegation(
-      owner, address(authenticator), true, _encodeKey(key), delegationNonce, deadline, delegationSig
+      owner,
+      address(authenticator),
+      true,
+      _encodeSigner(signer),
+      delegationNonce,
+      deadline,
+      delegationSig
     );
 
     // with `allowFailure` false, the spent nonce unwinds the batch
@@ -294,41 +304,40 @@ contract MulticallTest is AuthenticatorBase {
   }
 
   /**
-   * MC-06 — one batch approves a session key at an authenticator and then spends on it
-   * @dev The capability the refactor exists for, end to end. The relayer submits both halves and
-   * signs neither: `forwardCalls` relays the owner's `updateAuthentication` — the authenticator
-   * sees the hub as `msg.sender`, so the owner's own approval signature is what authorises it — and
-   * the order in the next slot settles on the key that call has just approved, over the delegated
-   * rail, with the session key signing rather than the wallet. Nothing outside the batch approves
-   * the key, which the pre-state assertion fixes; the delegation put in place beforehand carries no
-   * key of its own, so the hub's gate is open while the authenticator still knows nothing.
+   * MC-06 — one batch approves a signer at an authenticator and then spends on it
+   * @dev The relayer submits both halves and signs neither: `forwardCalls` relays the owner's
+   * `updateAuthentication` (the authenticator sees the hub as `msg.sender`, so the owner's own
+   * approval signature is what authorises it), and the order in the next slot settles on the signer
+   * that call has just approved, over the delegated rail, with the signer signing rather than the
+   * wallet. Nothing outside the batch approves the signer, which the pre-state assertion fixes; the
+   * delegation put in place beforehand carries no payload, so the hub's gate is open while the
+   * authenticator still knows nothing.
    */
-  function test_MC_06_approveAMasterKeyAndSpendOnItInOneBatch() public {
-    AuthKey memory key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
-    bytes32 keyHash = _keyHash(key);
-
+  function test_MC_06_approveASignerAndSpendOnItInOneBatch() public {
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     uint256 approvalNonce = 70;
     uint256 orderNonce = 71;
 
     vm.prank(owner);
     hub.updateDelegation(owner, address(authenticator), true, '', 0, deadline, '');
-    assertFalse(authenticator.masterKeys(owner, keyHash), 'the authenticator holds no key yet');
+    assertFalse(
+      authenticator.approvedSigners(owner, signer), 'the authenticator approves no signer yet'
+    );
 
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
 
     ExecutionOrder memory order = _openExecutionOrder(erc20s, calls, orderNonce, deadline);
-    bytes memory approvalSig = _signMasterKeyUpdate(key, true, approvalNonce, deadline);
-    bytes memory orderAuth = _executionAuthData(order, key, masterKeyPk);
+    bytes memory approvalSig = _signSignerUpdate(signer, true, approvalNonce, deadline);
+    bytes memory orderAuth = _executionAuthData(order, signer, signerPk);
 
     address[] memory targets = new address[](1);
     targets[0] = address(authenticator);
 
     bytes[] memory relayed = new bytes[](1);
     relayed[0] = abi.encodeCall(
-      IOrderAuthenticator.updateAuthentication,
-      (owner, _approveKey(key), approvalNonce, deadline, approvalSig)
+      IAHV2Authenticator.updateAuthentication,
+      (owner, _approveSigner(signer), approvalNonce, deadline, approvalSig)
     );
 
     bytes[] memory batch = new bytes[](2);
@@ -345,7 +354,7 @@ contract MulticallTest is AuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(ITwoTiersOrderAuthenticator.MasterKeyNotApproved.selector, keyHash)
+      abi.encodeWithSelector(SignerAuthenticatorMock.SignerNotApproved.selector, owner, signer)
     );
     hub.multicall(orderOnly);
 
@@ -355,7 +364,7 @@ contract MulticallTest is AuthenticatorBase {
     (bytes[] memory results,) = hub.multicall(batch);
 
     assertEq(results.length, 2, 'one result per sub-call');
-    assertTrue(authenticator.masterKeys(owner, keyHash), 'the batch approved the key');
+    assertTrue(authenticator.approvedSigners(owner, signer), 'the batch approved the signer');
     assertEq(
       IERC20(token18).balanceOf(address(router)) - routerWethBefore,
       AMOUNT,
@@ -366,91 +375,14 @@ contract MulticallTest is AuthenticatorBase {
     assertEq(
       authenticator.nonces(lNonceKey(owner), 0),
       1 << approvalNonce,
-      'the approval burned a nonce of the owner, who signed it'
+      'the approval spent a nonce of the owner, who signed it'
     );
     assertEq(
-      authenticator.nonces(_credentialHash(key), 0),
+      authenticator.nonces(lNonceKey(signer), 0),
       1 << orderNonce,
-      'and the order burned one of the session key, which signed that'
+      'the order spent a nonce of the signer, which signed it'
     );
-    assertEq(hub.nonces(lNonceKey(owner), 0), 0, 'and the hub burned none of its own');
-  }
-
-  /**
-   * MC-08 — one batch mints an ephemeral key from a master key and spends on it
-   * @dev MC-06 with the wallet out of the loop. The only signatures are the master key's, over the
-   * approval, and the ephemeral key's, over the order; the owner signs nothing and submits nothing,
-   * which is the purpose of the second tier. The order on its own is refused first, so the batch
-   * is evidence that slot 0 is what let it through.
-   */
-  function test_MC_08_masterKeyMintsAnEphemeralKeyAndSpendsOnItInOneBatch() public {
-    AuthKey memory masterKey = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
-    AuthKey memory ephemeral = _secpKey(sessionSigner, vm.getBlockTimestamp() + 10 minutes);
-
-    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
-    uint256 approvalNonce = 80;
-    uint256 orderNonce = 81;
-
-    vm.prank(owner);
-    hub.updateDelegation(
-      owner, address(authenticator), true, _encodeKey(masterKey), 0, deadline, ''
-    );
-    assertEq(
-      authenticator.sessionKeyMaster(owner, _keyHash(ephemeral)), bytes32(0), 'no ephemeral key yet'
-    );
-
-    ExecutionOrder memory order = _openExecutionOrder(
-      _erc20s(_tokenTransfer(AMOUNT)), _calls(_routerCall(0, hex'01')), orderNonce, deadline
-    );
-    bytes memory approvalSig =
-      _signSessionKeyUpdate(masterKey, ephemeral, true, approvalNonce, deadline, masterKeyPk);
-    bytes memory orderAuth = _executionAuthData(order, ephemeral, sessionKeyPk, true);
-
-    address[] memory targets = new address[](1);
-    targets[0] = address(authenticator);
-
-    bytes[] memory relayed = new bytes[](1);
-    relayed[0] = abi.encodeCall(
-      IOrderAuthenticator.updateAuthentication,
-      (owner, _sessionKeyData(ephemeral, masterKey, true), approvalNonce, deadline, approvalSig)
-    );
-
-    bytes[] memory batch = new bytes[](2);
-    batch[0] = abi.encodeCall(IKSAllowanceHubV2.forwardCalls, (_call3s(targets, relayed, 0)));
-    batch[1] = abi.encodeCall(
-      IKSAllowanceHubV2.executeOrderWithDelegatedAuthentication,
-      (order, address(authenticator), orderAuth, false)
-    );
-
-    bytes[] memory orderOnly = new bytes[](1);
-    orderOnly[0] = batch[1];
-
-    vm.prank(relayer);
-    vm.expectRevert(
-      abi.encodeWithSelector(
-        ITwoTiersOrderAuthenticator.SessionKeyNotApproved.selector, _keyHash(ephemeral)
-      )
-    );
-    hub.multicall(orderOnly);
-
-    uint256 routerWethBefore = IERC20(token18).balanceOf(address(router));
-
-    vm.prank(relayer);
-    hub.multicall(batch);
-
-    assertEq(
-      authenticator.sessionKeyMaster(owner, _keyHash(ephemeral)),
-      _keyHash(masterKey),
-      'the batch minted the ephemeral key'
-    );
-    assertEq(
-      IERC20(token18).balanceOf(address(router)) - routerWethBefore,
-      AMOUNT,
-      'and it spent on it in the same transaction'
-    );
-    assertEq(
-      authenticator.nonces(lNonceKey(owner), 0), 0, "the owner's namespace is untouched throughout"
-    );
+    assertEq(hub.nonces(lNonceKey(owner), 0), 0, 'and the hub spent none of its own');
   }
 
   struct BatchFuzz {

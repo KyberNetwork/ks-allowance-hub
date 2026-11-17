@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {NativeSpendGuard} from './NativeSpendGuard.sol';
-
 import {IMulticall} from '../interfaces/base/IMulticall.sol';
+
+import {NativeSpendGuard} from './NativeSpendGuard.sol';
 
 import {DynamicArrayLibExt} from '../libraries/DynamicArrayLibExt.sol';
 

@@ -4,20 +4,18 @@ pragma solidity ^0.8.0;
 import {Vm} from 'forge-std/Vm.sol';
 
 import {SchemaHash} from 'test/base/SchemaHash.sol';
+import {SignerAuthenticatorBase} from 'test/base/SignerAuthenticatorBase.sol';
 
-import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol';
+import {SignerAuthenticatorMock} from 'test/mocks/SignerAuthenticatorMock.sol';
 
 import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
-import {IOrderAuthenticator} from 'src/interfaces/authenticators/IOrderAuthenticator.sol';
-import {
-  ITwoTiersOrderAuthenticator
-} from 'src/interfaces/authenticators/ITwoTiersOrderAuthenticator.sol';
+import {IAHV2Authenticator} from 'src/interfaces/base/IAHV2Authenticator.sol';
 import {IAuthDelegator} from 'src/interfaces/base/IAuthDelegator.sol';
+
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/types/ERC721Transfer.sol';
 import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
 import {GenericCall} from 'src/types/GenericCall.sol';
-import {AuthKey} from 'src/types/base/AuthKey.sol';
 
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
@@ -27,27 +25,13 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  * {KSAllowanceHubV2-executeOrderWithDelegatedAuthentication}.
  * @dev The two rails are separate functions now, so the differences are per entry point rather than
  * per flag: the Permit2 rail binds the order as a witness and gates on `order.relayer`, while the
- * delegated rail hands the whole order to an {IOrderAuthenticator} the owner nominated.
+ * delegated rail hands the whole order to an {IAHV2Authenticator} the owner nominated.
  */
-contract ExecuteOrderTest is AuthenticatorBase {
+contract ExecuteOrderTest is SignerAuthenticatorBase {
   uint160 internal constant AMOUNT = 5 ether;
 
   /// @dev Permit2 does not expose this in the vendored interface, so it is written out here
   bytes4 internal constant PERMIT2_INVALID_SIGNER = bytes4(keccak256('InvalidSigner()'));
-
-  /// @dev Raised by the calldata decoder, which declares it in a library rather than in an ABI
-  bytes4 internal constant SLICE_OUT_OF_BOUNDS = bytes4(keccak256('SliceOutOfBounds()'));
-
-  /**
-   * @dev Transcribed from {IOrderAuthenticator}, with {ExecutionOrder} expanded to its tuple. A
-   * selector taken from the production interface would agree with a wrong signature there.
-   */
-  AuthKey internal key;
-
-  function setUp() public override {
-    super.setUp();
-    key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
-  }
 
   // -------------------------------------------------------------------------------------------
   // AUTH-01..05 — the Permit2 signature rail
@@ -242,7 +226,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     ExecutionOrder memory order = _openExecutionOrder(
       _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 0, vm.getBlockTimestamp()
     );
-    bytes memory authData = _authData(key, hex'00');
+    bytes memory authData = _authData(signer, hex'00');
 
     vm.prank(relayer);
     vm.expectRevert(
@@ -262,7 +246,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
    * *not* specify went untouched, so this is about the argument and not about the transfer.
    */
   function test_ORD_01_theAssetSourceIsTheSubmittersArgument() public {
-    _delegateKeyThroughHub(key);
+    _delegateSignerThroughHub(signer);
     _grantPermit2Allowance(token18, 100 ether);
 
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
@@ -270,7 +254,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
     ExecutionOrder memory plainRail =
       _executionOrder(ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 40, expiration);
-    bytes memory plainAuth = _executionAuthData(plainRail, key, masterKeyPk);
+    bytes memory plainAuth = _executionAuthData(plainRail, signer, signerPk);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
     uint160 allowanceBefore = _permit2Allowance(token18);
@@ -283,7 +267,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
     ExecutionOrder memory permit2Rail =
       _executionOrder(ANY, erc20s, new ERC721Transfer[](0), new GenericCall[](0), 41, expiration);
-    bytes memory permit2Auth = _executionAuthData(permit2Rail, key, masterKeyPk);
+    bytes memory permit2Auth = _executionAuthData(permit2Rail, signer, signerPk);
 
     before = IERC20(token18).balanceOf(address(router));
 
@@ -342,7 +326,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
    * rather than agree with itself. The settlement assertion is what rules out a vacuous pass.
    */
   function test_AUTH_11_authenticatorReceivesTheWholeOrder() public {
-    _delegateKeyThroughHub(key);
+    _delegateSignerThroughHub(signer);
 
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
@@ -350,10 +334,10 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
     ExecutionOrder memory order =
       _executionOrder(ANY, erc20s, new ERC721Transfer[](0), calls, 43, expiration);
-    bytes memory authData = _executionAuthData(order, key, masterKeyPk);
+    bytes memory authData = _executionAuthData(order, signer, signerPk);
 
     bytes memory expectedCall = abi.encodeCall(
-      IOrderAuthenticator.authenticateExecution, (order, SchemaHash.executionOrder(order), authData)
+      IAHV2Authenticator.authenticateExecution, (order, SchemaHash.executionOrder(order), authData)
     );
 
     uint256 before = IERC20(token18).balanceOf(address(router));
@@ -368,40 +352,37 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
   /**
    * AUTH-13 — authentication data too short to settle is rejected, on whichever gate it reaches
-   * @dev A short payload fails at a different point depending on how short it is. The key alone
-   * starts with the word `0x20`, as `abi.encode(bytes signature)` does, so it takes the owner rail,
-   * and the key's body read as a signature does not verify for the owner. The key and a tier take
-   * the key rail and read a zero-length signature out of the key's body, which verifies against
-   * nothing. Only a payload whose signature length exceeds what follows it reaches the decoder's
-   * bounds check.
+   * @dev A single word and a payload truncated by one word fail the authenticator's ABI decoding,
+   * which reverts with empty data. A well-formed payload with an empty signature fails verification
+   * with the authenticator's error, which the hub returns unchanged.
    */
   function test_AUTH_13_malformedAuthenticationDataRejected() public {
-    _delegateKeyThroughHub(key);
+    _delegateSignerThroughHub(signer);
 
     ExecutionOrder memory order = _openExecutionOrder(
       _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 0, vm.getBlockTimestamp()
     );
 
     vm.prank(relayer);
-    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
+    vm.expectRevert(bytes(''));
     hub.executeOrderWithDelegatedAuthentication(
-      order, address(authenticator), _encodeKey(key), false
+      order, address(authenticator), _encodeSigner(signer), false
     );
 
     vm.prank(relayer);
-    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
+    vm.expectRevert(SignerAuthenticatorMock.InvalidOrderSignature.selector);
     hub.executeOrderWithDelegatedAuthentication(
-      order, address(authenticator), abi.encode(key, false), false
+      order, address(authenticator), _authData(signer, ''), false
     );
 
-    bytes memory whole = _executionAuthData(order, key, masterKeyPk);
+    bytes memory whole = _executionAuthData(order, signer, signerPk);
     bytes memory truncated = new bytes(whole.length - 32);
     for (uint256 i = 0; i < truncated.length; i++) {
       truncated[i] = whole[i];
     }
 
     vm.prank(relayer);
-    vm.expectRevert(SLICE_OUT_OF_BOUNDS);
+    vm.expectRevert(bytes(''));
     hub.executeOrderWithDelegatedAuthentication(order, address(authenticator), truncated, false);
   }
 
@@ -412,7 +393,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
    * against differs.
    */
   function test_AUTH_14_authenticationBindsExtraData() public {
-    _delegateKeyThroughHub(key);
+    _delegateSignerThroughHub(signer);
 
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
@@ -420,7 +401,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     ExecutionOrder memory control =
       _openExecutionOrder(erc20s, new GenericCall[](0), 80, expiration);
     control.extraData = 'ref:A';
-    bytes memory controlAuth = _executionAuthData(control, key, masterKeyPk);
+    bytes memory controlAuth = _executionAuthData(control, signer, signerPk);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
 
@@ -430,14 +411,14 @@ contract ExecuteOrderTest is AuthenticatorBase {
 
     ExecutionOrder memory signed = _openExecutionOrder(erc20s, new GenericCall[](0), 81, expiration);
     signed.extraData = 'ref:A';
-    bytes memory signedAuth = _executionAuthData(signed, key, masterKeyPk);
+    bytes memory signedAuth = _executionAuthData(signed, signer, signerPk);
 
     ExecutionOrder memory tampered =
       _openExecutionOrder(erc20s, new GenericCall[](0), 81, expiration);
     tampered.extraData = 'ref:B';
 
     vm.prank(relayer);
-    vm.expectRevert(ITwoTiersOrderAuthenticator.InvalidOrderSignature.selector);
+    vm.expectRevert(SignerAuthenticatorMock.InvalidOrderSignature.selector);
     hub.executeOrderWithDelegatedAuthentication(tampered, address(authenticator), signedAuth, false);
   }
 
@@ -491,13 +472,13 @@ contract ExecuteOrderTest is AuthenticatorBase {
   }
 
   /**
-   * EX-FUZZ — `executeOrderWithDelegatedAuthentication` settles a relayed session-key order
+   * EX-FUZZ — `executeOrderWithDelegatedAuthentication` settles a relayed order signed by an approved signer
    * @dev `pinSubmitter` and `usePermit2Allowances` are never read as control flow on this rail, but
    * both sit inside `order.hash()`, so the emitted order hash is what makes them matter: a hub that
    * reported a hash over anything but the order it settled would fail here.
    */
   function testFuzz_EX_FUZZ_delegatedRail(ExecuteFuzz memory f) public {
-    _delegateKeyThroughHub(key);
+    _delegateSignerThroughHub(signer);
 
     f.amount = uint160(bound(f.amount, 0, 100 ether));
     f.callCount = uint8(bound(f.callCount, 0, 3));
@@ -522,7 +503,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
       f.nonce,
       vm.getBlockTimestamp() + f.expirationOffset
     );
-    bytes memory authData = _executionAuthData(order, key, masterKeyPk);
+    bytes memory authData = _executionAuthData(order, signer, signerPk);
 
     uint256 before = IERC20(token18).balanceOf(address(router));
     uint256 routerNative = address(router).balance;
@@ -546,7 +527,7 @@ contract ExecuteOrderTest is AuthenticatorBase {
     }
 
     assertEq(
-      authenticator.nonces(_credentialHash(key), f.nonce >> 8),
+      authenticator.nonces(lNonceKey(signer), f.nonce >> 8),
       1 << (f.nonce & 0xff),
       'the authenticator burned exactly the order nonce'
     );

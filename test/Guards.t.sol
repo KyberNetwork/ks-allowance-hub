@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol';
+import {SignerAuthenticatorBase} from 'test/base/SignerAuthenticatorBase.sol';
+
+import {IAHV2Authenticator} from 'src/interfaces/base/IAHV2Authenticator.sol';
+import {IAuthDelegator} from 'src/interfaces/base/IAuthDelegator.sol';
 
 import {NativeSpendGuard} from 'src/base/NativeSpendGuard.sol';
-import {IOrderAuthenticator} from 'src/interfaces/authenticators/IOrderAuthenticator.sol';
-import {IAuthDelegator} from 'src/interfaces/base/IAuthDelegator.sol';
+
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
@@ -26,7 +28,7 @@ import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
  * `updateAuthentication` could not say which of the two a delegation reached, so an assertion on it
  * would hold either way and prove nothing.
  */
-contract OrderAuthenticatorMock is IOrderAuthenticator {
+contract AHV2AuthenticatorStub is IAHV2Authenticator {
   bytes public lastInitData;
   uint256 public initCount;
 
@@ -72,7 +74,7 @@ contract OrderAuthenticatorMock is IOrderAuthenticator {
  * applications neither of those reaches. `NEST-03` of {SettlementTest} observes `setMsgSender` on
  * all four, so every one of the eighteen is observed somewhere.
  */
-contract GuardsTest is AuthenticatorBase {
+contract GuardsTest is SignerAuthenticatorBase {
   uint160 internal constant AMOUNT = 1 ether;
 
   bytes32 internal constant GUARDIAN = keccak256('GUARDIAN_ROLE');
@@ -108,7 +110,7 @@ contract GuardsTest is AuthenticatorBase {
 
   /// GUARD-02 — a pause closes the order entry points but leaves delegation open
   function test_GUARD_02_pauseClosesOrdersNotDelegation() public {
-    OrderAuthenticatorMock mock = new OrderAuthenticatorMock();
+    AHV2AuthenticatorStub mock = new AHV2AuthenticatorStub();
 
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC20Allowance[] memory allowances = _allowances(_tokenAllowance(AMOUNT));

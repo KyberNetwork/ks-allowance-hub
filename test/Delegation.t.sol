@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol';
+import {SignerAuthenticatorBase} from 'test/base/SignerAuthenticatorBase.sol';
 
+import {SignerAuthenticatorMock} from 'test/mocks/SignerAuthenticatorMock.sol';
 import {ERC1271WalletMock} from 'test/mocks/TokenMocks.sol';
 
-import {IOrderAuthenticator} from 'src/interfaces/authenticators/IOrderAuthenticator.sol';
-import {
-  ITwoTiersOrderAuthenticator
-} from 'src/interfaces/authenticators/ITwoTiersOrderAuthenticator.sol';
+import {IAHV2Authenticator} from 'src/interfaces/base/IAHV2Authenticator.sol';
 import {IAuthDelegator} from 'src/interfaces/base/IAuthDelegator.sol';
 import {IUnorderedNonce} from 'src/interfaces/base/IUnorderedNonce.sol';
+
+import {AHV2AuthenticatorBase} from 'src/base/AHV2AuthenticatorBase.sol';
+
 import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
 import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
 import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
-import {AuthKey} from 'src/types/base/AuthKey.sol';
 
 /// @notice Authenticator that can be switched to reverting, to show a withdrawal never calls it
-contract RevertingAuthenticator is IOrderAuthenticator {
+contract RevertingAuthenticator is IAHV2Authenticator {
   error Nope();
 
   bool public reverting;
@@ -65,18 +65,11 @@ contract RevertingAuthenticator is IOrderAuthenticator {
 
 /// @notice `DEL-*` and `NONCE-*` — nominating and withdrawing an authenticator, and the hub's
 /// unordered nonce bitmap.
-contract DelegationTest is AuthenticatorBase {
+contract DelegationTest is SignerAuthenticatorBase {
   /// @dev One struct per entry-point domain, per the frozen plan's fuzz contract
   struct DelegationFuzz {
     uint256 nonce;
     uint256 deadlineOffset;
-  }
-
-  AuthKey internal key;
-
-  function setUp() public override {
-    super.setUp();
-    key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -86,23 +79,29 @@ contract DelegationTest is AuthenticatorBase {
   /**
    * DEL-01 — the owner delegates for themselves: no nonce is spent and the authenticator is
    * trusted
-   * @dev The authenticator's `UpdateMasterKey` precedes the hub's `UpdateDelegation`, since the
+   * @dev The authenticator's `UpdateSigner` precedes the hub's `UpdateDelegation`, since the
    * hub emits after the authenticator returns.
    */
   function test_DEL_01_selfDelegationSpendsNoNonce() public {
     uint256 word = 0;
 
     vm.expectEmit(address(authenticator));
-    emit ITwoTiersOrderAuthenticator.UpdateMasterKey(owner, _keyHash(key), key, true);
+    emit SignerAuthenticatorMock.UpdateSigner(owner, signer, true);
     vm.expectEmit(address(hub));
     emit IAuthDelegator.UpdateDelegation(owner, address(authenticator), true);
     vm.prank(owner);
     hub.updateDelegation(
-      owner, address(authenticator), true, _encodeKey(key), 0, vm.getBlockTimestamp() + 1 days, ''
+      owner,
+      address(authenticator),
+      true,
+      _encodeSigner(signer),
+      0,
+      vm.getBlockTimestamp() + 1 days,
+      ''
     );
 
     assertTrue(hub.authDelegated(owner, address(authenticator)), 'delegated');
-    assertTrue(authenticator.masterKeys(owner, _keyHash(key)), 'key approved without a signature');
+    assertTrue(authenticator.approvedSigners(owner, signer), 'signer approved without a signature');
     assertEq(hub.nonces(lNonceKey(owner), word), 0, 'no hub nonce consumed');
   }
 
@@ -111,14 +110,16 @@ contract DelegationTest is AuthenticatorBase {
     uint256 nonce = 5;
     uint256 deadline = vm.getBlockTimestamp() + 1 days;
     bytes memory sig = _signAuthDelegation(
-      ownerKey, owner, address(authenticator), true, _encodeKey(key), nonce, deadline
+      ownerKey, owner, address(authenticator), true, _encodeSigner(signer), nonce, deadline
     );
 
     vm.expectEmit(address(hub));
     emit IAuthDelegator.UpdateDelegation(owner, address(authenticator), true);
     _expectNoRevokeNonce();
     vm.prank(relayer);
-    hub.updateDelegation(owner, address(authenticator), true, _encodeKey(key), nonce, deadline, sig);
+    hub.updateDelegation(
+      owner, address(authenticator), true, _encodeSigner(signer), nonce, deadline, sig
+    );
 
     assertTrue(hub.authDelegated(owner, address(authenticator)));
     assertEq(hub.nonces(lNonceKey(owner), nonce >> 8), 1 << (nonce & 0xff), 'exact bit set');
@@ -128,22 +129,22 @@ contract DelegationTest is AuthenticatorBase {
     vm.expectRevert(
       abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(owner), nonce)
     );
-    hub.updateDelegation(owner, address(authenticator), true, _encodeKey(key), nonce, deadline, sig);
+    hub.updateDelegation(
+      owner, address(authenticator), true, _encodeSigner(signer), nonce, deadline, sig
+    );
   }
 
   /// DEL-03 — changing any signed field invalidates the delegation
   function test_DEL_03_tamperedDelegationRejected() public {
     uint256 deadline = vm.getBlockTimestamp() + 1 days;
     bytes memory sig = _signAuthDelegation(
-      ownerKey, owner, address(authenticator), true, _encodeKey(key), 1, deadline
+      ownerKey, owner, address(authenticator), true, _encodeSigner(signer), 1, deadline
     );
-
-    AuthKey memory otherKey = _secpKey(relayer, vm.getBlockTimestamp() + 30 days);
 
     vm.prank(relayer);
     vm.expectRevert(IAuthDelegator.InvalidDelegationSignature.selector);
     hub.updateDelegation(
-      owner, address(authenticator), true, _encodeKey(otherKey), 1, deadline, sig
+      owner, address(authenticator), true, _encodeSigner(relayer), 1, deadline, sig
     );
   }
 
@@ -154,25 +155,37 @@ contract DelegationTest is AuthenticatorBase {
 
     uint256 deadline = vm.getBlockTimestamp() + 1 days;
     bytes memory sig = _signAuthDelegation(
-      walletSignerKey, address(wallet), address(authenticator), true, _encodeKey(key), 2, deadline
+      walletSignerKey,
+      address(wallet),
+      address(authenticator),
+      true,
+      _encodeSigner(signer),
+      2,
+      deadline
     );
 
     vm.prank(relayer);
     hub.updateDelegation(
-      address(wallet), address(authenticator), true, _encodeKey(key), 2, deadline, sig
+      address(wallet), address(authenticator), true, _encodeSigner(signer), 2, deadline, sig
     );
     assertTrue(hub.authDelegated(address(wallet), address(authenticator)));
 
     // and a wallet that returns the wrong magic value is rejected
     wallet.setReturnWrongMagic(true);
     bytes memory sig2 = _signAuthDelegation(
-      walletSignerKey, address(wallet), address(authenticator), true, _encodeKey(key), 3, deadline
+      walletSignerKey,
+      address(wallet),
+      address(authenticator),
+      true,
+      _encodeSigner(signer),
+      3,
+      deadline
     );
 
     vm.prank(relayer);
     vm.expectRevert(IAuthDelegator.InvalidDelegationSignature.selector);
     hub.updateDelegation(
-      address(wallet), address(authenticator), true, _encodeKey(key), 3, deadline, sig2
+      address(wallet), address(authenticator), true, _encodeSigner(signer), 3, deadline, sig2
     );
   }
 
@@ -180,21 +193,23 @@ contract DelegationTest is AuthenticatorBase {
   function test_DEL_05_expiredDelegation() public {
     uint256 deadline = vm.getBlockTimestamp() - 1;
     bytes memory sig = _signAuthDelegation(
-      ownerKey, owner, address(authenticator), true, _encodeKey(key), 4, deadline
+      ownerKey, owner, address(authenticator), true, _encodeSigner(signer), 4, deadline
     );
 
     vm.prank(relayer);
     vm.expectRevert(_deadlinePassed(deadline));
-    hub.updateDelegation(owner, address(authenticator), true, _encodeKey(key), 4, deadline, sig);
+    hub.updateDelegation(
+      owner, address(authenticator), true, _encodeSigner(signer), 4, deadline, sig
+    );
   }
 
   /**
-   * DEL-06 — withdrawing stops the hub accepting that authenticator, while the key stays approved
+   * DEL-06 — withdrawing stops the hub accepting that authenticator, while the signer stays approved
    * @dev The owner needs no signature, exactly as when delegating: being `msg.sender` is the
-   * authentication. `data` is ignored on this direction, so the key it specifies is left alone.
+   * authentication. `data` is ignored on this direction, so the signer it specifies is left alone.
    */
   function test_DEL_06_withdrawDelegation() public {
-    _delegateKeyThroughHub(key);
+    _delegateSignerThroughHub(signer);
     assertTrue(hub.authDelegated(owner, address(authenticator)));
 
     vm.expectEmit(address(hub));
@@ -205,9 +220,8 @@ contract DelegationTest is AuthenticatorBase {
     );
     assertFalse(hub.authDelegated(owner, address(authenticator)));
 
-    // the authenticator still holds the approval, which is why re-delegating re-arms it; dropping
-    // the key itself is a separate instruction to the authenticator, covered by SV-REV-01
-    assertTrue(authenticator.masterKeys(owner, _keyHash(key)));
+    // the authenticator still holds the approval, which is why re-delegating re-arms it
+    assertTrue(authenticator.approvedSigners(owner, signer));
   }
 
   /**
@@ -244,7 +258,7 @@ contract DelegationTest is AuthenticatorBase {
 
   /// DEL-09 — a relayed withdrawal needs the owner's signature over the same direction
   function test_DEL_09_relayedWithdrawal() public {
-    _delegateKeyThroughHub(key);
+    _delegateSignerThroughHub(signer);
     uint256 deadline = vm.getBlockTimestamp() + 1 days;
 
     // the direction is signed, so a delegation signature cannot be submitted as a withdrawal
@@ -271,62 +285,8 @@ contract DelegationTest is AuthenticatorBase {
   }
 
   // -------------------------------------------------------------------------------------------
-  // DEL-10..12 — `initAuthentication` is not `updateAuthentication`, and only the hub reaches it
+  // DEL-12 — only the hub reaches `initAuthentication`
   // -------------------------------------------------------------------------------------------
-
-  /**
-   * DEL-10 — `initAuthentication` ignores the direction word, so a "revoke" payload still approves
-   * @dev The two authenticator entry points read the same bytes differently:
-   * `updateAuthentication` takes word 1 as the direction, while `initAuthentication` follows word 0
-   * to the key and stops. Delegating therefore has one direction only — the payload cannot ask it
-   * to revoke — and the second half here is what makes that a statement about `initAuthentication`
-   * rather than about the payload, since the very same bytes through `updateAuthentication` do the
-   * opposite.
-   */
-  function test_DEL_10_initAuthenticationIgnoresTheDirectionWord() public {
-    uint256 deadline = vm.getBlockTimestamp() + 1 days;
-    bytes32 keyHash = _keyHash(key);
-    bytes memory revokeShaped = _revokeKey(key);
-
-    vm.prank(owner);
-    hub.updateDelegation(owner, address(authenticator), true, revokeShaped, 0, deadline, '');
-
-    assertTrue(authenticator.masterKeys(owner, keyHash), 'approved despite the false direction');
-
-    vm.prank(owner);
-    authenticator.updateAuthentication(owner, revokeShaped, 0, deadline, '');
-    assertFalse(
-      authenticator.masterKeys(owner, keyHash), 'and updateAuthentication reads it as a revocation'
-    );
-  }
-
-  /**
-   * DEL-11 — both payload shapes specify the same key
-   * @dev `initAuthentication` follows a relative offset out of word 0 rather than assuming the
-   * struct starts at a fixed place, so `abi.encode(key)` and `abi.encode(key, anything)` land on
-   * the same bytes and hash to the same key. The revocation between the two steps is what stops the
-   * second one being a no-op against a key that was already approved.
-   */
-  function test_DEL_11_bothPayloadShapesNameTheSameKey() public {
-    uint256 deadline = vm.getBlockTimestamp() + 1 days;
-    bytes32 keyHash = _keyHash(key);
-    bytes memory keyOnly = _encodeKey(key);
-    bytes memory keyPlusNoise = abi.encode(key, keccak256('noise'));
-
-    vm.prank(owner);
-    hub.updateDelegation(owner, address(authenticator), true, keyOnly, 0, deadline, '');
-    assertTrue(authenticator.masterKeys(owner, keyHash), 'the bare key shape approves it');
-
-    vm.prank(owner);
-    authenticator.updateAuthentication(owner, _revokeKey(key), 0, deadline, '');
-    assertFalse(authenticator.masterKeys(owner, keyHash), 'cleared again');
-
-    vm.prank(owner);
-    hub.updateDelegation(owner, address(authenticator), true, keyPlusNoise, 0, deadline, '');
-    assertTrue(
-      authenticator.masterKeys(owner, keyHash), 'and so does the same key with a word after'
-    );
-  }
 
   /**
    * DEL-12 — `initAuthentication` answers the hub alone, and being the owner is not a way in
@@ -336,20 +296,21 @@ contract DelegationTest is AuthenticatorBase {
    * modifier — and the owner already has a route, through {AuthDelegator-updateDelegation}.
    */
   function test_DEL_12_initAuthenticationIsHubOnly() public {
-    bytes memory payload = _encodeKey(key);
-    bytes32 keyHash = _keyHash(key);
+    bytes memory payload = _encodeSigner(signer);
 
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(IOrderAuthenticator.CallerNotAuthorized.selector, relayer)
+      abi.encodeWithSelector(AHV2AuthenticatorBase.CallerNotAuthorized.selector, relayer)
     );
     authenticator.initAuthentication(owner, payload);
 
     vm.prank(owner);
-    vm.expectRevert(abi.encodeWithSelector(IOrderAuthenticator.CallerNotAuthorized.selector, owner));
+    vm.expectRevert(
+      abi.encodeWithSelector(AHV2AuthenticatorBase.CallerNotAuthorized.selector, owner)
+    );
     authenticator.initAuthentication(owner, payload);
 
-    assertFalse(authenticator.masterKeys(owner, keyHash), 'nothing was approved either time');
+    assertFalse(authenticator.approvedSigners(owner, signer), 'nothing was approved either time');
   }
 
   // -------------------------------------------------------------------------------------------
@@ -369,7 +330,7 @@ contract DelegationTest is AuthenticatorBase {
 
     bytes memory empty = '';
     bytes memory expectedCall =
-      abi.encodeCall(IOrderAuthenticator.initAuthentication, (owner, empty));
+      abi.encodeCall(IAHV2Authenticator.initAuthentication, (owner, empty));
 
     vm.expectCall(address(bad), expectedCall, 0);
 
@@ -396,7 +357,7 @@ contract DelegationTest is AuthenticatorBase {
 
     bytes memory payload = hex'00';
     bytes memory expectedCall =
-      abi.encodeCall(IOrderAuthenticator.initAuthentication, (owner, payload));
+      abi.encodeCall(IAHV2Authenticator.initAuthentication, (owner, payload));
 
     // twice: once below while the authenticator still answers, and once on the refused attempt at
     // the end, which reaches it just as far before being turned away
@@ -435,7 +396,7 @@ contract DelegationTest is AuthenticatorBase {
 
     bytes memory payload = hex'00';
     bytes memory expectedCall =
-      abi.encodeCall(IOrderAuthenticator.initAuthentication, (owner, payload));
+      abi.encodeCall(IAHV2Authenticator.initAuthentication, (owner, payload));
 
     vm.expectCall(address(bad), expectedCall, 0);
 
@@ -460,17 +421,21 @@ contract DelegationTest is AuthenticatorBase {
 
     uint256 deadline = vm.getBlockTimestamp() + 1 days;
     bytes memory sig = _signAuthDelegation(
-      sharedSignerKey, walletA, address(authenticator), true, _encodeKey(key), 7, deadline
+      sharedSignerKey, walletA, address(authenticator), true, _encodeSigner(signer), 7, deadline
     );
 
     vm.prank(relayer);
     vm.expectRevert(IAuthDelegator.InvalidDelegationSignature.selector);
-    hub.updateDelegation(walletB, address(authenticator), true, _encodeKey(key), 7, deadline, sig);
+    hub.updateDelegation(
+      walletB, address(authenticator), true, _encodeSigner(signer), 7, deadline, sig
+    );
     assertFalse(hub.authDelegated(walletB, address(authenticator)), 'B not delegated');
 
     // the same signature on the account it specifies is accepted, so the refusal is evidence
     vm.prank(relayer);
-    hub.updateDelegation(walletA, address(authenticator), true, _encodeKey(key), 7, deadline, sig);
+    hub.updateDelegation(
+      walletA, address(authenticator), true, _encodeSigner(signer), 7, deadline, sig
+    );
     assertTrue(hub.authDelegated(walletA, address(authenticator)), 'A delegated');
   }
 
@@ -499,13 +464,15 @@ contract DelegationTest is AuthenticatorBase {
     uint256 deadline = vm.getBlockTimestamp() + bound(f.deadlineOffset, 0, 30 days);
 
     bytes memory sig = _signAuthDelegation(
-      ownerKey, owner, address(authenticator), true, _encodeKey(key), nonce, deadline
+      ownerKey, owner, address(authenticator), true, _encodeSigner(signer), nonce, deadline
     );
 
     vm.expectEmit(address(hub));
     emit IAuthDelegator.UpdateDelegation(owner, address(authenticator), true);
     vm.prank(relayer);
-    hub.updateDelegation(owner, address(authenticator), true, _encodeKey(key), nonce, deadline, sig);
+    hub.updateDelegation(
+      owner, address(authenticator), true, _encodeSigner(signer), nonce, deadline, sig
+    );
 
     assertTrue(hub.authDelegated(owner, address(authenticator)));
     assertEq(

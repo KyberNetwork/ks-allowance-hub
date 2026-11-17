@@ -1,61 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {AuthenticatorBase} from 'test/authenticators/base/AuthenticatorBase.sol';
+import {SignerAuthenticatorBase} from 'test/base/SignerAuthenticatorBase.sol';
 
 import {IUnorderedNonce} from 'src/interfaces/base/IUnorderedNonce.sol';
-import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
-import {GenericCall} from 'src/types/GenericCall.sol';
-import {AuthKey} from 'src/types/base/AuthKey.sol';
-
-import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 /**
  * @title NoncesTest
- * @notice NONCE-01..06 and NONCE-FUZZ — the unordered bitmap
+ * @notice NONCE-01..05 and NONCE-FUZZ — the unordered bitmap
  * @dev A nonce is a word index in its top bits and a bit position in its low byte, spent in any
- * order, and a namespace belongs to whoever signed the data the nonce guards. The boundary cases
- * pin the split between word and bit. The namespace cases spend a number in the owner's namespace
- * and then settle data signed by somebody else carrying that same number, which cannot succeed
- * unless the namespaces are separate.
+ * order. The boundary cases pin the split between word and bit.
  */
-contract NoncesTest is AuthenticatorBase {
-  uint160 internal constant AMOUNT = 1 ether;
-
-  AuthKey internal key;
-
-  function setUp() public override {
-    super.setUp();
-    key = _secpKey(masterSigner, vm.getBlockTimestamp() + 30 days);
-  }
-
-  /// NONCE-06 — in the authenticator, the owner's approvals and a session key's orders are separate
-  function test_NONCE_06_approvalAndOrderNumbersDoNotCollide() public {
-    _delegateKeyThroughHub(key);
-
-    // Spend 7 in the owner's namespace, which is where a relayed session approval would land
-    vm.prank(owner);
-    authenticator.revokeNonce(7);
-
-    ExecutionOrder memory order = _openExecutionOrder(
-      _erc20s(_tokenTransfer(AMOUNT)), new GenericCall[](0), 7, vm.getBlockTimestamp() + 1 hours
-    );
-
-    uint256 before = IERC20(token18).balanceOf(address(router));
-    vm.prank(relayer);
-    hub.executeOrderWithDelegatedAuthentication(
-      order, address(authenticator), _executionAuthData(order, key, masterKeyPk), false
-    );
-
-    assertEq(
-      IERC20(token18).balanceOf(address(router)) - before,
-      AMOUNT,
-      'the order settled on a number the owner had already spent'
-    );
-    assertEq(authenticator.nonces(lNonceKey(owner), 0), 1 << 7, 'the owner spent 7');
-    assertEq(authenticator.nonces(_credentialHash(key), 0), 1 << 7, 'and the key spent its own 7');
-  }
-
+contract NoncesTest is SignerAuthenticatorBase {
   // -------------------------------------------------------------------------------------------
   // NONCE — the unordered bitmap
   // -------------------------------------------------------------------------------------------
