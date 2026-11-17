@@ -6,30 +6,24 @@ import {V2TestBase} from 'test/base/V2TestBase.sol';
 
 import {EfficientHashLibExt} from 'src/libraries/EfficientHashLibExt.sol';
 
-import {AuthDelegationLib} from 'src/types/AuthDelegation.sol';
+import {AHV2Order} from 'src/types/AHV2Order.sol';
+import {AHV2Solution} from 'src/types/AHV2Solution.sol';
+import {AHV2Witness, AHV2WitnessLib} from 'src/types/AHV2Witness.sol';
+import {AuthDelegation, AuthDelegationLib} from 'src/types/AuthDelegation.sol';
+import {CallParams} from 'src/types/CallParams.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
-import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ERC721Approval} from 'src/types/ERC721Approval.sol';
-import {ERC721Transfer} from 'src/types/ERC721Transfer.sol';
-import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
-import {ExecutionWitnessLib} from 'src/types/ExecutionWitness.sol';
-import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
-import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
-import {FulfillmentWitnessLib} from 'src/types/FulfillmentWitness.sol';
-import {GenericCall} from 'src/types/GenericCall.sol';
-import {SolutionApprovalLib} from 'src/types/SolutionApproval.sol';
-import {ValidationParams} from 'src/types/ValidationParams.sol';
+import {HookParams} from 'src/types/HookParams.sol';
+import {SolutionApproval, SolutionApprovalLib} from 'src/types/SolutionApproval.sol';
 
 /**
- * @notice T712-08b..12 and T712-17, plus the calldata/memory differential and the array-encoding
- * anchor.
+ * @notice T712-08b..12 and T712-17, plus the fuzzed struct hashes and the array-encoding anchors.
  * @dev The production hashers are the values under test here; every expected value is built from
  * the schemas `forge bind-json` derived from the struct definitions. The bare typehashes are
  * audited in `SchemaAudit.t.sol`; what these rows add is the struct and array encoding around
  * them, which a typehash comparison alone does not reach.
  */
 contract Eip712Test is V2TestBase {
-  bytes internal constant EXTRA_DATA = 'order-ref:7f3a';
   bytes internal constant CLIENT_DATA = 'client-ref:91c2';
 
   // -------------------------------------------------------------------------------------------
@@ -45,16 +39,37 @@ contract Eip712Test is V2TestBase {
     address delegator = address(0xA11CE);
     address authenticatorAddress = address(0xBEEF);
     bytes memory data = hex'c0ffee';
+    AuthDelegation memory delegation = AuthDelegation({
+      owner: delegator,
+      authenticator: authenticatorAddress,
+      delegated: true,
+      data: data,
+      nonce: 7,
+      deadline: 99
+    });
+    AuthDelegation memory withdrawal = AuthDelegation({
+      owner: delegator,
+      authenticator: authenticatorAddress,
+      delegated: false,
+      data: data,
+      nonce: 7,
+      deadline: 99
+    });
 
     assertEq(
       AuthDelegationLib.hash(delegator, authenticatorAddress, true, data, 7, 99),
-      lAuthDelegation(delegator, authenticatorAddress, true, data, 7, 99),
+      SchemaHash.authDelegation(delegation),
       'delegation struct hash'
     );
     assertEq(
       AuthDelegationLib.hash(delegator, authenticatorAddress, false, data, 7, 99),
-      lAuthDelegation(delegator, authenticatorAddress, false, data, 7, 99),
+      SchemaHash.authDelegation(withdrawal),
       'withdrawal struct hash'
+    );
+    assertEq(
+      AuthDelegationLib.hash(delegation),
+      SchemaHash.authDelegation(delegation),
+      'the struct form hashes as the field form'
     );
     assertTrue(
       AuthDelegationLib.hash(delegator, authenticatorAddress, true, data, 7, 99)
@@ -69,311 +84,206 @@ contract Eip712Test is V2TestBase {
   }
 
   // -------------------------------------------------------------------------------------------
-  // T712-13..16 — four further signed types
+  // T712-13..16 — further signed types
   // -------------------------------------------------------------------------------------------
 
   /**
-   * T712-17 — both Permit2 witness strings list their referenced types in sorted order
-   * @dev T712-01b and T712-02b pin the two strings byte for byte, which catches a mis-sorted
-   * production string only while the literal they are compared against is itself right. This says
-   * the ordering property directly and against production: the hand-written names are first shown
-   * to sort ascending, then each is shown to occur later in the production string than the one
-   * before it. Neither half is evidence without the other.
+   * T712-17 — the Permit2 witness string lists its referenced types in sorted order
+   * @dev T712-01b pins the string byte for byte, which catches a mis-sorted production string only
+   * while the literal it is compared against is itself right. This says the ordering property
+   * directly and against production: the hand-written names are first shown to sort ascending,
+   * then each is shown to occur later in the production string than the one before it. Neither
+   * half is evidence without the other.
    */
-  function test_T712_17_permit2TypeStringsSortTheirReferencedTypes() public pure {
-    string[] memory executionNames = new string[](4);
-    executionNames[0] = 'ERC721Transfer(';
-    executionNames[1] = 'ExecutionWitness(';
-    executionNames[2] = 'GenericCall(';
-    executionNames[3] = 'TokenPermissions(';
+  function test_T712_17_permit2TypeStringSortsItsReferencedTypes() public pure {
+    string[] memory names = new string[](5);
+    names[0] = 'AHV2Witness(';
+    names[1] = 'CallParams(';
+    names[2] = 'ERC721Approval(';
+    names[3] = 'HookParams(';
+    names[4] = 'TokenPermissions(';
 
-    _assertSortedNames(executionNames);
-    _assertNamesAppearInOrder(
-      ExecutionWitnessLib.EXECUTION_WITNESS_PERMIT2_TYPE_STRING, executionNames
-    );
-
-    string[] memory fulfillmentNames = new string[](5);
-    fulfillmentNames[0] = 'ERC721Approval(';
-    fulfillmentNames[1] = 'FulfillmentWitness(';
-    fulfillmentNames[2] = 'GenericCall(';
-    fulfillmentNames[3] = 'TokenPermissions(';
-    fulfillmentNames[4] = 'ValidationParams(';
-
-    _assertSortedNames(fulfillmentNames);
-    _assertNamesAppearInOrder(
-      FulfillmentWitnessLib.FULFILLMENT_WITNESS_PERMIT2_TYPE_STRING, fulfillmentNames
-    );
+    _assertSortedNames(names);
+    _assertNamesAppearInOrder(AHV2WitnessLib.AHV2_WITNESS_PERMIT2_TYPE_STRING, names);
   }
 
   // -------------------------------------------------------------------------------------------
   // Struct hashing agrees with the independent encoding, not just the typehash
   // -------------------------------------------------------------------------------------------
 
-  /// The execution witness hash matches the independent encoding with empty extra and client data
-  function test_T712_executionWitnessStructHash() public pure {
-    (address[] memory targets, ERC721Transfer[] memory nfts, GenericCall[] memory calls) = _sample();
+  /// The hashes of the sample {CallParams} and {HookParams} entries match {SchemaHash}
+  function test_T712_callAndHookStructHash() public view {
+    CallParams[] memory calls = _sampleCalls();
+    for (uint256 i = 0; i < calls.length; i++) {
+      bytes32 expected = SchemaHash.callParams(calls[i]);
+      assertEq(this.extHashCall(calls[i]), expected, 'call hasher');
+    }
 
-    assertEq(
-      ExecutionWitnessLib.hashMemory(ANY, targets, nfts, calls, '', ''),
-      lExecutionWitness(ANY, targets, nfts, calls, '', '')
-    );
+    HookParams[] memory hooks = _sampleHooks();
+    for (uint256 i = 0; i < hooks.length; i++) {
+      bytes32 expected = SchemaHash.hookParams(hooks[i]);
+      assertEq(this.extHashHook(hooks[i]), expected, 'hook hasher');
+    }
   }
 
   /**
-   * The fulfillment witness hash matches the independent encoding with empty extra and client data
-   * @dev The owner's tail is non-empty here, so that member is encoded
+   * The witness hash matches the independent encoding with empty client data
+   * @dev The hooks and the owner's calls are non-empty here, so those members are encoded
    */
-  function test_T712_fulfillmentWitnessStructHash() public pure {
-    (,, GenericCall[] memory ownerCalls) = _sample();
-    ERC721Approval[] memory nfts = _sampleApprovals();
-    ValidationParams[] memory vs = _sampleValidations();
-
-    assertEq(
-      FulfillmentWitnessLib.hashMemory(ANY, nfts, ownerCalls, vs, address(0xBEEF), '', ''),
-      lFulfillmentWitness(ANY, nfts, ownerCalls, vs, address(0xBEEF), '', '')
-    );
-  }
-
-  /**
-   * Both execution witness hashers match the independent encoding, and extra data moves the hash
-   * @dev Non-empty extra data is encoded by both hashers of the execution witness and moves the
-   * hash
-   */
-  function test_T712_executionWitnessExtraDataStructHash() public view {
-    (address[] memory targets, ERC721Transfer[] memory nfts, GenericCall[] memory calls) = _sample();
-    bytes32 expected = lExecutionWitness(ANY, targets, nfts, calls, EXTRA_DATA, '');
-
-    assertEq(
-      ExecutionWitnessLib.hashMemory(ANY, targets, nfts, calls, EXTRA_DATA, ''), expected, 'memory'
-    );
-    assertEq(
-      this.extHashExecutionWitness(targets, nfts, calls, EXTRA_DATA, ''), expected, 'calldata'
-    );
-    assertTrue(
-      expected != lExecutionWitness(ANY, targets, nfts, calls, '', ''), 'extra data is signed'
-    );
-  }
-
-  /**
-   * Both fulfillment witness hashers match the independent encoding, and extra data moves the hash
-   * @dev The fulfillment counterpart of {test_T712_executionWitnessExtraDataStructHash}
-   */
-  function test_T712_fulfillmentWitnessExtraDataStructHash() public view {
-    (,, GenericCall[] memory ownerCalls) = _sample();
-    ERC721Approval[] memory nfts = _sampleApprovals();
-    ValidationParams[] memory vs = _sampleValidations();
+  function test_T712_witnessStructHash() public view {
+    CallParams[] memory ownerCalls = _sampleCalls();
+    ERC721Approval[] memory approvals = _sampleApprovals();
+    HookParams[] memory hooks = _sampleHooks();
     address approver = address(0xBEEF);
-    bytes32 expected = lFulfillmentWitness(ANY, nfts, ownerCalls, vs, approver, EXTRA_DATA, '');
+    bytes32 expected = SchemaHash.ahv2Witness(
+      AHV2Witness({
+        exclusiveCaller: ANY,
+        erc721Approvals: approvals,
+        hooks: hooks,
+        ownerCalls: ownerCalls,
+        solutionApprover: approver,
+        clientData: ''
+      })
+    );
 
-    assertEq(
-      FulfillmentWitnessLib.hashMemory(ANY, nfts, ownerCalls, vs, approver, EXTRA_DATA, ''),
-      expected,
-      'memory'
-    );
-    assertEq(
-      this.extHashFulfillmentWitness(nfts, ownerCalls, vs, approver, EXTRA_DATA, ''), expected
-    );
-    assertTrue(
-      expected != lFulfillmentWitness(ANY, nfts, ownerCalls, vs, approver, '', ''),
-      'extra data is signed'
-    );
+    assertEq(this.extHashWitness(approvals, hooks, ownerCalls, approver, ''), expected, 'hasher');
   }
 
   /**
-   * Both order hashers match {SchemaHash} with extra data, and clearing it moves the hash
-   * @dev Both order hashers with non-empty extra data, and the extra data moves the hash
-   */
-  function test_T712_ordersExtraDataStructHash() public view {
-    ExecutionOrder memory execution = _sampleExecutionOrder();
-    FulfillmentOrder memory fulfillment = _sampleFulfillmentOrder();
-    assertEq(execution.extraData, EXTRA_DATA);
-    assertEq(fulfillment.extraData, EXTRA_DATA);
-    assertEq(execution.clientData, CLIENT_DATA);
-    assertEq(fulfillment.clientData, CLIENT_DATA);
-
-    bytes32 executionExpected = SchemaHash.executionOrder(execution);
-    bytes32 fulfillmentExpected = SchemaHash.fulfillmentOrder(fulfillment);
-    assertEq(execution.hashMemory(), executionExpected, 'execution memory');
-    assertEq(this.extHashExecutionOrder(execution), executionExpected, 'execution calldata');
-    assertEq(fulfillment.hashMemory(), fulfillmentExpected, 'fulfillment memory');
-    assertEq(this.extHashFulfillmentOrder(fulfillment), fulfillmentExpected, 'fulfillment calldata');
-
-    execution.extraData = '';
-    fulfillment.extraData = '';
-    assertEq(this.extHashExecutionOrder(execution), SchemaHash.executionOrder(execution));
-    assertEq(this.extHashFulfillmentOrder(fulfillment), SchemaHash.fulfillmentOrder(fulfillment));
-    assertTrue(SchemaHash.executionOrder(execution) != executionExpected, 'execution extra data');
-    assertTrue(
-      SchemaHash.fulfillmentOrder(fulfillment) != fulfillmentExpected, 'fulfillment extra data'
-    );
-  }
-
-  /**
-   * Both hashers of each witness match the independent encoding, and client data moves the hash
-   * @dev Non-empty client data is encoded by both hashers of each witness and moves the hash
+   * The witness hash matches the independent encoding, and client data moves the hash
+   * @dev Non-empty client data is encoded by the witness hasher and moves the hash
    */
   function test_T712_witnessClientDataStructHash() public view {
-    (address[] memory targets, ERC721Transfer[] memory nfts, GenericCall[] memory calls) = _sample();
+    CallParams[] memory calls = _sampleCalls();
     ERC721Approval[] memory approvals = _sampleApprovals();
-    ValidationParams[] memory vs = _sampleValidations();
+    HookParams[] memory hooks = _sampleHooks();
     address approver = address(0xBEEF);
+    AHV2Witness memory witness = AHV2Witness({
+      exclusiveCaller: ANY,
+      erc721Approvals: approvals,
+      hooks: hooks,
+      ownerCalls: calls,
+      solutionApprover: approver,
+      clientData: CLIENT_DATA
+    });
+    bytes32 expected = SchemaHash.ahv2Witness(witness);
 
-    bytes32 executionExpected =
-      lExecutionWitness(ANY, targets, nfts, calls, EXTRA_DATA, CLIENT_DATA);
     assertEq(
-      ExecutionWitnessLib.hashMemory(ANY, targets, nfts, calls, EXTRA_DATA, CLIENT_DATA),
-      executionExpected,
-      'execution memory'
+      this.extHashWitness(approvals, hooks, calls, approver, CLIENT_DATA), expected, 'hasher'
     );
-    assertEq(
-      this.extHashExecutionWitness(targets, nfts, calls, EXTRA_DATA, CLIENT_DATA),
-      executionExpected,
-      'execution calldata'
-    );
-    assertTrue(
-      executionExpected != lExecutionWitness(ANY, targets, nfts, calls, EXTRA_DATA, ''),
-      'execution client data is signed'
-    );
+    witness.clientData = '';
+    assertTrue(expected != SchemaHash.ahv2Witness(witness), 'client data is signed');
+  }
 
-    bytes32 fulfillmentExpected =
-      lFulfillmentWitness(ANY, approvals, calls, vs, approver, EXTRA_DATA, CLIENT_DATA);
-    assertEq(
-      FulfillmentWitnessLib.hashMemory(
-        ANY, approvals, calls, vs, approver, EXTRA_DATA, CLIENT_DATA
-      ),
-      fulfillmentExpected,
-      'fulfillment memory'
-    );
-    assertEq(
-      this.extHashFulfillmentWitness(approvals, calls, vs, approver, EXTRA_DATA, CLIENT_DATA),
-      fulfillmentExpected,
-      'fulfillment calldata'
-    );
-    assertTrue(
-      fulfillmentExpected
-        != lFulfillmentWitness(ANY, approvals, calls, vs, approver, EXTRA_DATA, ''),
-      'fulfillment client data is signed'
-    );
+  /// The order hash matches {SchemaHash}
+  function test_T712_orderStructHash() public view {
+    AHV2Order memory order = _sampleOrder();
+    bytes32 expected = SchemaHash.ahv2Order(order);
+
+    assertEq(this.extHashOrder(order), expected, 'hasher');
   }
 
   /**
-   * Both order hashers match {SchemaHash} with client data, and clearing it moves the hash
-   * @dev Both order hashers with non-empty client data, and the client data moves the hash
+   * The order hash matches {SchemaHash} with client data, and clearing it moves the hash
+   * @dev The order hasher with non-empty client data, and the client data moves the hash
    */
-  function test_T712_ordersClientDataStructHash() public view {
-    ExecutionOrder memory execution = _sampleExecutionOrder();
-    FulfillmentOrder memory fulfillment = _sampleFulfillmentOrder();
+  function test_T712_orderClientDataStructHash() public view {
+    AHV2Order memory order = _sampleOrder();
+    assertEq(order.clientData, CLIENT_DATA);
 
-    bytes32 executionExpected = SchemaHash.executionOrder(execution);
-    bytes32 fulfillmentExpected = SchemaHash.fulfillmentOrder(fulfillment);
-    assertEq(this.extHashExecutionOrder(execution), executionExpected, 'execution calldata');
-    assertEq(execution.hashMemory(), executionExpected, 'execution memory');
-    assertEq(this.extHashFulfillmentOrder(fulfillment), fulfillmentExpected, 'fulfillment calldata');
-    assertEq(fulfillment.hashMemory(), fulfillmentExpected, 'fulfillment memory');
+    bytes32 expected = SchemaHash.ahv2Order(order);
+    assertEq(this.extHashOrder(order), expected, 'with client data');
 
-    execution.clientData = '';
-    fulfillment.clientData = '';
-    assertEq(this.extHashExecutionOrder(execution), SchemaHash.executionOrder(execution));
-    assertEq(this.extHashFulfillmentOrder(fulfillment), SchemaHash.fulfillmentOrder(fulfillment));
-    assertTrue(SchemaHash.executionOrder(execution) != executionExpected, 'execution client data');
-    assertTrue(
-      SchemaHash.fulfillmentOrder(fulfillment) != fulfillmentExpected, 'fulfillment client data'
-    );
+    order.clientData = '';
+    assertEq(this.extHashOrder(order), SchemaHash.ahv2Order(order), 'cleared');
+    assertTrue(SchemaHash.ahv2Order(order) != expected, 'client data is signed');
   }
 
   /**
-   * The memory and calldata hashers of the execution order match {SchemaHash}
-   * @dev The memory hasher and the calldata hasher against the same {SchemaHash} value for the
-   * sample execution order
+   * The solution hash matches {SchemaHash}, and the nonce and `solverData` move the hash
+   * @dev The `solverData` is changed in one entry, then in length, so both its elements and its
+   * count are encoded.
    */
-  function test_T712_executionOrderStructHash() public view {
-    ExecutionOrder memory order = _sampleExecutionOrder();
-    bytes32 expected = SchemaHash.executionOrder(order);
+  function test_T712_solutionStructHash() public view {
+    AHV2Solution memory solution = _sampleSolution();
+    bytes32 expected = SchemaHash.ahv2Solution(solution);
 
-    assertEq(order.hashMemory(), expected, 'memory hasher');
-    assertEq(this.extHashExecutionOrder(order), expected, 'calldata hasher');
-  }
+    assertEq(this.extHashSolution(solution), expected, 'hasher');
 
-  /// The memory and calldata hashers of the fulfillment order match {SchemaHash}
-  function test_T712_fulfillmentOrderStructHash() public view {
-    FulfillmentOrder memory order = _sampleFulfillmentOrder();
-    bytes32 expected = SchemaHash.fulfillmentOrder(order);
-
-    assertEq(order.hashMemory(), expected, 'memory hasher');
-    assertEq(this.extHashFulfillmentOrder(order), expected, 'calldata hasher');
-  }
-
-  /// Both solution hashers match {SchemaHash}, and a changed nonce moves the hash
-  function test_T712_fulfillmentSolutionStructHash() public view {
-    FulfillmentSolution memory solution = _sampleSolution();
-    bytes32 expected = SchemaHash.fulfillmentSolution(solution);
-
-    assertEq(solution.hashMemory(), expected, 'memory hasher');
-    assertEq(this.extHashSolution(solution), expected, 'calldata hasher');
-
-    FulfillmentSolution memory otherNonce = _sampleSolution();
+    AHV2Solution memory otherNonce = _sampleSolution();
     otherNonce.nonce += 1;
-    bytes32 changed = SchemaHash.fulfillmentSolution(otherNonce);
+    bytes32 changed = SchemaHash.ahv2Solution(otherNonce);
     assertTrue(changed != expected, 'the nonce changes the solution hash');
-    assertEq(otherNonce.hashMemory(), changed, 'memory hasher, changed nonce');
-    assertEq(this.extHashSolution(otherNonce), changed, 'calldata hasher, changed nonce');
+    assertEq(this.extHashSolution(otherNonce), changed, 'changed nonce');
+
+    AHV2Solution memory otherData = _sampleSolution();
+    otherData.solverData[0] = hex'5e';
+    changed = SchemaHash.ahv2Solution(otherData);
+    assertTrue(changed != expected, 'an entry of solverData changes the solution hash');
+    assertEq(this.extHashSolution(otherData), changed, 'changed entry');
+
+    AHV2Solution memory longerData = _sampleSolution();
+    longerData.solverData = new bytes[](3);
+    longerData.solverData[0] = hex'5d';
+    changed = SchemaHash.ahv2Solution(longerData);
+    assertTrue(changed != expected, 'the count of solverData changes the solution hash');
+    assertEq(this.extHashSolution(longerData), changed, 'longer solverData');
   }
 
   /**
-   * Both approval hashers match the independent encoding, and the order, targets and nonce move it
+   * The approval hash matches the independent encoding, and the order, targets, solverData and
+   * nonce move it
    * @dev The whole order is a member, encoded by its own struct hash, so the production hasher
    * takes that hash and the expected side nests the order. One approval ties to one order and to
-   * the targets it specifies.
+   * the targets and `solverData` it specifies.
    */
   function test_T712_solutionApprovalStructHash() public view {
-    FulfillmentOrder memory order = _sampleFulfillmentOrder();
-    FulfillmentSolution memory solution = _sampleSolution();
-    bytes32 orderHash = SchemaHash.fulfillmentOrder(order);
-    bytes32 expected = lSolutionApproval(order, solution);
+    AHV2Order memory order = _sampleOrder();
+    AHV2Solution memory solution = _sampleSolution();
+    bytes32 orderHash = SchemaHash.ahv2Order(order);
+    bytes32 expected = _approvalHash(order, solution);
 
-    assertEq(SolutionApprovalLib.hashMemory(orderHash, solution), expected, 'memory hasher');
-    assertEq(this.extHashSolutionApproval(orderHash, solution), expected, 'calldata hasher');
+    assertEq(this.extHashSolutionApproval(orderHash, solution), expected, 'hasher');
 
-    FulfillmentOrder memory otherOrder = _sampleFulfillmentOrder();
+    AHV2Order memory otherOrder = _sampleOrder();
     otherOrder.owner = address(0xB0B);
-    assertTrue(
-      lSolutionApproval(otherOrder, solution) != expected, 'the order changes the approval'
-    );
+    assertTrue(_approvalHash(otherOrder, solution) != expected, 'the order changes the approval');
 
-    FulfillmentSolution memory otherTargets = _sampleSolution();
+    AHV2Solution memory otherTargets = _sampleSolution();
     otherTargets.erc20Targets[0] = address(0xBBB9);
-    assertTrue(
-      lSolutionApproval(order, otherTargets) != expected, 'the targets change the approval'
-    );
+    assertTrue(_approvalHash(order, otherTargets) != expected, 'the targets change the approval');
 
-    FulfillmentSolution memory otherNonce = _sampleSolution();
+    AHV2Solution memory otherData = _sampleSolution();
+    otherData.solverData[0] = hex'5e';
+    bytes32 changed = _approvalHash(order, otherData);
+    assertTrue(changed != expected, 'solverData changes the approval');
+    assertEq(this.extHashSolutionApproval(orderHash, otherData), changed, 'new data');
+
+    AHV2Solution memory otherNonce = _sampleSolution();
     otherNonce.nonce += 1;
-    bytes32 changed = lSolutionApproval(order, otherNonce);
+    changed = _approvalHash(order, otherNonce);
     assertTrue(changed != expected, 'the nonce changes the approval');
-    assertEq(SolutionApprovalLib.hashMemory(orderHash, otherNonce), changed, 'memory, new nonce');
-    assertEq(this.extHashSolutionApproval(orderHash, otherNonce), changed, 'calldata, new nonce');
+    assertEq(this.extHashSolutionApproval(orderHash, otherNonce), changed, 'new nonce');
   }
 
   /**
-   * Both hashers of each sample {ERC20Allowance} match {SchemaHash}
+   * The hash of each sample {ERC20Allowance} matches {SchemaHash}
    * @dev An allowance carries no target, so its two members are all the struct encodes
    */
   function test_T712_erc20AllowanceStructHash() public view {
     ERC20Allowance[] memory allowances = _sampleAllowances();
     for (uint256 i = 0; i < allowances.length; i++) {
       bytes32 expected = SchemaHash.erc20Allowance(allowances[i]);
-      assertEq(allowances[i].hashMemory(), expected, 'memory hasher');
-      assertEq(this.extHashAllowance(allowances[i]), expected, 'calldata hasher');
+      assertEq(this.extHashAllowance(allowances[i]), expected, 'hasher');
     }
   }
 
-  /// Both hashers of a sample {ERC721Approval} match {SchemaHash}
+  /// The hash of a sample {ERC721Approval} matches {SchemaHash}
   function test_T712_erc721ApprovalStructHash() public view {
     ERC721Approval memory approval = _sampleApprovals()[0];
     bytes32 expected = SchemaHash.erc721Approval(approval);
 
-    assertEq(approval.hashMemory(), expected, 'memory hasher');
-    assertEq(this.extHashApproval(approval), expected, 'calldata hasher');
+    assertEq(this.extHashApproval(approval), expected, 'hasher');
   }
 
   // -------------------------------------------------------------------------------------------
@@ -396,8 +306,8 @@ contract Eip712Test is V2TestBase {
   }
 
   /**
-   * T712-ARRAY — both address array hashers equal the hash of the words encoded one by one
-   * @dev Both {EfficientHashLibExt} hashers against the words of the array, written one by one
+   * T712-ARRAY — the address array hash equals the hash of the words encoded one by one
+   * @dev {EfficientHashLibExt} against the words of the array, written one by one
    */
   function testFuzz_T712_ARRAY_efficientHashLibExt(address[] memory arr) public view {
     bytes memory words;
@@ -406,65 +316,65 @@ contract Eip712Test is V2TestBase {
     }
     bytes32 expected = keccak256(words);
 
-    assertEq(this.extHashAddresses(arr), expected, 'calldata hasher');
-    assertEq(EfficientHashLibExt.hashMemory(arr), expected, 'memory hasher');
+    assertEq(this.extHashAddresses(arr), expected, 'hasher');
+  }
+
+  /**
+   * T712-ARRAY — the `bytes[]` hash equals the hash of the element hashes concatenated
+   * @dev {EfficientHashLibExt} against the concatenation of the hash of each element,
+   * written one by one
+   */
+  function testFuzz_T712_ARRAY_bytesArrayHash(bytes[] memory arr) public view {
+    bytes memory hashes;
+    for (uint256 i = 0; i < arr.length; i++) {
+      hashes = bytes.concat(hashes, keccak256(arr[i]));
+    }
+    bytes32 expected = keccak256(hashes);
+
+    assertEq(this.extHashBytesArray(arr), expected, 'hasher');
   }
 
   // -------------------------------------------------------------------------------------------
-  // T712-DIFF — the calldata and memory variants must never drift apart
+  // T712-FUZZ — the production hashers against the independent struct hashes
   // -------------------------------------------------------------------------------------------
 
-  /// T712-DIFF — the calldata and memory hashers of {GenericCall} return the same hash
-  function testFuzz_T712_DIFF_genericCall(GenericCall memory c) public view {
-    assertEq(this.extHashCall(c), c.hashMemory());
+  /// T712-FUZZ — the {CallParams} hash equals its EIP-712 struct hash
+  function testFuzz_T712_FUZZ_callParamsStructHash(CallParams memory c) public view {
+    assertEq(this.extHashCall(c), SchemaHash.callParams(c));
   }
 
-  /// T712-DIFF — the calldata and memory hashers of {ERC20Transfer} return the same hash
-  function testFuzz_T712_DIFF_erc20Transfer(ERC20Transfer memory t) public view {
-    assertEq(this.extHashErc20(t), t.hashMemory());
+  /// T712-FUZZ — the {ERC20Allowance} hash equals its EIP-712 struct hash
+  function testFuzz_T712_FUZZ_erc20AllowanceStructHash(ERC20Allowance memory a) public view {
+    assertEq(this.extHashAllowance(a), SchemaHash.erc20Allowance(a));
   }
 
-  /// T712-DIFF — the calldata and memory hashers of {ERC721Transfer} return the same hash
-  function testFuzz_T712_DIFF_erc721Transfer(ERC721Transfer memory t) public view {
-    assertEq(this.extHashErc721(t), t.hashMemory());
+  /// T712-FUZZ — the {ERC721Approval} hash equals its EIP-712 struct hash
+  function testFuzz_T712_FUZZ_erc721ApprovalStructHash(ERC721Approval memory a) public view {
+    assertEq(this.extHashApproval(a), SchemaHash.erc721Approval(a));
   }
 
-  /// T712-DIFF — the calldata and memory hashers of {ERC20Allowance} return the same hash
-  function testFuzz_T712_DIFF_erc20Allowance(ERC20Allowance memory a) public view {
-    assertEq(this.extHashAllowance(a), a.hashMemory());
+  /// T712-FUZZ — the {HookParams} hash equals its EIP-712 struct hash
+  function testFuzz_T712_FUZZ_hookParamsStructHash(HookParams memory h) public view {
+    assertEq(this.extHashHook(h), SchemaHash.hookParams(h));
   }
 
-  /// T712-DIFF — the calldata and memory hashers of {ERC721Approval} return the same hash
-  function testFuzz_T712_DIFF_erc721Approval(ERC721Approval memory a) public view {
-    assertEq(this.extHashApproval(a), a.hashMemory());
+  /// T712-FUZZ — the {AHV2Order} hash equals its EIP-712 struct hash
+  function testFuzz_T712_FUZZ_orderStructHash(AHV2Order memory o) public view {
+    assertEq(this.extHashOrder(o), SchemaHash.ahv2Order(o));
   }
 
-  /// T712-DIFF — the calldata and memory hashers of {ValidationParams} return the same hash
-  function testFuzz_T712_DIFF_validationParams(ValidationParams memory v) public view {
-    assertEq(this.extHashValidation(v), v.hashMemory());
-  }
-
-  /// T712-DIFF — the calldata and memory hashers of {ExecutionOrder} return the same hash
-  function testFuzz_T712_DIFF_executionOrder(ExecutionOrder memory o) public view {
-    assertEq(this.extHashExecutionOrder(o), o.hashMemory());
-  }
-
-  /// T712-DIFF — the calldata and memory hashers of {FulfillmentOrder} return the same hash
-  function testFuzz_T712_DIFF_fulfillmentOrder(FulfillmentOrder memory o) public view {
-    assertEq(this.extHashFulfillmentOrder(o), o.hashMemory());
+  /// T712-FUZZ — the {AHV2Solution} hash equals its EIP-712 struct hash
+  function testFuzz_T712_FUZZ_solutionStructHash(AHV2Solution memory s) public view {
+    assertEq(this.extHashSolution(s), SchemaHash.ahv2Solution(s));
   }
 
   // external wrappers so the calldata overloads are reachable from a memory-built fixture
-  function extHashCall(GenericCall calldata c) external pure returns (bytes32) {
+  function extHashCall(CallParams calldata c) external pure returns (bytes32) {
     return c.hash();
   }
 
-  function extHashErc20(ERC20Transfer calldata t) external pure returns (bytes32) {
-    return t.hash();
-  }
-
-  function extHashErc721(ERC721Transfer calldata t) external pure returns (bytes32) {
-    return t.hash();
+  function extHashHook(HookParams calldata h) external pure returns (bytes32) {
+    return h.hash();
   }
 
   function extHashAllowance(ERC20Allowance calldata a) external pure returns (bytes32) {
@@ -479,46 +389,29 @@ contract Eip712Test is V2TestBase {
     return EfficientHashLibExt.hash(a);
   }
 
-  function extHashValidation(ValidationParams calldata v) external pure returns (bytes32) {
-    return v.hash();
+  function extHashBytesArray(bytes[] calldata a) external pure returns (bytes32) {
+    return EfficientHashLibExt.hash(a);
   }
 
-  function extHashExecutionOrder(ExecutionOrder calldata o) external pure returns (bytes32) {
+  function extHashOrder(AHV2Order calldata o) external pure returns (bytes32) {
     return o.hash();
   }
 
-  function extHashFulfillmentOrder(FulfillmentOrder calldata o) external pure returns (bytes32) {
-    return o.hash();
-  }
-
-  function extHashExecutionWitness(
-    address[] calldata targets,
-    ERC721Transfer[] calldata nfts,
-    GenericCall[] calldata calls,
-    bytes calldata extraData,
-    bytes calldata clientData
-  ) external pure returns (bytes32) {
-    return ExecutionWitnessLib.hash(
-      ANY, EfficientHashLibExt.hash(targets), nfts, calls, extraData, clientData
-    );
-  }
-
-  function extHashFulfillmentWitness(
-    ERC721Approval[] calldata nfts,
-    GenericCall[] calldata ownerCalls,
-    ValidationParams[] calldata vs,
+  function extHashWitness(
+    ERC721Approval[] calldata approvals,
+    HookParams[] calldata hooks,
+    CallParams[] calldata ownerCalls,
     address approver,
-    bytes calldata extraData,
     bytes calldata clientData
   ) external pure returns (bytes32) {
-    return FulfillmentWitnessLib.hash(ANY, nfts, ownerCalls, vs, approver, extraData, clientData);
+    return AHV2WitnessLib.hash(ANY, approvals, hooks, ownerCalls, approver, clientData);
   }
 
-  function extHashSolution(FulfillmentSolution calldata s) external pure returns (bytes32) {
+  function extHashSolution(AHV2Solution calldata s) external pure returns (bytes32) {
     return s.hash();
   }
 
-  function extHashSolutionApproval(bytes32 orderHash, FulfillmentSolution calldata solution)
+  function extHashSolutionApproval(bytes32 orderHash, AHV2Solution calldata solution)
     external
     pure
     returns (bytes32)
@@ -530,58 +423,24 @@ contract Eip712Test is V2TestBase {
   // Fixtures and string helpers
   // -------------------------------------------------------------------------------------------
 
-  function _sample()
+  function _approvalHash(AHV2Order memory order, AHV2Solution memory solution)
     private
     pure
-    returns (address[] memory targets, ERC721Transfer[] memory nfts, GenericCall[] memory calls)
+    returns (bytes32)
   {
-    targets = new address[](2);
-    targets[0] = address(0xAAA1);
-    targets[1] = address(0xAAA2);
-
-    nfts = new ERC721Transfer[](1);
-    nfts[0] = ERC721Transfer({token: address(0xBADD), tokenId: 42, target: address(0xBBB1)});
-
-    calls = new GenericCall[](2);
-    calls[0] = GenericCall({router: address(0xCCC1), value: 1 ether, data: hex'deadbeef'});
-    calls[1] = GenericCall({router: address(0xCCC2), value: 0, data: ''});
+    return SchemaHash.solutionApproval(SolutionApproval({order: order, solution: solution}));
   }
 
-  function _sampleValidations() private pure returns (ValidationParams[] memory vs) {
-    vs = new ValidationParams[](2);
-    vs[0] = ValidationParams({
-      validator: address(0xDDD1),
-      action: keccak256('ACTION_ONE'),
-      beforeExecutionInput: hex'01',
-      afterExecutionInput: hex'02'
-    });
-    vs[1] = ValidationParams({
-      validator: address(0xDDD2),
-      action: bytes32(0),
-      beforeExecutionInput: '',
-      afterExecutionInput: hex'03'
-    });
+  function _sampleCalls() private pure returns (CallParams[] memory calls) {
+    calls = new CallParams[](2);
+    calls[0] = CallParams({callee: address(0xCCC1), value: 1 ether, data: hex'deadbeef'});
+    calls[1] = CallParams({callee: address(0xCCC2), value: 0, data: ''});
   }
 
-  function _sampleErc20s() private pure returns (ERC20Transfer[] memory erc20s) {
-    erc20s = new ERC20Transfer[](2);
-    erc20s[0] = ERC20Transfer({token: address(0xAAA1), target: address(0xBBB1), amount: 1000});
-    erc20s[1] = ERC20Transfer({token: address(0xAAA2), target: address(0xBBB2), amount: 0});
-  }
-
-  function _sampleExecutionOrder() private pure returns (ExecutionOrder memory) {
-    (, ERC721Transfer[] memory nfts, GenericCall[] memory calls) = _sample();
-    return ExecutionOrder({
-      owner: address(0xA11CE),
-      relayer: ANY,
-      erc20Transfers: _sampleErc20s(),
-      erc721Transfers: nfts,
-      genericCalls: calls,
-      nonce: 11,
-      expiration: 1234,
-      extraData: EXTRA_DATA,
-      clientData: CLIENT_DATA
-    });
+  function _sampleHooks() private pure returns (HookParams[] memory hooks) {
+    hooks = new HookParams[](2);
+    hooks[0] = HookParams({hook: address(0xDDD1), flags: bytes32(uint256(3)), data: hex'01'});
+    hooks[1] = HookParams({hook: address(0xDDD2), flags: bytes32(0), data: ''});
   }
 
   function _sampleAllowances() private pure returns (ERC20Allowance[] memory allowances) {
@@ -595,27 +454,24 @@ contract Eip712Test is V2TestBase {
     approvals[0] = ERC721Approval({token: address(0xBADD), tokenId: 42});
   }
 
-  function _sampleFulfillmentOrder() private pure returns (FulfillmentOrder memory) {
-    (,, GenericCall[] memory ownerCalls) = _sample();
-    return FulfillmentOrder({
+  function _sampleOrder() private pure returns (AHV2Order memory) {
+    return AHV2Order({
       owner: address(0xA11CE),
-      solver: ANY,
+      exclusiveCaller: ANY,
       erc20Allowances: _sampleAllowances(),
       erc721Approvals: _sampleApprovals(),
-      validationParams: _sampleValidations(),
-      ownerCalls: ownerCalls,
+      hooks: _sampleHooks(),
+      ownerCalls: _sampleCalls(),
       solutionApprover: address(0xBEEF),
       nonce: 12,
       expiration: 5678,
-      extraData: EXTRA_DATA,
       clientData: CLIENT_DATA
     });
   }
 
-  /// @dev One target and amount per ERC20 transfer, and one target per NFT transfer, of
-  /// {_sampleFulfillmentOrder}, none of them a router
-  function _sampleSolution() private pure returns (FulfillmentSolution memory) {
-    (,, GenericCall[] memory calls) = _sample();
+  /// @dev One target and amount per ERC20 transfer, one target per NFT transfer and one `solverData`
+  /// entry per owner call of {_sampleOrder}, none of the targets a callee
+  function _sampleSolution() private pure returns (AHV2Solution memory) {
     address[] memory erc20Targets = new address[](2);
     erc20Targets[0] = address(0xBBB1);
     erc20Targets[1] = address(0xBBB2);
@@ -624,11 +480,15 @@ contract Eip712Test is V2TestBase {
     erc20Amounts[1] = 2000;
     address[] memory erc721Targets = new address[](1);
     erc721Targets[0] = address(0xBBB3);
-    return FulfillmentSolution({
+    bytes[] memory solverData = new bytes[](2);
+    solverData[0] = hex'5d';
+    solverData[1] = '';
+    return AHV2Solution({
       erc20Targets: erc20Targets,
       erc20Amounts: erc20Amounts,
       erc721Targets: erc721Targets,
-      solverCalls: calls,
+      solverCalls: _sampleCalls(),
+      solverData: solverData,
       nonce: 3456,
       expiration: 9012
     });

@@ -1,90 +1,125 @@
 # KS Allowance Hub
 
 The allowance hub separates token approval from execution. An owner approves the hub, or Permit2,
-once instead of approving each router. The hub transfers the owner's tokens to the targets of an
-order and then calls whitelisted routers.
+once instead of approving each callee. The hub transfers the owner's tokens to the targets of an
+order and then calls whitelisted callees.
 
-Only routers holding `WHITELISTED_ROUTER_ROLE` can be called, so no other contract can reach the
+Only callees holding `WHITELISTED_CALLEE_ROLE` can be called, so no other contract can reach the
 owners' allowances to the hub. Guardians can revoke that role without the admin.
 
 ## KSAllowanceHubV2
 
 ### Orders
 
-The owner signs one of two order types. Both name the assets that may leave the owner and the
-account that may submit the order.
-
-| Order | The owner signs | The submitter chooses |
-|---|---|---|
-| `ExecutionOrder` | the transfers, their targets and the exact router calls | nothing |
-| `FulfillmentOrder` | the transfers, the validators and the owner's own router calls | a `FulfillmentSolution`: the target and the amount of each ERC20 transfer, the target of each ERC721 transfer and the solver's router calls |
+The owner signs an `AHV2Order`, which names the assets that may leave the owner, the account that
+may submit the order, the hooks that constrain the result and the callee calls the owner fixes. A
+solver supplies an `AHV2Solution`, which the owner does not sign: the target and the amount of each
+ERC20 transfer, the target of each ERC721 transfer, the solver's calls and the data of each owner
+call.
 
 ```
-ExecutionOrder(address owner,address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 expiration,bytes extraData,bytes clientData)
-FulfillmentOrder(address owner,address solver,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,ValidationParams[] validationParams,GenericCall[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes extraData,bytes clientData)
-FulfillmentSolution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,GenericCall[] solverCalls,uint256 expiration)
+AHV2Order(address owner,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)
+AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,CallParams[] solverCalls,bytes[] solverData,uint256 nonce,uint256 expiration)
+CallParams(address callee,uint256 value,bytes data)
+HookParams(address hook,bytes32 flags,bytes data)
+SolutionApproval(AHV2Order order,AHV2Solution solution)
 ```
 
-`relayer` or `solver` is the account that may submit the order besides the owner. The dead address
-`0x…dEaD` allows any account to submit.
+`exclusiveCaller` is the account that may submit the order besides the owner. The dead address
+`0x…dEaD` allows any account to submit, and as `solutionApprover` it accepts any solution without
+an approval.
 
-A fulfillment settles in this order:
+The hub reverts when either `expiration` has passed, or when the solution does not have one
+`erc20Targets` entry and one `erc20Amounts` entry per ERC20 transfer, one `erc721Targets` entry per
+ERC721 transfer and one `solverData` entry per owner call. An ERC20 transfer sends
+`solution.erc20Amounts[i]`, at most its allowance.
 
-1. the solution approval is checked, unless `solutionApprover` is the dead address or the caller is
+A settlement runs in this order:
+
+1. the expirations and the lengths of the solution's arrays are checked;
+2. the caller is checked against `exclusiveCaller` and authenticated, as the entry point requires;
+3. the solution approval is checked, unless `solutionApprover` is the dead address or the caller is
    the owner;
-2. each validator's `beforeExecution` runs;
-3. each transfer is sent to the target the solution names for it, an ERC20 transfer in the amount
-   the solution names, at most its allowance;
-4. `solution.solverCalls` run;
-5. each validator's `afterExecution` runs;
-6. `order.ownerCalls` run.
+4. each hook's `beforeSettlement` runs when its flags select it;
+5. the `TransferTokens` event is emitted;
+6. the ERC20 tokens are pulled to the targets of the solution;
+7. the ERC721 tokens are transferred to the targets of the solution;
+8. `solution.solverCalls` run through `IAHV2SolverCallee.solverCall(data)`;
+9. `order.ownerCalls` run through `IAHV2OwnerCallee.ownerCall(ownerData, solverData)`, with
+   `ownerData` from the order and `solverData` from `solution.solverData[i]`;
+10. each hook's `afterSettlement` runs when its flags select it.
 
-The validators do not observe the effects of `ownerCalls`. The solution approval is an EIP-712
-`SolutionApproval(FulfillmentOrder order,FulfillmentSolution solution)` signed by
-`solutionApprover`. It spends `solution.nonce` in the approver's namespace, so each approval settles
-at most once. No nonce is spent when no approval is checked.
+The results list the return data of the solver's calls first, then of the owner's calls.
 
-An order with no validators and a dead-address `solutionApprover` places no constraint on the
-solver: the solver chooses every target and every router call.
+The solution approval is an EIP-712 `SolutionApproval` signed by `solutionApprover`. It spends
+`solution.nonce` in the approver's namespace, so each approval settles at most once. No nonce is
+spent when no approval is checked.
+
+An order with no hooks, no owner calls and a dead-address `solutionApprover` places no constraint on
+the solver: the solver chooses every target, every ERC20 amount up to the allowance and every solver
+call.
+
+### Hooks
+
+```
+HookParams(address hook,bytes32 flags,bytes data)
+```
+
+Flag `0x01` selects `beforeSettlement` and flag `0x02` selects `afterSettlement`. Other bits are
+ignored. Any address may be a hook, and no role is required.
+
+The hub calls `IAHV2Hook` with the order, its hash, the solution and the index of the hook's entry
+in `order.hooks`. The hook reads its own `data` from the order at that index. The result of
+`beforeSettlement` is passed to `afterSettlement` as `beforeSettlementResult`, which is empty when
+the entry's flags do not select `beforeSettlement`. A hook reverts to refuse the order.
+
+On the Permit2 entry point, the before hooks run before the permit signature is checked.
+
+### `solverData`
+
+`solution.solverData` has one entry per owner call, and the hub reverts when the lengths differ. The
+solution approval covers it, when one is required. The owner's signature does not, so an owner call
+treats `solverData` as untrusted input within the limits that `ownerData` sets.
 
 ### Entry points
 
 | Function | Authorisation |
 |---|---|
-| `executeOrderWithPermit2Signature` | the owner's Permit2 signature |
-| `executeOrderWithDelegatedAuthentication` | an authenticator the owner delegated |
-| `fulfillOrderWithPermit2Signature` | the owner's Permit2 signature |
-| `fulfillOrderWithDelegatedAuthentication` | an authenticator the owner delegated |
+| `settleOrderWithDelegatedAuthentication` | an authenticator the owner delegated |
+| `settleOrderWithPermit2Signature` | the owner's Permit2 signature |
 
-On the **Permit2 entry points**, the ERC20 transfers are executed through a Permit2 batch permit
-whose nonce is `order.nonce` and whose deadline is `order.expiration`. When another account submits,
-the owner's signature must also cover a witness:
+On the **Permit2 entry point**, the ERC20 transfers are executed through a Permit2 batch permit
+whose nonce is `order.nonce` and whose deadline is `order.expiration`. The permitted amounts are the
+order's allowances, and the requested amounts are `solution.erc20Amounts`. When another account
+submits, the owner's signature must also cover a single witness:
 
 ```
-ExecutionWitness(address relayer,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,bytes extraData,bytes clientData)
-FulfillmentWitness(address solver,ERC721Approval[] erc721Approvals,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner,bytes extraData,bytes clientData)
+AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,bytes clientData)
 ```
 
-The two witnesses have distinct type names, so a signature for one entry point is not valid for the
-other.
+The Permit2 witness type string is:
 
-On the **delegated entry points**, the owner must have delegated the authenticator, the caller must
-be the order's submitter, and the authenticator must accept `authenticationData` for the order. The
-hub does not spend `order.nonce` and keeps no record of settled orders, so whether an order may be
-settled more than once is the authenticator's decision. The ERC20 transfers are drawn from the
-owner's allowances to the hub, or from the owner's Permit2 allowances when `usePermit2Allowances` is
-set.
+```
+AHV2Witness witness)AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,bytes clientData)CallParams(address callee,uint256 value,bytes data)ERC721Approval(address token,uint256 tokenId)HookParams(address hook,bytes32 flags,bytes data)TokenPermissions(address token,uint256 amount)
+```
+
+On the **delegated entry point**, the owner must have delegated the authenticator, the caller must
+be the order's `exclusiveCaller`, and the authenticator must accept `authenticationData` for the
+order. The hub does not spend `order.nonce` and keeps no record of settled orders, so whether an
+order may be settled more than once is the authenticator's decision. The ERC20 transfers are drawn
+from the owner's allowances to the hub, or from the owner's Permit2 allowances when
+`usePermit2Allowances` is set.
 
 ### Orders submitted by the owner
 
 When the caller is `order.owner`, the call itself authorises the order:
 
-- `relayer` and `solver` do not apply;
-- on the Permit2 entry points, the owner signs the permit without a witness, and the Permit2 nonce
-  is still spent;
-- on the delegated entry points, the authenticator is not called, `authenticationData` is ignored
-  and no nonce is spent, so the same order may settle more than once. `authenticator` may be the
-  zero address in this case only;
+- `exclusiveCaller` does not apply;
+- on the Permit2 entry point, the owner signs the permit without a witness, and the Permit2 nonce is
+  still spent;
+- on the delegated entry point, the authenticator is not called, `authenticationData` is ignored and
+  no nonce is spent, so the same order may settle more than once. `authenticator` may be the zero
+  address in this case only;
 - `solutionApprover` does not apply: no solution approval is checked and no approval nonce is spent.
 
 ### Delegation
@@ -136,39 +171,59 @@ with `forwardCalls` is not forwarded and remains in the hub.
 ```solidity
 hub.multicall([
   abi.encodeCall(hub.forwardCalls, (permitCalls)),
-  abi.encodeCall(hub.executeOrderWithDelegatedAuthentication, (order, authenticator, authData, false))
+  abi.encodeCall(
+    hub.settleOrderWithDelegatedAuthentication,
+    (order, authenticator, authData, solution, solutionSignature, false)
+  )
 ]);
 ```
 
-### Routers and native value
+### Callees
 
-While an order settles, `msgSender()` returns its owner, so a router called by the hub can identify
-the owner. A router call of an order may settle another order of either type, and `msgSender()`
-returns the outer order's owner again once it returns. The hub refuses no order for settling inside
-another; a fulfillment that must not run alongside another order enforces it through its
-`ownerCalls`. Each router call may spend native value only from the `msg.value` sent with the order.
-The hub has no `receive` function, so a router cannot refund native value to it; unspent `msg.value`
-remains in the hub.
+```solidity
+interface IAHV2SolverCallee {
+  function solverCall(bytes calldata data) external payable returns (bytes memory);
+}
 
-### Reentrancy and validators
+interface IAHV2OwnerCallee {
+  function ownerCall(bytes calldata ownerData, bytes calldata solverData)
+    external
+    payable
+    returns (bytes memory);
+}
+```
 
-Reentrancy is a design choice of the hub: a router call of an order may settle another order, and
-the hub does not refuse it. A validator that compares balances before and after the solver's calls
-also counts the assets that a nested order delivers in the same interval. Two fulfillment orders
-with the same recipient can each pass a validator that checks the recipient's balance increase,
-while the recipient receives the output of only one of them.
+Each callee of a solver call or an owner call must hold `WHITELISTED_CALLEE_ROLE` when the call
+runs. `CallParams.value` is the native value sent with the call, paid from the `msg.value` sent with
+the order. The hub reverts when the order spends more native value than it was sent. The hub has no
+`receive` function, so a callee cannot refund native value to it; unspent `msg.value` remains in the
+hub.
 
-An order therefore protects the owner's intent by combining validators with `ownerCalls`, not by
-validators alone. In a swap, the solver's calls deliver the output to an account the order
-specifies, and the last call in `ownerCalls` transfers the output from that account to the
-recipient. The owner signs that transfer and its amount, so the funds the recipient receives are
-moved by this order's own call. Each such transfer removes its amount from the account, so the
-output of another order with the same recipient cannot satisfy it.
+While an order settles, `msgSender()` returns its owner, so a callee called by the hub can identify
+the owner. A callee treats `solverData` as untrusted input, because the owner does not sign it.
+
+A callee call of an order may settle another order of either entry point, and `msgSender()` returns
+the outer order's owner again once it returns. The hub refuses no order for settling inside another.
+
+### Reentrancy and hooks
+
+Reentrancy is a design choice of the hub: a callee call of an order may settle another order, and
+the hub does not refuse it. A hook that compares balances before and after the solver's calls also
+counts the assets that a nested order delivers in the same interval. Two orders with the same
+recipient can each pass a hook that checks the recipient's balance increase, while the recipient
+receives the output of only one of them.
+
+An order therefore protects the owner's intent by combining hooks with owner calls, not by hooks
+alone. In a swap, the solver's calls deliver the output to an account the order specifies, and the
+last call in `ownerCalls` transfers the output from that account to the recipient. The owner signs
+that transfer and its amount, so the funds the recipient receives are moved by this order's own
+call. Each such transfer removes its amount from the account, so the output of another order with
+the same recipient cannot satisfy it.
 
 ### Management
 
 The hub inherits `ManagementSimple` from `ks-common-sc`. The owner holds the default admin role,
-transferable in one step with `transferOwnership`. Guardians pause the hub and revoke routers.
+transferable in one step with `transferOwnership`. Guardians pause the hub and revoke callees.
 Rescuers, or the default admin, call `rescueTokens(erc20Transfers, erc721Transfers)` to transfer
 assets held by the hub. An ERC20 entry with a zero amount transfers the hub's entire balance, and a
 token of `0xEeee…EEeE` or the zero address transfers native value.
@@ -185,21 +240,28 @@ The domain is published through ERC-5267's `eip712Domain()`.
 
 ```
 src/
-  *.sol            KSAllowanceHubV2
-  base/            AuthDelegator, Multicall, AHV2AuthenticatorBase and the contracts shared with
-                   the authenticators
-  interfaces/      interface of the hub; base/ for the rest, including IAHV2Authenticator
-  libraries/       constants, array and hashing helpers
-  types/           order, witness and transfer types
+  KSAllowanceHubV2.sol
+  base/            AHV2AuthenticatorBase, AuthDelegator, DeadlineChecker, MsgSender, Multicall,
+                   NativeSpendGuard, UnorderedNonce
+  interfaces/      IKSAllowanceHubV2; base/ holds the interfaces of the base contracts, IAHV2Hook,
+                   IAHV2Authenticator, IAHV2SolverCallee and IAHV2OwnerCallee
+  libraries/       Constants, DynamicArrayLibExt, EfficientHashLibExt
+  types/           AHV2Order, AHV2Solution, AHV2Witness, AuthDelegation, CallParams, HookParams,
+                   SolutionApproval, ERC20Allowance, ERC20Transfer, ERC721Approval, ERC721Transfer,
+                   NativeTransfer
 test/
-  *.t.sol          KSAllowanceHubV2 suites
-  base/            shared test base and EIP-712 oracles
-  mocks/           mock tokens, router, validator and authenticator
-  types/           EIP-712 type and schema suites
-  libraries/       Permit2 hashing and array helpers
-  artifacts/       Permit2 creation code
+  settlement/      Authentication, CalldataHygiene, Calls, Events, Hooks, Nesting, SettleFuzz,
+                   Solution and SolutionApproval suites; base/ holds the helpers they share
+  delegation/      Delegation and Nonces suites
+  batching/        Forwarder and Multicall suites
+  admin/           Guards and Management suites
+  base/            HubBase, SchemaHash, SignerAuthenticatorBase, V2TestBase
+  mocks/           callee, hook, permit token, signer authenticator and token mocks
+  types/           Eip712 and SchemaAudit suites
+  libraries/       ArrayHelper, PermitHash
+  artifacts/       Multicall3 and Permit2 creation code
 script/
-  *.s.sol          deployment and router whitelisting
+  DeployKSAllowanceHubV2.s.sol, AddWhitelistedCalleesV2.s.sol
   config/          per-chain deployment parameters
 ```
 
@@ -219,7 +281,7 @@ a repository holding this one as a submodule can inherit them. Such a repository
 
 CI runs `forge test -vvv --isolate`, which executes each top-level call as its own transaction.
 Transient state such as the account `msgSender()` returns is cleared between calls, so it can only
-be observed from inside a router call.
+be observed from inside a callee call.
 
 The EIP-712 type strings are checked against the struct declarations through `forge bind-json`,
 which generates `utils/JsonBindings.sol`. Run it twice after changing a bound struct; CI fails when
@@ -259,20 +321,17 @@ The scripts deploy with CREATE3 and read `script/config/*.json` per chain.
 
 ```shell
 forge script script/DeployKSAllowanceHubV2.s.sol           --sig 'run(string[])' '[1,56]' --broadcast
-forge script script/AddWhitelistedRoutersV2.s.sol          --sig 'run(string[])' '[1,56]' --broadcast
+forge script script/AddWhitelistedCalleesV2.s.sol          --sig 'run(string[])' '[1,56]' --broadcast
 ```
 
 `DeployKSAllowanceHubV2` reads the Multicall3 address from `multicall3.json`, which holds the
-canonical address by default; a chain where Multicall3 is deployed elsewhere needs its own entry.
-`DeployKSAllowanceHubV2` writes the hub's address to `allowance-hub-v2.json`, which
-`AddWhitelistedRoutersV2` reads.
-`AddWhitelistedRoutersV2` grants the missing routers in one transaction through the hub's
-`multicall`.
+canonical address by default; a chain where Multicall3 is deployed elsewhere needs its own entry. It
+passes the addresses in `whitelisted-callees.json` to the constructor as
+`initialWhitelistedCallees`, and writes the hub's address to `allowance-hub-v2.json`, which
+`AddWhitelistedCalleesV2` reads.
 
-`AddWhitelistedRoutersV2` grants `WHITELISTED_ROUTER_ROLE`.
+`AddWhitelistedCalleesV2` grants `WHITELISTED_CALLEE_ROLE` to the callees in
+`whitelisted-callees.json` that do not hold it, in one transaction through the hub's `multicall`.
 
 Each deploy script's `salt` is part of the CREATE3 salt, so changing it changes the deployed address
 on every chain.
-
-CI requires a `GH_PAT` repository secret with read access to the private `ks-action-validator-sc`
-submodule.

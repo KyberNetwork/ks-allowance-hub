@@ -6,8 +6,7 @@ import {SchemaHash} from './SchemaHash.sol';
 
 import {SignerAuthenticatorMock} from '../mocks/SignerAuthenticatorMock.sol';
 
-import {ExecutionOrder} from '../../src/types/ExecutionOrder.sol';
-import {FulfillmentOrder} from '../../src/types/FulfillmentOrder.sol';
+import {AHV2Order} from '../../src/types/AHV2Order.sol';
 
 /**
  * @title SignerAuthenticatorBase
@@ -98,27 +97,15 @@ abstract contract SignerAuthenticatorBase is HubBase {
     return abi.encode(orderSigner, signature);
   }
 
-  /// @dev The authentication data for an execution order signed with `signingKey`
-  function _executionAuthData(ExecutionOrder memory order, address orderSigner, uint256 signingKey)
+  /// @dev The authentication data for an order signed with `signingKey`
+  function _orderAuthData(AHV2Order memory order, address orderSigner, uint256 signingKey)
     internal
     view
     returns (bytes memory)
   {
     return _authData(
       orderSigner,
-      _sign(signingKey, lTypedDataHash(_authenticatorDomain(), SchemaHash.executionOrder(order)))
-    );
-  }
-
-  /// @dev The authentication data for a fulfillment order signed with `signingKey`
-  function _fulfillmentAuthData(
-    FulfillmentOrder memory order,
-    address orderSigner,
-    uint256 signingKey
-  ) internal view returns (bytes memory) {
-    return _authData(
-      orderSigner,
-      _sign(signingKey, lTypedDataHash(_authenticatorDomain(), SchemaHash.fulfillmentOrder(order)))
+      _sign(signingKey, lTypedDataHash(_authenticatorDomain(), SchemaHash.ahv2Order(order)))
     );
   }
 }

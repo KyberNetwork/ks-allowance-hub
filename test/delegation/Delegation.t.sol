@@ -12,9 +12,8 @@ import {IUnorderedNonce} from 'src/interfaces/base/IUnorderedNonce.sol';
 
 import {AHV2AuthenticatorBase} from 'src/base/AHV2AuthenticatorBase.sol';
 
-import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
-import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
-import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
+import {AHV2Order} from 'src/types/AHV2Order.sol';
+import {AHV2Solution} from 'src/types/AHV2Solution.sol';
 
 /// @notice Authenticator that can be switched to reverting, to show a withdrawal never calls it
 contract RevertingAuthenticator is IAHV2Authenticator {
@@ -45,18 +44,10 @@ contract RevertingAuthenticator is IAHV2Authenticator {
     }
   }
 
-  function authenticateExecution(ExecutionOrder calldata, bytes32, bytes calldata) external view {
-    if (reverting) {
-      revert Nope();
-    }
-  }
-
-  function authenticateFulfillment(
-    FulfillmentOrder calldata,
-    bytes32,
-    FulfillmentSolution calldata,
-    bytes calldata
-  ) external view {
+  function authenticate(AHV2Order calldata, bytes32, AHV2Solution calldata, bytes calldata)
+    external
+    view
+  {
     if (reverting) {
       revert Nope();
     }

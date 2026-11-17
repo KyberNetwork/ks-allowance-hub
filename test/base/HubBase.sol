@@ -4,11 +4,12 @@ pragma solidity ^0.8.0;
 import {Vm} from 'forge-std/Vm.sol';
 import {IMulticall3} from 'forge-std/interfaces/IMulticall3.sol';
 
+import {SchemaHash} from './SchemaHash.sol';
 import {V2TestBase} from './V2TestBase.sol';
 
-import {RouterMock} from '../mocks/RouterMock.sol';
+import {CalleeMock} from '../mocks/CalleeMocks.sol';
+import {HookMock} from '../mocks/HookMock.sol';
 import {ERC20Mock, ERC721Mock} from '../mocks/TokenMocks.sol';
-import {ValidatorMock} from '../mocks/ValidatorMock.sol';
 
 import {KSAllowanceHubV2} from '../../src/KSAllowanceHubV2.sol';
 
@@ -16,17 +17,17 @@ import {IUnorderedNonce} from '../../src/interfaces/base/IUnorderedNonce.sol';
 
 import {DeadlineChecker} from '../../src/base/DeadlineChecker.sol';
 
+import {AHV2Order} from '../../src/types/AHV2Order.sol';
+import {AHV2Solution} from '../../src/types/AHV2Solution.sol';
+import {AHV2Witness} from '../../src/types/AHV2Witness.sol';
+import {AuthDelegation} from '../../src/types/AuthDelegation.sol';
+import {CallParams} from '../../src/types/CallParams.sol';
 import {ERC20Allowance} from '../../src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from '../../src/types/ERC20Transfer.sol';
 import {ERC721Approval} from '../../src/types/ERC721Approval.sol';
 import {ERC721Transfer} from '../../src/types/ERC721Transfer.sol';
-import {ExecutionOrder} from '../../src/types/ExecutionOrder.sol';
-import {ExecutionWitness} from '../../src/types/ExecutionWitness.sol';
-import {FulfillmentOrder} from '../../src/types/FulfillmentOrder.sol';
-import {FulfillmentSolution} from '../../src/types/FulfillmentSolution.sol';
-import {FulfillmentWitness} from '../../src/types/FulfillmentWitness.sol';
-import {GenericCall} from '../../src/types/GenericCall.sol';
-import {ValidationParams} from '../../src/types/ValidationParams.sol';
+import {HookParams} from '../../src/types/HookParams.sol';
+import {SolutionApproval} from '../../src/types/SolutionApproval.sol';
 
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
@@ -41,13 +42,18 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 abstract contract HubBase is V2TestBase {
   KSAllowanceHubV2 internal hub;
 
-  RouterMock internal router;
-  RouterMock internal router2;
+  CalleeMock internal callee;
+  CalleeMock internal callee2;
   ERC721Mock internal nft;
-  ValidatorMock internal validator;
-  ValidatorMock internal validator2;
+  HookMock internal hook;
+  HookMock internal hook2;
 
   uint256 internal constant NFT_ID = 1;
+
+  /// @dev Hook flags, written out rather than imported
+  bytes32 internal constant HOOK_BEFORE = bytes32(uint256(1));
+  bytes32 internal constant HOOK_AFTER = bytes32(uint256(2));
+  bytes32 internal constant HOOK_BOTH = bytes32(uint256(3));
 
   /// @dev The canonical Multicall3 address, written out rather than imported
   address internal multicall3 = 0xcA11bde05977b3631167028862bE2a173976CA11;
@@ -67,28 +73,31 @@ abstract contract HubBase is V2TestBase {
 
     (owner, ownerKey) = makeAddrAndKey('owner');
 
-    router = new RouterMock();
-    router2 = new RouterMock();
+    callee = new CalleeMock();
+    callee2 = new CalleeMock();
     nft = new ERC721Mock();
-    validator = new ValidatorMock();
-    validator2 = new ValidatorMock();
+    hook = new HookMock();
+    hook2 = new HookMock();
 
     address[] memory guardians = new address[](1);
     guardians[0] = guardian;
     address[] memory rescuers = new address[](1);
     rescuers[0] = rescuer;
-    address[] memory routers = new address[](2);
-    routers[0] = address(router);
-    routers[1] = address(router2);
+    address[] memory callees = new address[](2);
+    callees[0] = address(callee);
+    callees[1] = address(callee2);
 
     vm.etch(multicall3, vm.getDeployedCode(string.concat(_artifactsDir(), 'Multicall3.json')));
-    hub = new KSAllowanceHubV2(admin, guardians, rescuers, routers, permit2, multicall3);
+    hub = new KSAllowanceHubV2(admin, guardians, rescuers, callees, permit2, multicall3);
 
     _fundOwner();
 
     vm.label(address(hub), 'hub');
     vm.label(multicall3, 'multicall3');
-    vm.label(address(router), 'router');
+    vm.label(address(callee), 'callee');
+    vm.label(address(callee2), 'callee2');
+    vm.label(address(hook), 'hook');
+    vm.label(address(hook2), 'hook2');
     vm.label(permit2, 'permit2');
     vm.label(token18, 'token18');
     vm.label(token6, 'token6');
@@ -199,119 +208,78 @@ abstract contract HubBase is V2TestBase {
   // ---------------------------------------------------------------------------------------------
 
   function _tokenTransfer(uint160 amount) internal view returns (ERC20Transfer memory) {
-    return ERC20Transfer({token: token18, target: address(router), amount: amount});
+    return ERC20Transfer({token: token18, target: address(callee), amount: amount});
   }
 
   function _nftTransfer(address target) internal view returns (ERC721Transfer memory) {
     return ERC721Transfer({token: address(nft), tokenId: NFT_ID, target: target});
   }
 
-  /// @dev A fulfillment's ERC20 transfer: the amount that may leave the owner, with no target
+  /// @dev An order's ERC20 allowance: the amount that may leave the owner, with no target
   function _tokenAllowance(uint160 amount) internal view returns (ERC20Allowance memory) {
     return ERC20Allowance({token: token18, amount: amount});
   }
 
-  /// @dev A fulfillment's NFT transfer, with no target
+  /// @dev An order's NFT approval
   function _nftApproval() internal view returns (ERC721Approval memory) {
     return ERC721Approval({token: address(nft), tokenId: NFT_ID});
   }
 
-  function _routerCall(uint256 value, bytes memory data)
-    internal
-    view
-    returns (GenericCall memory)
-  {
-    return GenericCall({router: address(router), value: value, data: data});
+  function _calleeCall(uint256 value, bytes memory data) internal view returns (CallParams memory) {
+    return CallParams({callee: address(callee), value: value, data: data});
   }
 
-  function _validation(ValidatorMock v) internal pure returns (ValidationParams memory) {
-    return ValidationParams({
-      validator: address(v),
-      action: keccak256('TEST_ACTION'),
-      beforeExecutionInput: hex'11',
-      afterExecutionInput: hex'22'
-    });
+  /// @dev A hook entry with data `hex'11'`
+  function _hook(HookMock h, bytes32 flags) internal pure returns (HookParams memory) {
+    return _hook(h, flags, hex'11');
+  }
+
+  function _hook(HookMock h, bytes32 flags, bytes memory data)
+    internal
+    pure
+    returns (HookParams memory)
+  {
+    return HookParams({hook: address(h), flags: flags, data: data});
   }
 
   // ---------------------------------------------------------------------------------------------
   // Order building
   // ---------------------------------------------------------------------------------------------
 
-  function _executionOrder(
-    address orderRelayer,
-    ERC20Transfer[] memory erc20Transfers,
-    ERC721Transfer[] memory erc721Transfers,
-    GenericCall[] memory genericCalls,
-    uint256 nonce,
-    uint256 expiration
-  ) internal view returns (ExecutionOrder memory) {
-    return ExecutionOrder({
-      owner: owner,
-      relayer: orderRelayer,
-      erc20Transfers: erc20Transfers,
-      erc721Transfers: erc721Transfers,
-      genericCalls: genericCalls,
-      nonce: nonce,
-      expiration: expiration,
-      extraData: '',
-      clientData: ''
-    });
-  }
-
-  /// @dev The commonest shape: open to any submitter, plain ERC20 allowance, no NFT transfer
-  function _openExecutionOrder(
-    ERC20Transfer[] memory erc20Transfers,
-    GenericCall[] memory genericCalls,
-    uint256 nonce,
-    uint256 expiration
-  ) internal view returns (ExecutionOrder memory) {
-    return _executionOrder(
-      ANY, erc20Transfers, new ERC721Transfer[](0), genericCalls, nonce, expiration
-    );
-  }
-
-  function _fulfillmentOrder(
-    address orderSolver,
+  function _ahv2Order(
+    address orderExclusiveCaller,
     ERC20Allowance[] memory erc20Allowances,
     ERC721Approval[] memory erc721Approvals,
-    ValidationParams[] memory validationParams,
-    GenericCall[] memory ownerCalls,
+    HookParams[] memory hooks,
+    CallParams[] memory ownerCalls,
     address solutionApprover,
     uint256 nonce,
     uint256 expiration
-  ) internal view returns (FulfillmentOrder memory) {
-    return FulfillmentOrder({
+  ) internal view returns (AHV2Order memory) {
+    return AHV2Order({
       owner: owner,
-      solver: orderSolver,
+      exclusiveCaller: orderExclusiveCaller,
       erc20Allowances: erc20Allowances,
       erc721Approvals: erc721Approvals,
-      validationParams: validationParams,
+      hooks: hooks,
       ownerCalls: ownerCalls,
       solutionApprover: solutionApprover,
       nonce: nonce,
       expiration: expiration,
-      extraData: '',
       clientData: ''
     });
   }
 
-  /// @dev Open to any submitter, any route, plain ERC20 allowance, no NFT transfer
-  function _openFulfillmentOrder(
+  /// @dev Open to any submitter, any route, plain ERC20 allowance, no NFT approval
+  function _openAhv2Order(
     ERC20Allowance[] memory erc20Allowances,
-    ValidationParams[] memory validationParams,
-    GenericCall[] memory ownerCalls,
+    HookParams[] memory hooks,
+    CallParams[] memory ownerCalls,
     uint256 nonce,
     uint256 expiration
-  ) internal view returns (FulfillmentOrder memory) {
-    return _fulfillmentOrder(
-      ANY,
-      erc20Allowances,
-      new ERC721Approval[](0),
-      validationParams,
-      ownerCalls,
-      ANY,
-      nonce,
-      expiration
+  ) internal view returns (AHV2Order memory) {
+    return _ahv2Order(
+      ANY, erc20Allowances, new ERC721Approval[](0), hooks, ownerCalls, ANY, nonce, expiration
     );
   }
 
@@ -325,9 +293,9 @@ abstract contract HubBase is V2TestBase {
     address[] memory erc20Targets,
     uint160[] memory erc20Amounts,
     address[] memory erc721Targets,
-    GenericCall[] memory solverCalls,
+    CallParams[] memory solverCalls,
     uint256 expiration
-  ) internal pure returns (FulfillmentSolution memory) {
+  ) internal pure returns (AHV2Solution memory) {
     return _solution(erc20Targets, erc20Amounts, erc721Targets, solverCalls, 0, expiration);
   }
 
@@ -336,66 +304,70 @@ abstract contract HubBase is V2TestBase {
     address[] memory erc20Targets,
     uint160[] memory erc20Amounts,
     address[] memory erc721Targets,
-    GenericCall[] memory solverCalls,
+    CallParams[] memory solverCalls,
     uint256 nonce,
     uint256 expiration
-  ) internal pure returns (FulfillmentSolution memory) {
-    return FulfillmentSolution({
+  ) internal pure returns (AHV2Solution memory) {
+    return AHV2Solution({
       erc20Targets: erc20Targets,
       erc20Amounts: erc20Amounts,
       erc721Targets: erc721Targets,
       solverCalls: solverCalls,
+      solverData: new bytes[](0),
       nonce: nonce,
       expiration: expiration
     });
   }
 
   /**
-   * @dev As above, sending the full allowance of every ERC20 transfer of `order` to `router` and
-   * every NFT transfer to `router2`
+   * @dev As above, sending the full allowance of every ERC20 transfer of `order` to `callee` and
+   * every NFT transfer to `callee2`, with one empty `solverData` entry per owner call
    */
   function _solution(
-    FulfillmentOrder memory order,
-    GenericCall[] memory solverCalls,
+    AHV2Order memory order,
+    CallParams[] memory solverCalls,
     uint256 nonce,
     uint256 expiration
-  ) internal view returns (FulfillmentSolution memory) {
+  ) internal view returns (AHV2Solution memory) {
     address[] memory erc20Targets = new address[](order.erc20Allowances.length);
     uint160[] memory erc20Amounts = new uint160[](order.erc20Allowances.length);
     for (uint256 i = 0; i < erc20Targets.length; i++) {
-      erc20Targets[i] = address(router);
+      erc20Targets[i] = address(callee);
       erc20Amounts[i] = order.erc20Allowances[i].amount;
     }
     address[] memory erc721Targets = new address[](order.erc721Approvals.length);
     for (uint256 i = 0; i < erc721Targets.length; i++) {
-      erc721Targets[i] = address(router2);
+      erc721Targets[i] = address(callee2);
     }
-    return _solution(erc20Targets, erc20Amounts, erc721Targets, solverCalls, nonce, expiration);
+    AHV2Solution memory solution =
+      _solution(erc20Targets, erc20Amounts, erc721Targets, solverCalls, nonce, expiration);
+    solution.solverData = _solverData(order.ownerCalls.length);
+    return solution;
   }
 
   /// @dev As above, with solution nonce 0
-  function _solution(
-    FulfillmentOrder memory order,
-    GenericCall[] memory solverCalls,
-    uint256 expiration
-  ) internal view returns (FulfillmentSolution memory) {
+  function _solution(AHV2Order memory order, CallParams[] memory solverCalls, uint256 expiration)
+    internal
+    view
+    returns (AHV2Solution memory)
+  {
     return _solution(order, solverCalls, 0, expiration);
   }
 
   /// @dev The route a solver supplies for `order` when the owner pinned nothing, valid for an hour
-  function _route(FulfillmentOrder memory order, GenericCall[] memory solverCalls)
+  function _route(AHV2Order memory order, CallParams[] memory solverCalls)
     internal
     view
-    returns (FulfillmentSolution memory)
+    returns (AHV2Solution memory)
   {
     return _route(order, solverCalls, 0);
   }
 
   /// @dev As above, with the solution nonce `nonce`
-  function _route(FulfillmentOrder memory order, GenericCall[] memory solverCalls, uint256 nonce)
+  function _route(AHV2Order memory order, CallParams[] memory solverCalls, uint256 nonce)
     internal
     view
-    returns (FulfillmentSolution memory)
+    returns (AHV2Solution memory)
   {
     return _solution(order, solverCalls, nonce, vm.getBlockTimestamp() + 1 hours);
   }
@@ -409,72 +381,23 @@ abstract contract HubBase is V2TestBase {
   }
 
   /**
-   * @dev The owner's Permit2 signature for a relayed execution: the permit covers tokens and
-   * amounts, the witness everything else the order pins. `witnessRelayer` is passed separately so a
-   * test can sign a witness that disagrees with the order it submits.
+   * @dev The owner's Permit2 signature for a settlement submitted by someone else: the permit
+   * covers tokens and amounts, the witness everything else the order pins. The witness members are
+   * passed separately so a test can sign a witness that disagrees with the order it submits.
    */
-  function _signExecutionWitness(
-    ExecutionOrder memory order,
-    address witnessRelayer,
-    uint256 signerKey
-  ) internal view returns (bytes memory) {
-    ExecutionWitness memory witness = ExecutionWitness({
-      relayer: witnessRelayer,
-      erc20Targets: _targets(order.erc20Transfers),
-      erc721Transfers: order.erc721Transfers,
-      genericCalls: order.genericCalls,
-      extraData: order.extraData,
-      clientData: order.clientData
-    });
-
-    (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(order.erc20Transfers);
-
-    return _sign(
-      signerKey,
-      lPermit2ExecutionWitnessDigest(
-        tokens, amounts, address(hub), order.nonce, order.expiration, witness
-      )
-    );
-  }
-
-  /// @dev As above, signed by the owner
-  function _signExecutionWitness(ExecutionOrder memory order, address witnessRelayer)
-    internal
-    view
-    returns (bytes memory)
-  {
-    return _signExecutionWitness(order, witnessRelayer, ownerKey);
-  }
-
-  /// @dev As {_signExecutionWitness}, with the witness specifying the relayer the order specifies
-  function _signExecutionWitness(ExecutionOrder memory order) internal view returns (bytes memory) {
-    return _signExecutionWitness(order, order.relayer);
-  }
-
-  /// @dev As above, signed by `signerKey`, for an order owned by the account of that key
-  function _signExecutionWitness(ExecutionOrder memory order, uint256 signerKey)
-    internal
-    view
-    returns (bytes memory)
-  {
-    return _signExecutionWitness(order, order.relayer, signerKey);
-  }
-
-  /// @dev The fulfillment witness pins who may choose the route rather than the route itself
-  function _signFulfillmentWitness(
-    FulfillmentOrder memory order,
-    address witnessSolver,
-    GenericCall[] memory witnessOwnerCalls,
+  function _signWitness(
+    AHV2Order memory order,
+    address witnessExclusiveCaller,
+    CallParams[] memory witnessOwnerCalls,
     address witnessApprover,
     uint256 signerKey
   ) internal view returns (bytes memory) {
-    FulfillmentWitness memory witness = FulfillmentWitness({
-      solver: witnessSolver,
+    AHV2Witness memory witness = AHV2Witness({
+      exclusiveCaller: witnessExclusiveCaller,
       erc721Approvals: order.erc721Approvals,
+      hooks: order.hooks,
       ownerCalls: witnessOwnerCalls,
-      validationParams: order.validationParams,
-      callsSigner: witnessApprover,
-      extraData: order.extraData,
+      solutionApprover: witnessApprover,
       clientData: order.clientData
     });
 
@@ -482,55 +405,37 @@ abstract contract HubBase is V2TestBase {
 
     return _sign(
       signerKey,
-      lPermit2FulfillmentWitnessDigest(
-        tokens, amounts, address(hub), order.nonce, order.expiration, witness
-      )
+      lPermit2WitnessDigest(tokens, amounts, address(hub), order.nonce, order.expiration, witness)
     );
   }
 
   /// @dev As above, signed by the owner
-  function _signFulfillmentWitness(
-    FulfillmentOrder memory order,
-    address witnessSolver,
-    GenericCall[] memory witnessOwnerCalls,
+  function _signWitness(
+    AHV2Order memory order,
+    address witnessExclusiveCaller,
+    CallParams[] memory witnessOwnerCalls,
     address witnessApprover
   ) internal view returns (bytes memory) {
-    return _signFulfillmentWitness(
-      order, witnessSolver, witnessOwnerCalls, witnessApprover, ownerKey
-    );
+    return _signWitness(order, witnessExclusiveCaller, witnessOwnerCalls, witnessApprover, ownerKey);
   }
 
   /// @dev As above, with the witness agreeing with the order in every member
-  function _signFulfillmentWitness(FulfillmentOrder memory order)
-    internal
-    view
-    returns (bytes memory)
-  {
-    return _signFulfillmentWitness(order, order.solver, order.ownerCalls, order.solutionApprover);
+  function _signWitness(AHV2Order memory order) internal view returns (bytes memory) {
+    return _signWitness(order, order.exclusiveCaller, order.ownerCalls, order.solutionApprover);
   }
 
   /// @dev As above, signed by `signerKey`, for an order owned by the account of that key
-  function _signFulfillmentWitness(FulfillmentOrder memory order, uint256 signerKey)
+  function _signWitness(AHV2Order memory order, uint256 signerKey)
     internal
     view
     returns (bytes memory)
   {
-    return _signFulfillmentWitness(
-      order, order.solver, order.ownerCalls, order.solutionApprover, signerKey
+    return _signWitness(
+      order, order.exclusiveCaller, order.ownerCalls, order.solutionApprover, signerKey
     );
   }
 
   /// @dev Permit2 self-transfer: the owner submits, so there is no witness to bind
-  function _signPlainPermit(ERC20Transfer[] memory erc20Transfers, uint256 nonce, uint256 deadline)
-    internal
-    view
-    returns (bytes memory)
-  {
-    (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(erc20Transfers);
-    return _sign(ownerKey, lPermit2BatchDigest(tokens, amounts, address(hub), nonce, deadline));
-  }
-
-  /// @dev As {_signPlainPermit}, for a fulfillment order's allowances
   function _signPlainPermit(
     ERC20Allowance[] memory erc20Allowances,
     uint256 nonce,
@@ -543,10 +448,16 @@ abstract contract HubBase is V2TestBase {
   /// @dev The solution approval lives under the hub's own EIP-712 domain
   function _signSolutionApproval(
     uint256 signerKey,
-    FulfillmentOrder memory order,
-    FulfillmentSolution memory solution
+    AHV2Order memory order,
+    AHV2Solution memory solution
   ) internal view returns (bytes memory) {
-    return _sign(signerKey, lTypedDataHash(_hubDomain(), lSolutionApproval(order, solution)));
+    return _sign(
+      signerKey,
+      lTypedDataHash(
+        _hubDomain(),
+        SchemaHash.solutionApproval(SolutionApproval({order: order, solution: solution}))
+      )
+    );
   }
 
   function _signAuthDelegation(
@@ -561,7 +472,17 @@ abstract contract HubBase is V2TestBase {
     return _sign(
       signerKey,
       lTypedDataHash(
-        _hubDomain(), lAuthDelegation(delegator, authenticator, delegated, data, nonce, deadline)
+        _hubDomain(),
+        SchemaHash.authDelegation(
+          AuthDelegation({
+            owner: delegator,
+            authenticator: authenticator,
+            delegated: delegated,
+            data: data,
+            nonce: nonce,
+            deadline: deadline
+          })
+        )
       )
     );
   }

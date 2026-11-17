@@ -7,9 +7,8 @@ import {AHV2AuthenticatorBase} from '../../src/base/AHV2AuthenticatorBase.sol';
 import {DeadlineChecker} from '../../src/base/DeadlineChecker.sol';
 import {UnorderedNonce} from '../../src/base/UnorderedNonce.sol';
 
-import {ExecutionOrder} from '../../src/types/ExecutionOrder.sol';
-import {FulfillmentOrder} from '../../src/types/FulfillmentOrder.sol';
-import {FulfillmentSolution} from '../../src/types/FulfillmentSolution.sol';
+import {AHV2Order} from '../../src/types/AHV2Order.sol';
+import {AHV2Solution} from '../../src/types/AHV2Solution.sol';
 
 import {EIP712} from 'openzeppelin-contracts/contracts/utils/cryptography/EIP712.sol';
 import {
@@ -86,24 +85,12 @@ contract SignerAuthenticatorMock is AHV2AuthenticatorBase, DeadlineChecker, Unor
 
   /**
    * @inheritdoc IAHV2Authenticator
-   * @dev `data` is `abi.encode(address signer, bytes signature)`
+   * @dev `data` is `abi.encode(address signer, bytes signature)`. The solution is not read.
    */
-  function authenticateExecution(
-    ExecutionOrder calldata order,
+  function authenticate(
+    AHV2Order calldata order,
     bytes32 orderHash,
-    bytes calldata data
-  ) external onlyAuthorizedCaller {
-    _authenticate(order.owner, order.nonce, orderHash, data);
-  }
-
-  /**
-   * @inheritdoc IAHV2Authenticator
-   * @dev `data` is encoded as for {authenticateExecution}. The solution is not read.
-   */
-  function authenticateFulfillment(
-    FulfillmentOrder calldata order,
-    bytes32 orderHash,
-    FulfillmentSolution calldata,
+    AHV2Solution calldata,
     bytes calldata data
   ) external onlyAuthorizedCaller {
     _authenticate(order.owner, order.nonce, orderHash, data);

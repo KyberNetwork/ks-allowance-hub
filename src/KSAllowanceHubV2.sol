@@ -11,18 +11,16 @@ import {Multicall} from './base/Multicall.sol';
 import {Constants} from './libraries/Constants.sol';
 import {DynamicArrayLibExt} from './libraries/DynamicArrayLibExt.sol';
 
+import {AHV2Order} from './types/AHV2Order.sol';
+import {AHV2Solution} from './types/AHV2Solution.sol';
+import {AHV2WitnessLib} from './types/AHV2Witness.sol';
+import {CallParams, CallParamsLib} from './types/CallParams.sol';
 import {ERC20Allowance, ERC20AllowanceLib} from './types/ERC20Allowance.sol';
-import {ERC20Transfer, ERC20TransferLib} from './types/ERC20Transfer.sol';
+import {ERC20Transfer} from './types/ERC20Transfer.sol';
 import {ERC721Approval, ERC721ApprovalLib} from './types/ERC721Approval.sol';
 import {ERC721Transfer, ERC721TransferLib} from './types/ERC721Transfer.sol';
-import {ExecutionOrder} from './types/ExecutionOrder.sol';
-import {ExecutionWitnessLib} from './types/ExecutionWitness.sol';
-import {FulfillmentOrder} from './types/FulfillmentOrder.sol';
-import {FulfillmentSolution} from './types/FulfillmentSolution.sol';
-import {FulfillmentWitnessLib} from './types/FulfillmentWitness.sol';
-import {GenericCall, GenericCallLib} from './types/GenericCall.sol';
+import {HookParams, HookParamsLib} from './types/HookParams.sol';
 import {SolutionApprovalLib} from './types/SolutionApproval.sol';
-import {ValidationParams, ValidationParamsLib} from './types/ValidationParams.sol';
 
 import {IMulticall3} from 'forge-std/interfaces/IMulticall3.sol';
 
@@ -31,32 +29,33 @@ import {ManagementSimple} from 'ks-common-sc/src/base/ManagementSimple.sol';
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 
 import {KSRoles} from 'ks-common-sc/src/libraries/KSRoles.sol';
-import {CalldataDecoder} from 'ks-common-sc/src/libraries/calldata/CalldataDecoder.sol';
 import {TokenHelper} from 'ks-common-sc/src/libraries/token/TokenHelper.sol';
 
 import {
   SignatureChecker
 } from 'openzeppelin-contracts/contracts/utils/cryptography/SignatureChecker.sol';
 
-import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
-
 /**
  * @title KSAllowanceHubV2
  * @notice Single approval target for KyberSwap. It transfers an owner's ERC20 and ERC721 tokens
- * and calls whitelisted routers in one transaction, so that the owner approves this contract
- * instead of each router.
- * @dev The owner signs an {ExecutionOrder} or a {FulfillmentOrder}. Both specify the assets that
- * may leave the owner and the account that may submit the order. An execution order also specifies
- * the target of each transfer and the exact router calls; a fulfillment order leaves both to a
- * {FulfillmentSolution} and constrains the result with validators.
+ * and calls whitelisted callees in one transaction. The owner approves this contract instead of
+ * each callee.
+ * @dev The owner signs an {AHV2Order}, which specifies the assets that may leave the owner, the
+ * account that may submit the order, the hooks that constrain the result and the callee calls the
+ * owner fixes. An {AHV2Solution} supplies the targets and amounts of the transfers, the callee
+ * calls of the route and the data of each owner call. The solution is not signed by the owner; the
+ * order's solution approver may be required to approve it.
  *
- * An order is authorised either by the owner's Permit2 signature, which signs the order as its
+ * A settlement calls each hook's `beforeSettlement` before any asset moves, moves the assets, calls
+ * the callees of the solution through {IAHV2SolverCallee-solverCall}, calls the callees of the
+ * order through {IAHV2OwnerCallee-ownerCall}, and calls each hook's `afterSettlement`.
+ *
+ * An order is authorized either by the owner's Permit2 signature, which signs the order as its
  * witness, or by an {IAHV2Authenticator} the owner has delegated through {AuthDelegator}. An
  * owner who submits their own order needs no witness and no authenticator.
  *
- * While an order settles, {msgSender} returns its owner. A router call of an order may settle
- * another order of either type, and {msgSender} returns the outer order's owner again once it
- * returns.
+ * While an order settles, {msgSender} returns its owner. A callee call of an order may settle
+ * another order, and {msgSender} returns the outer order's owner again once it returns.
  */
 contract KSAllowanceHubV2 is
   IKSAllowanceHubV2,
@@ -65,35 +64,29 @@ contract KSAllowanceHubV2 is
   Multicall,
   MsgSender
 {
-  using CalldataDecoder for bytes;
+  using CallParamsLib for CallParams[];
   using DynamicArrayLibExt for uint256;
-  using EfficientHashLib for bytes;
   using ERC20AllowanceLib for ERC20Allowance[];
-  using ERC20TransferLib for ERC20Transfer[];
   using ERC721ApprovalLib for ERC721Approval[];
   using ERC721TransferLib for ERC721Transfer[];
-  using GenericCallLib for GenericCall[];
+  using HookParamsLib for HookParams[];
   using TokenHelper for address;
-  using ValidationParamsLib for ValidationParams[];
 
   address internal immutable PERMIT2;
 
   address internal immutable MULTICALL3;
 
-  /// @dev Runs {FulfillmentOrderLib-checkFulfillment} before the function body
-  modifier checkFulfillment(
-    FulfillmentOrder calldata order,
-    FulfillmentSolution calldata solution
-  ) {
-    order.checkFulfillment(solution);
+  /// @dev Runs {AHV2OrderLib-checkSettlement} before the function body
+  modifier checkSettlement(AHV2Order calldata order, AHV2Solution calldata solution) {
+    order.checkSettlement(solution);
     _;
   }
 
   /**
    * @param initialAdmin Holder of the default admin role
-   * @param initialGuardians Accounts that may pause the hub and revoke routers
+   * @param initialGuardians Accounts that may pause the hub and revoke callees
    * @param initialRescuers Accounts that may transfer assets held by the hub
-   * @param initialWhitelistedRouters Routers callable from the start
+   * @param initialWhitelistedCallees Callees callable from the start
    * @param permit2 The canonical Permit2 deployment
    * @param multicall3 The Multicall3 deployment that {forwardCalls} calls
    */
@@ -101,7 +94,7 @@ contract KSAllowanceHubV2 is
     address initialAdmin,
     address[] memory initialGuardians,
     address[] memory initialRescuers,
-    address[] memory initialWhitelistedRouters,
+    address[] memory initialWhitelistedCallees,
     address permit2,
     address multicall3
   )
@@ -110,141 +103,52 @@ contract KSAllowanceHubV2 is
   {
     _batchGrantRole(KSRoles.RESCUER_ROLE, initialRescuers);
 
-    _batchGrantRole(Constants.WHITELISTED_ROUTER_ROLE, initialWhitelistedRouters);
-    // Guardians may revoke a router without the admin
-    _setRoleRevoker(Constants.WHITELISTED_ROUTER_ROLE, KSRoles.GUARDIAN_ROLE);
+    _batchGrantRole(Constants.WHITELISTED_CALLEE_ROLE, initialWhitelistedCallees);
+    // Guardians may revoke a callee without the admin
+    _setRoleRevoker(Constants.WHITELISTED_CALLEE_ROLE, KSRoles.GUARDIAN_ROLE);
 
     PERMIT2 = permit2;
     MULTICALL3 = multicall3;
   }
 
   /// @inheritdoc IKSAllowanceHubV2
-  function executeOrderWithDelegatedAuthentication(
-    ExecutionOrder calldata order,
+  function settleOrderWithDelegatedAuthentication(
+    AHV2Order calldata order,
     address authenticator,
     bytes calldata authenticationData,
-    bool usePermit2Allowances
-  )
-    external
-    payable
-    whenNotPaused
-    checkDeadline(order.expiration)
-    checkDelegation(order.owner, authenticator)
-    setMsgSender(order.owner)
-    guardNativeSpend
-    returns (bytes[] memory results)
-  {
-    bytes32 orderHash = order.hash();
-    // The owner's call is its own authentication; any other caller needs the authenticator's
-    if (msg.sender != order.owner) {
-      if (msg.sender != order.relayer && order.relayer != Constants.DEAD_ADDRESS) {
-        revert CallerNotRelayer(msg.sender);
-      }
-      IAHV2Authenticator(authenticator).authenticateExecution(order, orderHash, authenticationData);
-    }
-
-    order.announce(orderHash);
-
-    if (usePermit2Allowances) {
-      order.erc20Transfers.executePermit2(order.owner, PERMIT2);
-    } else {
-      order.erc20Transfers.execute(order.owner);
-    }
-
-    return _settleExecution(order);
-  }
-
-  /// @inheritdoc IKSAllowanceHubV2
-  function executeOrderWithPermit2Signature(
-    ExecutionOrder calldata order,
-    bytes calldata permit2Signature
-  )
-    external
-    payable
-    whenNotPaused
-    checkDeadline(order.expiration)
-    setMsgSender(order.owner)
-    guardNativeSpend
-    returns (bytes[] memory results)
-  {
-    (
-      bytes32 orderHash,
-      bytes32 erc721TransfersHash,
-      bytes32 genericCallsHash,
-      bytes32 extraDataHash,
-      bytes32 clientDataHash
-    ) = order.membersHash();
-    order.announce(orderHash);
-
-    ISignatureTransfer.PermitBatchTransferFrom memory permit =
-      order.erc20Transfers.toPermitBatchTransferFrom(order.nonce, order.expiration);
-    ISignatureTransfer.SignatureTransferDetails[] memory details =
-      order.erc20Transfers.toSignatureTransferDetails();
-
-    // The owner signs the permit alone; for any other caller the order is signed as the witness
-    if (msg.sender == order.owner) {
-      ISignatureTransfer(PERMIT2).permitTransferFrom(permit, details, order.owner, permit2Signature);
-    } else if (msg.sender == order.relayer || order.relayer == Constants.DEAD_ADDRESS) {
-      bytes32 witness = ExecutionWitnessLib.hash(
-        order.relayer,
-        order.erc20Transfers.targetsHash(),
-        erc721TransfersHash,
-        genericCallsHash,
-        extraDataHash,
-        clientDataHash
-      );
-
-      ISignatureTransfer(PERMIT2)
-        .permitWitnessTransferFrom(
-          permit,
-          details,
-          order.owner,
-          witness,
-          ExecutionWitnessLib.EXECUTION_WITNESS_PERMIT2_TYPE_STRING,
-          permit2Signature
-        );
-    } else {
-      revert CallerNotRelayer(msg.sender);
-    }
-
-    return _settleExecution(order);
-  }
-
-  /// @inheritdoc IKSAllowanceHubV2
-  function fulfillOrderWithDelegatedAuthentication(
-    FulfillmentOrder calldata order,
-    address authenticator,
-    bytes calldata authenticationData,
-    FulfillmentSolution calldata solution,
+    AHV2Solution calldata solution,
     bytes calldata solutionSignature,
     bool usePermit2Allowances
   )
     external
     payable
     whenNotPaused
-    checkFulfillment(order, solution)
+    checkSettlement(order, solution)
     checkDelegation(order.owner, authenticator)
     setMsgSender(order.owner)
     guardNativeSpend
     returns (bytes[] memory results)
   {
     bytes32 orderHash = order.hash();
+
     // The owner's call is its own authentication and approves its own solution; any other caller
     // needs the authenticator's authentication and, unless the approver is the dead address, the
     // solution approval
     if (msg.sender != order.owner) {
-      if (msg.sender != order.solver && order.solver != Constants.DEAD_ADDRESS) {
-        revert CallerNotSolver(msg.sender);
+      if (msg.sender != order.exclusiveCaller && order.exclusiveCaller != Constants.DEAD_ADDRESS) {
+        revert NotExclusiveCaller(msg.sender);
       }
-      IAHV2Authenticator(authenticator)
-        .authenticateFulfillment(order, orderHash, solution, authenticationData);
+
+      IAHV2Authenticator(authenticator).authenticate(order, orderHash, solution, authenticationData);
+
       if (order.solutionApprover != Constants.DEAD_ADDRESS) {
         _checkSolutionApproval(order.solutionApprover, orderHash, solution, solutionSignature);
       }
     }
 
-    // Run before any asset moves, so that each validator observes the state before settlement
-    bytes[] memory beforeExecutionOutputs = order.validationParams.beforeExecution();
+    // Runs before any asset moves; each hook reads the state before settlement
+    bytes[] memory beforeSettlementResults =
+      order.hooks.beforeSettlement(order, orderHash, solution);
 
     order.announce(orderHash, solution);
 
@@ -255,20 +159,20 @@ contract KSAllowanceHubV2 is
       order.erc20Allowances.execute(order.owner, solution.erc20Targets, solution.erc20Amounts);
     }
 
-    return _settleFulfillment(order, solution, beforeExecutionOutputs);
+    return _settle(order, orderHash, solution, beforeSettlementResults);
   }
 
   /// @inheritdoc IKSAllowanceHubV2
-  function fulfillOrderWithPermit2Signature(
-    FulfillmentOrder calldata order,
+  function settleOrderWithPermit2Signature(
+    AHV2Order calldata order,
     bytes calldata permit2Signature,
-    FulfillmentSolution calldata solution,
+    AHV2Solution calldata solution,
     bytes calldata solutionSignature
   )
     external
     payable
     whenNotPaused
-    checkFulfillment(order, solution)
+    checkSettlement(order, solution)
     setMsgSender(order.owner)
     guardNativeSpend
     returns (bytes[] memory results)
@@ -276,9 +180,8 @@ contract KSAllowanceHubV2 is
     (
       bytes32 orderHash,
       bytes32 erc721ApprovalsHash,
-      bytes32 validationParamsHash,
+      bytes32 hooksHash,
       bytes32 ownerCallsHash,
-      bytes32 extraDataHash,
       bytes32 clientDataHash
     ) = order.membersHash();
 
@@ -287,8 +190,9 @@ contract KSAllowanceHubV2 is
       _checkSolutionApproval(order.solutionApprover, orderHash, solution, solutionSignature);
     }
 
-    // Run before any asset moves, so that each validator observes the state before settlement
-    bytes[] memory beforeExecutionOutputs = order.validationParams.beforeExecution();
+    // Runs before any asset moves; each hook reads the state before settlement
+    bytes[] memory beforeSettlementResults =
+      order.hooks.beforeSettlement(order, orderHash, solution);
 
     order.announce(orderHash, solution);
 
@@ -300,14 +204,15 @@ contract KSAllowanceHubV2 is
     // The owner signs the permit alone; for any other caller the order is signed as the witness
     if (msg.sender == order.owner) {
       ISignatureTransfer(PERMIT2).permitTransferFrom(permit, details, order.owner, permit2Signature);
-    } else if (msg.sender == order.solver || order.solver == Constants.DEAD_ADDRESS) {
-      bytes32 witness = FulfillmentWitnessLib.hash(
-        order.solver,
+    } else if (
+      msg.sender == order.exclusiveCaller || order.exclusiveCaller == Constants.DEAD_ADDRESS
+    ) {
+      bytes32 witness = AHV2WitnessLib.hash(
+        order.exclusiveCaller,
         erc721ApprovalsHash,
+        hooksHash,
         ownerCallsHash,
-        validationParamsHash,
         order.solutionApprover,
-        extraDataHash,
         clientDataHash
       );
 
@@ -317,14 +222,14 @@ contract KSAllowanceHubV2 is
           details,
           order.owner,
           witness,
-          FulfillmentWitnessLib.FULFILLMENT_WITNESS_PERMIT2_TYPE_STRING,
+          AHV2WitnessLib.AHV2_WITNESS_PERMIT2_TYPE_STRING,
           permit2Signature
         );
     } else {
-      revert CallerNotSolver(msg.sender);
+      revert NotExclusiveCaller(msg.sender);
     }
 
-    return _settleFulfillment(order, solution, beforeExecutionOutputs);
+    return _settle(order, orderHash, solution, beforeSettlementResults);
   }
 
   /// @inheritdoc IKSAllowanceHubV2
@@ -357,7 +262,7 @@ contract KSAllowanceHubV2 is
   function _checkSolutionApproval(
     address solutionApprover,
     bytes32 orderHash,
-    FulfillmentSolution calldata solution,
+    AHV2Solution calldata solution,
     bytes calldata solutionSignature
   ) internal {
     _useUnorderedNonce(solutionApprover, solution.nonce);
@@ -368,45 +273,46 @@ contract KSAllowanceHubV2 is
     }
   }
 
-  /// @dev Executes the ERC721 transfers and runs the router calls of an execution order
-  function _settleExecution(ExecutionOrder calldata order)
-    internal
-    returns (bytes[] memory results)
-  {
-    order.erc721Transfers.execute(order.owner);
-
-    results = order.genericCalls.length.mallocBytes();
-    _executeCalls(order.genericCalls, results, 0);
-  }
-
   /**
-   * @dev Executes the ERC721 transfers, runs the solver's calls, runs the validators'
-   * `afterExecution` and runs the owner's calls of a fulfillment order
+   * @dev Makes the ERC721 transfers, runs the solver's calls, runs the owner's calls and runs
+   * the hooks' `afterSettlement`
    */
-  function _settleFulfillment(
-    FulfillmentOrder calldata order,
-    FulfillmentSolution calldata solution,
-    bytes[] memory beforeExecutionOutputs
+  function _settle(
+    AHV2Order calldata order,
+    bytes32 orderHash,
+    AHV2Solution calldata solution,
+    bytes[] memory beforeSettlementResults
   ) internal returns (bytes[] memory results) {
     order.erc721Approvals.execute(order.owner, solution.erc721Targets);
 
     results = (solution.solverCalls.length + order.ownerCalls.length).mallocBytes();
-    _executeCalls(solution.solverCalls, results, 0);
+    _executeSolverCalls(solution.solverCalls, results);
+    _executeOwnerCalls(order.ownerCalls, solution.solverData, results, solution.solverCalls.length);
 
-    // The validators check the result of the solver's calls, before the owner's calls run
-    order.validationParams.afterExecution(beforeExecutionOutputs);
-
-    _executeCalls(order.ownerCalls, results, solution.solverCalls.length);
+    // The hooks check the result of the solver's and the owner's calls
+    order.hooks.afterSettlement(order, orderHash, solution, beforeSettlementResults);
   }
 
-  /// @dev Runs `calls` in order, writing their return data to `results` from `offset`; each router
-  /// must hold the whitelisted router role
-  function _executeCalls(GenericCall[] calldata calls, bytes[] memory results, uint256 offset)
-    internal
-  {
+  /// @dev Runs `calls` through `solverCall`, writing their return data to `results`; each callee
+  /// must hold the whitelisted callee role
+  function _executeSolverCalls(CallParams[] calldata calls, bytes[] memory results) internal {
     for (uint256 i = 0; i < calls.length; i++) {
-      _checkRole(Constants.WHITELISTED_ROUTER_ROLE, calls[i].router);
-      results[offset + i] = calls[i].execute();
+      _checkRole(Constants.WHITELISTED_CALLEE_ROLE, calls[i].callee);
+      results[i] = calls[i].executeSolverCall();
+    }
+  }
+
+  /// @dev Runs `calls` through `ownerCall` with the matching entry of `solverData`, writing their
+  /// return data to `results` from `offset`; each callee must hold the whitelisted callee role
+  function _executeOwnerCalls(
+    CallParams[] calldata calls,
+    bytes[] calldata solverData,
+    bytes[] memory results,
+    uint256 offset
+  ) internal {
+    for (uint256 i = 0; i < calls.length; i++) {
+      _checkRole(Constants.WHITELISTED_CALLEE_ROLE, calls[i].callee);
+      results[offset + i] = calls[i].executeOwnerCall(solverData[i]);
     }
   }
 }

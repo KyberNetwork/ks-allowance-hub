@@ -7,39 +7,32 @@ import {SchemaHash} from './SchemaHash.sol';
 
 import {PermitHash} from '../libraries/PermitHash.sol';
 
-import {AuthDelegation} from '../../src/types/AuthDelegation.sol';
+import {
+  AHV2Witness,
+  PermitBatchWitnessTransferFrom as Permit2Witness
+} from '../../src/types/AHV2Witness.sol';
+import {CallParams} from '../../src/types/CallParams.sol';
 import {ERC20Allowance} from '../../src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from '../../src/types/ERC20Transfer.sol';
 import {ERC721Approval} from '../../src/types/ERC721Approval.sol';
 import {ERC721Transfer} from '../../src/types/ERC721Transfer.sol';
-import {
-  PermitBatchWitnessTransferFrom as Permit2ExecutionWitness
-} from '../../src/types/ExecutionWitness.sol';
-import {ExecutionWitness} from '../../src/types/ExecutionWitness.sol';
-import {FulfillmentOrder} from '../../src/types/FulfillmentOrder.sol';
-import {FulfillmentSolution} from '../../src/types/FulfillmentSolution.sol';
-import {
-  PermitBatchWitnessTransferFrom as Permit2FulfillmentWitness
-} from '../../src/types/FulfillmentWitness.sol';
-import {FulfillmentWitness} from '../../src/types/FulfillmentWitness.sol';
-import {GenericCall} from '../../src/types/GenericCall.sol';
-import {SolutionApproval} from '../../src/types/SolutionApproval.sol';
-import {ValidationParams} from '../../src/types/ValidationParams.sol';
+import {HookParams} from '../../src/types/HookParams.sol';
 
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 
 /**
  * @title V2TestBase
  * @notice Global base for the V2 suite.
- * @dev Every typehash and struct hash below is derived from the Solidity struct definitions, by
- * {SchemaHash} over the `forge bind-json` schemas. Nothing here may import a production constant or
- * hashing library: Permit2 derives its typehash from the string the hub passes it, so a test that
- * signs with the same production constant would agree with a wrong type string as readily as with
- * a right one. The schemas are the independent oracle, and `test/types/SchemaAudit.t.sol`
- * compares the production constants against them.
+ * @dev Struct hashes come from {SchemaHash}, which derives them from the Solidity struct
+ * definitions through the `forge bind-json` schemas. This contract assembles digests from those
+ * struct hashes: the hub and Permit2 domains, the typed-data envelope and the Permit2 permit
+ * structures. Nothing here may import a production constant or hashing library: Permit2 derives
+ * its typehash from the string the hub passes it, so a test that signs with the same production
+ * constant would agree with a wrong type string as readily as with a right one.
+ * `test/types/SchemaAudit.t.sol` compares the production constants against the schemas.
  *
  * The struct types are imported for their ABI shape only. Each one carries a `using ... global`
- * attachment, so the production hashers are reachable from any file that imports them — they are
+ * attachment, so the production hashers are reachable from any file that imports them. They are
  * never to appear on the expected side of an assertion.
  */
 
@@ -81,84 +74,10 @@ abstract contract V2TestBase is Test {
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Struct hashes, derived from the bind-json schemas
-  // ---------------------------------------------------------------------------------------------
-
-  function lSolutionApproval(FulfillmentOrder memory order, FulfillmentSolution memory solution)
-    internal
-    pure
-    returns (bytes32)
-  {
-    return SchemaHash.solutionApproval(SolutionApproval({order: order, solution: solution}));
-  }
-
-  function lExecutionWitness(
-    address signedCaller,
-    address[] memory targets,
-    ERC721Transfer[] memory erc721Transfers,
-    GenericCall[] memory genericCalls,
-    bytes memory extraData,
-    bytes memory clientData
-  ) internal pure returns (bytes32) {
-    return SchemaHash.executionWitness(
-      ExecutionWitness({
-        relayer: signedCaller,
-        erc20Targets: targets,
-        erc721Transfers: erc721Transfers,
-        genericCalls: genericCalls,
-        extraData: extraData,
-        clientData: clientData
-      })
-    );
-  }
-
-  function lFulfillmentWitness(
-    address signedCaller,
-    ERC721Approval[] memory erc721Approvals,
-    GenericCall[] memory ownerCalls,
-    ValidationParams[] memory validationParams,
-    address callsSigner,
-    bytes memory extraData,
-    bytes memory clientData
-  ) internal pure returns (bytes32) {
-    return SchemaHash.fulfillmentWitness(
-      FulfillmentWitness({
-        solver: signedCaller,
-        erc721Approvals: erc721Approvals,
-        ownerCalls: ownerCalls,
-        validationParams: validationParams,
-        callsSigner: callsSigner,
-        extraData: extraData,
-        clientData: clientData
-      })
-    );
-  }
-
-  function lAuthDelegation(
-    address delegator,
-    address authenticator,
-    bool delegated,
-    bytes memory data,
-    uint256 nonce,
-    uint256 deadline
-  ) internal pure returns (bytes32) {
-    return SchemaHash.authDelegation(
-      AuthDelegation({
-        owner: delegator,
-        authenticator: authenticator,
-        delegated: delegated,
-        data: data,
-        nonce: nonce,
-        deadline: deadline
-      })
-    );
-  }
-
-  // ---------------------------------------------------------------------------------------------
   // Permit2 digest, rebuilt rather than imported
   // ---------------------------------------------------------------------------------------------
 
-  /// @dev Permit2's `permitted` array, built from the order's ERC-20 transfers
+  /// @dev Permit2's `permitted` array, built from the order's ERC-20 allowances
   function lTokenPermissions(address[] memory tokens, uint256[] memory amounts)
     internal
     pure
@@ -170,40 +89,19 @@ abstract contract V2TestBase is Test {
     }
   }
 
-  /// @dev The digest the owner signs for a relayed execution, hashed from the Permit2 struct
-  function lPermit2ExecutionWitnessDigest(
+  /// @dev The digest the owner signs for a settlement submitted by someone else, hashed from the
+  /// Permit2 struct
+  function lPermit2WitnessDigest(
     address[] memory tokens,
     uint256[] memory amounts,
     address spender,
     uint256 nonce,
     uint256 deadline,
-    ExecutionWitness memory witness
+    AHV2Witness memory witness
   ) internal view returns (bytes32) {
     return lPermit2Digest(
-      SchemaHash.permit2ExecutionWitness(
-        Permit2ExecutionWitness({
-          permitted: lTokenPermissions(tokens, amounts),
-          spender: spender,
-          nonce: nonce,
-          deadline: deadline,
-          witness: witness
-        })
-      )
-    );
-  }
-
-  /// @dev The fulfillment counterpart of {lPermit2ExecutionWitnessDigest}
-  function lPermit2FulfillmentWitnessDigest(
-    address[] memory tokens,
-    uint256[] memory amounts,
-    address spender,
-    uint256 nonce,
-    uint256 deadline,
-    FulfillmentWitness memory witness
-  ) internal view returns (bytes32) {
-    return lPermit2Digest(
-      SchemaHash.permit2FulfillmentWitness(
-        Permit2FulfillmentWitness({
+      SchemaHash.permit2Witness(
+        Permit2Witness({
           permitted: lTokenPermissions(tokens, amounts),
           spender: spender,
           nonce: nonce,
@@ -332,28 +230,53 @@ abstract contract V2TestBase is Test {
     out[0] = a;
   }
 
-  function _calls(GenericCall memory a) internal pure returns (GenericCall[] memory out) {
-    out = new GenericCall[](1);
+  function _calls(CallParams memory a) internal pure returns (CallParams[] memory out) {
+    out = new CallParams[](1);
     out[0] = a;
   }
 
-  function _validations(ValidationParams memory a)
+  function _calls(CallParams memory a, CallParams memory b)
     internal
     pure
-    returns (ValidationParams[] memory out)
+    returns (CallParams[] memory out)
   {
-    out = new ValidationParams[](1);
+    out = new CallParams[](2);
+    out[0] = a;
+    out[1] = b;
+  }
+
+  function _calls(CallParams memory a, CallParams memory b, CallParams memory c)
+    internal
+    pure
+    returns (CallParams[] memory out)
+  {
+    out = new CallParams[](3);
+    out[0] = a;
+    out[1] = b;
+    out[2] = c;
+  }
+
+  function _hooks(HookParams memory a) internal pure returns (HookParams[] memory out) {
+    out = new HookParams[](1);
     out[0] = a;
   }
 
-  function _targets(ERC20Transfer[] memory transfers) internal pure returns (address[] memory out) {
-    out = new address[](transfers.length);
-    for (uint256 i = 0; i < transfers.length; i++) {
-      out[i] = transfers[i].target;
-    }
+  function _hooks(HookParams memory a, HookParams memory b)
+    internal
+    pure
+    returns (HookParams[] memory out)
+  {
+    out = new HookParams[](2);
+    out[0] = a;
+    out[1] = b;
   }
 
-  /// @dev As {_tokensAndAmounts}, for a fulfillment order's allowances
+  /// @dev `count` empty entries, one per owner call
+  function _solverData(uint256 count) internal pure returns (bytes[] memory) {
+    return new bytes[](count);
+  }
+
+  /// @dev Splits allowances into the token and amount arrays of a Permit2 batch
   function _tokensAndAmounts(ERC20Allowance[] memory allowances)
     internal
     pure
@@ -364,19 +287,6 @@ abstract contract V2TestBase is Test {
     for (uint256 i = 0; i < allowances.length; i++) {
       tokens[i] = allowances[i].token;
       amounts[i] = allowances[i].amount;
-    }
-  }
-
-  function _tokensAndAmounts(ERC20Transfer[] memory transfers)
-    internal
-    pure
-    returns (address[] memory tokens, uint256[] memory amounts)
-  {
-    tokens = new address[](transfers.length);
-    amounts = new uint256[](transfers.length);
-    for (uint256 i = 0; i < transfers.length; i++) {
-      tokens[i] = transfers[i].token;
-      amounts[i] = transfers[i].amount;
     }
   }
 }

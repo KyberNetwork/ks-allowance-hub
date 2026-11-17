@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {DynamicArrayLib} from 'solady/utils/DynamicArrayLib.sol';
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /// @title EfficientHashLibExt
-/// @notice EIP-712 hashing of an `address[]` or `uint160[]` member, which {EfficientHashLib} does
-/// not provide
+/// @notice EIP-712 hashing of an `address[]`, `uint160[]` or `bytes[]` member, which
+/// {EfficientHashLib} does not provide
 library EfficientHashLibExt {
-  using DynamicArrayLib for *;
   using EfficientHashLib for *;
 
   /// @dev EIP-712 hash of the array: the hash of its elements as 32-byte words
@@ -21,11 +19,6 @@ library EfficientHashLibExt {
     return words.hashCalldata();
   }
 
-  /// @dev As {hash}, for an array already in memory
-  function hashMemory(address[] memory addresses) internal pure returns (bytes32) {
-    return addresses.toUint256Array().asBytes32Array().hash();
-  }
-
   /// @dev EIP-712 hash of the array: the hash of its elements as 32-byte words
   function hash(uint160[] calldata values) internal pure returns (bytes32) {
     bytes calldata words;
@@ -36,8 +29,13 @@ library EfficientHashLibExt {
     return words.hashCalldata();
   }
 
-  /// @dev As {hash}, for an array already in memory
-  function hashMemory(uint160[] memory values) internal pure returns (bytes32) {
-    return keccak256(abi.encodePacked(values));
+  /// @dev EIP-712 hash of the array: its elements' hashes, concatenated and hashed
+  function hash(bytes[] calldata values) internal pure returns (bytes32) {
+    bytes32[] memory valueHashes = EfficientHashLib.malloc(values.length);
+    for (uint256 i = 0; i < values.length; i++) {
+      valueHashes[i] = values[i].hashCalldata();
+    }
+
+    return EfficientHashLib.hash(valueHashes);
   }
 }

@@ -9,7 +9,7 @@ import {TransientSlot} from 'openzeppelin-contracts/contracts/utils/TransientSlo
 
 /**
  * @title MsgSender
- * @notice Records the account a call is acting for, so that a contract it calls can identify that
+ * @notice Records the account a call is acting for. A contract the call invokes can read that
  * account. A call that sets the account may run inside another, and the account set before it is
  * restored when it returns.
  */

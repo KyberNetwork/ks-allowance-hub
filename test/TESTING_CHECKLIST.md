@@ -1641,3 +1641,21 @@ Scope: Move the two-tiers authenticator to ks-ahv2-authenticator-sc; hub tests a
 ### Notes for this run
 
 The hub suite went from 280 to 184 tests, because 96 moved to the new repo.
+
+## Run `20261118T000000Z`
+
+Scope: One order type (`AHV2Order` / `AHV2Solution` / `AHV2Witness`), hooks in place of validators, `IAHV2SolverCallee` / `IAHV2OwnerCallee` callees with `solverData`, `exclusiveCaller`; tests reorganized by concern.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261118T000000Z/AHV2-ENTRY-01` | Both settle entry points on AHV2 orders: owner submission needs no authentication, the exclusive caller (or any caller under the dead address) is checked before `authenticate`, undelegated and malformed authentication is refused, the asset source is the submitter's argument | AUTH-*, ORD-* in `settlement/Authentication.t.sol`; ORDER-FUZZ in `settlement/SettleFuzz.t.sol` | `forge test --isolate` and `FOUNDRY_PROFILE=solar forge test --isolate`: 176 passed, 0 failed, 17 suites |
+| - [x] | - [ ] | `20261118T000000Z/HOOKS-01` | Hooks replace validators: flags 0x01 / 0x02 select `beforeSettlement` / `afterSettlement`, other bits are ignored, each hook receives its index, the before result reaches the after call (empty when before is not selected), hooks run while `msgSender` is the owner, the after call runs after the owner calls, both signatures bind the hooks | HOOK-01..10 in `settlement/Hooks.t.sol` | `forge test --isolate` and `FOUNDRY_PROFILE=solar forge test --isolate`: 176 passed, 0 failed, 17 suites |
+| - [x] | - [ ] | `20261118T000000Z/CALLEE-01` | Solver calls reach only `solverCall` and owner calls reach only `ownerCall(ownerData, solverData)`; callees must hold `WHITELISTED_CALLEE_ROLE`; results list solver calls then owner calls | OWN-*, CALLEE-01..04 in `settlement/Calls.t.sol` | `forge test --isolate` and `FOUNDRY_PROFILE=solar forge test --isolate`: 176 passed, 0 failed, 17 suites |
+| - [x] | - [ ] | `20261118T000000Z/SOLVERDATA-01` | `solution.solverData` has one entry per owner call (length checked on both entry points), reaches each owner call by index, is bound by the solution approval and not by the owner's signature | SD-01..04 in `settlement/Solution.t.sol` | `forge test --isolate` and `FOUNDRY_PROFILE=solar forge test --isolate`: 176 passed, 0 failed, 17 suites |
+| - [x] | - [ ] | `20261118T000000Z/SCHEMA-01` | EIP-712 hashes and written-out type strings for `CallParams`, `HookParams`, `AHV2Order`, `AHV2Solution`, `AHV2Witness`, `SolutionApproval` and the single Permit2 witness; `bytes[]` hashing | T712-* in `types/Eip712.t.sol`, `types/SchemaAudit.t.sol` | `forge test --isolate` and `FOUNDRY_PROFILE=solar forge test --isolate`: 176 passed, 0 failed, 17 suites |
+| - [x] | - [ ] | `20261118T000000Z/MIGRATED-01` | Execution-order tests carried onto AHV2 orders with IDs kept: SET-01/03, CLIENT-01/02/02b, NEST-01..05, MC-01..09, DIRTY-01..04, GUARD-02/04/05/06, GATE-01/02, FWD-16, FWD-REENTRY-01, ORD-03b/04, AUTH-04/06/08/13, ORD-01/01b; ROUTER-01..03 renamed CALLEE-01..03 | `settlement/*`, `batching/*`, `admin/Guards.t.sol` | `forge test --isolate` and `FOUNDRY_PROFILE=solar forge test --isolate`: 176 passed, 0 failed, 17 suites |
+| - [x] | - [ ] | `20261118T000000Z/SUPERSEDED-01` | Removed with their premise or as duplicates of remaining tests: AUTH-01/02/03/11, ORD-02, ORD-02b, EX-FUZZ (folded into ORDER-FUZZ), SET-02 (OWN-07), SET-04 (OWN-06), AUTH-14/15/16/17 (`extraData`), the execution witness and transfer-hash T712 cases | `test/ExecuteOrder.t.sol` removed | `forge test --isolate` and `FOUNDRY_PROFILE=solar forge test --isolate`: 176 passed, 0 failed, 17 suites |
+
+### Notes for this run
+
+Test files moved to `test/settlement`, `test/delegation`, `test/batching` and `test/admin`; shared settlement helpers are in `test/settlement/base/SettlementBase.sol`. The suite went from 184 to 176 tests.

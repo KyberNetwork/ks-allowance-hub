@@ -5,9 +5,6 @@
       "rev": "f3dae6e6ee381f25eb6a246f7da9b85c91a68219"
     }
   },
-  "lib/ks-action-validator-sc": {
-    "rev": "1cb53355dccfe58c3be9090fa7e18b5fe571d744"
-  },
   "lib/ks-common-sc": {
     "tag": {
       "name": "v2.9.1",

@@ -7,19 +7,15 @@ import {PermitHash} from 'test/libraries/PermitHash.sol';
 
 import {JsonBindings} from 'utils/JsonBindings.sol';
 
+import {AHV2OrderLib} from 'src/types/AHV2Order.sol';
+import {AHV2SolutionLib} from 'src/types/AHV2Solution.sol';
+import {AHV2WitnessLib} from 'src/types/AHV2Witness.sol';
 import {AuthDelegationLib} from 'src/types/AuthDelegation.sol';
+import {CallParamsLib} from 'src/types/CallParams.sol';
 import {ERC20AllowanceLib} from 'src/types/ERC20Allowance.sol';
-import {ERC20TransferLib} from 'src/types/ERC20Transfer.sol';
 import {ERC721ApprovalLib} from 'src/types/ERC721Approval.sol';
-import {ERC721TransferLib} from 'src/types/ERC721Transfer.sol';
-import {ExecutionOrderLib} from 'src/types/ExecutionOrder.sol';
-import {ExecutionWitnessLib} from 'src/types/ExecutionWitness.sol';
-import {FulfillmentOrderLib} from 'src/types/FulfillmentOrder.sol';
-import {FulfillmentSolutionLib} from 'src/types/FulfillmentSolution.sol';
-import {FulfillmentWitnessLib} from 'src/types/FulfillmentWitness.sol';
-import {GenericCallLib} from 'src/types/GenericCall.sol';
+import {HookParamsLib} from 'src/types/HookParams.sol';
 import {SolutionApprovalLib} from 'src/types/SolutionApproval.sol';
-import {ValidationParamsLib} from 'src/types/ValidationParams.sol';
 
 /**
  * @title SchemaAuditTest
@@ -37,16 +33,6 @@ contract SchemaAuditTest is Test {
   /// T712-SCHEMA — each typehash equals the hash of the schema derived from its struct
   function test_T712_SCHEMA_typehashesMatchTheirStructs() public pure {
     assertEq(
-      ERC20TransferLib.ERC20_TRANSFER_TYPEHASH,
-      keccak256(bytes(JsonBindings.schema_ERC20Transfer)),
-      'ERC20Transfer'
-    );
-    assertEq(
-      ERC721TransferLib.ERC721_TRANSFER_TYPEHASH,
-      keccak256(bytes(JsonBindings.schema_ERC721Transfer)),
-      'ERC721Transfer'
-    );
-    assertEq(
       ERC20AllowanceLib.ERC20_ALLOWANCE_TYPEHASH,
       keccak256(bytes(JsonBindings.schema_ERC20Allowance)),
       'ERC20Allowance'
@@ -57,29 +43,22 @@ contract SchemaAuditTest is Test {
       'ERC721Approval'
     );
     assertEq(
-      GenericCallLib.GENERIC_CALL_TYPEHASH,
-      keccak256(bytes(JsonBindings.schema_GenericCall)),
-      'GenericCall'
+      CallParamsLib.CALL_PARAMS_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_CallParams)),
+      'CallParams'
     );
     assertEq(
-      ValidationParamsLib.VALIDATION_PARAMS_TYPEHASH,
-      keccak256(bytes(JsonBindings.schema_ValidationParams)),
-      'ValidationParams'
+      HookParamsLib.HOOK_PARAMS_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_HookParams)),
+      'HookParams'
     );
     assertEq(
-      ExecutionOrderLib.EXECUTION_ORDER_TYPEHASH,
-      keccak256(bytes(JsonBindings.schema_ExecutionOrder)),
-      'ExecutionOrder'
+      AHV2OrderLib.AHV2_ORDER_TYPEHASH, keccak256(bytes(JsonBindings.schema_AHV2Order)), 'AHV2Order'
     );
     assertEq(
-      FulfillmentOrderLib.FULFILLMENT_ORDER_TYPEHASH,
-      keccak256(bytes(JsonBindings.schema_FulfillmentOrder)),
-      'FulfillmentOrder'
-    );
-    assertEq(
-      FulfillmentSolutionLib.FULFILLMENT_SOLUTION_TYPEHASH,
-      keccak256(bytes(JsonBindings.schema_FulfillmentSolution)),
-      'FulfillmentSolution'
+      AHV2SolutionLib.AHV2_SOLUTION_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_AHV2Solution)),
+      'AHV2Solution'
     );
     assertEq(
       SolutionApprovalLib.SOLUTION_APPROVAL_TYPEHASH,
@@ -87,14 +66,9 @@ contract SchemaAuditTest is Test {
       'SolutionApproval'
     );
     assertEq(
-      ExecutionWitnessLib.EXECUTION_WITNESS_TYPEHASH,
-      keccak256(bytes(JsonBindings.schema_ExecutionWitness)),
-      'ExecutionWitness'
-    );
-    assertEq(
-      FulfillmentWitnessLib.FULFILLMENT_WITNESS_TYPEHASH,
-      keccak256(bytes(JsonBindings.schema_FulfillmentWitness)),
-      'FulfillmentWitness'
+      AHV2WitnessLib.AHV2_WITNESS_TYPEHASH,
+      keccak256(bytes(JsonBindings.schema_AHV2Witness)),
+      'AHV2Witness'
     );
     assertEq(
       AuthDelegationLib.AUTH_DELEGATION_TYPEHASH,
@@ -104,104 +78,71 @@ contract SchemaAuditTest is Test {
   }
 
   /**
-   * T712-SCHEMA-PERMIT2 — the Permit2 stub plus each witness type string equals its struct schema
+   * T712-SCHEMA-PERMIT2 — the Permit2 stub plus the witness type string equals its struct schema
    * @dev Permit2 completes its own stub with the string it is given and hashes the concatenation,
-   * so the two together must reproduce the schema `bind-json` derived from the struct. This also
-   * pins which colliding schema {SchemaHash} reads for which rail: the suffixes follow discovery
-   * order, and a swap fails here.
+   * so the two together must reproduce the schema `bind-json` derived from the struct.
    */
-  function test_T712_SCHEMA_PERMIT2_witnessTypeStringsMatchTheirStructs() public pure {
+  function test_T712_SCHEMA_PERMIT2_witnessTypeStringMatchesItsStruct() public pure {
     assertEq(
       string(
         abi.encodePacked(
           PermitHash._PERMIT_BATCH_WITNESS_TRANSFER_FROM_TYPEHASH_STUB,
-          ExecutionWitnessLib.EXECUTION_WITNESS_PERMIT2_TYPE_STRING
+          AHV2WitnessLib.AHV2_WITNESS_PERMIT2_TYPE_STRING
         )
       ),
-      JsonBindings.schema_PermitBatchWitnessTransferFrom_0,
-      'ExecutionWitness permit'
-    );
-    assertEq(
-      string(
-        abi.encodePacked(
-          PermitHash._PERMIT_BATCH_WITNESS_TRANSFER_FROM_TYPEHASH_STUB,
-          FulfillmentWitnessLib.FULFILLMENT_WITNESS_PERMIT2_TYPE_STRING
-        )
-      ),
-      JsonBindings.schema_PermitBatchWitnessTransferFrom_1,
-      'FulfillmentWitness permit'
+      JsonBindings.schema_PermitBatchWitnessTransferFrom,
+      'AHV2Witness permit'
     );
   }
 
   /**
-   * T712-SCHEMA — the four typehashes carrying client data match their written-out strings
-   * @dev The four type strings that carry `clientData`, written out here, against the production
-   * typehashes
+   * T712-SCHEMA — the typehashes of the order, solution, witness and approval match their
+   * written-out strings
+   * @dev The four type strings, written out here, against the production typehashes
    */
-  function test_T712_SCHEMA_clientDataTypeStringsWrittenOut() public pure {
-    string memory generic = 'GenericCall(address router,uint256 value,bytes data)';
-    string memory validation =
-      'ValidationParams(address validator,bytes32 action,bytes beforeExecutionInput,bytes afterExecutionInput)';
+  function test_T712_SCHEMA_typeStringsWrittenOut() public pure {
+    string memory callParams = 'CallParams(address callee,uint256 value,bytes data)';
+    string memory hookParams = 'HookParams(address hook,bytes32 flags,bytes data)';
+    string memory erc20Allowance = 'ERC20Allowance(address token,uint160 amount)';
+    string memory erc721Approval = 'ERC721Approval(address token,uint256 tokenId)';
+    string memory order =
+      'AHV2Order(address owner,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)';
+    string memory solution =
+      'AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,CallParams[] solverCalls,bytes[] solverData,uint256 nonce,uint256 expiration)';
 
     assertEq(
-      ExecutionOrderLib.EXECUTION_ORDER_TYPEHASH,
-      keccak256(
-        abi.encodePacked(
-          'ExecutionOrder(address owner,address relayer,ERC20Transfer[] erc20Transfers,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,uint256 nonce,uint256 expiration,bytes extraData,bytes clientData)',
-          'ERC20Transfer(address token,address target,uint160 amount)',
-          'ERC721Transfer(address token,uint256 tokenId,address target)',
-          generic
-        )
-      ),
-      'ExecutionOrder'
+      AHV2OrderLib.AHV2_ORDER_TYPEHASH,
+      keccak256(abi.encodePacked(order, callParams, erc20Allowance, erc721Approval, hookParams)),
+      'AHV2Order'
     );
     assertEq(
-      FulfillmentOrderLib.FULFILLMENT_ORDER_TYPEHASH,
-      keccak256(
-        abi.encodePacked(
-          'FulfillmentOrder(address owner,address solver,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,ValidationParams[] validationParams,GenericCall[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes extraData,bytes clientData)',
-          'ERC20Allowance(address token,uint160 amount)',
-          'ERC721Approval(address token,uint256 tokenId)',
-          generic,
-          validation
-        )
-      ),
-      'FulfillmentOrder'
+      AHV2SolutionLib.AHV2_SOLUTION_TYPEHASH,
+      keccak256(abi.encodePacked(solution, callParams)),
+      'AHV2Solution'
     );
     assertEq(
-      ExecutionWitnessLib.EXECUTION_WITNESS_TYPEHASH,
+      AHV2WitnessLib.AHV2_WITNESS_TYPEHASH,
       keccak256(
         abi.encodePacked(
-          'ExecutionWitness(address relayer,address[] erc20Targets,ERC721Transfer[] erc721Transfers,GenericCall[] genericCalls,bytes extraData,bytes clientData)',
-          'ERC721Transfer(address token,uint256 tokenId,address target)',
-          generic
+          'AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,bytes clientData)',
+          callParams,
+          erc721Approval,
+          hookParams
         )
       ),
-      'ExecutionWitness'
-    );
-    assertEq(
-      FulfillmentWitnessLib.FULFILLMENT_WITNESS_TYPEHASH,
-      keccak256(
-        abi.encodePacked(
-          'FulfillmentWitness(address solver,ERC721Approval[] erc721Approvals,GenericCall[] ownerCalls,ValidationParams[] validationParams,address callsSigner,bytes extraData,bytes clientData)',
-          'ERC721Approval(address token,uint256 tokenId)',
-          generic,
-          validation
-        )
-      ),
-      'FulfillmentWitness'
+      'AHV2Witness'
     );
     assertEq(
       SolutionApprovalLib.SOLUTION_APPROVAL_TYPEHASH,
       keccak256(
         abi.encodePacked(
-          'SolutionApproval(FulfillmentOrder order,FulfillmentSolution solution)',
-          'ERC20Allowance(address token,uint160 amount)',
-          'ERC721Approval(address token,uint256 tokenId)',
-          'FulfillmentOrder(address owner,address solver,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,ValidationParams[] validationParams,GenericCall[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes extraData,bytes clientData)',
-          'FulfillmentSolution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,GenericCall[] solverCalls,uint256 nonce,uint256 expiration)',
-          generic,
-          validation
+          'SolutionApproval(AHV2Order order,AHV2Solution solution)',
+          order,
+          solution,
+          callParams,
+          erc20Allowance,
+          erc721Approval,
+          hookParams
         )
       ),
       'SolutionApproval'

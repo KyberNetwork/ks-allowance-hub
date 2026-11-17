@@ -10,8 +10,8 @@ import {IERC721} from 'openzeppelin-contracts/contracts/token/ERC721/IERC721.sol
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
- * @notice One ERC721 transfer of a fulfillment order: a token that leaves the owner
- * @dev The order does not specify the target of the transfer. The {FulfillmentSolution} specifies
+ * @notice One ERC721 transfer of an order: a token that leaves the owner
+ * @dev The order does not specify the target of the transfer. The {AHV2Solution} specifies
  * one target for each transfer.
  * @param token The ERC721 contract
  * @param tokenId The token transferred
@@ -41,26 +41,11 @@ library ERC721ApprovalLib {
     }
   }
 
-  /// @dev As {hash}, for an approval already in memory
-  function hashMemory(ERC721Approval memory self) internal pure returns (bytes32) {
-    return keccak256(abi.encode(ERC721_APPROVAL_TYPEHASH, self.token, self.tokenId));
-  }
-
   /// @dev EIP-712 hash of the array: its member hashes, concatenated and hashed
   function hash(ERC721Approval[] calldata approvals) internal pure returns (bytes32) {
     bytes32[] memory approvalHashes = approvals.length.malloc();
     for (uint256 i = 0; i < approvals.length; i++) {
       approvalHashes[i] = hash(approvals[i]);
-    }
-
-    return approvalHashes.hash();
-  }
-
-  /// @dev As {hash}, for an array already in memory
-  function hashMemory(ERC721Approval[] memory approvals) internal pure returns (bytes32) {
-    bytes32[] memory approvalHashes = approvals.length.malloc();
-    for (uint256 i = 0; i < approvals.length; i++) {
-      approvalHashes[i] = hashMemory(approvals[i]);
     }
 
     return approvalHashes.hash();

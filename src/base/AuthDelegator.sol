@@ -62,7 +62,7 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
       revert UnexpectedSignature();
     }
 
-    // Not called on withdrawal, so that an authenticator that reverts cannot prevent it. The owner
+    // Not called on withdrawal; an authenticator that reverts cannot prevent it. The owner
     // has been authenticated above, since `initAuthentication` takes no signature
     if (delegated && data.length > 0) {
       IAHV2Authenticator(authenticator).initAuthentication(owner, data);

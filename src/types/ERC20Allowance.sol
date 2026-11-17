@@ -15,9 +15,9 @@ import {TokenHelper} from 'ks-common-sc/src/libraries/token/TokenHelper.sol';
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
- * @notice One ERC20 transfer of a fulfillment order: an amount of `token` that leaves the owner
+ * @notice One ERC20 transfer of an order: an amount of `token` that leaves the owner
  * @dev The order does not specify the target or the amount of the transfer. The
- * {FulfillmentSolution} specifies a target and an amount for each transfer, and the amount
+ * {AHV2Solution} specifies a target and an amount for each transfer, and the amount
  * transferred is at most `amount`.
  * @param token The ERC20 token
  * @param amount Largest amount the transfer sends in one settlement, with the width of a Permit2
@@ -49,26 +49,11 @@ library ERC20AllowanceLib {
     }
   }
 
-  /// @dev As {hash}, for an allowance already in memory
-  function hashMemory(ERC20Allowance memory self) internal pure returns (bytes32) {
-    return keccak256(abi.encode(ERC20_ALLOWANCE_TYPEHASH, self.token, self.amount));
-  }
-
   /// @dev EIP-712 hash of the array: its member hashes, concatenated and hashed
   function hash(ERC20Allowance[] calldata allowances) internal pure returns (bytes32) {
     bytes32[] memory allowanceHashes = allowances.length.malloc();
     for (uint256 i = 0; i < allowances.length; i++) {
       allowanceHashes[i] = hash(allowances[i]);
-    }
-
-    return allowanceHashes.hash();
-  }
-
-  /// @dev As {hash}, for an array already in memory
-  function hashMemory(ERC20Allowance[] memory allowances) internal pure returns (bytes32) {
-    bytes32[] memory allowanceHashes = allowances.length.malloc();
-    for (uint256 i = 0; i < allowances.length; i++) {
-      allowanceHashes[i] = hashMemory(allowances[i]);
     }
 
     return allowanceHashes.hash();

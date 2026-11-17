@@ -4,37 +4,41 @@ pragma solidity ^0.8.0;
 import {Vm} from 'forge-std/Vm.sol';
 
 import {SchemaHash} from 'test/base/SchemaHash.sol';
-import {SignerAuthenticatorBase} from 'test/base/SignerAuthenticatorBase.sol';
 
+import {EchoCalleeMock} from 'test/mocks/CalleeMocks.sol';
 import {ERC20Mock} from 'test/mocks/TokenMocks.sol';
+
+import {SettlementBase} from 'test/settlement/base/SettlementBase.sol';
 
 import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
 
-import {ERC20Allowance, ERC20AllowanceLib} from 'src/types/ERC20Allowance.sol';
+import {AHV2Order} from 'src/types/AHV2Order.sol';
+import {AHV2Solution} from 'src/types/AHV2Solution.sol';
+import {CallParams} from 'src/types/CallParams.sol';
+import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ERC721Approval} from 'src/types/ERC721Approval.sol';
 import {ERC721Transfer} from 'src/types/ERC721Transfer.sol';
-import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
-import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
-import {GenericCall} from 'src/types/GenericCall.sol';
+import {HookParams} from 'src/types/HookParams.sol';
 import {NativeTransfer} from 'src/types/NativeTransfer.sol';
-import {ValidationParams} from 'src/types/ValidationParams.sol';
 
 import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
-
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 /**
- * @notice `TGT-01..04` with `LEN-01..02`, `APR-01` and `EVT-01`, and `AMT-01..05` with `AMT-FUZZ`:
- * the solver chooses where each transfer of a fulfillment goes, and how much each ERC20 transfer
- * moves
+ * @title SolutionTest
+ * @notice `TGT-01..04` with `LEN-01..02`, `APR-01`, `AMT-01..05` with `AMT-FUZZ`, and `SD-01..04` — what the solver specifies in
+ * the solution
  * @dev The order specifies only what may leave the owner; the solution specifies one target per
- * transfer and one amount per ERC20 transfer. Every case sends the transfers somewhere no order
- * signed: `solverWallet` for an ERC20 transfer and `nftRecipient` for the NFT, neither of them a
- * router.
+ * transfer, one amount per ERC20 transfer and the `solverData` entry of each owner call. Every
+ * target case sends the transfers somewhere no order signed: `solverWallet` for an ERC20 transfer
+ * and `nftRecipient` for the NFT, neither of them a callee.
  */
-contract FulfillTargetsTest is SignerAuthenticatorBase {
+contract SolutionTest is SettlementBase {
   uint160 internal constant AMOUNT = 5 ether;
+
+  /// @dev Written out rather than imported: a role read from the hub would agree with a wrong one
+  bytes32 internal constant CALLEE_ROLE = keccak256('WHITELISTED_CALLEE_ROLE');
 
   address internal approver;
   uint256 internal approverKey;
@@ -53,41 +57,43 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
   // -------------------------------------------------------------------------------------------
 
   /**
-   * TGT-01 / LEN-01 — delegated rail: mismatched target counts revert, matching counts settle
+   * TGT-01 / LEN-01 — delegated entry point: mismatched target counts revert, matching counts
+   * settle
    * @dev First the four solutions without exactly one target per transfer — 0 or 2 ERC20 targets,
    * then 0 or 2 NFT targets — are each refused, moving nothing; then the solution with one each
    * settles, so the refusals were about the counts.
    */
-  function test_TGT_01_solverChoosesTheTargetsOnTheDelegatedRail() public {
-    FulfillmentOrder memory order = _bothTransfers(ANY, 0);
+  function test_TGT_01_solverChoosesTheTargetsOnTheDelegatedEntryPoint() public {
+    AHV2Order memory order = _bothTransfers(ANY, 0);
     uint256 ownerBefore = _balance(owner);
-    uint256 routerBefore = _balance(address(router));
+    uint256 calleeBefore = _balance(address(callee));
 
     for (uint256 i = 0; i < 4; i++) {
       vm.prank(owner);
       vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-      hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', _mismatched(i), '', false);
+      hub.settleOrderWithDelegatedAuthentication(order, address(0), '', _mismatched(i), '', false);
     }
     assertEq(_balance(owner), ownerBefore, 'no refused solution moved the ERC20');
     assertEq(nft.ownerOf(NFT_ID), owner, 'or the NFT');
 
     vm.prank(owner);
-    hub.fulfillOrderWithDelegatedAuthentication(
+    hub.settleOrderWithDelegatedAuthentication(
       order, address(0), '', _toSolverAndRecipient(), '', false
     );
 
     _assertLanded(ownerBefore);
-    assertEq(_balance(address(router)), routerBefore, 'no router received the transfer');
+    assertEq(_balance(address(callee)), calleeBefore, 'no callee received the transfer');
   }
 
-  /// TGT-02 — on the delegated rail, a Permit2 allowance pull pays the targets the solution names
+  /// TGT-02 — on the delegated entry point, a Permit2 allowance pull pays the targets the solution
+  /// names
   function test_TGT_02_solverTargetsOnThePermit2AllowancePull() public {
     _grantPermit2Allowance(token18, AMOUNT);
-    FulfillmentOrder memory order = _bothTransfers(ANY, 0);
+    AHV2Order memory order = _bothTransfers(ANY, 0);
     uint256 ownerBefore = _balance(owner);
 
     vm.prank(owner);
-    hub.fulfillOrderWithDelegatedAuthentication(
+    hub.settleOrderWithDelegatedAuthentication(
       order, address(0), '', _toSolverAndRecipient(), '', true
     );
 
@@ -103,14 +109,14 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
    * target.
    */
   function test_TGT_03_witnessDoesNotBindTheErc20Targets() public {
-    FulfillmentOrder memory order = _bothTransfers(ANY, 1);
-    bytes memory witness = _signFulfillmentWitness(order);
+    AHV2Order memory order = _bothTransfers(ANY, 1);
+    bytes memory witness = _signWitness(order);
     uint256 ownerBefore = _balance(owner);
 
     for (uint256 i = 0; i < 4; i++) {
       vm.prank(solver);
       vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-      hub.fulfillOrderWithPermit2Signature(order, witness, _mismatched(i), '');
+      hub.settleOrderWithPermit2Signature(order, witness, _mismatched(i), '');
     }
     assertEq(_balance(owner), ownerBefore, 'no refused solution moved the ERC20');
     assertEq(nft.ownerOf(NFT_ID), owner, 'or the NFT');
@@ -118,36 +124,36 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
     uint256 snapshot = vm.snapshotState();
 
     vm.prank(solver);
-    hub.fulfillOrderWithPermit2Signature(order, witness, _toSolverAndRecipient(), '');
+    hub.settleOrderWithPermit2Signature(order, witness, _toSolverAndRecipient(), '');
     _assertLanded(ownerBefore);
 
     vm.revertToState(snapshot);
 
     vm.prank(solver);
-    hub.fulfillOrderWithPermit2Signature(
+    hub.settleOrderWithPermit2Signature(
       order,
       witness,
       _solution(
-        _addresses(address(router2)),
+        _addresses(address(callee2)),
         _amounts(AMOUNT),
         _addresses(solverWallet),
-        _calls(_routerCall(0, hex'01')),
+        _calls(_calleeCall(0, hex'01')),
         vm.getBlockTimestamp() + 1 hours
       ),
       ''
     );
-    assertEq(_balance(address(router2)), AMOUNT, 'the same witness, another ERC20 target');
+    assertEq(_balance(address(callee2)), AMOUNT, 'the same witness, another ERC20 target');
     assertEq(nft.ownerOf(NFT_ID), solverWallet, 'and another NFT target');
   }
 
   /// TGT-04 — the owner submits over Permit2 with a plain permit, and still picks the targets
   function test_TGT_04_ownerSubmitsWithTargetsOfTheirChoice() public {
-    FulfillmentOrder memory order = _bothTransfers(ANY, 2);
+    AHV2Order memory order = _bothTransfers(ANY, 2);
     bytes memory permit = _signPlainPermit(order.erc20Allowances, 2, order.expiration);
     uint256 ownerBefore = _balance(owner);
 
     vm.prank(owner);
-    hub.fulfillOrderWithPermit2Signature(order, permit, _toSolverAndRecipient(), '');
+    hub.settleOrderWithPermit2Signature(order, permit, _toSolverAndRecipient(), '');
 
     _assertLanded(ownerBefore);
   }
@@ -162,96 +168,32 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
    * refusal is about the targets. The second step is the control.
    */
   function test_APR_01_theApprovalBindsTheTargets() public {
-    FulfillmentOrder memory order = _bothTransfers(approver, 0);
-    FulfillmentSolution memory toRouters = _solution(
-      _addresses(address(router)),
+    AHV2Order memory order = _bothTransfers(approver, 0);
+    AHV2Solution memory toCallees = _solution(
+      _addresses(address(callee)),
       _amounts(AMOUNT),
-      _addresses(address(router2)),
-      _calls(_routerCall(0, hex'01')),
+      _addresses(address(callee2)),
+      _calls(_calleeCall(0, hex'01')),
       vm.getBlockTimestamp() + 1 hours
     );
-    FulfillmentSolution memory toSolver = _toSolverAndRecipient();
-    bytes memory routersApproval = _signSolutionApproval(approverKey, order, toRouters);
+    AHV2Solution memory toSolver = _toSolverAndRecipient();
+    bytes memory calleesApproval = _signSolutionApproval(approverKey, order, toCallees);
     uint256 ownerBefore = _balance(owner);
 
     // The refused attempt reverts, so the solution nonce it carries stays unspent for the valid one
     bytes memory auth = _authOf(order);
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.fulfillOrderWithDelegatedAuthentication(
-      order, address(authenticator), auth, toSolver, routersApproval, false
+    hub.settleOrderWithDelegatedAuthentication(
+      order, address(authenticator), auth, toSolver, calleesApproval, false
     );
 
     bytes memory solverApproval = _signSolutionApproval(approverKey, order, toSolver);
     vm.prank(relayer);
-    hub.fulfillOrderWithDelegatedAuthentication(
+    hub.settleOrderWithDelegatedAuthentication(
       order, address(authenticator), auth, toSolver, solverApproval, false
     );
     _assertLanded(ownerBefore);
-  }
-
-  // -------------------------------------------------------------------------------------------
-  // EVT-01 — the event pairs each transfer with its target
-  // -------------------------------------------------------------------------------------------
-
-  /**
-   * EVT-01 — `TransferTokens` lists the transfers that happened, each with the solution's target
-   * @dev Two ERC20 transfers of different tokens and amounts go to two different targets, so the
-   * pairing cannot come out right by symmetry.
-   */
-  function test_EVT_01_fulfillmentEventPairsTransfersWithTargets() public {
-    uint160 sixAmount = 7e6;
-    ERC20Allowance[] memory allowances = new ERC20Allowance[](2);
-    allowances[0] = _tokenAllowance(AMOUNT);
-    allowances[1] = ERC20Allowance({token: token6, amount: sixAmount});
-    FulfillmentOrder memory order = _fulfillmentOrder(
-      ANY,
-      allowances,
-      _approvals(_nftApproval()),
-      new ValidationParams[](0),
-      new GenericCall[](0),
-      ANY,
-      0,
-      vm.getBlockTimestamp() + 1 hours
-    );
-    address[] memory erc20Targets = new address[](2);
-    erc20Targets[0] = address(router2);
-    erc20Targets[1] = solverWallet;
-    uint160[] memory erc20Amounts = new uint160[](2);
-    erc20Amounts[0] = AMOUNT;
-    erc20Amounts[1] = sixAmount;
-    FulfillmentSolution memory solution = _solution(
-      erc20Targets,
-      erc20Amounts,
-      _addresses(nftRecipient),
-      new GenericCall[](0),
-      vm.getBlockTimestamp() + 1 hours
-    );
-
-    ERC20Transfer[] memory expectedErc20s = new ERC20Transfer[](2);
-    expectedErc20s[0] = ERC20Transfer({token: token18, target: address(router2), amount: AMOUNT});
-    expectedErc20s[1] = ERC20Transfer({token: token6, target: solverWallet, amount: sixAmount});
-    ERC721Transfer[] memory expectedNfts = new ERC721Transfer[](1);
-    expectedNfts[0] = ERC721Transfer({token: address(nft), tokenId: NFT_ID, target: nftRecipient});
-
-    vm.recordLogs();
-    vm.prank(owner);
-    hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', solution, '', false);
-    Vm.Log memory entry = _settlementLog();
-
-    assertEq(_topicAddress(entry.topics[1]), owner, 'the caller');
-    assertEq(_topicAddress(entry.topics[2]), owner, 'the owner');
-    assertEq(entry.topics[3], SchemaHash.fulfillmentOrder(order), 'the fulfillment order hash');
-    assertEq(
-      entry.data,
-      abi.encode(expectedErc20s, expectedNfts, new NativeTransfer[](0), bytes('')),
-      'each transfer with its target'
-    );
-
-    // the listed transfers are what moved
-    assertEq(_balance(address(router2)), AMOUNT, 'the first transfer');
-    assertEq(IERC20(token6).balanceOf(solverWallet), sixAmount, 'the second transfer');
-    assertEq(nft.ownerOf(NFT_ID), nftRecipient, 'the NFT transfer');
   }
 
   // -------------------------------------------------------------------------------------------
@@ -268,8 +210,8 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
     uint160 chosen = 2 ether;
 
     for (uint8 path = 0; path < 3; path++) {
-      FulfillmentOrder memory order = _amountOrder(AMOUNT, 1);
-      FulfillmentSolution memory solution = _amountSolution(chosen);
+      AHV2Order memory order = _amountOrder(AMOUNT, 1);
+      AHV2Solution memory solution = _amountSolution(chosen);
       bytes memory permit = _preparePath(path, order);
       uint256 ownerBefore = _balance(owner);
       uint256 targetBefore = _balance(solverWallet);
@@ -281,7 +223,7 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
 
       assertEq(ownerBefore - _balance(owner), chosen, 'the owner paid the chosen amount');
       assertEq(_balance(solverWallet) - targetBefore, chosen, 'and the target received it');
-      assertEq(entry.topics[3], SchemaHash.fulfillmentOrder(order), 'the event names the order');
+      assertEq(entry.topics[3], SchemaHash.ahv2Order(order), 'the event names the order');
 
       ERC20Transfer[] memory expected = new ERC20Transfer[](1);
       expected[0] = ERC20Transfer({token: token18, target: solverWallet, amount: chosen});
@@ -306,7 +248,7 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
     uint160 sixAllowance = 7e6;
 
     for (uint8 path = 0; path < 3; path++) {
-      FulfillmentOrder memory order = _twoTransferOrder(AMOUNT, sixAllowance, 1);
+      AHV2Order memory order = _twoTransferOrder(AMOUNT, sixAllowance, 1);
       bytes memory permit = _preparePath(path, order);
 
       vm.expectRevert(_exceeds(1, uint256(sixAllowance) + 1, sixAllowance));
@@ -326,7 +268,7 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
   /// AMT-03 — an amount of 0 settles and moves nothing on its transfer
   function test_AMT_03_amountZeroMovesNothingOnItsTransfer() public {
     uint160 sixAllowance = 7e6;
-    FulfillmentOrder memory order = _twoTransferOrder(AMOUNT, sixAllowance, 1);
+    AHV2Order memory order = _twoTransferOrder(AMOUNT, sixAllowance, 1);
     uint256 ownerBefore = _balance(owner);
     uint256 targetBefore = _balance(solverWallet);
     uint256 sixBefore = IERC20(token6).balanceOf(solverWallet);
@@ -356,20 +298,20 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
    */
   function test_AMT_04_amountsOfTheWrongLengthAreRefused() public {
     uint160 sixAllowance = 7e6;
-    FulfillmentOrder memory order = _twoTransferOrder(AMOUNT, sixAllowance, 1);
+    AHV2Order memory order = _twoTransferOrder(AMOUNT, sixAllowance, 1);
     bytes memory permit = _preparePath(PATH_PERMIT2_SIGNATURE, order);
 
     for (uint256 length = 1; length <= 3; length += 2) {
-      FulfillmentSolution memory solution = _twoTransferSolution(AMOUNT, sixAllowance);
+      AHV2Solution memory solution = _twoTransferSolution(AMOUNT, sixAllowance);
       solution.erc20Amounts = new uint160[](length);
 
       vm.prank(owner);
       vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-      hub.fulfillOrderWithDelegatedAuthentication(order, address(0), '', solution, '', false);
+      hub.settleOrderWithDelegatedAuthentication(order, address(0), '', solution, '', false);
 
       vm.prank(solver);
       vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-      hub.fulfillOrderWithPermit2Signature(order, permit, solution, '');
+      hub.settleOrderWithPermit2Signature(order, permit, solution, '');
     }
 
     uint256 ownerBefore = _balance(owner);
@@ -383,23 +325,23 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
    * one it signed settles.
    */
   function test_AMT_05_theApprovalBindsTheAmounts() public {
-    FulfillmentOrder memory order = _amountOrder(AMOUNT, 1);
+    AHV2Order memory order = _amountOrder(AMOUNT, 1);
     order.solutionApprover = approver;
-    FulfillmentSolution memory approved = _amountSolution(AMOUNT);
-    FulfillmentSolution memory lower = _amountSolution(2 ether);
+    AHV2Solution memory approved = _amountSolution(AMOUNT);
+    AHV2Solution memory lower = _amountSolution(2 ether);
     bytes memory approval = _signSolutionApproval(approverKey, order, approved);
 
     // The refused attempt reverts, so the solution nonce it carries stays unspent for the valid one
     bytes memory auth = _authOf(order);
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.fulfillOrderWithDelegatedAuthentication(
+    hub.settleOrderWithDelegatedAuthentication(
       order, address(authenticator), auth, lower, approval, false
     );
 
     uint256 ownerBefore = _balance(owner);
     vm.prank(relayer);
-    hub.fulfillOrderWithDelegatedAuthentication(
+    hub.settleOrderWithDelegatedAuthentication(
       order, address(authenticator), auth, approved, approval, false
     );
     assertEq(ownerBefore - _balance(owner), AMOUNT, 'the approved amounts settle');
@@ -428,7 +370,7 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
     uint8 path = uint8(bound(f.path, 0, 2));
     ERC20Mock(token18).mint(owner, 2 * uint256(f.allowance));
 
-    FulfillmentOrder memory order = _amountOrder(f.allowance, 1);
+    AHV2Order memory order = _amountOrder(f.allowance, 1);
     bytes memory permit = _preparePath(path, order);
     uint256 ownerBefore = _balance(owner);
     uint256 targetBefore = _balance(solverWallet);
@@ -444,29 +386,197 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
   }
 
   // -------------------------------------------------------------------------------------------
-  // helpers
+  // SD — the solver data
   // -------------------------------------------------------------------------------------------
 
-  /// @dev Delegates `signer` and returns the authentication data of `order` for a submitter other than
-  /// the owner
-  function _authOf(FulfillmentOrder memory order) private returns (bytes memory) {
-    _delegateSignerThroughHub(signer);
-    return _fulfillmentAuthData(order, signer, signerPk);
+  /**
+   * SD-01 — each owner call receives the `solverData` entry of its own index
+   * @dev Three owner calls go to three callees that echo what they receive, and the entries are
+   * distinct, one of them empty, so a shifted or reused entry would show in the results.
+   */
+  function test_SD_01_eachOwnerCallReceivesItsOwnSolverData() public {
+    EchoCalleeMock[3] memory echoes =
+      [new EchoCalleeMock(), new EchoCalleeMock(), new EchoCalleeMock()];
+    bytes[3] memory solverEntries = [bytes(hex'5a'), bytes(''), bytes(hex'5c5c')];
+
+    CallParams[] memory ownerCalls = new CallParams[](3);
+    vm.startPrank(admin);
+    for (uint256 i = 0; i < 3; i++) {
+      hub.grantRole(CALLEE_ROLE, address(echoes[i]));
+      ownerCalls[i] =
+        CallParams({callee: address(echoes[i]), value: 0, data: abi.encodePacked(uint8(i + 1))});
+    }
+    vm.stopPrank();
+
+    AHV2Order memory order =
+      _openAhv2Order(new ERC20Allowance[](0), _noHooks(), ownerCalls, 0, vm.getBlockTimestamp());
+    AHV2Solution memory solution = _route(order, _noCalls());
+    for (uint256 i = 0; i < 3; i++) {
+      solution.solverData[i] = solverEntries[i];
+    }
+
+    vm.prank(owner);
+    bytes[] memory results =
+      hub.settleOrderWithDelegatedAuthentication(order, address(0), '', solution, '', false);
+
+    assertEq(results.length, 3, 'one result per owner call');
+    for (uint256 i = 0; i < 3; i++) {
+      (address seenCallee, bytes memory seenData, bytes memory seenSolverData) =
+        abi.decode(results[i], (address, bytes, bytes));
+      assertEq(seenCallee, address(echoes[i]), 'the result came from the callee of that index');
+      assertEq(seenData, ownerCalls[i].data, 'with the data of its own call');
+      assertEq(seenSolverData, solverEntries[i], 'and the solver data of its own index');
+    }
   }
+
+  /**
+   * SD-02 — a `solverData` list of the wrong length is refused on both entry points
+   * @dev The order has two owner calls. Lengths 0, 1 and 3 are refused with nothing moved, and
+   * length 2 settles.
+   */
+  function test_SD_02_solverDataLengthMustMatchTheOwnerCalls() public {
+    CallParams[] memory ownerCalls = _calls(_calleeCall(0, hex'01'), _calleeCall(0, hex'02'));
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
+
+    AHV2Order memory delegated =
+      _openAhv2Order(_allowances(_tokenAllowance(AMOUNT)), _noHooks(), ownerCalls, 0, expiration);
+    AHV2Order memory relayed =
+      _openAhv2Order(_allowances(_tokenAllowance(AMOUNT)), _noHooks(), ownerCalls, 110, expiration);
+    bytes memory witness = _signWitness(relayed);
+
+    AHV2Solution memory delegatedSolution = _route(delegated, _noCalls());
+    AHV2Solution memory relayedSolution = _route(relayed, _noCalls());
+    uint256 before = _calleeBalance();
+
+    uint256[3] memory wrongLengths = [uint256(0), 1, 3];
+    for (uint256 i = 0; i < wrongLengths.length; i++) {
+      delegatedSolution.solverData = _solverData(wrongLengths[i]);
+      relayedSolution.solverData = _solverData(wrongLengths[i]);
+
+      vm.prank(owner);
+      vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
+      hub.settleOrderWithDelegatedAuthentication(
+        delegated, address(0), '', delegatedSolution, '', false
+      );
+
+      vm.prank(relayer);
+      vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
+      hub.settleOrderWithPermit2Signature(relayed, witness, relayedSolution, '');
+
+      assertEq(_calleeBalance(), before, 'a refused order moved nothing');
+      assertEq(callee.callCount(), 0, 'and ran no call');
+    }
+
+    delegatedSolution.solverData = _solverData(2);
+    relayedSolution.solverData = _solverData(2);
+
+    vm.prank(owner);
+    hub.settleOrderWithDelegatedAuthentication(
+      delegated, address(0), '', delegatedSolution, '', false
+    );
+    vm.prank(relayer);
+    hub.settleOrderWithPermit2Signature(relayed, witness, relayedSolution, '');
+
+    assertEq(_calleeBalance() - before, 2 * AMOUNT, 'a list of the right length settles');
+    assertEq(callee.ownerCallCount(), 4, 'and runs both owner calls of both orders');
+  }
+
+  /**
+   * SD-03 — the solution approval binds `solverData`
+   * @dev An approval of the entry `hex'aa'` presented with the entry `hex'bb'` is refused, and the
+   * same approval presented with the entry it signed settles.
+   */
+  function test_SD_03_theSolutionApprovalBindsSolverData() public {
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
+    AHV2Order memory order = _ahv2Order(
+      ANY,
+      new ERC20Allowance[](0),
+      _noNfts(),
+      _noHooks(),
+      _calls(_calleeCall(0, hex'01')),
+      approver,
+      0,
+      expiration
+    );
+
+    AHV2Solution memory approved = _route(order, _noCalls());
+    approved.solverData[0] = hex'aa';
+    AHV2Solution memory presented = _route(order, _noCalls());
+    presented.solverData[0] = hex'bb';
+
+    bytes memory approval = _signSolutionApproval(approverKey, order, approved);
+    bytes memory auth = _authOf(order);
+
+    vm.prank(relayer);
+    vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
+    hub.settleOrderWithDelegatedAuthentication(
+      order, address(authenticator), auth, presented, approval, false
+    );
+    assertEq(callee.callCount(), 0, 'the refused order ran nothing');
+
+    vm.prank(relayer);
+    hub.settleOrderWithDelegatedAuthentication(
+      order, address(authenticator), auth, approved, approval, false
+    );
+    assertEq(callee.lastSolverData(), hex'aa', 'the control settled with the approved entry');
+  }
+
+  /**
+   * SD-04 — the owner's signature does not bind `solverData`
+   * @dev With the sentinel approver, one witness settles with either of two lists. Each run starts
+   * from the same snapshot, so the second is not a replay of the first.
+   */
+  function test_SD_04_theOwnersSignatureDoesNotBindSolverData() public {
+    AHV2Order memory order = _openAhv2Order(
+      new ERC20Allowance[](0),
+      _noHooks(),
+      _calls(_calleeCall(0, hex'01')),
+      111,
+      vm.getBlockTimestamp() + 1 hours
+    );
+    bytes memory witness = _signWitness(order);
+
+    AHV2Solution memory solutionA = _route(order, _noCalls());
+    solutionA.solverData[0] = hex'aa';
+    AHV2Solution memory solutionB = _route(order, _noCalls());
+    solutionB.solverData[0] = hex'bb';
+
+    uint256 snapshot = vm.snapshotState();
+
+    vm.prank(solver);
+    hub.settleOrderWithPermit2Signature(order, witness, solutionA, '');
+    assertEq(callee.lastSolverData(), hex'aa', 'the witness settled with the first list');
+
+    vm.revertToState(snapshot);
+
+    vm.prank(solver);
+    hub.settleOrderWithPermit2Signature(order, witness, solutionB, '');
+    assertEq(callee.lastSolverData(), hex'bb', 'and with the second');
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Helpers
+  // -------------------------------------------------------------------------------------------
+
+  /// @dev Pull branches of the settlement: the hub's allowance, the owner's Permit2 allowance and
+  /// a Permit2 signature
+  uint8 private constant PATH_HUB = 0;
+  uint8 private constant PATH_PERMIT2_ALLOWANCE = 1;
+  uint8 private constant PATH_PERMIT2_SIGNATURE = 2;
 
   /// @dev One ERC20 transfer of `AMOUNT` and the NFT, open to any submitter, with no route of its
   /// own
   function _bothTransfers(address solutionApprover, uint256 nonce)
     private
     view
-    returns (FulfillmentOrder memory)
+    returns (AHV2Order memory)
   {
-    return _fulfillmentOrder(
+    return _ahv2Order(
       ANY,
       _allowances(_tokenAllowance(AMOUNT)),
       _approvals(_nftApproval()),
-      new ValidationParams[](0),
-      new GenericCall[](0),
+      new HookParams[](0),
+      new CallParams[](0),
       solutionApprover,
       nonce,
       vm.getBlockTimestamp() + 1 hours
@@ -474,12 +584,12 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
   }
 
   /// @dev The ERC20 transfer to `solverWallet` and the NFT to `nftRecipient`
-  function _toSolverAndRecipient() private view returns (FulfillmentSolution memory) {
+  function _toSolverAndRecipient() private view returns (AHV2Solution memory) {
     return _solution(
       _addresses(solverWallet),
       _amounts(AMOUNT),
       _addresses(nftRecipient),
-      _calls(_routerCall(0, hex'01')),
+      _calls(_calleeCall(0, hex'01')),
       vm.getBlockTimestamp() + 1 hours
     );
   }
@@ -488,7 +598,7 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
    * @dev For the one-ERC20, one-NFT order of {_bothTransfers}: partition `i` gives 0 or 2 ERC20
    * targets (i = 0, 1) or 0 or 2 NFT targets (i = 2, 3), with the other array right
    */
-  function _mismatched(uint256 i) private view returns (FulfillmentSolution memory) {
+  function _mismatched(uint256 i) private view returns (AHV2Solution memory) {
     address[] memory none = new address[](0);
     address[] memory two = new address[](2);
     two[0] = solverWallet;
@@ -502,29 +612,19 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
       erc20Targets,
       _amounts(AMOUNT),
       erc721Targets,
-      _calls(_routerCall(0, hex'01')),
+      _calls(_calleeCall(0, hex'01')),
       vm.getBlockTimestamp() + 1 hours
     );
   }
 
-  /// @dev Pull branches of the fulfillment: the hub's allowance, the owner's Permit2 allowance and
-  /// a Permit2 signature
-  uint8 private constant PATH_HUB = 0;
-  uint8 private constant PATH_PERMIT2_ALLOWANCE = 1;
-  uint8 private constant PATH_PERMIT2_SIGNATURE = 2;
-
   /// @dev One ERC20 transfer of `allowance`, open to any submitter
-  function _amountOrder(uint160 allowance, uint256 nonce)
-    private
-    view
-    returns (FulfillmentOrder memory)
-  {
-    return _fulfillmentOrder(
+  function _amountOrder(uint160 allowance, uint256 nonce) private view returns (AHV2Order memory) {
+    return _ahv2Order(
       ANY,
       _allowances(_tokenAllowance(allowance)),
       new ERC721Approval[](0),
-      new ValidationParams[](0),
-      new GenericCall[](0),
+      new HookParams[](0),
+      new CallParams[](0),
       ANY,
       nonce,
       vm.getBlockTimestamp() + 1 hours
@@ -535,17 +635,17 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
   function _twoTransferOrder(uint160 allowance18, uint160 allowance6, uint256 nonce)
     private
     view
-    returns (FulfillmentOrder memory)
+    returns (AHV2Order memory)
   {
     ERC20Allowance[] memory allowances = new ERC20Allowance[](2);
     allowances[0] = _tokenAllowance(allowance18);
     allowances[1] = ERC20Allowance({token: token6, amount: allowance6});
-    return _fulfillmentOrder(
+    return _ahv2Order(
       ANY,
       allowances,
       new ERC721Approval[](0),
-      new ValidationParams[](0),
-      new GenericCall[](0),
+      new HookParams[](0),
+      new CallParams[](0),
       ANY,
       nonce,
       vm.getBlockTimestamp() + 1 hours
@@ -553,12 +653,12 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
   }
 
   /// @dev `amount` of the one transfer to `solverWallet`
-  function _amountSolution(uint160 amount) private view returns (FulfillmentSolution memory) {
+  function _amountSolution(uint160 amount) private view returns (AHV2Solution memory) {
     return _solution(
       _addresses(solverWallet),
       _amounts(amount),
       new address[](0),
-      new GenericCall[](0),
+      new CallParams[](0),
       vm.getBlockTimestamp() + 1 hours
     );
   }
@@ -567,7 +667,7 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
   function _twoTransferSolution(uint160 amount18, uint160 amount6)
     private
     view
-    returns (FulfillmentSolution memory)
+    returns (AHV2Solution memory)
   {
     address[] memory targets = new address[](2);
     targets[0] = solverWallet;
@@ -576,7 +676,7 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
     amounts[0] = amount18;
     amounts[1] = amount6;
     return _solution(
-      targets, amounts, new address[](0), new GenericCall[](0), vm.getBlockTimestamp() + 1 hours
+      targets, amounts, new address[](0), new CallParams[](0), vm.getBlockTimestamp() + 1 hours
     );
   }
 
@@ -585,32 +685,29 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
    * transfer for the allowance branch, so that Permit2 does not refuse an amount first, and the
    * owner's witness signature for the signature branch
    */
-  function _preparePath(uint8 path, FulfillmentOrder memory order)
-    private
-    returns (bytes memory permit)
-  {
+  function _preparePath(uint8 path, AHV2Order memory order) private returns (bytes memory permit) {
     if (path == PATH_PERMIT2_ALLOWANCE) {
       for (uint256 i = 0; i < order.erc20Allowances.length; i++) {
         _grantPermit2Allowance(order.erc20Allowances[i].token, 2 * order.erc20Allowances[i].amount);
       }
     } else if (path == PATH_PERMIT2_SIGNATURE) {
-      permit = _signFulfillmentWitness(order);
+      permit = _signWitness(order);
     }
   }
 
   /// @dev The owner submits on the first two branches, and `solver` on the Permit2 signature
   function _submit(
     uint8 path,
-    FulfillmentOrder memory order,
+    AHV2Order memory order,
     bytes memory permit,
-    FulfillmentSolution memory solution
+    AHV2Solution memory solution
   ) private {
     if (path == PATH_PERMIT2_SIGNATURE) {
       vm.prank(solver);
-      hub.fulfillOrderWithPermit2Signature(order, permit, solution, '');
+      hub.settleOrderWithPermit2Signature(order, permit, solution, '');
     } else {
       vm.prank(owner);
-      hub.fulfillOrderWithDelegatedAuthentication(
+      hub.settleOrderWithDelegatedAuthentication(
         order, address(0), '', solution, '', path == PATH_PERMIT2_ALLOWANCE
       );
     }
@@ -624,10 +721,6 @@ contract FulfillTargetsTest is SignerAuthenticatorBase {
     return abi.encodeWithSelector(
       IKSAllowanceHubV2.ERC20AllowanceExceeded.selector, index, amount, allowance
     );
-  }
-
-  function _balance(address account) private view returns (uint256) {
-    return IERC20(token18).balanceOf(account);
   }
 
   /// @dev The ERC20 transfer left the owner for `solverWallet`, and the NFT reached `nftRecipient`

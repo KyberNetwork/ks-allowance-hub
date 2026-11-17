@@ -14,7 +14,7 @@ import {DynamicArrayLib} from 'solady/utils/DynamicArrayLib.sol';
 /// @title Multicall
 /// @notice Runs several calls to this contract in one transaction
 abstract contract Multicall is IMulticall, NativeSpendGuard {
-  using DynamicArrayLib for *;
+  using DynamicArrayLib for uint256;
   using DynamicArrayLibExt for uint256;
 
   /// @inheritdoc IMulticall

@@ -21,13 +21,11 @@ import {IAuthDelegator} from 'src/interfaces/base/IAuthDelegator.sol';
 
 import {AHV2AuthenticatorBase} from 'src/base/AHV2AuthenticatorBase.sol';
 
+import {AHV2Order} from 'src/types/AHV2Order.sol';
+import {AHV2Solution} from 'src/types/AHV2Solution.sol';
+import {CallParams} from 'src/types/CallParams.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
-import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
-import {ExecutionOrder} from 'src/types/ExecutionOrder.sol';
-import {FulfillmentOrder} from 'src/types/FulfillmentOrder.sol';
-import {FulfillmentSolution} from 'src/types/FulfillmentSolution.sol';
-import {GenericCall} from 'src/types/GenericCall.sol';
-import {ValidationParams} from 'src/types/ValidationParams.sol';
+import {HookParams} from 'src/types/HookParams.sol';
 
 import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
 
@@ -441,8 +439,8 @@ contract ForwarderTest is SignerAuthenticatorBase {
    * in one transaction. The authenticator owns the replay protection for it, so its nonce bitmap
    * changes and the hub's does not: the hub only relays the call and spends nothing of its own. The
    * relay reaches an authenticator the owner never delegated, and leaves it undelegated: the order
-   * rails gate on the delegation, but `updateAuthentication` carries the owner's own signature, so
-   * the relay needs no such gate.
+   * entry points gate on the delegation, but `updateAuthentication` carries the owner's own
+   * signature, so the relay needs no such gate.
    */
   function test_FWD_13_updateAuthenticationIsRelayedAndApprovesTheSigner() public {
     uint256 nonce = 300;
@@ -566,10 +564,9 @@ contract ForwarderTest is SignerAuthenticatorBase {
   }
 
   /**
-   * FWD-16 — Multicall3 relays `initAuthentication` and the `authenticate*` calls, and the
+   * FWD-16 — Multicall3 relays `initAuthentication` and `authenticate`, and the
    * authenticator refuses it as the caller because it is not the hub
-   * @dev `initAuthentication`, `authenticateExecution` and `authenticateFulfillment` trust only the
-   * hub. A relay makes Multicall3 their caller, so each is refused with
+   * @dev `initAuthentication` and `authenticate` trust only the hub. A relay makes Multicall3 their caller, so each is refused with
    * {AHV2AuthenticatorBase-CallerNotAuthorized} reporting Multicall3 and the authenticator's state
    * is unchanged. With `allowFailure` true the refusal is recorded as that entry's result; with it
    * false the batch reverts with Multicall3's own error.
@@ -582,31 +579,19 @@ contract ForwarderTest is SignerAuthenticatorBase {
     bytes[] memory initData = new bytes[](1);
     initData[0] = abi.encodeCall(IAHV2Authenticator.initAuthentication, (owner, payload));
 
-    ExecutionOrder memory execOrder =
-      _openExecutionOrder(new ERC20Transfer[](0), new GenericCall[](0), 0, vm.getBlockTimestamp());
-    FulfillmentOrder memory fulfillOrder = _openFulfillmentOrder(
-      new ERC20Allowance[](0),
-      new ValidationParams[](0),
-      new GenericCall[](0),
-      0,
-      vm.getBlockTimestamp()
+    AHV2Order memory order = _openAhv2Order(
+      new ERC20Allowance[](0), new HookParams[](0), new CallParams[](0), 0, vm.getBlockTimestamp()
     );
 
-    bytes[] memory executionData = new bytes[](1);
-    executionData[0] =
-      abi.encodeCall(IAHV2Authenticator.authenticateExecution, (execOrder, bytes32(0), payload));
+    AHV2Solution memory solution;
+    bytes[] memory authenticateData = new bytes[](1);
+    authenticateData[0] =
+      abi.encodeCall(IAHV2Authenticator.authenticate, (order, bytes32(0), solution, payload));
 
-    FulfillmentSolution memory solution;
-    bytes[] memory fulfillmentData = new bytes[](1);
-    fulfillmentData[0] = abi.encodeCall(
-      IAHV2Authenticator.authenticateFulfillment, (fulfillOrder, bytes32(0), solution, payload)
-    );
-
-    // Sent straight at the authenticator, each of the three reaches its hub-only gate, so the
+    // Sent straight at the authenticator, each of the two reaches its hub-only gate, so the
     // refusals below are about the caller and not about a malformed payload.
     _assertReachesTheHubOnlyGate(initData[0], 'initAuthentication');
-    _assertReachesTheHubOnlyGate(executionData[0], 'authenticateExecution');
-    _assertReachesTheHubOnlyGate(fulfillmentData[0], 'authenticateFulfillment');
+    _assertReachesTheHubOnlyGate(authenticateData[0], 'authenticate');
 
     bytes memory refusal =
       abi.encodeWithSelector(AHV2AuthenticatorBase.CallerNotAuthorized.selector, multicall3);
@@ -626,12 +611,8 @@ contract ForwarderTest is SignerAuthenticatorBase {
     assertFalse(authenticator.approvedSigners(owner, relayer), 'and still no signer was approved');
 
     vm.prank(relayer);
-    results = hub.forwardCalls(_call3s(targets, executionData, 1));
-    assertEq(results[0].returnData, refusal, 'authenticateExecution is refused the same way');
-
-    vm.prank(relayer);
-    results = hub.forwardCalls(_call3s(targets, fulfillmentData, 1));
-    assertEq(results[0].returnData, refusal, 'and so is authenticateFulfillment');
+    results = hub.forwardCalls(_call3s(targets, authenticateData, 1));
+    assertEq(results[0].returnData, refusal, 'authenticate is refused the same way');
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -739,7 +720,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
    * @dev Confirmed-intended behaviour, pinned rather than fixed. The hub refuses no order that
    * starts inside a `forwardCalls` batch: `forwardCalls` moves no assets of its own, so a target
    * called from inside a batch may open an order, and the order it opens is authorised on its own
-   * merits — here the owner's Permit2 signature over an open-relayer witness, without which the
+   * merits — here the owner's Permit2 signature over a witness open to any caller, without which the
    * token contract could not submit it at all. The assertion is that the reentrant order settled,
    * not merely that nothing reverted.
    */
@@ -750,14 +731,19 @@ contract ForwarderTest is SignerAuthenticatorBase {
     uint256 nonce = 310;
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
-    ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(amount));
-    GenericCall[] memory calls = _calls(_routerCall(0, hex'01'));
-
-    ExecutionOrder memory order = _openExecutionOrder(erc20s, calls, nonce, deadline);
-    bytes memory permitSig = _signExecutionWitness(order);
+    AHV2Order memory order = _openAhv2Order(
+      _allowances(ERC20Allowance({token: token18, amount: amount})),
+      new HookParams[](0),
+      _calls(_calleeCall(0, hex'01')),
+      nonce,
+      deadline
+    );
 
     reentrant.setReentry(
-      abi.encodeCall(IKSAllowanceHubV2.executeOrderWithPermit2Signature, (order, permitSig))
+      abi.encodeCall(
+        IKSAllowanceHubV2.settleOrderWithPermit2Signature,
+        (order, _signWitness(order), _route(order, new CallParams[](0)), '')
+      )
     );
 
     // a well-formed EIP-2612 payload; the mock ignores the
@@ -767,17 +753,17 @@ contract ForwarderTest is SignerAuthenticatorBase {
       S_EIP2612_PERMIT, owner, address(hub), uint256(1), deadline, uint8(27), bytes32(0), bytes32(0)
     );
 
-    uint256 before = IERC20(token18).balanceOf(address(router));
+    uint256 before = IERC20(token18).balanceOf(address(callee));
 
     vm.prank(relayer);
     hub.forwardCalls(_call3s(_one(address(reentrant)), data, 0));
 
     assertEq(reentrant.permitCount(), 1, '`forwardCalls` did relay the permit');
     assertEq(
-      IERC20(token18).balanceOf(address(router)) - before, amount, 'the reentrant order settled'
+      IERC20(token18).balanceOf(address(callee)) - before, amount, 'the reentrant order settled'
     );
-    assertEq(router.callCount(), 1, 'and its router call ran');
-    assertEq(router.seenMsgSender(), owner, 'with the owner as the sender while it ran');
+    assertEq(callee.callCount(), 1, 'and its owner call ran');
+    assertEq(callee.seenMsgSender(), owner, 'with the owner as the sender while it ran');
   }
 
   /// FWD-23 — Multicall3 relays a permit and a failing call alike when called directly
@@ -949,7 +935,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
       );
   }
 
-  /// @dev Permit2's allowance-rail batch digest, rebuilt from the literals above
+  /// @dev Permit2's allowance batch digest, rebuilt from the literals above
   function _permit2BatchDigest(IAllowanceTransfer.PermitBatch memory batch)
     internal
     view

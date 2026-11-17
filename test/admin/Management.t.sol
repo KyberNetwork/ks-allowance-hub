@@ -32,7 +32,7 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  */
 contract ManagementTest is SignerAuthenticatorBase {
   // Role hashes, written out rather than imported
-  bytes32 internal constant ROUTER_ROLE = keccak256('WHITELISTED_ROUTER_ROLE');
+  bytes32 internal constant CALLEE_ROLE = keccak256('WHITELISTED_CALLEE_ROLE');
   bytes32 internal constant GUARDIAN_ROLE = keccak256('GUARDIAN_ROLE');
   bytes32 internal constant RESCUER_ROLE = keccak256('RESCUER_ROLE');
   bytes32 internal constant ADMIN_ROLE = bytes32(0);
@@ -86,24 +86,24 @@ contract ManagementTest is SignerAuthenticatorBase {
   /// MGMT-01 — the constructor grants the initial roles, sets the owner and emits one event
   function test_MGMT_01_constructorWiring() public {
     // `permit2` is an internal immutable with no getter, so the constructor argument is only
-    // observable through the rails that use it, which the AUTH-* cases exercise
-    assertTrue(hub.hasRole(ROUTER_ROLE, address(router)), 'router whitelisted');
-    assertTrue(hub.hasRole(ROUTER_ROLE, address(router2)), 'second router whitelisted');
+    // observable through the entry points that use it, which the AUTH-* cases exercise
+    assertTrue(hub.hasRole(CALLEE_ROLE, address(callee)), 'callee whitelisted');
+    assertTrue(hub.hasRole(CALLEE_ROLE, address(callee2)), 'second callee whitelisted');
     assertTrue(hub.hasRole(GUARDIAN_ROLE, guardian), 'guardian');
     assertTrue(hub.hasRole(RESCUER_ROLE, rescuer), 'rescuer');
-    assertFalse(hub.hasRole(ROUTER_ROLE, relayer), 'nobody else is whitelisted');
+    assertFalse(hub.hasRole(CALLEE_ROLE, relayer), 'nobody else is whitelisted');
 
     assertEq(hub.owner(), admin, 'owner');
     assertTrue(hub.hasRole(ADMIN_ROLE, admin), 'the owner holds the default admin role');
     assertFalse(hub.hasRole(ADMIN_ROLE, guardian), 'and nobody else does');
 
-    assertEq(hub.roleRevokers(ROUTER_ROLE), GUARDIAN_ROLE, 'guardians may drop a router');
+    assertEq(hub.roleRevokers(CALLEE_ROLE), GUARDIAN_ROLE, 'guardians may drop a callee');
     assertEq(hub.roleRevokers(GUARDIAN_ROLE), ADMIN_ROLE, 'an unset revoker reads as the admin');
 
     // The construction event is only observable on a fresh deployment
     vm.recordLogs();
     new KSAllowanceHubV2(
-      admin, _one(guardian), _one(rescuer), _one(address(router)), permit2, multicall3
+      admin, _one(guardian), _one(rescuer), _one(address(callee)), permit2, multicall3
     );
     Vm.Log[] memory logs = vm.getRecordedLogs();
 
@@ -113,7 +113,7 @@ contract ManagementTest is SignerAuthenticatorBase {
       if (logs[i].topics.length != 4 || logs[i].topics[0] != topic) {
         continue;
       }
-      assertEq(logs[i].topics[1], ROUTER_ROLE, 'role');
+      assertEq(logs[i].topics[1], CALLEE_ROLE, 'role');
       assertEq(logs[i].topics[2], ADMIN_ROLE, 'previous revoker');
       assertEq(logs[i].topics[3], GUARDIAN_ROLE, 'new revoker');
       found = true;
@@ -216,15 +216,15 @@ contract ManagementTest is SignerAuthenticatorBase {
     vm.expectRevert(
       abi.encodeWithSelector(IManagementSimple.UnauthorizedAccount.selector, relayer, neededRoles)
     );
-    hub.revokeRole(ROUTER_ROLE, address(router));
+    hub.revokeRole(CALLEE_ROLE, address(callee));
 
-    assertTrue(hub.hasRole(ROUTER_ROLE, address(router)), 'role intact after the refusal');
+    assertTrue(hub.hasRole(CALLEE_ROLE, address(callee)), 'role intact after the refusal');
 
     // the role's admin is the second of the two accepted callers
     vm.prank(admin);
-    hub.revokeRole(ROUTER_ROLE, address(router2));
+    hub.revokeRole(CALLEE_ROLE, address(callee2));
 
-    assertFalse(hub.hasRole(ROUTER_ROLE, address(router2)), 'admin may revoke');
+    assertFalse(hub.hasRole(CALLEE_ROLE, address(callee2)), 'admin may revoke');
   }
 
   /// MGMT-07 — the default admin role follows ownership, which moves in one step
@@ -383,13 +383,13 @@ contract ManagementTest is SignerAuthenticatorBase {
   /// MGMT-11 — an ordinary role is granted by its admin
   function test_MGMT_11_grantRole() public {
     vm.expectEmit(true, true, true, true, address(hub));
-    emit IAccessControl.RoleGranted(ROUTER_ROLE, relayer, admin);
+    emit IAccessControl.RoleGranted(CALLEE_ROLE, relayer, admin);
 
     vm.prank(admin);
-    hub.grantRole(ROUTER_ROLE, relayer);
+    hub.grantRole(CALLEE_ROLE, relayer);
 
-    assertTrue(hub.hasRole(ROUTER_ROLE, relayer), 'granted');
-    assertEq(hub.getRoleAdmin(ROUTER_ROLE), ADMIN_ROLE, 'administered by the default admin');
+    assertTrue(hub.hasRole(CALLEE_ROLE, relayer), 'granted');
+    assertEq(hub.getRoleAdmin(CALLEE_ROLE), ADMIN_ROLE, 'administered by the default admin');
   }
 
   /// MGMT-11b — the default admin role cannot be granted, revoked or renounced
