@@ -13,6 +13,7 @@ import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
 import {KSRoles} from 'ks-common-sc/src/libraries/KSRoles.sol';
 import {CalldataDecoder} from 'ks-common-sc/src/libraries/calldata/CalldataDecoder.sol';
 
+import {ERC721Holder} from 'openzeppelin-contracts/contracts/token/ERC721/utils/ERC721Holder.sol';
 import {Address} from 'openzeppelin-contracts/contracts/utils/Address.sol';
 import {TransientSlot} from 'openzeppelin-contracts/contracts/utils/TransientSlot.sol';
 
@@ -22,9 +23,10 @@ import {TransientSlot} from 'openzeppelin-contracts/contracts/utils/TransientSlo
  * or one owner's call of the allowance hub
  * @dev When the hub calls this contract, a callee reads the account it acts for from the hub's
  * {IMsgSender-msgSender}. A call this contract receives while a callee runs, such as a callback,
- * is delegatecalled to that callee, which must check who made it.
+ * is delegatecalled to that callee, which must check who made it. {ERC721Holder-onERC721Received}
+ * is answered by this contract and is not delegatecalled.
  */
-contract AHV2ProxyCallee is IAHV2SolverCallee, IAHV2OwnerCallee, ManagementSimple {
+contract AHV2ProxyCallee is IAHV2SolverCallee, IAHV2OwnerCallee, ERC721Holder, ManagementSimple {
   using Address for address;
   using CalldataDecoder for bytes;
   using TransientSlot for *;

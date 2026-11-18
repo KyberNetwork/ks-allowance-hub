@@ -16,6 +16,7 @@ import {ERC20Allowance} from '../../src/types/ERC20Allowance.sol';
 import {HookParams} from '../../src/types/HookParams.sol';
 
 import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
+import {IERC721Receiver} from 'openzeppelin-contracts/contracts/token/ERC721/IERC721Receiver.sol';
 import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
 
 /**
@@ -650,6 +651,40 @@ contract AHV2ProxyCalleeTest is HubBase {
     assertEq(ret.length, 0, 'with no return data');
     assertEq(address(proxy).balance, before + value, 'and kept');
     assertEq(vm.getRecordedLogs().length, 0, 'without events');
+  }
+
+  /**
+   * PX-17: the proxy accepts an ERC721 safe transfer itself, with or without a running callee
+   * @dev (a) With no active callee, a safe transfer to the proxy succeeds, the proxy owns the
+   * token and no `Delegated` event is emitted. (b) While callee A runs, `onERC721Received` called
+   * on the proxy returns its own selector and is not forwarded to the callee.
+   */
+  function test_PX_17_receivesERC721Directly() public {
+    nft.mint(address(this), 5);
+
+    vm.recordLogs();
+    nft.safeTransferFrom(address(this), address(proxy), 5);
+
+    assertEq(nft.ownerOf(5), address(proxy), 'the proxy owns the token');
+    assertEq(_seen().length, 0, 'the transfer was not forwarded');
+
+    bytes memory onReceived =
+      abi.encodeCall(IERC721Receiver.onERC721Received, (address(1), address(2), 7, hex'01'));
+
+    vm.recordLogs();
+    bytes memory results = proxy.solverCall(
+      _payload(
+        _addresses(address(calleeA)),
+        _bytesList(abi.encodeCall(ProxyCalleeMock.callBack, (onReceived)))
+      )
+    );
+
+    assertEq(
+      results,
+      _results(_bytesList(abi.encode(bytes4(0x150b7a02)))),
+      'the proxy returned the receiver selector'
+    );
+    assertEq(_seen().length, 0, 'the callback was not forwarded');
   }
 
   // ---------------------------------------------------------------------------------------------
