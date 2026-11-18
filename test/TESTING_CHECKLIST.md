@@ -1678,3 +1678,11 @@ Scope: Tests for `AHV2ProxyCallee` (`src/callees/AHV2ProxyCallee.sol`) and the `
 The suite went from 176 to 198 tests. `--ir-minimum` coverage of `AHV2ProxyCallee` is lines 41/47, statements 53/58, branches 8/10 and functions 6/6; the lines reported as uncovered are the fallback's assembly, which PX-13, PX-14 and PX-FUZZ-F execute (their assertions depend on the forwarded call). A planned PX-11 payload with an `address[]` length word exceeding the payload was dropped: `CalldataDecoder` in ks-common-sc does not check that the length times the element size fits, so the payload reverts with `MismatchedArrayLengths` instead of `SliceOutOfBounds`.
 
 An independent coverage review traced PX-13 and PX-FUZZ-F through the fallback's `delegatecall` on both the return and the revert path; the zero hit count on those lines is a Forge `--ir-minimum` reporting artifact. The same review strengthened PX-01 to assert that every constructor event is emitted by the new proxy.
+
+## Run `20261118T091749Z`
+
+Scope: Removal of `AHV2ProxyCallee` from the repository.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261118T091749Z/PROXY-REMOVED-01` | `AHV2ProxyCallee`, `ProxyCalleeMock` and `Constants.ACTIVE_CALLEE_SLOT` are removed, together with the 23 proxy tests of run `20261118T032317Z` (PX-01 to PX-17 and PX-FUZZ-*); FIX-01 from that run remains | `test/callees/AHV2ProxyCallee.t.sol` and `test/mocks/ProxyCalleeMocks.sol` deleted | `FOUNDRY_PROFILE=solar forge test --isolate` and `forge test --isolate`: 176 passed, 0 failed |

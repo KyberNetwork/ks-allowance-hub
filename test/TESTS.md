@@ -1,6 +1,6 @@
 # Tests
 
-The suite has 199 tests in 18 contracts. Each row links to a test and gives the
+The suite has 176 tests in 17 contracts. Each row links to a test and gives the
 first sentence of its documentation, or of the section heading above it. A test with neither
 takes its ID and description from its name.
 
@@ -84,36 +84,6 @@ takes its ID and description from its name.
 | MC-09 | [`test_MC_09_aFrontRunDelegationDoesNotUnwindTheBatch`](batching/Multicall.t.sol#L220) | A delegation relayed through `forwardCalls` with `allowFailure` set survives being front-run, so the order batched after it still settles |
 | MC-06 | [`test_MC_06_approveASignerAndSpendOnItInOneBatch`](batching/Multicall.t.sol#L300) | One batch approves a signer at an authenticator and then spends on it |
 | MC-FUZZ | [`testFuzz_MC_FUZZ_valueNeedsAnAllPayableBatch`](batching/Multicall.t.sol#L387) | Value survives a batch exactly when every selector in it is payable |
-
-## AHV2ProxyCalleeTest
-
-[`callees/AHV2ProxyCallee.t.sol`](callees/AHV2ProxyCallee.t.sol)
-
-| ID | Test | Description |
-| --- | --- | --- |
-| PX-01 | [`test_PX_01_constructorWiring`](callees/AHV2ProxyCallee.t.sol#L129) | The constructor grants the roles and the revoker, in order, and refuses a zero admin |
-| PX-FUZZ-C | [`testFuzz_PX_FUZZ_constructor`](callees/AHV2ProxyCallee.t.sol#L168) | Any admin, guardians and callees are granted exactly what they are given |
-| PX-05 | [`test_PX_05_onlyWhitelistedCalleesRun`](callees/AHV2ProxyCallee.t.sol#L189) | Only a whitelisted callee runs, at any index; guardians revoke and the admin grants |
-| PX-FUZZ-W | [`testFuzz_PX_FUZZ_unwhitelistedCalleeRefused`](callees/AHV2ProxyCallee.t.sol#L233) | Any callee outside the whitelist is refused on both entry points |
-| PX-06 | [`test_PX_06_pauseStopsBothEntryPoints`](callees/AHV2ProxyCallee.t.sol#L246) | A guardian pauses both entry points; the fallback and value receipt are not gated |
-| PX-02 | [`test_PX_02_solverCallDelegatesEachCalleeInOrder`](callees/AHV2ProxyCallee.t.sol#L298) | Each callee runs in order, sees the whole value, and the value is not spent twice |
-| PX-FUZZ-S | [`testFuzz_PX_FUZZ_solverCall`](callees/AHV2ProxyCallee.t.sol#L321) | One to four callees, each delegatecalled with its calldata and the value |
-| PX-03 | [`test_PX_03_emptyCalleeListKeepsTheValue`](callees/AHV2ProxyCallee.t.sol#L345) | No callees runs nothing and keeps the value, on both entry points |
-| PX-04 | [`test_PX_04_lengthsMustMatch`](callees/AHV2ProxyCallee.t.sol#L363) | The three lists of `ownerCall` must agree in length |
-| PX-FUZZ-L | [`testFuzz_PX_FUZZ_solverCallLengthsMustMatch`](callees/AHV2ProxyCallee.t.sol#L381) | `solverCall` refuses lists of different lengths |
-| PX-08 | [`test_PX_08_calleeRevertsBubble`](callees/AHV2ProxyCallee.t.sol#L401) | A failing callee reverts the call with the revert data of the callee |
-| PX-09 | [`test_PX_09_aCalleeWithoutCodeIsRefused`](callees/AHV2ProxyCallee.t.sol#L430) | A whitelisted callee without code is refused rather than treated as a success |
-| PX-10 | [`test_PX_10_ownerCallWrapsOnlyWithSolverData`](callees/AHV2ProxyCallee.t.sol#L439) | `ownerCall` wraps a callee's data only when the solver supplied data for it |
-| PX-FUZZ-O | [`testFuzz_PX_FUZZ_ownerCall`](callees/AHV2ProxyCallee.t.sol#L455) | Each callee gets the raw owner data, or the wrapped call when solver data is set |
-| PX-11 | [`test_PX_11_malformedPayloadsAreRefused`](callees/AHV2ProxyCallee.t.sol#L491) | Payloads that do not decode are refused with `SliceOutOfBounds` |
-| PX-12 | [`test_PX_12_fallbackWithoutActiveCalleeReverts`](callees/AHV2ProxyCallee.t.sol#L512) | A call to the proxy with no callee running is refused with `NoActiveCallee` |
-| PX-13 | [`test_PX_13_fallbackReachesTheActiveCallee`](callees/AHV2ProxyCallee.t.sol#L535) | A call the running callee makes to the proxy is delegatecalled to that callee |
-| PX-FUZZ-F | [`testFuzz_PX_FUZZ_fallbackForwardsAnyCalldata`](callees/AHV2ProxyCallee.t.sol#L570) | Any calldata the callee sends to the proxy reaches the callee unchanged |
-| PX-14 | [`test_PX_14_nestedCallsRestoreTheOuterCallee`](callees/AHV2ProxyCallee.t.sol#L588) | A nested call restores the outer callee, after returning and after a caught revert |
-| PX-15 | [`test_PX_15_receiveKeepsValueEvenDuringACallee`](callees/AHV2ProxyCallee.t.sol#L628) | Empty calldata sent while a callee runs reaches `receive`, not the callee |
-| PX-FUZZ-R | [`testFuzz_PX_FUZZ_receiveAcceptsAnyValue`](callees/AHV2ProxyCallee.t.sol#L644) | Plain native value of any size is accepted and kept without events |
-| PX-17 | [`test_PX_17_receivesERC721Directly`](callees/AHV2ProxyCallee.t.sol#L662) | The proxy accepts an ERC721 safe transfer itself, with or without a running callee |
-| PX-16 | [`test_PX_16_hubSettlesThroughTheProxy`](callees/AHV2ProxyCallee.t.sol#L701) | The hub settles an order through the proxy, and a callee reads the order owner |
 
 ## DelegationTest
 
