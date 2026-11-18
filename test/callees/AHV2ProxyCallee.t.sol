@@ -20,8 +20,8 @@ import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
 
 /**
  * @title AHV2ProxyCalleeTest
- * @notice PX-01..16 and PX-FUZZ — constructor wiring, the proxy's own whitelist and pause, the two
- * entry points, the fallback that reaches the active callee, and settlement through the hub.
+ * @notice PX-01..16 and PX-FUZZ: constructor wiring, the proxy's own whitelist and pause, the
+ * two entry points, the fallback that reaches the active callee, and settlement through the hub.
  * @dev Selectors, role hashes and event topics on the expected side are written out. A callee is a
  * {ProxyCalleeMock}, which the proxy executes by delegatecall and which echoes any calldata it
  * does not implement together with its tag, so the callee that ran is visible in the result.
@@ -122,7 +122,7 @@ contract AHV2ProxyCalleeTest is HubBase {
   // ---------------------------------------------------------------------------------------------
 
   /**
-   * PX-01 — the constructor grants the roles and the revoker, in order, and refuses a zero admin
+   * PX-01: the constructor grants the roles and the revoker, in order, and refuses a zero admin
    * @dev The log stream is pinned in full: ownership, the guardian, each callee, then the revoker.
    */
   function test_PX_01_constructorWiring() public {
@@ -156,14 +156,14 @@ contract AHV2ProxyCalleeTest is HubBase {
     assertEq(logs[4].topics[2], bytes32(0), 'from no previous revoker');
     assertEq(logs[4].topics[3], GUARDIAN_ROLE, 'to the guardian role');
     for (uint256 i = 0; i < logs.length; i++) {
-      assertEq(logs[i].emitter, _created(logs), 'every event is the new proxy');
+      assertEq(logs[i].emitter, address(fresh), 'every event is the new proxy');
     }
 
     vm.expectRevert(abi.encodeWithSelector(OWNABLE_INVALID_OWNER, address(0)));
     new AHV2ProxyCallee(address(0), _addresses(guardian), _addresses(address(calleeA)));
   }
 
-  /// PX-FUZZ-C — any admin, guardians and callees are granted exactly what they are given
+  /// PX-FUZZ-C: any admin, guardians and callees are granted exactly what they are given
   function testFuzz_PX_FUZZ_constructor(ConstructorFuzz memory f) public {
     vm.assume(f.admin != address(0));
     address[] memory guardians = _truncated(f.guardians, 3);
@@ -182,7 +182,7 @@ contract AHV2ProxyCalleeTest is HubBase {
   }
 
   /**
-   * PX-05 — only a whitelisted callee runs, at any index; guardians revoke and the admin grants
+   * PX-05: only a whitelisted callee runs, at any index; guardians revoke and the admin grants
    * @dev The list `[A, C]` shows the check is made per callee and not for the first one only.
    */
   function test_PX_05_onlyWhitelistedCalleesRun() public {
@@ -228,7 +228,7 @@ contract AHV2ProxyCalleeTest is HubBase {
     assertEq(results, _results(_bytesList(_echo(TAG_A, call))), 'callee A runs again');
   }
 
-  /// PX-FUZZ-W — any callee outside the whitelist is refused on both entry points
+  /// PX-FUZZ-W: any callee outside the whitelist is refused on both entry points
   function testFuzz_PX_FUZZ_unwhitelistedCalleeRefused(address callee) public {
     vm.assume(callee != address(calleeA) && callee != address(calleeB) && callee != eoaCallee);
 
@@ -241,7 +241,7 @@ contract AHV2ProxyCalleeTest is HubBase {
     proxy.ownerCall(payload, '');
   }
 
-  /// PX-06 — a guardian pauses both entry points; the fallback and value receipt are not gated
+  /// PX-06: a guardian pauses both entry points; the fallback and value receipt are not gated
   function test_PX_06_pauseStopsBothEntryPoints() public {
     bytes memory payload = _payload(_addresses(address(calleeA)), _bytesList(hex'aabbccdd01'));
 
@@ -291,7 +291,7 @@ contract AHV2ProxyCalleeTest is HubBase {
   // ---------------------------------------------------------------------------------------------
 
   /**
-   * PX-02 — each callee runs in order, sees the whole value, and the value is not spent twice
+   * PX-02: each callee runs in order, sees the whole value, and the value is not spent twice
    * @dev Both callees see 3 wei and the proxy gains 3 wei, not 6.
    */
   function test_PX_02_solverCallDelegatesEachCalleeInOrder() public {
@@ -316,7 +316,7 @@ contract AHV2ProxyCalleeTest is HubBase {
     assertEq(address(proxy).balance, before + 3, 'the value was received once');
   }
 
-  /// PX-FUZZ-S — one to four callees, each delegatecalled with its calldata and the value
+  /// PX-FUZZ-S: one to four callees, each delegatecalled with its calldata and the value
   function testFuzz_PX_FUZZ_solverCall(SolverFuzz memory f) public {
     uint256 count = f.callData.length < 4 ? f.callData.length : 4;
     address[] memory callees = new address[](count);
@@ -340,7 +340,7 @@ contract AHV2ProxyCalleeTest is HubBase {
     assertEq(address(proxy).balance, before + f.value, 'the value was received once');
   }
 
-  /// PX-03 — no callees runs nothing and keeps the value, on both entry points
+  /// PX-03: no callees runs nothing and keeps the value, on both entry points
   function test_PX_03_emptyCalleeListKeepsTheValue() public {
     bytes memory empty = abi.encode(new bytes[](0));
     bytes memory payload = _payload(new address[](0), new bytes[](0));
@@ -358,7 +358,7 @@ contract AHV2ProxyCalleeTest is HubBase {
     assertEq(address(proxy).balance, before + 5, 'the value stays in the proxy');
   }
 
-  /// PX-04 — the three lists of `ownerCall` must agree in length
+  /// PX-04: the three lists of `ownerCall` must agree in length
   function test_PX_04_lengthsMustMatch() public {
     bytes memory o0 = hex'aabbccdd01';
     bytes memory o1 = hex'11223344';
@@ -376,7 +376,7 @@ contract AHV2ProxyCalleeTest is HubBase {
     );
   }
 
-  /// PX-FUZZ-L — `solverCall` refuses lists of different lengths
+  /// PX-FUZZ-L: `solverCall` refuses lists of different lengths
   function testFuzz_PX_FUZZ_solverCallLengthsMustMatch(LengthFuzz memory f) public {
     uint256 callees = bound(f.callees, 0, 4);
     uint256 data = bound(f.data, 0, 4);
@@ -392,7 +392,7 @@ contract AHV2ProxyCalleeTest is HubBase {
   }
 
   /**
-   * PX-08 — a failing callee reverts the call with the revert data of the callee
+   * PX-08: a failing callee reverts the call with the revert data of the callee
    * @dev A custom error, a string and a panic pass through unchanged. An empty revert, and a
    * call with value to a callee that is not payable, revert with `FailedCall`. Without value the
    * non-payable callee succeeds.
@@ -425,14 +425,14 @@ contract AHV2ProxyCalleeTest is HubBase {
     );
   }
 
-  /// PX-09 — a whitelisted callee without code is refused rather than treated as a success
+  /// PX-09: a whitelisted callee without code is refused rather than treated as a success
   function test_PX_09_aCalleeWithoutCodeIsRefused() public {
     vm.expectRevert(abi.encodeWithSelector(ADDRESS_EMPTY_CODE, eoaCallee));
     proxy.solverCall(_payload(_addresses(eoaCallee), _bytesList(hex'12345678')));
   }
 
   /**
-   * PX-10 — `ownerCall` wraps a callee's data only when the solver supplied data for it
+   * PX-10: `ownerCall` wraps a callee's data only when the solver supplied data for it
    * @dev Five patterns of solver data: absent, all empty, empty then set, set then empty, all set.
    */
   function test_PX_10_ownerCallWrapsOnlyWithSolverData() public {
@@ -450,7 +450,7 @@ contract AHV2ProxyCalleeTest is HubBase {
     _assertOwnerRun(o0, o1, abi.encode(_bytesList(s0, s1)), w0, w1);
   }
 
-  /// PX-FUZZ-O — each callee gets the raw owner data, or the wrapped call when solver data is set
+  /// PX-FUZZ-O: each callee gets the raw owner data, or the wrapped call when solver data is set
   function testFuzz_PX_FUZZ_ownerCall(OwnerFuzz memory f) public {
     uint256 count = f.ownerData.length < 4 ? f.ownerData.length : 4;
     address[] memory callees = new address[](count);
@@ -483,8 +483,9 @@ contract AHV2ProxyCalleeTest is HubBase {
   }
 
   /**
-   * PX-11 — payloads that do not decode are refused with `SliceOutOfBounds`
-   * @dev (a) no data, (b) a `bytes[]` offset beyond the end, (c) the same offset in the owner data, (d) a solver data offset beyond the end.
+   * PX-11: payloads that do not decode are refused with `SliceOutOfBounds`
+   * @dev (a) no data, (b) a `bytes[]` offset beyond the end, (c) the same offset in the owner
+   * data, (d) a solver data offset beyond the end.
    */
   function test_PX_11_malformedPayloadsAreRefused() public {
     bytes memory emptyPair = _payload(new address[](0), new bytes[](0));
@@ -506,7 +507,7 @@ contract AHV2ProxyCalleeTest is HubBase {
   // Fallback and receive
   // ---------------------------------------------------------------------------------------------
 
-  /// PX-12 — a call to the proxy with no callee running is refused with `NoActiveCallee`
+  /// PX-12: a call to the proxy with no callee running is refused with `NoActiveCallee`
   function test_PX_12_fallbackWithoutActiveCalleeReverts() public {
     uint256 before = address(proxy).balance;
 
@@ -526,7 +527,7 @@ contract AHV2ProxyCalleeTest is HubBase {
   }
 
   /**
-   * PX-13 — a call the running callee makes to the proxy is delegatecalled to that callee
+   * PX-13: a call the running callee makes to the proxy is delegatecalled to that callee
    * @dev The callback of a callee reverting with data, reverting empty, returning nothing and
    * calling a selector the proxy implements itself.
    */
@@ -564,7 +565,7 @@ contract AHV2ProxyCalleeTest is HubBase {
     assertEq(_seen().length, 0, 'and does not forward it');
   }
 
-  /// PX-FUZZ-F — any calldata the callee sends to the proxy reaches the callee unchanged
+  /// PX-FUZZ-F: any calldata the callee sends to the proxy reaches the callee unchanged
   function testFuzz_PX_FUZZ_fallbackForwardsAnyCalldata(bytes memory cd) public {
     bytes memory forwarded = bytes.concat(hex'fe', cd);
 
@@ -579,7 +580,7 @@ contract AHV2ProxyCalleeTest is HubBase {
   }
 
   /**
-   * PX-14 — a nested call restores the outer callee, after returning and after a caught revert
+   * PX-14: a nested call restores the outer callee, after returning and after a caught revert
    * @dev (1) a callback inside a nested call reaches the nested callee, a later one the outer
    * callee; (2) a nested call that reverts after it became active leaves the outer callee active.
    */
@@ -622,7 +623,7 @@ contract AHV2ProxyCalleeTest is HubBase {
     assertEq(ret, abi.encodePacked(NO_ACTIVE_CALLEE), 'NoActiveCallee');
   }
 
-  /// PX-15 — empty calldata sent while a callee runs reaches `receive`, not the callee
+  /// PX-15: empty calldata sent while a callee runs reaches `receive`, not the callee
   function test_PX_15_receiveKeepsValueEvenDuringACallee() public {
     vm.deal(address(proxy), 2);
 
@@ -638,7 +639,7 @@ contract AHV2ProxyCalleeTest is HubBase {
     assertEq(address(proxy).balance, 2, 'the proxy kept the value');
   }
 
-  /// PX-FUZZ-R — plain native value of any size is accepted and kept without events
+  /// PX-FUZZ-R: plain native value of any size is accepted and kept without events
   function testFuzz_PX_FUZZ_receiveAcceptsAnyValue(uint96 value) public {
     uint256 before = address(proxy).balance;
 
@@ -656,10 +657,10 @@ contract AHV2ProxyCalleeTest is HubBase {
   // ---------------------------------------------------------------------------------------------
 
   /**
-   * PX-16 — the hub settles an order through the proxy, and a callee reads the order owner
+   * PX-16: the hub settles an order through the proxy, and a callee reads the order owner
    * @dev The owner submits on the delegated entry point with the zero authenticator. Built with
-   * {_openAhv2Order}, {_route}, {_calls}, {_addresses} and {_solverData}. (a) an owner call with
-   * empty solver data reaches the callee raw; (b) with solver data it reaches the callee as
+   * {_openAhv2Order}, {_route}, {_calls} and {_addresses}. (a) an owner call with empty solver
+   * data reaches the callee raw; (b) with solver data it reaches the callee as
    * `ownerCall`, which the mock does not implement and echoes; (c) the same call as a solver call.
    */
   function test_PX_16_hubSettlesThroughTheProxy() public {
@@ -745,23 +746,27 @@ contract AHV2ProxyCalleeTest is HubBase {
     return abi.encodeCall(ProxyCalleeMock.callBack, (cd));
   }
 
+  /// @dev A two-element address array
   function _pair(address a, address b) internal pure returns (address[] memory out) {
     out = new address[](2);
     out[0] = a;
     out[1] = b;
   }
 
+  /// @dev A one-element `bytes` array
   function _bytesList(bytes memory a) internal pure returns (bytes[] memory out) {
     out = new bytes[](1);
     out[0] = a;
   }
 
+  /// @dev A two-element `bytes` array
   function _bytesList(bytes memory a, bytes memory b) internal pure returns (bytes[] memory out) {
     out = new bytes[](2);
     out[0] = a;
     out[1] = b;
   }
 
+  /// @dev A three-element `bytes` array
   function _bytesList(bytes memory a, bytes memory b, bytes memory c)
     internal
     pure
@@ -773,6 +778,7 @@ contract AHV2ProxyCalleeTest is HubBase {
     out[2] = c;
   }
 
+  /// @dev `account` left-padded to a 32-byte word, as an indexed topic
   function _word(address account) internal pure returns (bytes32) {
     return bytes32(uint256(uint160(account)));
   }
@@ -807,15 +813,12 @@ contract AHV2ProxyCalleeTest is HubBase {
     return (mask >> i) & 1 == 0 ? address(calleeA) : address(calleeB);
   }
 
+  /// @dev The tag of the mock callee deployed at `callee`
   function _tagOf(address callee) internal view returns (bytes32) {
     return callee == address(calleeA) ? TAG_A : TAG_B;
   }
 
-  /// @dev The address every event of `logs` was emitted by, which is the contract it created
-  function _created(Vm.Log[] memory logs) internal pure returns (address) {
-    return logs[0].emitter;
-  }
-
+  /// @dev Checks a log with exactly three topics
   function _assertLog(Vm.Log memory log, bytes32 topic0, bytes32 topic1, bytes32 topic2)
     internal
     pure
@@ -826,6 +829,7 @@ contract AHV2ProxyCalleeTest is HubBase {
     assertEq(log.topics[2], topic2, 'second indexed field');
   }
 
+  /// @dev Checks a log with exactly four topics
   function _assertLog(
     Vm.Log memory log,
     bytes32 topic0,
@@ -841,7 +845,7 @@ contract AHV2ProxyCalleeTest is HubBase {
   }
 
   /// @dev The `Delegated` events the proxy emitted since the logs were last read, in order
-  function _seen() internal returns (Seen[] memory out) {
+  function _seen() internal view returns (Seen[] memory out) {
     Vm.Log[] memory logs = vm.getRecordedLogs();
 
     uint256 found;
@@ -862,6 +866,7 @@ contract AHV2ProxyCalleeTest is HubBase {
     }
   }
 
+  /// @dev Checks the fields of one `Delegated` event
   function _assertSeen(
     Seen memory seen,
     bytes32 tag,

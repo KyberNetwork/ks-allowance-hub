@@ -6,9 +6,7 @@ import {IMsgSender} from '../../src/interfaces/base/IMsgSender.sol';
 /**
  * @title ProxyCalleeMock
  * @notice Callee for the {AHV2ProxyCallee} tests, which runs by delegatecall and keeps no storage
- * @dev `TAG` is an immutable and so lives in the code, which identifies the callee that ran when
- * the proxy executes it. Every selector the mock does not implement reaches {fallback}, which
- * echoes the calldata.
+ * @dev Every selector the mock does not implement reaches {fallback}, which echoes the calldata.
  */
 contract ProxyCalleeMock {
   /// @notice Emitted by {fallback}, from the context the mock runs in
@@ -20,12 +18,15 @@ contract ProxyCalleeMock {
   /// @notice Reverted with by {revertCustom}
   error CalleeFailed(bytes32 tag, uint256 code);
 
+  /// @notice Tag that identifies this callee in its events and return data
   bytes32 public immutable TAG;
 
+  /// @param tag Value stored as `TAG`
   constructor(bytes32 tag) {
     TAG = tag;
   }
 
+  /// @notice Emits {Delegated} and returns `TAG` with the calldata, ABI encoded
   fallback(bytes calldata data) external payable returns (bytes memory) {
     emit Delegated(TAG, msg.sender, msg.value, data);
     return abi.encode(TAG, data);
@@ -37,20 +38,24 @@ contract ProxyCalleeMock {
   /// @dev Returns nothing and emits nothing
   function noReturn() external payable {}
 
+  /// @notice Raises {CalleeFailed} with `TAG` and `code`
   function revertCustom(uint256 code) external payable {
     revert CalleeFailed(TAG, code);
   }
 
+  /// @notice Raises `Error(string)` with the reason `callee failed`
   function revertString() external payable {
     revert('callee failed');
   }
 
+  /// @notice Raises an error with empty return data
   function revertEmpty() external payable {
     assembly {
       revert(0, 0)
     }
   }
 
+  /// @notice Raises a `Panic(uint256)` with code `0x12`
   function divideByZero() external payable returns (uint256) {
     uint256 zero;
     return 1 / zero;
@@ -89,6 +94,7 @@ contract ProxyCalleeMock {
     _callBack(cd);
   }
 
+  /// @dev Body shared by {callBack}, {nest} and {tryNest}
   function _callBack(bytes calldata cd) private {
     (bool ok, bytes memory ret) = address(this).call(cd);
     assembly {

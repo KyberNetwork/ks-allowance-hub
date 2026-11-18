@@ -105,14 +105,14 @@ takes its ID and description from its name.
 | PX-09 | [`test_PX_09_aCalleeWithoutCodeIsRefused`](callees/AHV2ProxyCallee.t.sol#L429) | A whitelisted callee without code is refused rather than treated as a success |
 | PX-10 | [`test_PX_10_ownerCallWrapsOnlyWithSolverData`](callees/AHV2ProxyCallee.t.sol#L438) | `ownerCall` wraps a callee's data only when the solver supplied data for it |
 | PX-FUZZ-O | [`testFuzz_PX_FUZZ_ownerCall`](callees/AHV2ProxyCallee.t.sol#L454) | Each callee gets the raw owner data, or the wrapped call when solver data is set |
-| PX-11 | [`test_PX_11_malformedPayloadsAreRefused`](callees/AHV2ProxyCallee.t.sol#L489) | Payloads that do not decode are refused with `SliceOutOfBounds` |
-| PX-12 | [`test_PX_12_fallbackWithoutActiveCalleeReverts`](callees/AHV2ProxyCallee.t.sol#L510) | A call to the proxy with no callee running is refused with `NoActiveCallee` |
-| PX-13 | [`test_PX_13_fallbackReachesTheActiveCallee`](callees/AHV2ProxyCallee.t.sol#L533) | A call the running callee makes to the proxy is delegatecalled to that callee |
-| PX-FUZZ-F | [`testFuzz_PX_FUZZ_fallbackForwardsAnyCalldata`](callees/AHV2ProxyCallee.t.sol#L568) | Any calldata the callee sends to the proxy reaches the callee unchanged |
-| PX-14 | [`test_PX_14_nestedCallsRestoreTheOuterCallee`](callees/AHV2ProxyCallee.t.sol#L586) | A nested call restores the outer callee, after returning and after a caught revert |
-| PX-15 | [`test_PX_15_receiveKeepsValueEvenDuringACallee`](callees/AHV2ProxyCallee.t.sol#L626) | Empty calldata sent while a callee runs reaches `receive`, not the callee |
-| PX-FUZZ-R | [`testFuzz_PX_FUZZ_receiveAcceptsAnyValue`](callees/AHV2ProxyCallee.t.sol#L642) | Plain native value of any size is accepted and kept without events |
-| PX-16 | [`test_PX_16_hubSettlesThroughTheProxy`](callees/AHV2ProxyCallee.t.sol#L665) | The hub settles an order through the proxy, and a callee reads the order owner |
+| PX-11 | [`test_PX_11_malformedPayloadsAreRefused`](callees/AHV2ProxyCallee.t.sol#L490) | Payloads that do not decode are refused with `SliceOutOfBounds` |
+| PX-12 | [`test_PX_12_fallbackWithoutActiveCalleeReverts`](callees/AHV2ProxyCallee.t.sol#L511) | A call to the proxy with no callee running is refused with `NoActiveCallee` |
+| PX-13 | [`test_PX_13_fallbackReachesTheActiveCallee`](callees/AHV2ProxyCallee.t.sol#L534) | A call the running callee makes to the proxy is delegatecalled to that callee |
+| PX-FUZZ-F | [`testFuzz_PX_FUZZ_fallbackForwardsAnyCalldata`](callees/AHV2ProxyCallee.t.sol#L569) | Any calldata the callee sends to the proxy reaches the callee unchanged |
+| PX-14 | [`test_PX_14_nestedCallsRestoreTheOuterCallee`](callees/AHV2ProxyCallee.t.sol#L587) | A nested call restores the outer callee, after returning and after a caught revert |
+| PX-15 | [`test_PX_15_receiveKeepsValueEvenDuringACallee`](callees/AHV2ProxyCallee.t.sol#L627) | Empty calldata sent while a callee runs reaches `receive`, not the callee |
+| PX-FUZZ-R | [`testFuzz_PX_FUZZ_receiveAcceptsAnyValue`](callees/AHV2ProxyCallee.t.sol#L643) | Plain native value of any size is accepted and kept without events |
+| PX-16 | [`test_PX_16_hubSettlesThroughTheProxy`](callees/AHV2ProxyCallee.t.sol#L666) | The hub settles an order through the proxy, and a callee reads the order owner |
 
 ## DelegationTest
 
