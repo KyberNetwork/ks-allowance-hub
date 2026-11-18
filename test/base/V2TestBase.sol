@@ -44,9 +44,9 @@ abstract contract V2TestBase is Test {
   address internal token18;
   address internal token6;
 
-  /// @dev Sentinel the hub uses for an order that specifies no counterparty; written out, never
-  /// imported
-  address internal constant ANY = 0x000000000000000000000000000000000000dEaD;
+  /// @dev Sentinel the hub uses for an order that specifies no counterparty: the zero address,
+  /// written out, never imported
+  address internal constant ANY = address(0);
 
   // ---------------------------------------------------------------------------------------------
   // Actors

@@ -13,6 +13,10 @@ library Constants {
   /// @dev Transient slot of {MsgSender}, holding the account a call is acting for
   bytes32 internal constant MSG_SENDER_SLOT = bytes32(erc7201('ks-allowance-hub.msg-sender'));
 
+  /// @dev Transient slot of {AHV2ProxyCallee}, holding the callee being delegatecalled
+  bytes32 internal constant ACTIVE_CALLEE_SLOT =
+    bytes32(erc7201('ks-allowance-hub.proxy-callee.active-callee'));
+
   /// @dev Bit of {HookParams-flags} that selects {IAHV2Hook-beforeSettlement}
   bytes32 internal constant BEFORE_SETTLEMENT_HOOK_FLAG = bytes32(uint256(0x01));
 

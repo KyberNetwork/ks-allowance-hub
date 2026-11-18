@@ -14,17 +14,23 @@ import {KSRoles} from 'ks-common-sc/src/libraries/KSRoles.sol';
 import {CalldataDecoder} from 'ks-common-sc/src/libraries/calldata/CalldataDecoder.sol';
 
 import {Address} from 'openzeppelin-contracts/contracts/utils/Address.sol';
+import {TransientSlot} from 'openzeppelin-contracts/contracts/utils/TransientSlot.sol';
 
 /**
  * @title AHV2ProxyCallee
  * @notice Callee that delegatecalls a list of whitelisted callees in order, for one solver's call
  * or one owner's call of the allowance hub
  * @dev When the hub calls this contract, a callee reads the account it acts for from the hub's
- * {IMsgSender-msgSender}.
+ * {IMsgSender-msgSender}. A call this contract receives while a callee runs, such as a callback,
+ * is delegatecalled to that callee, which must check who made it.
  */
 contract AHV2ProxyCallee is IAHV2SolverCallee, IAHV2OwnerCallee, ManagementSimple {
   using Address for address;
   using CalldataDecoder for bytes;
+  using TransientSlot for *;
+
+  /// @notice A call reached the fallback while no callee is being delegatecalled
+  error NoActiveCallee();
 
   /**
    * @dev Every callee must hold {Constants-WHITELISTED_CALLEE_ROLE} on this contract. The whitelist
@@ -43,6 +49,27 @@ contract AHV2ProxyCallee is IAHV2SolverCallee, IAHV2OwnerCallee, ManagementSimpl
     _setRoleRevoker(Constants.WHITELISTED_CALLEE_ROLE, KSRoles.GUARDIAN_ROLE);
   }
 
+  /// @notice Delegatecalls the callee being delegatecalled with the same calldata
+  fallback() external payable {
+    address callee = Constants.ACTIVE_CALLEE_SLOT.asAddress().tload();
+    if (callee == Constants.ADDRESS_ZERO) {
+      revert NoActiveCallee();
+    }
+
+    assembly {
+      calldatacopy(0, 0, calldatasize())
+      let success := delegatecall(gas(), callee, 0, calldatasize(), 0, 0)
+      returndatacopy(0, 0, returndatasize())
+      if success {
+        return(0, returndatasize())
+      }
+      revert(0, returndatasize())
+    }
+  }
+
+  /// @notice Accepts native value
+  receive() external payable {}
+
   /**
    * @notice Delegatecalls each callee with its calldata, in order
    * @dev A callee that spends native value spends it from the balance of this contract.
@@ -60,8 +87,7 @@ contract AHV2ProxyCallee is IAHV2SolverCallee, IAHV2OwnerCallee, ManagementSimpl
 
     bytes[] memory results = new bytes[](callees.length);
     for (uint256 i = 0; i < callees.length; i++) {
-      _checkRole(Constants.WHITELISTED_CALLEE_ROLE, callees[i]);
-      results[i] = callees[i].functionDelegateCall(callData[i]);
+      results[i] = _delegateCall(callees[i], callData[i]);
     }
 
     return abi.encode(results);
@@ -94,8 +120,7 @@ contract AHV2ProxyCallee is IAHV2SolverCallee, IAHV2OwnerCallee, ManagementSimpl
     // `ownerData` as the complete calldata
     if (proxySolverData.length == 0) {
       for (uint256 i = 0; i < callees.length; i++) {
-        _checkRole(Constants.WHITELISTED_CALLEE_ROLE, callees[i]);
-        results[i] = callees[i].functionDelegateCall(ownerData[i]);
+        results[i] = _delegateCall(callees[i], ownerData[i]);
       }
     } else {
       bytes[] calldata solverData = proxySolverData.decodeBytesArray(0);
@@ -106,17 +131,28 @@ contract AHV2ProxyCallee is IAHV2SolverCallee, IAHV2OwnerCallee, ManagementSimpl
       // A callee whose element of `solverData` is empty is delegatecalled as above; any other
       // callee is delegatecalled with `ownerCall(ownerData[i], solverData[i])`
       for (uint256 i = 0; i < callees.length; i++) {
-        _checkRole(Constants.WHITELISTED_CALLEE_ROLE, callees[i]);
         if (solverData[i].length == 0) {
-          results[i] = callees[i].functionDelegateCall(ownerData[i]);
+          results[i] = _delegateCall(callees[i], ownerData[i]);
         } else {
-          results[i] = callees[i].functionDelegateCall(
-            abi.encodeCall(IAHV2OwnerCallee.ownerCall, (ownerData[i], solverData[i]))
+          results[i] = _delegateCall(
+            callees[i], abi.encodeCall(IAHV2OwnerCallee.ownerCall, (ownerData[i], solverData[i]))
           );
         }
       }
     }
 
     return abi.encode(results);
+  }
+
+  /// @dev Delegatecalls `callee` with `data` while recording it as the active callee
+  function _delegateCall(address callee, bytes memory data) internal returns (bytes memory result) {
+    _checkRole(Constants.WHITELISTED_CALLEE_ROLE, callee);
+
+    // The previous callee is restored afterwards, for a callee that calls this contract again
+    TransientSlot.AddressSlot slot = Constants.ACTIVE_CALLEE_SLOT.asAddress();
+    address previous = slot.tload();
+    slot.tstore(callee);
+    result = callee.functionDelegateCall(data);
+    slot.tstore(previous);
   }
 }
