@@ -1,6 +1,6 @@
 [profile.default]
 optimizer = true
-optimizer_runs = 7_500
+optimizer_runs = 44_444_444
 fs_permissions = [{ access = "read-write", path = "./" }]
 verbosity = 3
 via_ir = true
