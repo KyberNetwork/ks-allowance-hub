@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IAHV2OwnerCallee} from '../interfaces/base/IAHV2OwnerCallee.sol';
-import {IAHV2SolverCallee} from '../interfaces/base/IAHV2SolverCallee.sol';
+import {IAHV2Callee} from '../interfaces/base/IAHV2Callee.sol';
 
 import {DynamicArrayLibExt} from '../libraries/DynamicArrayLibExt.sol';
 
@@ -12,12 +11,12 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
  * @notice A call the hub makes to a callee for an order or a solution
- * @dev The callee may read the order's owner from {IMsgSender-msgSender}. The solver's calls go to
- * {IAHV2SolverCallee-solverCall}; the owner's calls go to {IAHV2OwnerCallee-ownerCall}.
+ * @dev The callee may read the order's owner from {IMsgSender-msgSender}. Both the solver's and
+ * the owner's calls go to {IAHV2Callee-execute}.
  * @param callee Contract called; must hold the whitelisted callee role when the call runs
  * @param value Native value sent with the call, paid from the native value sent with the order
- * @param data Passed to {IAHV2SolverCallee-solverCall}, or as `ownerData` to
- * {IAHV2OwnerCallee-ownerCall}
+ * @param data Passed to {IAHV2Callee-execute} as `solverData` for a solver's call, or as
+ * `ownerData` for an owner's call
  */
 struct CallParams {
   address callee;
@@ -50,17 +49,19 @@ library CallParamsLib {
     return callHashes.hash();
   }
 
-  /// @dev Calls `solverCall` on the callee with the call's data and native value
+  /// @dev Calls `execute` on the callee with empty `ownerData`, the call's data as `solverData`
+  /// and the call's native value
   function executeSolverCall(CallParams calldata self) internal returns (bytes memory) {
-    return IAHV2SolverCallee(self.callee).solverCall{value: self.value}(self.data);
+    return IAHV2Callee(self.callee).execute{value: self.value}('', self.data);
   }
 
-  /// @dev Calls `ownerCall` on the callee with the call's data, `solverData` and native value
+  /// @dev Calls `execute` on the callee with the call's data as `ownerData`, `solverData` and the
+  /// call's native value
   function executeOwnerCall(CallParams calldata self, bytes calldata solverData)
     internal
     returns (bytes memory)
   {
-    return IAHV2OwnerCallee(self.callee).ownerCall{value: self.value}(self.data, solverData);
+    return IAHV2Callee(self.callee).execute{value: self.value}(self.data, solverData);
   }
 
   /// @dev The calls that carry native value, as native transfers to their callees: the solver's

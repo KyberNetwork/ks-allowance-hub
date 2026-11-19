@@ -44,9 +44,10 @@ A settlement runs in this order:
 5. the `TransferTokens` event is emitted;
 6. the ERC20 tokens are pulled to the targets of the solution;
 7. the ERC721 tokens are transferred to the targets of the solution;
-8. `solution.solverCalls` run through `IAHV2SolverCallee.solverCall(data)`;
-9. `order.ownerCalls` run through `IAHV2OwnerCallee.ownerCall(ownerData, solverData)`, with
-   `ownerData` from the order and `solverData` from `solution.solverData[i]`;
+8. `solution.solverCalls` run through `IAHV2Callee.execute(ownerData, solverData)`, with empty
+   `ownerData` and the data of the call as `solverData`;
+9. `order.ownerCalls` run through `IAHV2Callee.execute(ownerData, solverData)`, with the data of
+   the call as `ownerData` and `solverData` from `solution.solverData[i]`;
 10. each hook's `afterSettlement` runs when its flags select it.
 
 The results list the return data of the solver's calls first, then of the owner's calls.
@@ -181,12 +182,8 @@ hub.multicall([
 ### Callees
 
 ```solidity
-interface IAHV2SolverCallee {
-  function solverCall(bytes calldata data) external payable returns (bytes memory);
-}
-
-interface IAHV2OwnerCallee {
-  function ownerCall(bytes calldata ownerData, bytes calldata solverData)
+interface IAHV2Callee {
+  function execute(bytes calldata ownerData, bytes calldata solverData)
     external
     payable
     returns (bytes memory);
@@ -244,7 +241,7 @@ src/
   base/            AHV2AuthenticatorBase, AuthDelegator, DeadlineChecker, MsgSender, Multicall,
                    NativeSpendGuard, UnorderedNonce
   interfaces/      IKSAllowanceHubV2; base/ holds the interfaces of the base contracts, IAHV2Hook,
-                   IAHV2Authenticator, IAHV2SolverCallee and IAHV2OwnerCallee
+                   IAHV2Authenticator and IAHV2Callee
   libraries/       Constants, DynamicArrayLibExt, EfficientHashLibExt
   types/           AHV2Order, AHV2Solution, AHV2Witness, AuthDelegation, CallParams, HookParams,
                    SolutionApproval, ERC20Allowance, ERC20Transfer, ERC721Approval, ERC721Transfer,

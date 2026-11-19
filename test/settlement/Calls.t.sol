@@ -10,8 +10,7 @@ import {SignerAuthenticatorMock} from 'test/mocks/SignerAuthenticatorMock.sol';
 
 import {SettlementBase} from 'test/settlement/base/SettlementBase.sol';
 
-import {IAHV2OwnerCallee} from 'src/interfaces/base/IAHV2OwnerCallee.sol';
-import {IAHV2SolverCallee} from 'src/interfaces/base/IAHV2SolverCallee.sol';
+import {IAHV2Callee} from 'src/interfaces/base/IAHV2Callee.sol';
 
 import {AHV2Order} from 'src/types/AHV2Order.sol';
 import {AHV2Solution} from 'src/types/AHV2Solution.sol';
@@ -404,8 +403,8 @@ contract CallsTest is SettlementBase {
     calls[0] = CallParams({callee: address(callee), value: 0, data: dataA});
     calls[1] = CallParams({callee: address(callee2), value: 0, data: dataB});
 
-    vm.expectCall(address(callee), 0, abi.encodeCall(IAHV2SolverCallee.solverCall, (dataA)), 1);
-    vm.expectCall(address(callee2), 0, abi.encodeCall(IAHV2SolverCallee.solverCall, (dataB)), 1);
+    vm.expectCall(address(callee), 0, abi.encodeCall(IAHV2Callee.execute, ('', dataA)), 1);
+    vm.expectCall(address(callee2), 0, abi.encodeCall(IAHV2Callee.execute, ('', dataB)), 1);
 
     AHV2Order memory order = _ownedOrder(owner);
 
@@ -421,12 +420,13 @@ contract CallsTest is SettlementBase {
   }
 
   /**
-   * CALLEE-04 — a solver call reaches only `solverCall`, and an owner call reaches only `ownerCall`
+   * CALLEE-04 — a solver call passes empty owner data and its data as solver data; an owner call
+   * passes its data as owner data with the solution's solver data
    * @dev One solver call goes to `callee` and one owner call to `callee2`, with a non-empty entry
-   * of `solverData`. Each callee sees the selector of its own kind of call and never the other,
-   * and the owner call carries both its own data and the solver's.
+   * of `solverData`. Each callee receives the arguments of its own kind of call and never those of
+   * the other.
    */
-  function test_CALLEE_04_callKindsReachTheirOwnSelector() public {
+  function test_CALLEE_04_callKindsFillTheirOwnArguments() public {
     bytes memory solverCallData = hex'a1';
     bytes memory ownerCallData = hex'b2';
     bytes memory solverData = hex'5e';
@@ -441,21 +441,14 @@ contract CallsTest is SettlementBase {
     AHV2Solution memory solution = _route(order, _calls(_calleeCall(0, solverCallData)));
     solution.solverData[0] = solverData;
 
+    vm.expectCall(address(callee), 0, abi.encodeCall(IAHV2Callee.execute, ('', solverCallData)), 1);
     vm.expectCall(
-      address(callee), 0, abi.encodeCall(IAHV2SolverCallee.solverCall, (solverCallData)), 1
+      address(callee), 0, abi.encodeCall(IAHV2Callee.execute, (solverCallData, solverData)), 0
     );
     vm.expectCall(
-      address(callee), 0, abi.encodeWithSelector(IAHV2OwnerCallee.ownerCall.selector), 0
+      address(callee2), 0, abi.encodeCall(IAHV2Callee.execute, (ownerCallData, solverData)), 1
     );
-    vm.expectCall(
-      address(callee2),
-      0,
-      abi.encodeCall(IAHV2OwnerCallee.ownerCall, (ownerCallData, solverData)),
-      1
-    );
-    vm.expectCall(
-      address(callee2), 0, abi.encodeWithSelector(IAHV2SolverCallee.solverCall.selector), 0
-    );
+    vm.expectCall(address(callee2), 0, abi.encodeCall(IAHV2Callee.execute, ('', ownerCallData)), 0);
 
     vm.prank(owner);
     hub.settleOrderWithDelegatedAuthentication(order, address(0), '', solution, '', false);

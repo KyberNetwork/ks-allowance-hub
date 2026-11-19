@@ -1686,3 +1686,11 @@ Scope: Removal of `AHV2ProxyCallee` from the repository.
 | Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
 |---|---|---|---|---|---|
 | - [x] | - [ ] | `20261118T091749Z/PROXY-REMOVED-01` | `AHV2ProxyCallee`, `ProxyCalleeMock` and `Constants.ACTIVE_CALLEE_SLOT` are removed, together with the 23 proxy tests of run `20261118T032317Z` (PX-01 to PX-17 and PX-FUZZ-*); FIX-01 from that run remains | `test/callees/AHV2ProxyCallee.t.sol` and `test/mocks/ProxyCalleeMocks.sol` deleted | `FOUNDRY_PROFILE=solar forge test --isolate` and `forge test --isolate`: 176 passed, 0 failed |
+
+## Run `20261119T041628Z`
+
+Scope: `IAHV2SolverCallee.solverCall` and `IAHV2OwnerCallee.ownerCall` merged into `IAHV2Callee.execute(ownerData, solverData)`; a solver call passes empty `ownerData`.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261119T041628Z/CALLEE-EXECUTE-01` | A solver call reaches `execute` with empty `ownerData` and its data as `solverData`; an owner call reaches `execute` with its data as `ownerData` and the solution's solver data; the swapped encodings are never sent. The callee mocks implement `IAHV2Callee` and separate the two kinds by empty `ownerData`; no test builds an owner call with empty data | CALLEE-03, CALLEE-04 (`test_CALLEE_04_callKindsFillTheirOwnArguments`) in `test/settlement/Calls.t.sol`; `test/mocks/CalleeMocks.sol` | `FOUNDRY_PROFILE=solar forge test --isolate` and `forge test --isolate`: 176 passed, 0 failed |

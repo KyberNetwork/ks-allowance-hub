@@ -20,7 +20,7 @@ import {CallParams, CallParamsLib} from './CallParams.sol';
  * @param erc721Targets Target of each ERC721 transfer, in order
  * @param solverCalls Callee calls of the route
  * @param solverData Data the solver passes with each owner call, as the `solverData` argument of
- * {IAHV2OwnerCallee-ownerCall}; one entry per owner call. The owner does not sign it; the solution
+ * {IAHV2Callee-execute}; one entry per owner call. The owner does not sign it; the solution
  * approval covers it when one is required.
  * @param nonce Nonce of the solution approval, spent in the `solutionApprover`'s namespace of the
  * hub's nonces when the approval is checked; ignored when it is not

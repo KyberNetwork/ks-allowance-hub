@@ -308,7 +308,7 @@ contract KSAllowanceHubV2 is
     order.hooks.afterSettlement(order, orderHash, solution, beforeSettlementResults);
   }
 
-  /// @dev Runs `calls` through `solverCall`, writing their return data to `results`; each callee
+  /// @dev Runs `calls` as the solver's calls, writing their return data to `results`; each callee
   /// must hold the whitelisted callee role
   function _executeSolverCalls(CallParams[] calldata calls, bytes[] memory results) internal {
     for (uint256 i = 0; i < calls.length; i++) {
@@ -317,7 +317,7 @@ contract KSAllowanceHubV2 is
     }
   }
 
-  /// @dev Runs `calls` through `ownerCall` with the matching entry of `solverData`, writing their
+  /// @dev Runs `calls` as the owner's calls with the matching entry of `solverData`, writing their
   /// return data to `results` from `offset`; each callee must hold the whitelisted callee role
   function _executeOwnerCalls(
     CallParams[] calldata calls,

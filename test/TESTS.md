@@ -156,17 +156,17 @@ takes its ID and description from its name.
 
 | ID | Test | Description |
 | --- | --- | --- |
-| OWN-01 | [`test_OWN_01_ownerCallsRunAfterSolverCalls`](settlement/Calls.t.sol#L56) | The owner calls run after the solver calls, not merely alongside them |
-| OWN-02 | [`test_OWN_02_witnessBindsOwnerCalls`](settlement/Calls.t.sol#L91) | The Permit2 witness pins the owner calls the owner signed |
-| OWN-03 | [`test_OWN_03_authenticationBindsOwnerCalls`](settlement/Calls.t.sol#L129) | Owner calls swapped after the authenticator's signature are refused on the delegated entry point |
-| OWN-04 | [`test_OWN_04_ownerCallCalleeMustBeWhitelisted`](settlement/Calls.t.sol#L174) | An owner call to a callee without the role reverts, as a solver call does |
-| OWN-05 | [`test_OWN_05_emptyOwnerCallsRunNoExtraCall`](settlement/Calls.t.sol#L210) | Empty owner calls run no extra call and return no extra result |
-| OWN-06 | [`test_OWN_06_resultsAreSolverThenOwner`](settlement/Calls.t.sol#L232) | `results` is the solver calls then the owner calls, one entry per call |
-| OWN-07 | [`test_OWN_07_eventCoversBothLists`](settlement/Calls.t.sol#L283) | The native transfers of the event span both call lists, solver's route first |
-| CALLEE-01 | [`test_CALLEE_01_unwhitelistedCalleeIsRejected`](settlement/Calls.t.sol#L333) | A callee without the role is refused, and the order rolls back whole |
-| CALLEE-02 | [`test_CALLEE_02_guardianRevokeStopsTheNextOrder`](settlement/Calls.t.sol#L369) | A guardian can drop a callee, and the very next order stops working |
-| CALLEE-03 | [`test_CALLEE_03_eachCalleeCalledOnce`](settlement/Calls.t.sol#L399) | Every whitelisted callee in the list is called exactly once, with its own data |
-| CALLEE-04 | [`test_CALLEE_04_callKindsReachTheirOwnSelector`](settlement/Calls.t.sol#L429) | A solver call reaches only `solverCall`, and an owner call reaches only `ownerCall` |
+| OWN-01 | [`test_OWN_01_ownerCallsRunAfterSolverCalls`](settlement/Calls.t.sol#L55) | The owner calls run after the solver calls, not merely alongside them |
+| OWN-02 | [`test_OWN_02_witnessBindsOwnerCalls`](settlement/Calls.t.sol#L90) | The Permit2 witness pins the owner calls the owner signed |
+| OWN-03 | [`test_OWN_03_authenticationBindsOwnerCalls`](settlement/Calls.t.sol#L128) | Owner calls swapped after the authenticator's signature are refused on the delegated entry point |
+| OWN-04 | [`test_OWN_04_ownerCallCalleeMustBeWhitelisted`](settlement/Calls.t.sol#L173) | An owner call to a callee without the role reverts, as a solver call does |
+| OWN-05 | [`test_OWN_05_emptyOwnerCallsRunNoExtraCall`](settlement/Calls.t.sol#L209) | Empty owner calls run no extra call and return no extra result |
+| OWN-06 | [`test_OWN_06_resultsAreSolverThenOwner`](settlement/Calls.t.sol#L231) | `results` is the solver calls then the owner calls, one entry per call |
+| OWN-07 | [`test_OWN_07_eventCoversBothLists`](settlement/Calls.t.sol#L282) | The native transfers of the event span both call lists, solver's route first |
+| CALLEE-01 | [`test_CALLEE_01_unwhitelistedCalleeIsRejected`](settlement/Calls.t.sol#L332) | A callee without the role is refused, and the order rolls back whole |
+| CALLEE-02 | [`test_CALLEE_02_guardianRevokeStopsTheNextOrder`](settlement/Calls.t.sol#L368) | A guardian can drop a callee, and the very next order stops working |
+| CALLEE-03 | [`test_CALLEE_03_eachCalleeCalledOnce`](settlement/Calls.t.sol#L398) | Every whitelisted callee in the list is called exactly once, with its own data |
+| CALLEE-04 | [`test_CALLEE_04_callKindsFillTheirOwnArguments`](settlement/Calls.t.sol#L429) | A solver call passes empty owner data and its data as solver data; an owner call passes its data as owner data with the solution's solver data |
 
 ## EventsTest
 
