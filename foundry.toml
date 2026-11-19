@@ -6,11 +6,13 @@ verbosity = 3
 via_ir = true
 dynamic_test_linking = true
 ffi = true
+isolate = true
 bytecode_hash = "none"
 
 # Solar build of the same sources. Run with `FOUNDRY_PROFILE=solar`.
 [profile.solar]
 solc = "solar"
+gas_snapshot_emit = false
 
 [fuzz]
 runs = 32

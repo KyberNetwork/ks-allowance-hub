@@ -1725,3 +1725,12 @@ Scope: `AHV2Solution.solverCalls` removed and `AHV2Order.ownerCalls` renamed `ca
 ### Notes for this run
 
 The suite went from 192 to 188 tests. OWN-04 was merged into CALLEE-01, which now also checks that an earlier call rolls back and that the order settles once the callee holds the role. OWN-05, OWN-06 and CALLEE-04 were deleted as duplicates of SET-03 and SD-01, or because the distinction they tested no longer exists. Where a solver call and an owner call both ran and only one call remains, the count drops (OWN-02, OWN-03 and SOL-01). `--ir-minimum` coverage of `KSAllowanceHubV2`, `AHV2Order` and `AuthDelegator` is 100% of lines and branches. In `CallParams` the one line reported as uncovered is the `mstore` that trims the length in `toNativeTransfers`; OWN-07 asserts the trimmed two-entry list exactly. An independent gap review found that no test on the zero authenticator tampered with `calls` and that no over-spend existed only as a sum across calls; SIG-03 and GUARD-06 now cover both.
+
+## Run `20261119T182821Z`
+
+Scope: gas snapshots of each settlement and delegation path; order and solution expirations revert with their own errors.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261119T182821Z/GAS-01` | One fixed scenario per settlement path and per delegation path, recorded with `vm.snapshotGasLastFrame` into `snapshots/settleOrder.json` and `snapshots/updateDelegation.json`; each scenario asserts its transfer or delegation; only the default solc profile writes snapshots, in isolate mode | GAS-01 to GAS-11 in `test/gas/GasSnapshots.t.sol` | `forge test` and `FOUNDRY_PROFILE=solar forge test`: 199 passed, 0 failed |
+| - [x] | - [ ] | `20261119T182821Z/EXPIRY-01` | An expired order reverts with `OrderExpired` and an expired solution with `SolutionExpired`, each with the expiration and the block timestamp; a delegation past its deadline still reverts with `DeadlinePassed` | GUARD-04 and GATE-01 in `test/admin/Guards.t.sol`, SOL-05 in `test/settlement/SolutionApproval.t.sol`, DEL-05 in `test/delegation/Delegation.t.sol` | `forge test` and `FOUNDRY_PROFILE=solar forge test`: 199 passed, 0 failed |

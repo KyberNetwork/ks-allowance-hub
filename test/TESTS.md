@@ -1,6 +1,6 @@
 # Tests
 
-The suite has 188 tests in 18 contracts. Each row links to a test and gives the
+The suite has 199 tests in 19 contracts. Each row links to a test and gives the
 first sentence of its documentation, or of the section heading above it. A test with neither
 takes its ID and description from its name.
 
@@ -66,8 +66,8 @@ takes its ID and description from its name.
 | FWD-PAUSE-01 | [`test_FWD_PAUSE_01_forwardStillWorksWhilePaused`](batching/Forwarder.t.sol#L675) | A pause does not close `forwardCalls` |
 | FWD-VALUE-01 | [`test_FWD_VALUE_01_valueSentWithForwardIsStranded`](batching/Forwarder.t.sol#L699) | Value sent with `forwardCalls` remains in the hub, not Multicall3 |
 | FWD-REENTRY-01 | [`test_FWD_REENTRY_01_relayedPermitMayReenterTheHub`](batching/Forwarder.t.sol#L727) | A relayed permit may reenter the hub and start an order |
-| FWD-23 | [`test_FWD_23_multicall3RelaysWhenCalledDirectly`](batching/Forwarder.t.sol#L770) | Multicall3 relays a permit and a failing call alike when called directly |
-| FWD-24 | [`test_FWD_24_hubForwardsThroughMulticall3`](batching/Forwarder.t.sol#L803) | `hub.forwardCalls` calls the target with Multicall3 as the caller |
+| FWD-23 | [`test_FWD_23_multicall3RelaysWhenCalledDirectly`](batching/Forwarder.t.sol#L771) | Multicall3 relays a permit and a failing call alike when called directly |
+| FWD-24 | [`test_FWD_24_hubForwardsThroughMulticall3`](batching/Forwarder.t.sol#L804) | `hub.forwardCalls` calls the target with Multicall3 as the caller |
 
 ## MulticallTest
 
@@ -118,6 +118,24 @@ takes its ID and description from its name.
 | NONCE-04 | [`test_NONCE_04_doubleRevoke`](delegation/Nonces.t.sol#L50) | Revoking twice reverts |
 | NONCE-05 | [`test_NONCE_05_hubAndAuthenticatorAreIndependent`](delegation/Nonces.t.sol#L61) | The hub and the authenticator keep separate bitmaps |
 
+## GasSnapshotsTest
+
+[`gas/GasSnapshots.t.sol`](gas/GasSnapshots.t.sol)
+
+| ID | Test | Description |
+| --- | --- | --- |
+| GAS-01 | [`test_GAS_01_ownerTransfer`](gas/GasSnapshots.t.sol#L28) | The owner submits an order drawing on the allowance to the hub |
+| GAS-02 | [`test_GAS_02_ownerPermit2Allowance`](gas/GasSnapshots.t.sol#L41) | The owner submits an order drawing on the Permit2 allowance |
+| GAS-03 | [`test_GAS_03_ownerPermit2Signature`](gas/GasSnapshots.t.sol#L55) | The owner submits an order on the Permit2 flow with a plain permit signature |
+| GAS-04 | [`test_GAS_04_relayedOrderSignature`](gas/GasSnapshots.t.sol#L69) | A relayer submits an order with the owner's EIP-712 order signature |
+| GAS-05 | [`test_GAS_05_relayedPermit2Witness`](gas/GasSnapshots.t.sol#L83) | A relayer submits an order on the Permit2 flow with the witness signature |
+| GAS-06 | [`test_GAS_06_relayedDelegatedAuthenticator`](gas/GasSnapshots.t.sol#L97) | A relayer submits an order authenticated by the delegated signer authenticator |
+| GAS-07 | [`test_GAS_07_relayedOrderSignatureWithSolutionApproval`](gas/GasSnapshots.t.sol#L111) | As the relayed order signature, with a solution approval from the order's approver |
+| GAS-08 | [`test_GAS_08_ownerTransferWithNftAndCall`](gas/GasSnapshots.t.sol#L136) | The owner submits an order with one ERC721 approval and one callee call |
+| GAS-09 | [`test_GAS_09_ownerTransferWithHooks`](gas/GasSnapshots.t.sol#L159) | The owner submits an order with one hook run before and after settlement |
+| GAS-10 | [`test_GAS_10_ownerDelegates`](gas/GasSnapshots.t.sol#L179) | The owner delegates the signer authenticator in a call of their own |
+| GAS-11 | [`test_GAS_11_relayedDelegation`](gas/GasSnapshots.t.sol#L191) | A relayer submits the owner's signed delegation of the signer authenticator |
+
 ## AuthenticationTest
 
 [`settlement/Authentication.t.sol`](settlement/Authentication.t.sol)
@@ -146,9 +164,9 @@ takes its ID and description from its name.
 | ID | Test | Description |
 | --- | --- | --- |
 | DIRTY-01 | [`test_DIRTY_01_delegatedOwnerSubmitted`](settlement/CalldataHygiene.t.sol#L24) | A dirty token address word is refused for the zero authenticator, owner submitted |
-| DIRTY-02 | [`test_DIRTY_02_permit2Witnessed`](settlement/CalldataHygiene.t.sol#L37) | A dirty token address word is refused for the Permit2 authenticator, witnessed |
-| DIRTY-03 | [`test_DIRTY_03_delegatedAuthenticated`](settlement/CalldataHygiene.t.sol#L50) | A dirty token address word is refused for a delegated authenticator |
-| DIRTY-04 | [`test_DIRTY_04_permit2OwnerSubmitted`](settlement/CalldataHygiene.t.sol#L67) | A dirty token address word is refused for the Permit2 authenticator, owner submitted |
+| DIRTY-02 | [`test_DIRTY_02_permit2Witnessed`](settlement/CalldataHygiene.t.sol#L38) | A dirty token address word is refused for the Permit2 authenticator, witnessed |
+| DIRTY-03 | [`test_DIRTY_03_delegatedAuthenticated`](settlement/CalldataHygiene.t.sol#L52) | A dirty token address word is refused for a delegated authenticator |
+| DIRTY-04 | [`test_DIRTY_04_permit2OwnerSubmitted`](settlement/CalldataHygiene.t.sol#L69) | A dirty token address word is refused for the Permit2 authenticator, owner submitted |
 
 ## CallsTest
 
@@ -170,12 +188,12 @@ takes its ID and description from its name.
 
 | ID | Test | Description |
 | --- | --- | --- |
-| SET-01 | [`test_SET_01_transferTokensPayload`](settlement/Events.t.sol#L64) | The whole `TransferTokens` payload of a relayed order, byte for byte |
+| SET-01 | [`test_SET_01_settleOrderPayload`](settlement/Events.t.sol#L64) | The whole `SettleOrder` payload of a relayed order, byte for byte |
 | SET-03 | [`test_SET_03_emptyOrderStillEmits`](settlement/Events.t.sol#L99) | An order that moves nothing and calls nobody still settles and still emits |
-| CLIENT-01 | [`testFuzz_CLIENT_01_clientDataIsEmittedAsGiven`](settlement/Events.t.sol#L130) | The `TransferTokens` of a settled order carries exactly the order's client data |
+| CLIENT-01 | [`testFuzz_CLIENT_01_clientDataIsEmittedAsGiven`](settlement/Events.t.sol#L130) | The `SettleOrder` of a settled order carries exactly the order's client data |
 | CLIENT-02 | [`testFuzz_CLIENT_02_clientDataIsCoveredByTheSignature`](settlement/Events.t.sol#L146) | The owner's signature covers the order's client data |
 | CLIENT-02b | [`test_CLIENT_02b_emptyClientDataIsCoveredByTheSignature`](settlement/Events.t.sol#L164) | Client data submitted against empty signed client data reverts on every entry |
-| EVT-01 | [`test_EVT_01_eventPairsTransfersWithTargets`](settlement/Events.t.sol#L260) | `TransferTokens` lists the transfers that happened, each with the solution's target |
+| EVT-01 | [`test_EVT_01_eventPairsTransfersWithTargets`](settlement/Events.t.sol#L260) | `SettleOrder` lists the transfers that happened, each with the solution's target |
 
 ## HooksTest
 
@@ -192,7 +210,7 @@ takes its ID and description from its name.
 | HOOK-07 | [`test_HOOK_07_hooksReceiveTheOrderTheSolutionAndTheirIndex`](settlement/Hooks.t.sol#L282) | A hook receives the order, its hash, the solution and the index of its entry |
 | HOOK-08 | [`test_HOOK_08_hooksRunWhileMsgSenderIsTheOwner`](settlement/Hooks.t.sol#L324) | The hooks run while `msgSender` returns the owner |
 | HOOK-09 | [`test_HOOK_09_signaturesBindTheHooks`](settlement/Hooks.t.sol#L348) | Both signatures bind the hooks |
-| HOOK-10 | [`test_HOOK_10_theAfterHookSeesTheCalls`](settlement/Hooks.t.sol#L418) | The after hook observes the effects of the calls |
+| HOOK-10 | [`test_HOOK_10_theAfterHookSeesTheCalls`](settlement/Hooks.t.sol#L422) | The after hook observes the effects of the calls |
 
 ## NestingTest
 
@@ -278,7 +296,7 @@ takes its ID and description from its name.
 | SOL-11 | [`testFuzz_SOL_11_exactlyTheSolutionNonceIsSpent`](settlement/SolutionApproval.t.sol#L399) | Exactly the solution nonce is spent, and a replay reports it |
 | SOL-12 | [`test_SOL_12_theApproverNamespaceIsSharedWithDelegationNonces`](settlement/SolutionApproval.t.sol#L433) | The approver's namespace is shared with its `updateDelegation` nonces |
 | OWNER-APR-01 | [`testFuzz_OWNER_APR_01_ownerSettlesWithoutAnApproval`](settlement/SolutionApproval.t.sol#L461) | The owner settles under a named approver with a garbage approval |
-| OWNER-APR-02 | [`testFuzz_OWNER_APR_02_solverIsRefusedWithoutAnApproval`](settlement/SolutionApproval.t.sol#L486) | The solver submitting the same order and approval is refused |
+| OWNER-APR-02 | [`testFuzz_OWNER_APR_02_solverIsRefusedWithoutAnApproval`](settlement/SolutionApproval.t.sol#L488) | The solver submitting the same order and approval is refused |
 
 ## Eip712Test
 
