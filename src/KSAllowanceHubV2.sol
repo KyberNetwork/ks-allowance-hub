@@ -14,7 +14,6 @@ import {DynamicArrayLibExt} from './libraries/DynamicArrayLibExt.sol';
 import {AHV2Order} from './types/AHV2Order.sol';
 import {AHV2Solution} from './types/AHV2Solution.sol';
 import {AHV2WitnessLib} from './types/AHV2Witness.sol';
-import {CallParams, CallParamsLib} from './types/CallParams.sol';
 import {ERC20Allowance, ERC20AllowanceLib} from './types/ERC20Allowance.sol';
 import {ERC20Transfer} from './types/ERC20Transfer.sol';
 import {ERC721Approval, ERC721ApprovalLib} from './types/ERC721Approval.sol';
@@ -53,7 +52,6 @@ contract KSAllowanceHubV2 is
   Multicall,
   MsgSender
 {
-  using CallParamsLib for CallParams[];
   using DynamicArrayLibExt for uint256;
   using ERC20AllowanceLib for ERC20Allowance[];
   using ERC721ApprovalLib for ERC721Approval[];
@@ -115,7 +113,7 @@ contract KSAllowanceHubV2 is
       bytes32 orderHash,
       bytes32 erc721ApprovalsHash,
       bytes32 hooksHash,
-      bytes32 ownerCallsHash,
+      bytes32 callsHash,
       bytes32 clientDataHash
     ) = order.membersHash();
 
@@ -174,7 +172,7 @@ contract KSAllowanceHubV2 is
         authenticationData,
         erc721ApprovalsHash,
         hooksHash,
-        ownerCallsHash,
+        callsHash,
         clientDataHash
       );
     } else if (usePermit2Allowances) {
@@ -184,14 +182,16 @@ contract KSAllowanceHubV2 is
       order.erc20Allowances.execute(order.owner, solution.erc20Targets, solution.erc20Amounts);
     }
 
-    // The ERC721 transfers precede the solver's calls, the solver's calls precede the owner's
-    // calls, and the hooks' `afterSettlement` runs last
+    // The ERC721 transfers precede the calls, and the hooks' `afterSettlement` runs last
     order.erc721Approvals.execute(order.owner, solution.erc721Targets);
 
-    // Return data of the solver's calls first, then of the owner's calls
-    results = (solution.solverCalls.length + order.ownerCalls.length).mallocBytes();
-    _executeSolverCalls(solution.solverCalls, results);
-    _executeOwnerCalls(order.ownerCalls, solution.solverData, results, solution.solverCalls.length);
+    // Each call runs with its entry of `solverData`, and each callee must hold the whitelisted
+    // callee role
+    results = order.calls.length.mallocBytes();
+    for (uint256 i = 0; i < order.calls.length; i++) {
+      _checkRole(Constants.WHITELISTED_CALLEE_ROLE, order.calls[i].callee);
+      results[i] = order.calls[i].execute(solution.solverData[i]);
+    }
 
     order.hooks.afterSettlement(order, orderHash, solution, beforeSettlementResults);
   }
@@ -236,7 +236,7 @@ contract KSAllowanceHubV2 is
     bytes calldata permit2Signature,
     bytes32 erc721ApprovalsHash,
     bytes32 hooksHash,
-    bytes32 ownerCallsHash,
+    bytes32 callsHash,
     bytes32 clientDataHash
   ) internal {
     // The permit's nonce is `order.nonce` and its deadline is `order.expiration`, so Permit2
@@ -255,7 +255,7 @@ contract KSAllowanceHubV2 is
         order.exclusiveCaller,
         erc721ApprovalsHash,
         hooksHash,
-        ownerCallsHash,
+        callsHash,
         order.solutionApprover,
         clientDataHash
       );
@@ -285,29 +285,6 @@ contract KSAllowanceHubV2 is
     bytes32 digest = _hashTypedDataV4(SolutionApprovalLib.hash(orderHash, solution));
     if (!SignatureChecker.isValidSignatureNow(solutionApprover, digest, solutionSignature)) {
       revert InvalidSolutionSignature();
-    }
-  }
-
-  /// @dev Runs `calls` as the solver's calls, writing their return data to `results`; each callee
-  /// must hold the whitelisted callee role
-  function _executeSolverCalls(CallParams[] calldata calls, bytes[] memory results) internal {
-    for (uint256 i = 0; i < calls.length; i++) {
-      _checkRole(Constants.WHITELISTED_CALLEE_ROLE, calls[i].callee);
-      results[i] = calls[i].executeSolverCall();
-    }
-  }
-
-  /// @dev Runs `calls` as the owner's calls with the matching entry of `solverData`, writing their
-  /// return data to `results` from `offset`; each callee must hold the whitelisted callee role
-  function _executeOwnerCalls(
-    CallParams[] calldata calls,
-    bytes[] calldata solverData,
-    bytes[] memory results,
-    uint256 offset
-  ) internal {
-    for (uint256 i = 0; i < calls.length; i++) {
-      _checkRole(Constants.WHITELISTED_CALLEE_ROLE, calls[i].callee);
-      results[offset + i] = calls[i].executeOwnerCall(solverData[i]);
     }
   }
 }

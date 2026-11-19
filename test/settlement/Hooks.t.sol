@@ -19,7 +19,7 @@ import {HookParams} from 'src/types/HookParams.sol';
 /**
  * @title HooksTest
  * @notice `HOOK-01..10` — the hooks around the settlement
- * @dev The hooks bracket the solver calls and the owner calls on both entry points.
+ * @dev The hooks bracket the order's calls on both entry points.
  */
 contract HooksTest is SettlementBase {
   uint160 internal constant AMOUNT = 5 ether;
@@ -60,15 +60,15 @@ contract HooksTest is SettlementBase {
     AHV2Order memory order = _openAhv2Order(
       _allowances(_tokenAllowance(amount)),
       _hooks(_hook(hook, HOOK_BOTH, hex'11'), _hook(hook2, HOOK_BOTH, hex'22')),
-      _noCalls(),
+      _calls(_calleeCall(0, hex'01')),
       0,
       vm.getBlockTimestamp()
     );
 
     vm.prank(owner);
-    hub.settleOrder(order, '', _route(order, _calls(_calleeCall(0, hex'01'))), '', false);
+    hub.settleOrder(order, '', _route(order), '', false);
 
-    assertEq(hook.sequenceLength(), 2, 'both calls ran');
+    assertEq(hook.sequenceLength(), 2, 'both hook calls ran');
     assertEq(hook.sequence(0), 'before');
     assertEq(hook.sequence(1), 'after');
 
@@ -102,12 +102,12 @@ contract HooksTest is SettlementBase {
   }
 
   /**
-   * HOOK-02 — the hooks bracket the Permit2 entry point, the after hook following the owner calls
+   * HOOK-02 — the hooks bracket the Permit2 entry point, the after hook following the calls
    * @dev The ERC20s move inside Permit2 rather than through the hub's own transfer, and
    * `beforeSettlement` is called before that permit. Both ends are established by what the hook
-   * could see rather than by call order. The solver call and the owner call each pay the same
-   * amount away, so the after hook's reading distinguishes "after the solver call" from "after
-   * the owner call": a hook that ran between them would read one payout higher.
+   * could see rather than by call order. The two calls each pay the same amount away, so the
+   * after hook's reading distinguishes "after both calls" from "after the first call": a hook that
+   * ran between them would read one payout higher.
    */
   function test_HOOK_02_hooksRunAroundThePermit2EntryPoint() public {
     hook.observe(token18, address(callee));
@@ -125,7 +125,7 @@ contract HooksTest is SettlementBase {
       _allowances(_tokenAllowance(amount)),
       _noNfts(),
       _hooks(_hook(hook, HOOK_BOTH)),
-      _calls(_calleeCall(0, hex'99')),
+      _calls(_calleeCall(0, hex'99'), _calleeCall(0, hex'01')),
       ANY,
       80,
       deadline
@@ -133,21 +133,21 @@ contract HooksTest is SettlementBase {
     bytes memory signature = _signWitness(order);
 
     vm.prank(solver);
-    hub.settleOrder(order, signature, _route(order, _calls(_calleeCall(0, hex'01'))), '', false);
+    hub.settleOrder(order, signature, _route(order), '', false);
 
-    assertEq(hook.sequenceLength(), 2, 'both calls ran');
+    assertEq(hook.sequenceLength(), 2, 'both hook calls ran');
     assertEq(
       hook.balanceAtBefore(), calleeBefore, 'beforeSettlement ran before Permit2 moved anything'
     );
     assertEq(
       hook.balanceAtAfter(),
       calleeBefore + amount - 2 * payout,
-      'afterSettlement ran after the solver call and the owner call'
+      'afterSettlement ran after both calls'
     );
     assertEq(hook.beforeData(), hex'11', 'the hook read its own entry before');
     assertEq(hook.afterData(), hex'11', 'the hook read its own entry after');
     assertEq(hook.lastOrderHash(), SchemaHash.ahv2Order(order), 'the hook received the order hash');
-    assertEq(callee.callCount(), 2, 'one solver call and one owner call');
+    assertEq(callee.callCount(), 2, 'both calls ran');
   }
 
   /**
@@ -160,11 +160,11 @@ contract HooksTest is SettlementBase {
     AHV2Order memory order = _openAhv2Order(
       _allowances(_tokenAllowance(AMOUNT)),
       _hooks(_hook(hook, HOOK_BOTH)),
-      _noCalls(),
+      _calls(_calleeCall(0, hex'01')),
       0,
       vm.getBlockTimestamp()
     );
-    AHV2Solution memory route = _route(order, _calls(_calleeCall(0, hex'01')));
+    AHV2Solution memory route = _route(order);
     uint256 before = _calleeBalance();
 
     hook.setReverts(true, false);
@@ -194,11 +194,16 @@ contract HooksTest is SettlementBase {
 
   /// HOOK-04 — an order with no hooks settles and runs its callee call
   function test_HOOK_04_noHooks() public {
-    AHV2Order memory order =
-      _openAhv2Order(new ERC20Allowance[](0), _noHooks(), _noCalls(), 0, vm.getBlockTimestamp());
+    AHV2Order memory order = _openAhv2Order(
+      new ERC20Allowance[](0),
+      _noHooks(),
+      _calls(_calleeCall(0, hex'01')),
+      0,
+      vm.getBlockTimestamp()
+    );
 
     vm.prank(owner);
-    hub.settleOrder(order, '', _route(order, _calls(_calleeCall(0, hex'01'))), '', false);
+    hub.settleOrder(order, '', _route(order), '', false);
 
     assertEq(callee.callCount(), 1);
   }
@@ -281,11 +286,11 @@ contract HooksTest is SettlementBase {
     AHV2Order memory order = _openAhv2Order(
       new ERC20Allowance[](0),
       _hooks(_hook(hook, HOOK_BOTH, hex'11'), _hook(hook2, HOOK_BOTH, hex'22')),
-      _noCalls(),
+      _calls(_calleeCall(0, hex'01')),
       0,
       vm.getBlockTimestamp()
     );
-    AHV2Solution memory solution = _route(order, _calls(_calleeCall(0, hex'01')));
+    AHV2Solution memory solution = _route(order);
     bytes32 orderHash = SchemaHash.ahv2Order(order);
 
     vm.expectCall(
@@ -328,7 +333,7 @@ contract HooksTest is SettlementBase {
     bytes memory auth = _authOf(order);
 
     vm.prank(relayer);
-    hub.settleOrder(order, auth, _route(order, _noCalls()), '', false);
+    hub.settleOrder(order, auth, _route(order), '', false);
 
     assertEq(hook.seenMsgSenderBefore(), owner, 'the before call saw the owner');
     assertEq(hook.seenMsgSenderAfter(), owner, 'and so did the after call');
@@ -351,9 +356,7 @@ contract HooksTest is SettlementBase {
       _openAhv2Order(permit2, erc20s, _hooks(_hook(hook, HOOK_BOTH)), _noCalls(), 100, expiration);
 
     vm.prank(solver);
-    hub.settleOrder(
-      signedPermit, _signWitness(signedPermit), _route(signedPermit, _noCalls()), '', false
-    );
+    hub.settleOrder(signedPermit, _signWitness(signedPermit), _route(signedPermit), '', false);
     assertEq(hook.sequenceLength(), 2, 'the order as signed settled');
 
     AHV2Order memory signedFlags =
@@ -361,7 +364,7 @@ contract HooksTest is SettlementBase {
     bytes memory signature = _signWitness(signedFlags);
     AHV2Order memory changedFlags =
       _openAhv2Order(permit2, erc20s, _hooks(_hook(hook, HOOK_AFTER)), _noCalls(), 101, expiration);
-    AHV2Solution memory changedFlagsRoute = _route(changedFlags, _noCalls());
+    AHV2Solution memory changedFlagsRoute = _route(changedFlags);
 
     vm.prank(solver);
     vm.expectRevert(PERMIT2_INVALID_SIGNER);
@@ -379,9 +382,7 @@ contract HooksTest is SettlementBase {
     bytes memory controlAuth = _orderAuthData(signedAuthenticated, signer, signerPk);
 
     vm.prank(relayer);
-    hub.settleOrder(
-      signedAuthenticated, controlAuth, _route(signedAuthenticated, _noCalls()), '', false
-    );
+    hub.settleOrder(signedAuthenticated, controlAuth, _route(signedAuthenticated), '', false);
     assertEq(hook.sequenceLength(), 4, 'the authenticated order as signed settled');
 
     AHV2Order memory signedData = _openAhv2Order(
@@ -401,7 +402,7 @@ contract HooksTest is SettlementBase {
       103,
       expiration
     );
-    AHV2Solution memory changedDataRoute = _route(changedData, _noCalls());
+    AHV2Solution memory changedDataRoute = _route(changedData);
 
     vm.prank(relayer);
     vm.expectRevert(SignerAuthenticatorMock.InvalidOrderSignature.selector);
@@ -409,13 +410,12 @@ contract HooksTest is SettlementBase {
   }
 
   /**
-   * HOOK-10 — the after hook observes the effects of the owner calls
-   * @dev The solver call goes to a callee that pays nothing, and the owner call to the callee that
-   * holds the tokens and pays part of them away. The after hook's balance reading includes that
-   * payout, so `afterSettlement` ran after the owner call, and the hook's own sequence shows the
-   * before call first and the after call last.
+   * HOOK-10 — the after hook observes the effects of the calls
+   * @dev The call goes to the callee that holds the tokens and pays part of them away. The after
+   * hook's balance reading includes that payout, so `afterSettlement` ran after the call, and the
+   * hook's own sequence shows the before call first and the after call last.
    */
-  function test_HOOK_10_theAfterHookSeesTheOwnerCalls() public {
+  function test_HOOK_10_theAfterHookSeesTheCalls() public {
     hook.observe(token18, address(callee));
 
     uint160 amount = 4 ether;
@@ -431,21 +431,18 @@ contract HooksTest is SettlementBase {
       0,
       vm.getBlockTimestamp()
     );
-    CallParams[] memory solverCalls =
-      _calls(CallParams({callee: address(callee2), value: 0, data: hex'01'}));
 
     vm.prank(owner);
-    hub.settleOrder(order, '', _route(order, solverCalls), '', false);
+    hub.settleOrder(order, '', _route(order), '', false);
 
-    assertEq(callee.ownerCallCount(), 1, 'the owner call ran');
-    assertEq(callee2.callCount(), 1, 'and so did the solver call');
+    assertEq(callee.callCount(), 1, 'the call ran');
     assertEq(hook.balanceAtBefore(), calleeBefore, 'the before call saw no transfer');
     assertEq(
       hook.balanceAtAfter(),
       calleeBefore + amount - payout,
-      'the after call saw the payout of the owner call'
+      'the after call saw the payout of the call'
     );
-    assertEq(hook.sequenceLength(), 2, 'both calls ran');
+    assertEq(hook.sequenceLength(), 2, 'both hook calls ran');
     assertEq(hook.sequence(0), 'before');
     assertEq(hook.sequence(1), 'after');
   }
@@ -460,6 +457,6 @@ contract HooksTest is SettlementBase {
       _openAhv2Order(new ERC20Allowance[](0), hooks, _noCalls(), 0, vm.getBlockTimestamp());
 
     vm.prank(owner);
-    hub.settleOrder(order, '', _route(order, _noCalls()), '', false);
+    hub.settleOrder(order, '', _route(order), '', false);
   }
 }

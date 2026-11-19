@@ -28,8 +28,8 @@ interface IKSAllowanceHubV2 {
   /**
    * @notice Emitted once for each settled order, before its assets move and its calls run
    * @dev Each ERC20 and ERC721 entry pairs a transfer of the order with the target the solution
-   * specifies for it. `nativeTransfers` lists only the calls that carry native value, the
-   * solver's calls before the owner's, and is empty when no call carries value. `clientData` is
+   * specifies for it. `nativeTransfers` lists only the calls that carry native value, in order,
+   * and is empty when no call carries value. `clientData` is
    * the order's client data.
    *
    * An order settled by a callee call of another order emits its event after the other order's
@@ -49,8 +49,8 @@ interface IKSAllowanceHubV2 {
   event RescueTokens(ERC20Transfer[] erc20Transfers, ERC721Transfer[] erc721Transfers);
 
   /**
-   * @notice Settles an order along the route in `solution`, authorized as `order.authenticator`
-   * specifies
+   * @notice Settles an order with the targets, amounts and solver data in `solution`, authorized
+   * as `order.authenticator` specifies
    * @dev The zero address requires the owner's EIP-712 signature over the order, the Permit2
    * address requires the owner's Permit2 signature, and any other address is an
    * {IAHV2Authenticator} the owner has delegated. The owner's own call needs no authorization,
@@ -58,13 +58,13 @@ interface IKSAllowanceHubV2 {
    * @param order The order to settle
    * @param authenticationData The owner's signature over the order, the owner's Permit2 signature,
    * or the credential the authenticator reads
-   * @param solution The route, the target of each transfer, the amount of each ERC20 transfer and
-   * the data of each owner call the solver chose
+   * @param solution The target of each transfer, the amount of each ERC20 transfer and the data of
+   * each call the solver chose
    * @param solutionSignature The `solutionApprover`'s signature over the {SolutionApproval}; not
    * read when the caller is `order.owner` or `order.solutionApprover` is the zero address
    * @param usePermit2Allowances Whether the ERC20 transfers are drawn from the owner's Permit2
    * allowances instead of the owner's allowances to this hub; not read on the Permit2 flow
-   * @return results Return data of each callee call, the solver's calls first
+   * @return results Return data of each call, in order
    */
   function settleOrder(
     AHV2Order calldata order,

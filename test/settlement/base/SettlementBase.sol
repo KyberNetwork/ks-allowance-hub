@@ -49,7 +49,7 @@ abstract contract SettlementBase is SignerAuthenticatorBase {
   }
 
   /**
-   * @dev An order owned by `orderOwner` with no transfers, no hooks and no owner calls, so it
+   * @dev An order owned by `orderOwner` with no transfers, no hooks and no calls, so it
    * takes the owner path when `orderOwner` submits it
    */
   function _ownedOrder(address orderOwner) internal view returns (AHV2Order memory order) {

@@ -13,13 +13,13 @@ owners' allowances to the hub. Guardians can revoke that role without the admin.
 
 The owner authorises an `AHV2Order`, which names the assets that may leave the owner, how another
 account's submission is authenticated, the account that may submit the order, the hooks that
-constrain the result and the callee calls the owner fixes. A solver supplies an `AHV2Solution`,
+constrain the result and the callee calls the order makes. A solver supplies an `AHV2Solution`,
 which the owner does not sign: the target and the amount of each ERC20 transfer, the target of
-each ERC721 transfer, the solver's calls and the data of each owner call.
+each ERC721 transfer and the solver data of each call.
 
 ```
-AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)
-AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,CallParams[] solverCalls,bytes[] solverData,uint256 nonce,uint256 expiration)
+AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)
+AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,bytes[] solverData,uint256 nonce,uint256 expiration)
 CallParams(address callee,uint256 value,bytes data)
 HookParams(address hook,bytes32 flags,bytes data)
 SolutionApproval(AHV2Order order,AHV2Solution solution)
@@ -31,7 +31,7 @@ an approval.
 
 The hub reverts when either `expiration` has passed, or when the solution does not have one
 `erc20Targets` entry and one `erc20Amounts` entry per ERC20 transfer, one `erc721Targets` entry per
-ERC721 transfer and one `solverData` entry per owner call. An ERC20 transfer sends
+ERC721 transfer and one `solverData` entry per call. An ERC20 transfer sends
 `solution.erc20Amounts[i]`, at most its allowance.
 
 A settlement runs in this order:
@@ -45,21 +45,18 @@ A settlement runs in this order:
 5. the `TransferTokens` event is emitted;
 6. the ERC20 tokens are pulled to the targets of the solution;
 7. the ERC721 tokens are transferred to the targets of the solution;
-8. `solution.solverCalls` run through `IAHV2Callee.execute(ownerData, solverData)`, with empty
-   `ownerData` and the data of the call as `solverData`;
-9. `order.ownerCalls` run through `IAHV2Callee.execute(ownerData, solverData)`, with the data of
-   the call as `ownerData` and `solverData` from `solution.solverData[i]`;
-10. each hook's `afterSettlement` runs when its flags select it.
+8. `order.calls` run in order through `IAHV2Callee.execute(ownerData, solverData)`, with the data
+   of the call as `ownerData` and `solution.solverData[i]` as `solverData`;
+9. each hook's `afterSettlement` runs when its flags select it.
 
-The results list the return data of the solver's calls first, then of the owner's calls.
+The results list the return data of each call, in order.
 
 The solution approval is an EIP-712 `SolutionApproval` signed by `solutionApprover`. It spends
 `solution.nonce` in the approver's namespace, so each approval settles at most once. No nonce is
 spent when no approval is checked.
 
-An order with no hooks, no owner calls and a dead-address `solutionApprover` places no constraint on
-the solver: the solver chooses every target, every ERC20 amount up to the allowance and every solver
-call.
+An order with no hooks, no calls and a dead-address `solutionApprover` places no constraint on the
+solver: the solver chooses every target and every ERC20 amount up to the allowance.
 
 ### Hooks
 
@@ -80,9 +77,9 @@ is checked.
 
 ### `solverData`
 
-`solution.solverData` has one entry per owner call, and the hub reverts when the lengths differ. The
-solution approval covers it, when one is required. The owner's signature does not, so an owner call
-treats `solverData` as untrusted input within the limits that `ownerData` sets.
+`solution.solverData` has one entry per call, and the hub reverts when the lengths differ. The
+solution approval covers it, when one is required. The owner's signature does not, so a call treats
+`solverData` as untrusted input within the limits that `ownerData` sets.
 
 ### Authorisation
 
@@ -114,13 +111,13 @@ permitted amounts are the order's allowances, and the requested amounts are
 owner's signature must also cover a single witness:
 
 ```
-AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,bytes clientData)
+AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,bytes clientData)
 ```
 
 The Permit2 witness type string is:
 
 ```
-AHV2Witness witness)AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,bytes clientData)CallParams(address callee,uint256 value,bytes data)ERC721Approval(address token,uint256 tokenId)HookParams(address hook,bytes32 flags,bytes data)TokenPermissions(address token,uint256 amount)
+AHV2Witness witness)AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,bytes clientData)CallParams(address callee,uint256 value,bytes data)ERC721Approval(address token,uint256 tokenId)HookParams(address hook,bytes32 flags,bytes data)TokenPermissions(address token,uint256 amount)
 ```
 
 When `order.authenticator` is a delegated authenticator, the caller must be the order's
@@ -209,8 +206,7 @@ interface IAHV2Callee {
 }
 ```
 
-Each callee of a solver call or an owner call must hold `WHITELISTED_CALLEE_ROLE` when the call
-runs. `CallParams.value` is the native value sent with the call, paid from the `msg.value` sent with
+Each callee must hold `WHITELISTED_CALLEE_ROLE` when its call runs. `CallParams.value` is the native value sent with the call, paid from the `msg.value` sent with
 the order. The hub reverts when the order spends more native value than it was sent. The hub has no
 `receive` function, so a callee cannot refund native value to it; unspent `msg.value` remains in the
 hub.
@@ -224,17 +220,17 @@ the outer order's owner again once it returns. The hub refuses no order for sett
 ### Reentrancy and hooks
 
 Reentrancy is a design choice of the hub: a callee call of an order may settle another order, and
-the hub does not refuse it. A hook that compares balances before and after the solver's calls also
+the hub does not refuse it. A hook that compares balances before and after the order's calls also
 counts the assets that a nested order delivers in the same interval. Two orders with the same
 recipient can each pass a hook that checks the recipient's balance increase, while the recipient
 receives the output of only one of them.
 
-An order therefore protects the owner's intent by combining hooks with owner calls, not by hooks
-alone. In a swap, the solver's calls deliver the output to an account the order specifies, and the
-last call in `ownerCalls` transfers the output from that account to the recipient. The owner signs
-that transfer and its amount, so the funds the recipient receives are moved by this order's own
-call. Each such transfer removes its amount from the account, so the output of another order with
-the same recipient cannot satisfy it.
+An order therefore protects the owner's intent by combining hooks with its calls, not by hooks
+alone. In a swap, a call executes the route in its `solverData` and delivers the output to an
+account the order specifies, and the last call in `calls` transfers the output from that account
+to the recipient. The owner signs that transfer and its amount, so the funds the recipient
+receives are moved by this order's own call. Each such transfer removes its amount from the
+account, so the output of another order with the same recipient cannot satisfy it.
 
 ### Management
 

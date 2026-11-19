@@ -9,15 +9,14 @@ import {ERC721Holder} from 'openzeppelin-contracts/contracts/token/ERC721/utils/
 
 /// @notice Callee that records what the hub passed it, so tests can assert identity and ordering.
 contract CalleeMock is IAHV2Callee, ERC721Holder {
-  /// @dev Read inside either call, where {msgSender} still returns the owner of the order settling
+  /// @dev Read inside the call, where {msgSender} still returns the owner of the order settling
   address public seenMsgSender;
-  /// @dev Counts solver calls and owner calls together
+  /// @dev Counts the calls
   uint256 public callCount;
-  uint256 public ownerCallCount;
   uint256 public lastValue;
-  /// @dev The `solverData` of a solver call, or the `ownerData` of an owner call
+  /// @dev The `ownerData` of the last call
   bytes public lastData;
-  /// @dev The `solverData` of the last owner call
+  /// @dev The `solverData` of the last call
   bytes public lastSolverData;
 
   /// @dev Set by a test to have the callee pay a token out, proving the funds arrived
@@ -33,17 +32,12 @@ contract CalleeMock is IAHV2Callee, ERC721Holder {
     payoutAmount = amount;
   }
 
-  /// @dev A call with empty `ownerData` is a solver call; any other is an owner call
+  /// @dev Records the call
   function execute(bytes calldata ownerData, bytes calldata solverData)
     external
     payable
     returns (bytes memory)
   {
-    if (ownerData.length == 0) {
-      return _record(solverData);
-    }
-
-    ownerCallCount++;
     lastSolverData = solverData;
     return _record(ownerData);
   }
@@ -104,17 +98,12 @@ contract ReentrantCalleeMock is IAHV2Callee, ERC721Holder {
 /// @dev {CalleeMock} returns a per-callee counter, which cannot distinguish two callees
 /// interleaved in one order; this one can.
 contract EchoCalleeMock is IAHV2Callee {
-  /// @dev With empty `ownerData` returns the callee and `solverData`; otherwise returns the
-  /// callee, `ownerData` and `solverData`
+  /// @dev Returns the callee, `ownerData` and `solverData`
   function execute(bytes calldata ownerData, bytes calldata solverData)
     external
     payable
     returns (bytes memory)
   {
-    if (ownerData.length == 0) {
-      return abi.encode(address(this), solverData);
-    }
-
     return abi.encode(address(this), ownerData, solverData);
   }
 }
@@ -123,8 +112,8 @@ contract EchoCalleeMock is IAHV2Callee {
  * @notice Callee whose calls can see each other's work, so a test can pin the order they ran in.
  * @dev A call built by {produce} stores its payload; one built by {observe} appends the payload as
  * it stood at that moment to {observations} and returns it. An observer that ran before a producer
- * therefore records empty bytes, which separates the fact that both lists ran from the order in
- * which they ran. A solver call acts on its `solverData` and an owner call on its `ownerData`.
+ * therefore records empty bytes, which separates the fact that the calls ran from the order in
+ * which they ran.
  */
 contract ObservingCalleeMock is IAHV2Callee, ERC721Holder {
   bytes1 private constant PRODUCE = 0x01;
@@ -149,12 +138,12 @@ contract ObservingCalleeMock is IAHV2Callee, ERC721Holder {
     return observations.length;
   }
 
-  function execute(bytes calldata ownerData, bytes calldata solverData)
+  function execute(bytes calldata ownerData, bytes calldata)
     external
     payable
     returns (bytes memory)
   {
-    return _run(ownerData.length == 0 ? solverData : ownerData);
+    return _run(ownerData);
   }
 
   function _run(bytes calldata data) private returns (bytes memory) {

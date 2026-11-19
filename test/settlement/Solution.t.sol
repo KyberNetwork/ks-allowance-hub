@@ -30,7 +30,7 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  * @notice `TGT-01..04` with `LEN-01..02`, `APR-01`, `AMT-01..05` with `AMT-FUZZ`, and `SD-01..04` — what the solver specifies in
  * the solution
  * @dev The order specifies only what may leave the owner; the solution specifies one target per
- * transfer, one amount per ERC20 transfer and the `solverData` entry of each owner call. Every
+ * transfer, one amount per ERC20 transfer and the `solverData` entry of each call. Every
  * target case sends the transfers somewhere no order signed: `solverWallet` for an ERC20 transfer
  * and `nftRecipient` for the NFT, neither of them a callee.
  */
@@ -134,7 +134,6 @@ contract SolutionTest is SettlementBase {
         _addresses(address(callee2)),
         _amounts(AMOUNT),
         _addresses(solverWallet),
-        _calls(_calleeCall(0, hex'01')),
         vm.getBlockTimestamp() + 1 hours
       ),
       '',
@@ -163,7 +162,7 @@ contract SolutionTest is SettlementBase {
 
   /**
    * APR-01 — an approval of one set of targets does not approve another
-   * @dev The two solutions share the route and differ only in where the transfers go, so the
+   * @dev The two solutions differ only in where the transfers go, so the
    * refusal is about the targets. The second step is the control.
    */
   function test_APR_01_theApprovalBindsTheTargets() public {
@@ -173,7 +172,6 @@ contract SolutionTest is SettlementBase {
       _addresses(address(callee)),
       _amounts(AMOUNT),
       _addresses(address(callee2)),
-      _calls(_calleeCall(0, hex'01')),
       vm.getBlockTimestamp() + 1 hours
     );
     AHV2Solution memory toSolver = _toSolverAndRecipient();
@@ -384,27 +382,27 @@ contract SolutionTest is SettlementBase {
   // -------------------------------------------------------------------------------------------
 
   /**
-   * SD-01 — each owner call receives the `solverData` entry of its own index
-   * @dev Three owner calls go to three callees that echo what they receive, and the entries are
+   * SD-01 — each call receives the `solverData` entry of its own index
+   * @dev Three calls go to three callees that echo what they receive, and the entries are
    * distinct, one of them empty, so a shifted or reused entry would show in the results.
    */
-  function test_SD_01_eachOwnerCallReceivesItsOwnSolverData() public {
+  function test_SD_01_eachCallReceivesItsOwnSolverData() public {
     EchoCalleeMock[3] memory echoes =
       [new EchoCalleeMock(), new EchoCalleeMock(), new EchoCalleeMock()];
     bytes[3] memory solverEntries = [bytes(hex'5a'), bytes(''), bytes(hex'5c5c')];
 
-    CallParams[] memory ownerCalls = new CallParams[](3);
+    CallParams[] memory calls = new CallParams[](3);
     vm.startPrank(admin);
     for (uint256 i = 0; i < 3; i++) {
       hub.grantRole(CALLEE_ROLE, address(echoes[i]));
-      ownerCalls[i] =
+      calls[i] =
         CallParams({callee: address(echoes[i]), value: 0, data: abi.encodePacked(uint8(i + 1))});
     }
     vm.stopPrank();
 
     AHV2Order memory order =
-      _openAhv2Order(new ERC20Allowance[](0), _noHooks(), ownerCalls, 0, vm.getBlockTimestamp());
-    AHV2Solution memory solution = _route(order, _noCalls());
+      _openAhv2Order(new ERC20Allowance[](0), _noHooks(), calls, 0, vm.getBlockTimestamp());
+    AHV2Solution memory solution = _route(order);
     for (uint256 i = 0; i < 3; i++) {
       solution.solverData[i] = solverEntries[i];
     }
@@ -412,34 +410,34 @@ contract SolutionTest is SettlementBase {
     vm.prank(owner);
     bytes[] memory results = hub.settleOrder(order, '', solution, '', false);
 
-    assertEq(results.length, 3, 'one result per owner call');
+    assertEq(results.length, 3, 'one result per call');
     for (uint256 i = 0; i < 3; i++) {
       (address seenCallee, bytes memory seenData, bytes memory seenSolverData) =
         abi.decode(results[i], (address, bytes, bytes));
       assertEq(seenCallee, address(echoes[i]), 'the result came from the callee of that index');
-      assertEq(seenData, ownerCalls[i].data, 'with the data of its own call');
+      assertEq(seenData, calls[i].data, 'with the data of its own call');
       assertEq(seenSolverData, solverEntries[i], 'and the solver data of its own index');
     }
   }
 
   /**
    * SD-02 — a `solverData` list of the wrong length is refused on both entry points
-   * @dev The order has two owner calls. Lengths 0, 1 and 3 are refused with nothing moved, and
+   * @dev The order has two calls. Lengths 0, 1 and 3 are refused with nothing moved, and
    * length 2 settles.
    */
-  function test_SD_02_solverDataLengthMustMatchTheOwnerCalls() public {
-    CallParams[] memory ownerCalls = _calls(_calleeCall(0, hex'01'), _calleeCall(0, hex'02'));
+  function test_SD_02_solverDataLengthMustMatchTheCalls() public {
+    CallParams[] memory calls = _calls(_calleeCall(0, hex'01'), _calleeCall(0, hex'02'));
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     AHV2Order memory delegated =
-      _openAhv2Order(_allowances(_tokenAllowance(AMOUNT)), _noHooks(), ownerCalls, 0, expiration);
+      _openAhv2Order(_allowances(_tokenAllowance(AMOUNT)), _noHooks(), calls, 0, expiration);
     AHV2Order memory relayed =
-      _openAhv2Order(_allowances(_tokenAllowance(AMOUNT)), _noHooks(), ownerCalls, 110, expiration);
+      _openAhv2Order(_allowances(_tokenAllowance(AMOUNT)), _noHooks(), calls, 110, expiration);
     relayed.authenticator = permit2;
     bytes memory witness = _signWitness(relayed);
 
-    AHV2Solution memory delegatedSolution = _route(delegated, _noCalls());
-    AHV2Solution memory relayedSolution = _route(relayed, _noCalls());
+    AHV2Solution memory delegatedSolution = _route(delegated);
+    AHV2Solution memory relayedSolution = _route(relayed);
     uint256 before = _calleeBalance();
 
     uint256[3] memory wrongLengths = [uint256(0), 1, 3];
@@ -468,7 +466,7 @@ contract SolutionTest is SettlementBase {
     hub.settleOrder(relayed, witness, relayedSolution, '', false);
 
     assertEq(_calleeBalance() - before, 2 * AMOUNT, 'a list of the right length settles');
-    assertEq(callee.ownerCallCount(), 4, 'and runs both owner calls of both orders');
+    assertEq(callee.callCount(), 4, 'and runs both calls of both orders');
   }
 
   /**
@@ -490,9 +488,9 @@ contract SolutionTest is SettlementBase {
       expiration
     );
 
-    AHV2Solution memory approved = _route(order, _noCalls());
+    AHV2Solution memory approved = _route(order);
     approved.solverData[0] = hex'aa';
-    AHV2Solution memory presented = _route(order, _noCalls());
+    AHV2Solution memory presented = _route(order);
     presented.solverData[0] = hex'bb';
 
     bytes memory approval = _signSolutionApproval(approverKey, order, approved);
@@ -524,9 +522,9 @@ contract SolutionTest is SettlementBase {
     order.authenticator = permit2;
     bytes memory witness = _signWitness(order);
 
-    AHV2Solution memory solutionA = _route(order, _noCalls());
+    AHV2Solution memory solutionA = _route(order);
     solutionA.solverData[0] = hex'aa';
-    AHV2Solution memory solutionB = _route(order, _noCalls());
+    AHV2Solution memory solutionB = _route(order);
     solutionB.solverData[0] = hex'bb';
 
     uint256 snapshot = vm.snapshotState();
@@ -552,8 +550,7 @@ contract SolutionTest is SettlementBase {
   uint8 private constant PATH_PERMIT2_ALLOWANCE = 1;
   uint8 private constant PATH_PERMIT2_SIGNATURE = 2;
 
-  /// @dev One ERC20 transfer of `AMOUNT` and the NFT, open to any submitter, with no route of its
-  /// own
+  /// @dev One ERC20 transfer of `AMOUNT` and the NFT, open to any submitter, with no calls
   function _bothTransfers(address solutionApprover, uint256 nonce)
     private
     view
@@ -577,7 +574,6 @@ contract SolutionTest is SettlementBase {
       _addresses(solverWallet),
       _amounts(AMOUNT),
       _addresses(nftRecipient),
-      _calls(_calleeCall(0, hex'01')),
       vm.getBlockTimestamp() + 1 hours
     );
   }
@@ -596,13 +592,8 @@ contract SolutionTest is SettlementBase {
 
     address[] memory erc20Targets = i == 0 ? none : i == 1 ? two : one;
     address[] memory erc721Targets = i == 2 ? none : i == 3 ? two : nftOne;
-    return _solution(
-      erc20Targets,
-      _amounts(AMOUNT),
-      erc721Targets,
-      _calls(_calleeCall(0, hex'01')),
-      vm.getBlockTimestamp() + 1 hours
-    );
+    return
+      _solution(erc20Targets, _amounts(AMOUNT), erc721Targets, vm.getBlockTimestamp() + 1 hours);
   }
 
   /// @dev One ERC20 transfer of `allowance`, open to any submitter
@@ -643,11 +634,7 @@ contract SolutionTest is SettlementBase {
   /// @dev `amount` of the one transfer to `solverWallet`
   function _amountSolution(uint160 amount) private view returns (AHV2Solution memory) {
     return _solution(
-      _addresses(solverWallet),
-      _amounts(amount),
-      new address[](0),
-      new CallParams[](0),
-      vm.getBlockTimestamp() + 1 hours
+      _addresses(solverWallet), _amounts(amount), new address[](0), vm.getBlockTimestamp() + 1 hours
     );
   }
 
@@ -663,9 +650,7 @@ contract SolutionTest is SettlementBase {
     uint160[] memory amounts = new uint160[](2);
     amounts[0] = amount18;
     amounts[1] = amount6;
-    return _solution(
-      targets, amounts, new address[](0), new CallParams[](0), vm.getBlockTimestamp() + 1 hours
-    );
+    return _solution(targets, amounts, new address[](0), vm.getBlockTimestamp() + 1 hours);
   }
 
   /**

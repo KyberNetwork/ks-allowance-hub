@@ -26,7 +26,7 @@ interface IAHV2Hook {
   ) external returns (bytes memory);
 
   /**
-   * @notice Called after the solver's calls and the owner's calls
+   * @notice Called after the order's calls
    * @param order The order being settled
    * @param orderHash EIP-712 struct hash of `order`
    * @param solution The solution the order settles with

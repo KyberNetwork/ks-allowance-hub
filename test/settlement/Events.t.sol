@@ -72,12 +72,12 @@ contract EventsTest is SettlementBase {
       _allowances(_tokenAllowance(AMOUNT)),
       _approvals(_nftApproval()),
       new HookParams[](0),
-      new CallParams[](0),
+      _calls(_calleeCall(0, hex'abcd')),
       ANY,
       11,
       expiration
     );
-    AHV2Solution memory solution = _route(order, _calls(_calleeCall(0, hex'abcd')));
+    AHV2Solution memory solution = _route(order);
     bytes memory signature = _signWitness(order);
 
     vm.recordLogs();
@@ -105,10 +105,10 @@ contract EventsTest is SettlementBase {
     vm.recordLogs();
 
     vm.prank(owner);
-    bytes[] memory results =
-      hub.settleOrder(order, '', _route(order, new CallParams[](0)), '', false);
+    bytes[] memory results = hub.settleOrder(order, '', _route(order), '', false);
 
     assertEq(results.length, 0, 'no calls, no results');
+    assertEq(callee.callCount(), 0, 'no callee was called');
 
     Vm.Log memory entry = _settlementLog();
     assertEq(
@@ -188,7 +188,7 @@ contract EventsTest is SettlementBase {
     address orderAuthenticator = entry == 0 ? address(authenticator) : permit2;
     AHV2Order memory signed = _clientDataOrder(orderAuthenticator, nonce, signedData);
     AHV2Order memory order = _clientDataOrder(orderAuthenticator, nonce, submittedData);
-    AHV2Solution memory route = _route(order, _calls(_calleeCall(0, hex'01')));
+    AHV2Solution memory route = _route(order);
 
     if (entry == 0) {
       _delegateSignerThroughHub(signer);
@@ -217,7 +217,7 @@ contract EventsTest is SettlementBase {
       orderAuthenticator,
       _allowances(_tokenAllowance(AMOUNT)),
       new HookParams[](0),
-      new CallParams[](0),
+      _calls(_calleeCall(0, hex'01')),
       nonce,
       vm.getBlockTimestamp() + 1 hours
     );
@@ -279,11 +279,7 @@ contract EventsTest is SettlementBase {
     erc20Amounts[0] = AMOUNT;
     erc20Amounts[1] = sixAmount;
     AHV2Solution memory solution = _solution(
-      erc20Targets,
-      erc20Amounts,
-      _addresses(nftRecipient),
-      new CallParams[](0),
-      vm.getBlockTimestamp() + 1 hours
+      erc20Targets, erc20Amounts, _addresses(nftRecipient), vm.getBlockTimestamp() + 1 hours
     );
 
     ERC20Transfer[] memory expectedErc20s = new ERC20Transfer[](2);

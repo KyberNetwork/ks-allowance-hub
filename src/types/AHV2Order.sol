@@ -16,11 +16,12 @@ import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
- * @notice An owner's order to transfer assets along a route chosen by a solver
- * @dev The order specifies neither the route, nor the targets of its transfers, nor the amounts of
- * its ERC20 transfers; an {AHV2Solution} supplies them. The hooks constrain the result of the
- * solution, and `solutionApprover` may be required to approve it. When `owner` submits the order,
- * `exclusiveCaller` and `solutionApprover` do not apply.
+ * @notice An owner's order to transfer assets and call callees, settled with data a solver
+ * chooses
+ * @dev The order specifies neither the targets of its transfers, nor the amounts of its ERC20
+ * transfers, nor the solver data of its calls; an {AHV2Solution} supplies them. The hooks
+ * constrain the result of the solution, and `solutionApprover` may be required to approve it. When
+ * `owner` submits the order, `exclusiveCaller` and `solutionApprover` do not apply.
  * @param owner Account the assets are transferred from
  * @param authenticator How the order is authorized when another account submits it: the zero
  * address requires the owner's EIP-712 signature over the order, the Permit2 address requires the
@@ -31,8 +32,8 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * target and in the amount the solution specifies for it
  * @param erc721Approvals ERC721 transfers, each sent from the owner to the target the solution
  * specifies for it
- * @param hooks Hooks called before the assets move and after the owner's calls
- * @param ownerCalls Callee calls fixed by the owner, run after the solver's calls
+ * @param hooks Hooks called before the assets move and after the calls
+ * @param calls Callee calls fixed by the owner, each run with the solution's `solverData` entry
  * @param solutionApprover Account whose signature the solution requires when the owner does not
  * submit the order; the zero address requires none
  * @param nonce Spent in the owner's namespace of the hub's nonces when `authenticator` is the zero
@@ -48,7 +49,7 @@ struct AHV2Order {
   ERC20Allowance[] erc20Allowances;
   ERC721Approval[] erc721Approvals;
   HookParams[] hooks;
-  CallParams[] ownerCalls;
+  CallParams[] calls;
   address solutionApprover;
   uint256 nonce;
   uint256 expiration;
@@ -65,7 +66,7 @@ library AHV2OrderLib {
   using HookParamsLib for HookParams[];
 
   bytes32 internal constant AHV2_ORDER_TYPEHASH = keccak256(
-    'AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)'
+    'AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)'
     'CallParams(address callee,uint256 value,bytes data)'
     'ERC20Allowance(address token,uint160 amount)' 'ERC721Approval(address token,uint256 tokenId)'
     'HookParams(address hook,bytes32 flags,bytes data)'
@@ -77,18 +78,18 @@ library AHV2OrderLib {
       order,
       order.erc721Approvals.hash(),
       order.hooks.hash(),
-      order.ownerCalls.hash(),
+      order.calls.hash(),
       order.clientData.hashCalldata()
     );
   }
 
-  /// @dev As {hash}, from the already computed hashes of `erc721Approvals`, `hooks`, `ownerCalls`
+  /// @dev As {hash}, from the already computed hashes of `erc721Approvals`, `hooks`, `calls`
   /// and `clientData`
   function hash(
     AHV2Order calldata order,
     bytes32 erc721ApprovalsHash,
     bytes32 hooksHash,
-    bytes32 ownerCallsHash,
+    bytes32 callsHash,
     bytes32 clientDataHash
   ) internal pure returns (bytes32) {
     return keccak256(
@@ -100,7 +101,7 @@ library AHV2OrderLib {
         order.erc20Allowances.hash(),
         erc721ApprovalsHash,
         hooksHash,
-        ownerCallsHash,
+        callsHash,
         order.solutionApprover,
         order.nonce,
         order.expiration,
@@ -117,15 +118,15 @@ library AHV2OrderLib {
       bytes32 orderHash,
       bytes32 erc721ApprovalsHash,
       bytes32 hooksHash,
-      bytes32 ownerCallsHash,
+      bytes32 callsHash,
       bytes32 clientDataHash
     )
   {
     erc721ApprovalsHash = order.erc721Approvals.hash();
     hooksHash = order.hooks.hash();
-    ownerCallsHash = order.ownerCalls.hash();
+    callsHash = order.calls.hash();
     clientDataHash = order.clientData.hashCalldata();
-    orderHash = hash(order, erc721ApprovalsHash, hooksHash, ownerCallsHash, clientDataHash);
+    orderHash = hash(order, erc721ApprovalsHash, hooksHash, callsHash, clientDataHash);
   }
 
   /**
@@ -141,7 +142,7 @@ library AHV2OrderLib {
       orderHash,
       order.erc20Allowances.toTransfers(solution.erc20Targets, solution.erc20Amounts),
       order.erc721Approvals.toTransfers(solution.erc721Targets),
-      solution.solverCalls.toNativeTransfers(order.ownerCalls),
+      order.calls.toNativeTransfers(),
       order.clientData
     );
   }
@@ -152,11 +153,11 @@ library AHV2OrderLib {
     _checkDeadline(order.expiration);
     _checkDeadline(solution.expiration);
     // One target and one amount for each ERC20 transfer, one target for each ERC721 transfer and
-    // one `solverData` entry for each owner call
+    // one `solverData` entry for each call
     _checkLengths(solution.erc20Targets.length, order.erc20Allowances.length);
     _checkLengths(solution.erc20Amounts.length, order.erc20Allowances.length);
     _checkLengths(solution.erc721Targets.length, order.erc721Approvals.length);
-    _checkLengths(solution.solverData.length, order.ownerCalls.length);
+    _checkLengths(solution.solverData.length, order.calls.length);
   }
 
   /// @dev Reverts when the current block timestamp is later than `deadline`

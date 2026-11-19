@@ -40,51 +40,50 @@ contract SolutionApprovalTest is SettlementBase {
   // -------------------------------------------------------------------------------------------
 
   /**
-   * SOL-01 — one approval binds one order, `ownerCalls` included
-   * @dev `SolutionApproval` carries `orderHash`, and the order hash covers the owner calls, so an
+   * SOL-01 — one approval binds one order, `calls` included
+   * @dev `SolutionApproval` carries `orderHash`, and the order hash covers the calls, so an
    * approver who signed a solution for one order has not approved the same solution under
-   * different owner calls. The two orders differ in that one member and nothing else, so the
+   * different calls. The two orders differ in that one member and nothing else, so the
    * refusal is about the binding. The second step presents the first order's approval, of the
    * very same solution, with the second order. The first step is the control.
    */
   function test_SOL_01_oneApprovalBindsOneOrder() public {
-    CallParams[] memory solverCalls = _calls(_calleeCall(0, hex'01'));
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
-    AHV2Order memory withTailA = _orderWithTail(_calls(_calleeCall(0, hex'aa')), 60, deadline);
-    AHV2Solution memory route = _solution(withTailA, solverCalls, deadline);
-    bytes32 hashA = SchemaHash.ahv2Order(withTailA);
-    bytes memory approvalA = _signSolutionApproval(approverKey, withTailA, route);
+    AHV2Order memory withCallsA = _orderWithCalls(_calls(_calleeCall(0, hex'aa')), 60, deadline);
+    AHV2Solution memory route = _solution(withCallsA, deadline);
+    bytes32 hashA = SchemaHash.ahv2Order(withCallsA);
+    bytes memory approvalA = _signSolutionApproval(approverKey, withCallsA, route);
 
     uint256 before = _calleeBalance();
 
-    bytes memory authA = _authOf(withTailA);
+    bytes memory authA = _authOf(withCallsA);
     vm.prank(relayer);
-    bytes[] memory results = hub.settleOrder(withTailA, authA, route, approvalA, false);
+    bytes[] memory results = hub.settleOrder(withCallsA, authA, route, approvalA, false);
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the approved order settled');
-    assertEq(results.length, 2, 'solver call and owner call both ran');
+    assertEq(results.length, 1, 'the call ran');
 
-    AHV2Order memory withTailB = _orderWithTail(_calls(_calleeCall(0, hex'bb')), 63, deadline);
-    assertTrue(SchemaHash.ahv2Order(withTailB) != hashA, 'the two orders really do differ');
+    AHV2Order memory withCallsB = _orderWithCalls(_calls(_calleeCall(0, hex'bb')), 63, deadline);
+    assertTrue(SchemaHash.ahv2Order(withCallsB) != hashA, 'the two orders really do differ');
 
     // a fresh solution nonce, as the first approval spent nonce 0
-    AHV2Solution memory routeB = _solution(withTailB, solverCalls, 1, deadline);
-    bytes memory approvalOfAForB = _signSolutionApproval(approverKey, withTailA, routeB);
+    AHV2Solution memory routeB = _solution(withCallsB, 1, deadline);
+    bytes memory approvalOfAForB = _signSolutionApproval(approverKey, withCallsA, routeB);
 
-    bytes memory authB = _authOf(withTailB);
+    bytes memory authB = _authOf(withCallsB);
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.settleOrder(withTailB, authB, routeB, approvalOfAForB, false);
+    hub.settleOrder(withCallsB, authB, routeB, approvalOfAForB, false);
 
-    assertEq(callee.callCount(), 2, 'the refused order ran nothing');
+    assertEq(callee.callCount(), 1, 'the refused order ran nothing');
 
     // the same order with its own approval does settle, so the refusal was the approval's doing
-    bytes memory approvalB = _signSolutionApproval(approverKey, withTailB, routeB);
+    bytes memory approvalB = _signSolutionApproval(approverKey, withCallsB, routeB);
 
     vm.prank(relayer);
-    hub.settleOrder(withTailB, authB, routeB, approvalB, false);
-    assertEq(callee.callCount(), 4, 'solver call and owner call ran for the second order too');
+    hub.settleOrder(withCallsB, authB, routeB, approvalB, false);
+    assertEq(callee.callCount(), 2, 'the call of the second order ran too');
   }
 
   /**
@@ -96,15 +95,17 @@ contract SolutionApprovalTest is SettlementBase {
    */
   function test_SOL_05_theSolutionExpirationIsEnforced() public {
     uint256 orderExpiration = vm.getBlockTimestamp() + 1 days;
-    CallParams[] memory solverCalls = _calls(_calleeCall(0, hex'01'));
-
     AHV2Order memory open = _openAhv2Order(
-      _allowances(_tokenAllowance(AMOUNT)), _noHooks(), _noCalls(), 70, orderExpiration
+      _allowances(_tokenAllowance(AMOUNT)),
+      _noHooks(),
+      _calls(_calleeCall(0, hex'01')),
+      70,
+      orderExpiration
     );
 
     uint256 before = _calleeBalance();
     vm.prank(owner);
-    hub.settleOrder(open, '', _solution(open, solverCalls, vm.getBlockTimestamp()), '', false);
+    hub.settleOrder(open, '', _solution(open, vm.getBlockTimestamp()), '', false);
     assertEq(_calleeBalance() - before, AMOUNT, 'the expiration second itself still settles');
 
     vm.warp(vm.getBlockTimestamp() + 1);
@@ -112,18 +113,22 @@ contract SolutionApprovalTest is SettlementBase {
 
     vm.prank(owner);
     vm.expectRevert(_deadlinePassed(stale));
-    hub.settleOrder(open, '', _solution(open, solverCalls, stale), '', false);
+    hub.settleOrder(open, '', _solution(open, stale), '', false);
 
     // and the same on the Permit2 entry point, whose modifier stack is written out separately
     AHV2Order memory forRelay = _openAhv2Order(
-      _allowances(_tokenAllowance(AMOUNT)), _noHooks(), _noCalls(), 72, orderExpiration
+      _allowances(_tokenAllowance(AMOUNT)),
+      _noHooks(),
+      _calls(_calleeCall(0, hex'01')),
+      72,
+      orderExpiration
     );
     forRelay.authenticator = permit2;
     bytes memory witness = _signWitness(forRelay);
 
     vm.prank(relayer);
     vm.expectRevert(_deadlinePassed(stale));
-    hub.settleOrder(forRelay, witness, _solution(forRelay, solverCalls, stale), '', false);
+    hub.settleOrder(forRelay, witness, _solution(forRelay, stale), '', false);
   }
 
   /**
@@ -141,13 +146,12 @@ contract SolutionApprovalTest is SettlementBase {
       _allowances(_tokenAllowance(AMOUNT)),
       _noNfts(),
       _noHooks(),
-      _noCalls(),
+      _calls(_calleeCall(0, hex'01')),
       approver,
       80,
       deadline
     );
-    AHV2Solution memory route =
-      _solution(named, _calls(_calleeCall(0, hex'01')), SOLUTION_NONCE, deadline);
+    AHV2Solution memory route = _solution(named, SOLUTION_NONCE, deadline);
     bytes memory approval = _signSolutionApproval(approverKey, named, route);
     bytes memory witness = _signWitness(named);
 
@@ -172,30 +176,35 @@ contract SolutionApprovalTest is SettlementBase {
 
   /**
    * SOL-02 — the sentinel approver accepts any solution, with no signature to present
-   * @dev Two different solutions settle under the same order, which is the meaning of "any
-   * solution", and neither carries an approval. The last step is the contrast: a specified
-   * approver on the otherwise identical order does demand one from a submitter other than the
-   * owner.
+   * @dev Two solutions that differ in their solver data settle under the same order, which is the
+   * meaning of "any solution", and neither carries an approval. The last step is the contrast: a
+   * specified approver on the otherwise identical order does demand one from a submitter other than
+   * the owner.
    */
   function test_SOL_02_sentinelApproverAcceptsAnySolution() public {
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
-    AHV2Order memory open =
-      _openAhv2Order(new ERC20Allowance[](0), _noHooks(), _noCalls(), 0, expiration);
+    AHV2Order memory open = _openAhv2Order(
+      new ERC20Allowance[](0), _noHooks(), _calls(_calleeCall(0, hex'01')), 0, expiration
+    );
+    AHV2Solution memory first = _route(open);
+    first.solverData[0] = hex'01';
 
     vm.prank(owner);
-    bytes[] memory results =
-      hub.settleOrder(open, '', _route(open, _calls(_calleeCall(0, hex'01'))), '', false);
+    bytes[] memory results = hub.settleOrder(open, '', first, '', false);
 
     assertEq(results.length, 1, 'the solution ran');
     assertEq(callee.callCount(), 1, 'once');
     assertEq(hub.nonces(lNonceKey(owner), 0), 0, 'the sentinel approver burns no nonce');
 
+    AHV2Solution memory second = _route(open);
+    second.solverData[0] = hex'02';
+
     vm.prank(owner);
-    hub.settleOrder(open, '', _route(open, _calls(_calleeCall(0, hex'02'))), '', false);
+    hub.settleOrder(open, '', second, '', false);
 
     assertEq(callee.callCount(), 2, 'and a different solution under the same order ran as well');
-    assertEq(callee.lastData(), hex'02', 'the second solution is the one that ran last');
+    assertEq(callee.lastSolverData(), hex'02', 'the second solution is the one that ran last');
 
     AHV2Order memory withApprover = _ahv2Order(
       address(authenticator),
@@ -203,7 +212,7 @@ contract SolutionApprovalTest is SettlementBase {
       new ERC20Allowance[](0),
       _noNfts(),
       _noHooks(),
-      _noCalls(),
+      _calls(_calleeCall(0, hex'01')),
       approver,
       0,
       expiration
@@ -212,9 +221,7 @@ contract SolutionApprovalTest is SettlementBase {
     bytes memory auth = _authOf(withApprover);
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.settleOrder(
-      withApprover, auth, _route(withApprover, _calls(_calleeCall(0, hex'01'))), '', false
-    );
+    hub.settleOrder(withApprover, auth, _route(withApprover), '', false);
   }
 
   /**
@@ -231,7 +238,7 @@ contract SolutionApprovalTest is SettlementBase {
       new ERC20Allowance[](0),
       _noNfts(),
       _noHooks(),
-      _noCalls(),
+      _calls(_calleeCall(0, hex'01')),
       approver,
       0,
       expiration
@@ -240,7 +247,7 @@ contract SolutionApprovalTest is SettlementBase {
     bytes memory auth = _authOf(order);
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.settleOrder(order, auth, _route(order, _calls(_calleeCall(0, hex'01'))), hex'1234', false);
+    hub.settleOrder(order, auth, _route(order), hex'1234', false);
 
     assertEq(callee.callCount(), 0, 'and nothing ran');
   }
@@ -261,13 +268,13 @@ contract SolutionApprovalTest is SettlementBase {
       _allowances(_tokenAllowance(AMOUNT)),
       _noNfts(),
       _noHooks(),
-      _noCalls(),
+      _calls(_calleeCall(0, hex'01')),
       ANY,
       21,
       expiration
     );
     bytes memory authData = _orderAuthData(order, signer, signerPk);
-    AHV2Solution memory route = _route(order, _calls(_calleeCall(0, hex'01')));
+    AHV2Solution memory route = _route(order);
 
     vm.prank(relayer);
     hub.settleOrder(order, authData, route, '', false);
@@ -290,9 +297,8 @@ contract SolutionApprovalTest is SettlementBase {
    * nonce the first spent, and an approval of the same solution with another nonce settles.
    */
   function test_SOL_07_anApprovalNonceCannotBeReusedForAnotherOrder() public {
-    CallParams[] memory calls = _calls(_calleeCall(0, hex'01'));
     AHV2Order memory first = _approverOrder(90);
-    AHV2Solution memory route = _route(first, calls, 4);
+    AHV2Solution memory route = _route(first, 4);
     bytes memory approval = _signSolutionApproval(approverKey, first, route);
     bytes memory firstAuth = _authOf(first);
 
@@ -301,7 +307,7 @@ contract SolutionApprovalTest is SettlementBase {
     assertEq(callee.callCount(), 1, 'the first settlement ran');
 
     AHV2Order memory second = _approverOrder(96);
-    AHV2Solution memory reused = _route(second, calls, 4);
+    AHV2Solution memory reused = _route(second, 4);
     bytes memory reusedApproval = _signSolutionApproval(approverKey, second, reused);
     bytes memory secondAuth = _authOf(second);
     vm.prank(relayer);
@@ -311,7 +317,7 @@ contract SolutionApprovalTest is SettlementBase {
     hub.settleOrder(second, secondAuth, reused, reusedApproval, false);
     assertEq(callee.callCount(), 1, 'the reuse ran nothing');
 
-    AHV2Solution memory fresh = _route(second, calls, 5);
+    AHV2Solution memory fresh = _route(second, 5);
     bytes memory freshApproval = _signSolutionApproval(approverKey, second, fresh);
     vm.prank(relayer);
     hub.settleOrder(second, secondAuth, fresh, freshApproval, false);
@@ -322,7 +328,7 @@ contract SolutionApprovalTest is SettlementBase {
   /// SOL-08 — the approver revokes an unused approval with `revokeNonce`
   function test_SOL_08_theApproverRevokesAnApproval() public {
     AHV2Order memory order = _approverOrder(91);
-    AHV2Solution memory route = _route(order, _calls(_calleeCall(0, hex'01')), 9);
+    AHV2Solution memory route = _route(order, 9);
     bytes memory approval = _signSolutionApproval(approverKey, order, route);
 
     vm.expectEmit(address(hub));
@@ -342,9 +348,13 @@ contract SolutionApprovalTest is SettlementBase {
   /// SOL-09 — the dead-address approver spends no nonce, so the same nonce repeats
   function test_SOL_09_theSentinelApproverSpendsNothing() public {
     AHV2Order memory open = _openAhv2Order(
-      new ERC20Allowance[](0), _noHooks(), _noCalls(), 0, vm.getBlockTimestamp() + 1 hours
+      new ERC20Allowance[](0),
+      _noHooks(),
+      _calls(_calleeCall(0, hex'01')),
+      0,
+      vm.getBlockTimestamp() + 1 hours
     );
-    AHV2Solution memory route = _route(open, _calls(_calleeCall(0, hex'01')), 7);
+    AHV2Solution memory route = _route(open, 7);
 
     vm.startPrank(owner);
     hub.settleOrder(open, '', route, '', false);
@@ -364,12 +374,12 @@ contract SolutionApprovalTest is SettlementBase {
       _allowances(_tokenAllowance(AMOUNT)),
       _noNfts(),
       _noHooks(),
-      _noCalls(),
+      _calls(_calleeCall(0, hex'01')),
       approver,
       92,
       deadline
     );
-    AHV2Solution memory route = _route(order, _calls(_calleeCall(0, hex'01')), 6);
+    AHV2Solution memory route = _route(order, 6);
     bytes memory approval = _signSolutionApproval(approverKey, order, route);
     bytes memory permitSig = _signWitness(order);
 
@@ -388,7 +398,7 @@ contract SolutionApprovalTest is SettlementBase {
    */
   function testFuzz_SOL_11_exactlyTheSolutionNonceIsSpent(SolutionNonceFuzz memory f) public {
     AHV2Order memory order = _approverOrder(93);
-    AHV2Solution memory route = _route(order, _calls(_calleeCall(0, hex'01')), f.nonce);
+    AHV2Solution memory route = _route(order, f.nonce);
     bytes memory approval = _signSolutionApproval(approverKey, order, route);
     bytes memory auth = _authOf(order);
 
@@ -402,7 +412,7 @@ contract SolutionApprovalTest is SettlementBase {
     );
 
     AHV2Order memory other = _approverOrder(95);
-    AHV2Solution memory replay = _route(other, _calls(_calleeCall(0, hex'01')), f.nonce);
+    AHV2Solution memory replay = _route(other, f.nonce);
     bytes memory replayApproval = _signSolutionApproval(approverKey, other, replay);
     bytes memory otherAuth = _authOf(other);
 
@@ -429,7 +439,7 @@ contract SolutionApprovalTest is SettlementBase {
     assertEq(hub.nonces(lNonceKey(approver), 0), 1 << 11, 'the delegation spent nonce 11');
 
     AHV2Order memory order = _approverOrder(94);
-    AHV2Solution memory route = _route(order, _calls(_calleeCall(0, hex'01')), 11);
+    AHV2Solution memory route = _route(order, 11);
     bytes memory approval = _signSolutionApproval(approverKey, order, route);
 
     bytes memory auth = _authOf(order);
@@ -511,8 +521,8 @@ contract SolutionApprovalTest is SettlementBase {
     uint256 nonce;
   }
 
-  /// @dev An order moving `AMOUNT` to the callee under the named `approver`, and a solution with
-  /// the nonce `SOLUTION_NONCE`
+  /// @dev An order with one call moving `AMOUNT` to the callee under the named `approver`, and a
+  /// solution with the nonce `SOLUTION_NONCE`
   function _namedApproverSettlement(address orderAuthenticator, uint256 nonce)
     private
     view
@@ -525,15 +535,15 @@ contract SolutionApprovalTest is SettlementBase {
       erc20s,
       _noNfts(),
       _noHooks(),
-      _noCalls(),
+      _calls(_calleeCall(0, hex'01')),
       approver,
       nonce,
       vm.getBlockTimestamp() + 1 hours
     );
-    return (order, _route(order, _calls(_calleeCall(0, hex'01')), SOLUTION_NONCE), erc20s);
+    return (order, _route(order, SOLUTION_NONCE), erc20s);
   }
 
-  /// @dev An order with no transfers whose approver is `approver`, valid for an hour
+  /// @dev An order with no transfers and one call whose approver is `approver`, valid for an hour
   function _approverOrder(uint256 nonce) private view returns (AHV2Order memory) {
     return _ahv2Order(
       address(authenticator),
@@ -541,15 +551,15 @@ contract SolutionApprovalTest is SettlementBase {
       new ERC20Allowance[](0),
       _noNfts(),
       _noHooks(),
-      _noCalls(),
+      _calls(_calleeCall(0, hex'01')),
       approver,
       nonce,
       vm.getBlockTimestamp() + 1 hours
     );
   }
 
-  /// @dev The SOL-01 pair: one order shape, varying only in the owner calls
-  function _orderWithTail(CallParams[] memory ownerCalls, uint256 nonce, uint256 expiration)
+  /// @dev The SOL-01 pair: one order shape, varying only in the calls
+  function _orderWithCalls(CallParams[] memory calls, uint256 nonce, uint256 expiration)
     private
     view
     returns (AHV2Order memory)
@@ -560,7 +570,7 @@ contract SolutionApprovalTest is SettlementBase {
       _allowances(_tokenAllowance(AMOUNT)),
       _noNfts(),
       _noHooks(),
-      ownerCalls,
+      calls,
       approver,
       nonce,
       expiration

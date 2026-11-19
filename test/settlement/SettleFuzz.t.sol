@@ -34,8 +34,7 @@ contract SettleFuzzTest is SettlementBase {
   /// @dev One parameter struct for the settlement fuzz tests
   struct OrderFuzz {
     uint160 amount;
-    uint8 solverCallCount;
-    uint8 ownerCallCount;
+    uint8 callCount;
     uint256 expirationOffset;
     uint96 msgValue;
     bool moveNft;
@@ -51,16 +50,15 @@ contract SettleFuzzTest is SettlementBase {
   /**
    * ORDER-FUZZ — a relayed order settles for any drawn order on each of the three authenticator
    * flows
-   * @dev `rail % 3` selects the authenticator: the zero address, with the owner's EIP-712
-   * signature over the order spending the order nonce in the owner's namespace of the hub; the
-   * Permit2 address, with a witness signature spending the Permit2 nonce; or an approved signer
-   * through the delegated authenticator, which spends the order nonce in its own bitmap. Both call
-   * lists range over empty and non-empty, and they go to different callees so each has a counter
-   * of its own. `approveSolution` switches between a specified approver with a real approval and
-   * the sentinel; `usePermit2Allowances` picks the pull path of the zero and the delegated rail,
-   * and the Permit2 rail ignores it; `pinSubmitter` and the nonce are covered by the order hash
-   * the event reports and by the signature of the rail. The solution's targets are drawn and
-   * receive the transfers, and the drawn native value is placed on the first solver call.
+   * @dev `rail % 3` selects the authenticator: the zero address, with the owner's EIP-712 signature
+   * over the order spending the order nonce in the owner's namespace of the hub; the Permit2
+   * address, with a witness signature spending the Permit2 nonce; or an approved signer through the
+   * delegated authenticator, which spends the order nonce in its own bitmap. The call list ranges
+   * over empty and non-empty. `approveSolution` switches between a specified approver with a real
+   * approval and the sentinel; `usePermit2Allowances` picks the pull path of the zero and the
+   * delegated rail, and the Permit2 rail ignores it; `pinSubmitter` and the nonce are covered by
+   * the order hash the event reports and by the signature of the rail. The solution's targets are
+   * drawn and receive the transfers, and the drawn native value is placed on the first call.
    */
   function testFuzz_ORDER_FUZZ_settleOrder(OrderFuzz memory f) public {
     uint8 rail = f.rail % 3;
@@ -130,8 +128,7 @@ contract SettleFuzzTest is SettlementBase {
    */
   function _boundFuzz(OrderFuzz memory f) private view {
     f.amount = uint160(bound(f.amount, 0, 100 ether));
-    f.solverCallCount = uint8(bound(f.solverCallCount, 0, 3));
-    f.ownerCallCount = uint8(bound(f.ownerCallCount, 0, 3));
+    f.callCount = uint8(bound(f.callCount, 0, 6));
     f.expirationOffset = bound(f.expirationOffset, 0, 30 days);
     f.msgValue = uint96(bound(f.msgValue, 0, 5 ether));
 
@@ -142,25 +139,20 @@ contract SettleFuzzTest is SettlementBase {
   }
 
   /// @dev The drawn order, authorized through `orderAuthenticator`, and solution, and the native
-  /// value the submitter sends: the drawn value goes to the first solver call, and is zero when
+  /// value the submitter sends: the drawn value is placed on the first call, and is zero when
   /// there is none
   function _fuzzOrder(OrderFuzz memory f, address submitter, address orderAuthenticator)
     private
     view
     returns (AHV2Order memory order, AHV2Solution memory route, uint256 value)
   {
-    value = f.solverCallCount == 0 ? 0 : f.msgValue;
+    value = f.callCount == 0 ? 0 : f.msgValue;
 
-    CallParams[] memory solverCalls = new CallParams[](f.solverCallCount);
-    for (uint256 i = 0; i < f.solverCallCount; i++) {
-      solverCalls[i] = _calleeCall(i == 0 ? f.msgValue : 0, abi.encodePacked(uint8(i)));
-    }
-
-    // the owner calls go to the second callee, so each list has a counter of its own
-    CallParams[] memory ownerCalls = new CallParams[](f.ownerCallCount);
-    for (uint256 i = 0; i < f.ownerCallCount; i++) {
-      ownerCalls[i] =
-        CallParams({callee: address(callee2), value: 0, data: abi.encodePacked(uint8(i))});
+    CallParams[] memory calls = new CallParams[](f.callCount);
+    for (uint256 i = 0; i < f.callCount; i++) {
+      calls[i] = CallParams({
+        callee: address(callee), value: i == 0 ? f.msgValue : 0, data: abi.encodePacked(uint8(i))
+      });
     }
 
     order = _ahv2Order(
@@ -169,7 +161,7 @@ contract SettleFuzzTest is SettlementBase {
       _allowances(_tokenAllowance(f.amount)),
       f.moveNft ? _approvals(_nftApproval()) : _noNfts(),
       _hooks(_hook(hook, HOOK_BOTH)),
-      ownerCalls,
+      calls,
       f.approveSolution ? approver : ANY,
       f.nonce,
       vm.getBlockTimestamp() + f.expirationOffset
@@ -178,10 +170,9 @@ contract SettleFuzzTest is SettlementBase {
       _addresses(f.erc20Target),
       _amounts(f.amount),
       f.moveNft ? _addresses(f.erc721Target) : new address[](0),
-      solverCalls,
       vm.getBlockTimestamp() + f.expirationOffset
     );
-    route.solverData = _solverData(f.ownerCallCount);
+    route.solverData = _solverData(f.callCount);
   }
 
   function _assertFuzzSettled(
@@ -198,9 +189,8 @@ contract SettleFuzzTest is SettlementBase {
       'exact amount moved to the drawn target'
     );
     assertEq(address(callee).balance - nativeBefore, value, 'native forwarded, none stranded');
-    assertEq(results.length, uint256(f.solverCallCount) + f.ownerCallCount, 'one result per call');
-    assertEq(callee.callCount(), f.solverCallCount, 'the solver list ran here');
-    assertEq(callee2.callCount(), f.ownerCallCount, 'and the owner calls there');
+    assertEq(results.length, f.callCount, 'one result per call');
+    assertEq(callee.callCount(), f.callCount, 'every call ran');
     assertEq(hook.sequenceLength(), 2, 'the hook bracketed the order');
     if (f.moveNft) {
       assertEq(nft.ownerOf(NFT_ID), f.erc721Target, 'nft transfer to the drawn target');

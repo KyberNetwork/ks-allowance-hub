@@ -102,7 +102,8 @@ contract GuardsTest is SignerAuthenticatorBase {
     AHV2AuthenticatorStub mock = new AHV2AuthenticatorStub();
 
     AHV2Order memory order = _openOrder(90, vm.getBlockTimestamp() + 1 hours);
-    AHV2Order memory permitOrder = _permit2Order(90, vm.getBlockTimestamp() + 1 hours);
+    AHV2Order memory permitOrder =
+      _permit2Order(90, vm.getBlockTimestamp() + 1 hours, new CallParams[](0));
     bytes memory permitSig = _signWitness(permitOrder);
 
     vm.prank(guardian);
@@ -110,11 +111,11 @@ contract GuardsTest is SignerAuthenticatorBase {
 
     vm.prank(owner);
     vm.expectRevert(Pausable.EnforcedPause.selector);
-    hub.settleOrder(order, '', _route(order, new CallParams[](0)), '', false);
+    hub.settleOrder(order, '', _route(order), '', false);
 
     vm.prank(relayer);
     vm.expectRevert(Pausable.EnforcedPause.selector);
-    hub.settleOrder(permitOrder, permitSig, _route(permitOrder, new CallParams[](0)), '', false);
+    hub.settleOrder(permitOrder, permitSig, _route(permitOrder), '', false);
 
     // Delegation carries no assets, so the pause does not reach it
     vm.prank(owner);
@@ -171,17 +172,17 @@ contract GuardsTest is SignerAuthenticatorBase {
 
     // the Permit2 path carries the same expiration into the permit, so the hub's own
     // modifier has to be the one that fires: a stale order must not reach Permit2 at all
-    AHV2Order memory stale = _permit2Order(91, t - 1);
+    AHV2Order memory stale = _permit2Order(91, t - 1, new CallParams[](0));
     bytes memory staleSig = _signWitness(stale);
 
     vm.prank(relayer);
     vm.expectRevert(_deadlinePassed(t - 1));
-    hub.settleOrder(stale, staleSig, _route(stale, new CallParams[](0)), '', false);
+    hub.settleOrder(stale, staleSig, _route(stale), '', false);
   }
 
   /// GUARD-05 — when both guards would fire, the pause wins, because it is the outer modifier
   function test_GUARD_05_pauseTakesPrecedenceOverTheExpiration() public {
-    AHV2Order memory stale = _permit2Order(0, vm.getBlockTimestamp() - 1);
+    AHV2Order memory stale = _permit2Order(0, vm.getBlockTimestamp() - 1, new CallParams[](0));
     AHV2Order memory ownerStale = _openOrder(0, vm.getBlockTimestamp() - 1);
     bytes memory staleSig = _signWitness(stale);
 
@@ -190,18 +191,21 @@ contract GuardsTest is SignerAuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(Pausable.EnforcedPause.selector);
-    hub.settleOrder(stale, staleSig, _route(stale, new CallParams[](0)), '', false);
+    hub.settleOrder(stale, staleSig, _route(stale), '', false);
 
     vm.prank(owner);
     vm.expectRevert(Pausable.EnforcedPause.selector);
-    hub.settleOrder(ownerStale, '', _route(ownerStale, new CallParams[](0)), '', false);
+    hub.settleOrder(ownerStale, '', _route(ownerStale), '', false);
   }
 
   // -----------------------------------------------------------------------------------------
   // GUARD — native spend
   // -----------------------------------------------------------------------------------------
 
-  /// GUARD-06 — a solver call may spend up to the value the order was sent with, and not one wei more
+  /**
+   * GUARD-06 — the calls may spend up to the value the order was sent with, and not one wei more
+   * @dev Each step splits the spend across two calls, so the guard compares their sum
+   */
   function test_GUARD_06_nativeSpendBoundary() public {
     _nativeSpendTransfer(VALUE - 1, true);
     _nativeSpendTransfer(VALUE, true);
@@ -223,16 +227,14 @@ contract GuardsTest is SignerAuthenticatorBase {
 
     // control
     uint256 before = IERC20(token18).balanceOf(address(callee));
-    AHV2Order memory control = _permit2Order(100, expiration);
+    AHV2Order memory control = _permit2Order(100, expiration, _calls(_calleeCall(0, hex'01')));
 
     vm.prank(solver);
-    hub.settleOrder(
-      control, _signWitness(control), _route(control, _calls(_calleeCall(0, hex'01'))), '', false
-    );
+    hub.settleOrder(control, _signWitness(control), _route(control), '', false);
     assertEq(IERC20(token18).balanceOf(address(callee)) - before, AMOUNT, 'the control settled');
 
     // whenNotPaused
-    AHV2Order memory paused = _permit2Order(101, expiration);
+    AHV2Order memory paused = _permit2Order(101, expiration, _calls(_calleeCall(0, hex'01')));
     bytes memory pausedSig = _signWitness(paused);
 
     vm.prank(guardian);
@@ -240,26 +242,28 @@ contract GuardsTest is SignerAuthenticatorBase {
 
     vm.prank(solver);
     vm.expectRevert(Pausable.EnforcedPause.selector);
-    hub.settleOrder(paused, pausedSig, _route(paused, _calls(_calleeCall(0, hex'01'))), '', false);
+    hub.settleOrder(paused, pausedSig, _route(paused), '', false);
 
     vm.prank(admin);
     hub.unpause();
 
     // checkSettlement
-    AHV2Order memory stale = _permit2Order(102, vm.getBlockTimestamp() - 1);
+    AHV2Order memory stale =
+      _permit2Order(102, vm.getBlockTimestamp() - 1, _calls(_calleeCall(0, hex'01')));
     bytes memory staleSig = _signWitness(stale);
 
     vm.prank(solver);
     vm.expectRevert(_deadlinePassed(vm.getBlockTimestamp() - 1));
-    hub.settleOrder(stale, staleSig, _route(stale, _calls(_calleeCall(0, hex'01'))), '', false);
+    hub.settleOrder(stale, staleSig, _route(stale), '', false);
 
     // guardNativeSpend
     vm.deal(address(hub), PREFUND);
     vm.deal(solver, VALUE);
 
-    AHV2Order memory overSpending = _permit2Order(104, expiration);
+    AHV2Order memory overSpending =
+      _permit2Order(104, expiration, _calls(_calleeCall(VALUE + 1, hex'01')));
     bytes memory overSpendingSig = _signWitness(overSpending);
-    AHV2Solution memory greedyRoute = _route(overSpending, _calls(_calleeCall(VALUE + 1, hex'01')));
+    AHV2Solution memory greedyRoute = _route(overSpending);
 
     vm.prank(solver);
     vm.expectRevert(
@@ -289,23 +293,25 @@ contract GuardsTest is SignerAuthenticatorBase {
         IAuthDelegator.AuthenticatorNotDelegated.selector, address(authenticator)
       )
     );
-    hub.settleOrder(undelegated, '', _route(undelegated, new CallParams[](0)), '', false);
+    hub.settleOrder(undelegated, '', _route(undelegated), '', false);
 
     // guardNativeSpend
     vm.deal(address(hub), PREFUND);
     vm.deal(owner, VALUE);
 
     AHV2Order memory overSpending = _openAhv2Order(
-      new ERC20Allowance[](0), new HookParams[](0), new CallParams[](0), 112, deadline
+      new ERC20Allowance[](0),
+      new HookParams[](0),
+      _calls(_calleeCall(VALUE + 1, hex'01')),
+      112,
+      deadline
     );
 
     vm.prank(owner);
     vm.expectRevert(
       abi.encodeWithSelector(NativeSpendGuard.NativeOverspent.selector, VALUE + 1, VALUE)
     );
-    hub.settleOrder{value: VALUE}(
-      overSpending, '', _route(overSpending, _calls(_calleeCall(VALUE + 1, hex'01'))), '', false
-    );
+    hub.settleOrder{value: VALUE}(overSpending, '', _route(overSpending), '', false);
 
     assertEq(address(hub).balance, PREFUND, 'the hub kept its native balance');
   }
@@ -322,12 +328,13 @@ contract GuardsTest is SignerAuthenticatorBase {
   }
 
   /// @dev As {_openOrder}, authorized through Permit2
-  function _permit2Order(uint256 nonce, uint256 expiration)
+  function _permit2Order(uint256 nonce, uint256 expiration, CallParams[] memory calls)
     internal
     view
     returns (AHV2Order memory order)
   {
     order = _openOrder(nonce, expiration);
+    order.calls = calls;
     order.authenticator = permit2;
   }
 
@@ -335,7 +342,7 @@ contract GuardsTest is SignerAuthenticatorBase {
     uint256 calleeBefore = IERC20(token18).balanceOf(address(callee));
 
     AHV2Order memory order = _openOrder(0, expiration);
-    AHV2Solution memory route = _route(order, new CallParams[](0));
+    AHV2Solution memory route = _route(order);
 
     vm.prank(owner);
     if (!shouldSettle) {
@@ -355,10 +362,13 @@ contract GuardsTest is SignerAuthenticatorBase {
     vm.deal(owner, VALUE);
 
     uint256 calleeBefore = address(callee).balance;
-    CallParams[] memory calls = _calls(_calleeCall(spend, hex'01'));
 
     AHV2Order memory order = _openAhv2Order(
-      new ERC20Allowance[](0), new HookParams[](0), new CallParams[](0), 0, vm.getBlockTimestamp()
+      new ERC20Allowance[](0),
+      new HookParams[](0),
+      _calls(_calleeCall(spend / 2, hex'01'), _calleeCall(spend - spend / 2, hex'02')),
+      0,
+      vm.getBlockTimestamp()
     );
 
     vm.prank(owner);
@@ -367,7 +377,7 @@ contract GuardsTest is SignerAuthenticatorBase {
         abi.encodeWithSelector(NativeSpendGuard.NativeOverspent.selector, spend, VALUE)
       );
     }
-    hub.settleOrder{value: VALUE}(order, '', _route(order, calls), '', false);
+    hub.settleOrder{value: VALUE}(order, '', _route(order), '', false);
 
     if (shouldSettle) {
       assertEq(address(callee).balance - calleeBefore, spend, 'the callee was paid exactly');

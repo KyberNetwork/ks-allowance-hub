@@ -88,7 +88,7 @@ contract OrderSignatureTest is SettlementBase {
       7,
       vm.getBlockTimestamp() + 1 hours
     );
-    AHV2Solution memory route = _route(order, _noCalls());
+    AHV2Solution memory route = _route(order);
     bytes memory signature = _signOrder(order);
 
     uint256 before = _calleeBalance();
@@ -129,7 +129,7 @@ contract OrderSignatureTest is SettlementBase {
       vm.getBlockTimestamp() + 1 hours
     );
     order.owner = address(wallet);
-    AHV2Solution memory route = _route(order, _noCalls());
+    AHV2Solution memory route = _route(order);
 
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidOrderSignature.selector);
@@ -149,15 +149,16 @@ contract OrderSignatureTest is SettlementBase {
    * SIG-03 — a signature that does not cover the order as submitted is refused
    * @dev Each step is refused with `InvalidOrderSignature` and leaves the nonce it presented
    * unspent: a wrong key, a signature over an order that differed in the exclusive caller, the
-   * nonce or the client data, and an empty signature. The last step is the control that the
+   * nonce, the client data or the data of a call, and an empty signature. The last step is the control that the
    * unsigned order settles with a correct signature.
    */
   function test_SIG_03_signatureNotCoveringTheOrderIsRefused() public {
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
 
-    AHV2Order memory order = _openAhv2Order(erc20s, _noHooks(), _noCalls(), 10, expiration);
-    AHV2Solution memory route = _route(order, _noCalls());
+    AHV2Order memory order =
+      _openAhv2Order(erc20s, _noHooks(), _calls(_calleeCall(0, hex'01')), 10, expiration);
+    AHV2Solution memory route = _route(order);
 
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidOrderSignature.selector);
@@ -187,6 +188,13 @@ contract OrderSignatureTest is SettlementBase {
     assertEq(hub.nonces(lNonceKey(owner), 0) & (1 << 10), 0, 'client data: nonce unspent');
     order.clientData = '';
 
+    order.calls[0].data = hex'02';
+    vm.prank(relayer);
+    vm.expectRevert(IKSAllowanceHubV2.InvalidOrderSignature.selector);
+    hub.settleOrder(order, signature, route, '', false);
+    assertEq(hub.nonces(lNonceKey(owner), 0) & (1 << 10), 0, 'call data: nonce unspent');
+    order.calls[0].data = hex'01';
+
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidOrderSignature.selector);
     hub.settleOrder(order, '', route, '', false);
@@ -196,6 +204,7 @@ contract OrderSignatureTest is SettlementBase {
     vm.prank(relayer);
     hub.settleOrder(order, signature, route, '', false);
     assertEq(_calleeBalance() - before, AMOUNT, 'the signed order settles');
+    assertEq(callee.lastData(), hex'01', 'with the signed call data');
     assertEq(hub.nonces(lNonceKey(owner), 0), 1 << 10, 'and spends only its own nonce');
   }
 
@@ -212,7 +221,7 @@ contract OrderSignatureTest is SettlementBase {
       5,
       vm.getBlockTimestamp() + 1 hours
     );
-    AHV2Solution memory route = _route(order, _noCalls());
+    AHV2Solution memory route = _route(order);
     uint256 before = _calleeBalance();
 
     vm.prank(owner);
@@ -240,42 +249,50 @@ contract OrderSignatureTest is SettlementBase {
   }
 
   /**
-   * SIG-05 — the order signature does not bind the route, and a non-zero approver does
-   * @dev With the sentinel approver, two orders are settled with different routes and no
-   * approval; each spends its own nonce. With a named approver, an empty approval is refused.
+   * SIG-05 — the order signature does not bind the solution, and a non-zero approver does
+   * @dev With the sentinel approver, two orders carrying the same call are settled with solutions
+   * that differ in their solver data and no approval; each spends its own nonce. With a named
+   * approver, an empty approval is refused.
    */
-  function test_SIG_05_routeIsFreeWithSentinelApproverAndBoundByANamedOne() public {
+  function test_SIG_05_solutionIsFreeWithSentinelApproverAndBoundByANamedOne() public {
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
 
-    AHV2Order memory first = _openAhv2Order(erc20s, _noHooks(), _noCalls(), 1, expiration);
-    AHV2Order memory second = _openAhv2Order(erc20s, _noHooks(), _noCalls(), 2, expiration);
-    AHV2Solution memory routeA = _route(first, _calls(_calleeCall(0, hex'01')));
-    AHV2Solution memory routeB = _route(second, _calls(_calleeCall(0, hex'02')));
+    AHV2Order memory first =
+      _openAhv2Order(erc20s, _noHooks(), _calls(_calleeCall(0, hex'01')), 1, expiration);
+    AHV2Order memory second =
+      _openAhv2Order(erc20s, _noHooks(), _calls(_calleeCall(0, hex'01')), 2, expiration);
+    AHV2Solution memory solutionA = _route(first);
+    solutionA.solverData[0] = hex'0a';
+    AHV2Solution memory solutionB = _route(second);
+    solutionB.solverData[0] = hex'0b';
 
     uint256 before = _calleeBalance();
 
     vm.prank(relayer);
-    hub.settleOrder(first, _signOrder(first), routeA, '', false);
+    hub.settleOrder(first, _signOrder(first), solutionA, '', false);
+    assertEq(callee.lastSolverData(), hex'0a', 'the first solution ran');
     vm.prank(relayer);
-    hub.settleOrder(second, _signOrder(second), routeB, '', false);
+    hub.settleOrder(second, _signOrder(second), solutionB, '', false);
+    assertEq(callee.lastSolverData(), hex'0b', 'the second solution ran');
 
-    assertEq(_calleeBalance() - before, 2 * AMOUNT, 'both routes settled');
+    assertEq(_calleeBalance() - before, 2 * AMOUNT, 'both solutions settled');
     assertEq(hub.nonces(lNonceKey(owner), 0), (1 << 1) | (1 << 2), 'each spent its own nonce');
 
-    AHV2Order memory named =
-      _ahv2Order(ANY, erc20s, _noNfts(), _noHooks(), _noCalls(), approver, 3, expiration);
-    AHV2Solution memory routeC = _route(named, _noCalls());
+    AHV2Order memory named = _ahv2Order(
+      ANY, erc20s, _noNfts(), _noHooks(), _calls(_calleeCall(0, hex'01')), approver, 3, expiration
+    );
+    AHV2Solution memory solutionC = _route(named);
     bytes memory signature = _signOrder(named);
 
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.settleOrder(named, signature, routeC, '', false);
+    hub.settleOrder(named, signature, solutionC, '', false);
     assertEq(hub.nonces(lNonceKey(owner), 0) & (1 << 3), 0, 'the refusal spent no nonce');
 
     vm.prank(relayer);
     hub.settleOrder(
-      named, signature, routeC, _signSolutionApproval(approverKey, named, routeC), false
+      named, signature, solutionC, _signSolutionApproval(approverKey, named, solutionC), false
     );
     assertEq(_calleeBalance() - before, 3 * AMOUNT, 'with the approval it settles');
   }
@@ -298,7 +315,7 @@ contract OrderSignatureTest is SettlementBase {
     vm.expectRevert(
       abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(owner), 8)
     );
-    hub.settleOrder(revoked, revokedSig, _route(revoked, _noCalls()), '', false);
+    hub.settleOrder(revoked, revokedSig, _route(revoked), '', false);
 
     AHV2Order memory delegated = _openAhv2Order(erc20s, _noHooks(), _noCalls(), 9, expiration);
     bytes memory delegatedSig = _signOrder(delegated);
@@ -311,7 +328,7 @@ contract OrderSignatureTest is SettlementBase {
     vm.expectRevert(
       abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(owner), 9)
     );
-    hub.settleOrder(delegated, delegatedSig, _route(delegated, _noCalls()), '', false);
+    hub.settleOrder(delegated, delegatedSig, _route(delegated), '', false);
 
     assertEq(_calleeBalance(), 0, 'nothing moved');
   }
@@ -332,7 +349,7 @@ contract OrderSignatureTest is SettlementBase {
       4,
       vm.getBlockTimestamp() + 1 hours
     );
-    AHV2Solution memory route = _route(order, _noCalls());
+    AHV2Solution memory route = _route(order);
     bytes memory signature = _signOrder(order);
 
     vm.prank(relayer);
@@ -362,7 +379,7 @@ contract OrderSignatureTest is SettlementBase {
       8,
       vm.getBlockTimestamp() + 1 hours
     );
-    AHV2Solution memory route = _route(order, _noCalls());
+    AHV2Solution memory route = _route(order);
     bytes memory wrongKeySignature = _signOrder(order, signerPk);
 
     vm.prank(owner);
@@ -393,7 +410,7 @@ contract OrderSignatureTest is SettlementBase {
       9,
       vm.getBlockTimestamp() + 1 hours
     );
-    AHV2Solution memory route = _route(order, _noCalls());
+    AHV2Solution memory route = _route(order);
 
     vm.prank(owner);
     hub.revokeNonce(9);
@@ -423,7 +440,7 @@ contract OrderSignatureTest is SettlementBase {
       f.nonce,
       vm.getBlockTimestamp() + f.ttl
     );
-    AHV2Solution memory route = _route(order, _noCalls());
+    AHV2Solution memory route = _route(order);
     bytes memory signature = _signOrder(order);
 
     uint256 before = _calleeBalance();
@@ -468,7 +485,7 @@ contract OrderSignatureTest is SettlementBase {
 
     vm.expectCall(permit2, abi.encodeWithSelector(IAHV2Authenticator.authenticate.selector), 0);
     vm.prank(relayer);
-    hub.settleOrder(order, witness, _route(order, _noCalls()), '', false);
+    hub.settleOrder(order, witness, _route(order), '', false);
 
     assertEq(_calleeBalance() - before, AMOUNT, 'settled through Permit2');
   }
@@ -494,7 +511,7 @@ contract OrderSignatureTest is SettlementBase {
     vm.expectCall(permit2, abi.encodeWithSelector(PERMIT_TRANSFER_BATCH), 0);
     vm.expectCall(permit2, abi.encodeWithSelector(PERMIT_TRANSFER_SINGLE), 0);
     vm.prank(relayer);
-    hub.settleOrder(order, authData, _route(order, _noCalls()), '', false);
+    hub.settleOrder(order, authData, _route(order), '', false);
 
     assertEq(_calleeBalance() - before, AMOUNT, 'settled through the authenticator');
   }
@@ -519,7 +536,7 @@ contract OrderSignatureTest is SettlementBase {
     uint256 before = _calleeBalance();
 
     vm.prank(relayer);
-    hub.settleOrder(order, witness, _route(order, _noCalls()), '', true);
+    hub.settleOrder(order, witness, _route(order), '', true);
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the tokens moved');
     assertEq(_permit2Allowance(token18), 100 ether, 'the Permit2 allowance is unchanged');
@@ -544,7 +561,7 @@ contract OrderSignatureTest is SettlementBase {
       address(authenticator), abi.encodeWithSelector(IAHV2Authenticator.authenticate.selector), 0
     );
     vm.prank(owner);
-    hub.settleOrder(order, '', _route(order, _noCalls()), '', false);
+    hub.settleOrder(order, '', _route(order), '', false);
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the owner settled');
   }
@@ -558,7 +575,7 @@ contract OrderSignatureTest is SettlementBase {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
     AHV2Order memory order = _openAhv2Order(permit2, erc20s, _noHooks(), _noCalls(), 25, expiration);
-    AHV2Solution memory route = _route(order, _noCalls());
+    AHV2Solution memory route = _route(order);
 
     bytes memory plain = _signPlainPermit(erc20s, 25, expiration);
     vm.prank(relayer);
@@ -602,7 +619,7 @@ contract OrderSignatureTest is SettlementBase {
       nonce,
       vm.getBlockTimestamp() + 1 hours
     );
-    AHV2Solution memory route = _route(order, _noCalls());
+    AHV2Solution memory route = _route(order);
 
     bytes memory credential;
     if (railAuthenticator == address(0)) {

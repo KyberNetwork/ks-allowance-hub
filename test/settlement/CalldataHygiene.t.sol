@@ -22,14 +22,11 @@ contract CalldataHygieneTest is SignerAuthenticatorBase {
 
   /// DIRTY-01 — a dirty token address word is refused for the zero authenticator, owner submitted
   function test_DIRTY_01_delegatedOwnerSubmitted() public {
-    AHV2Order memory order = _order(address(0), 90, vm.getBlockTimestamp() + 1 hours);
+    AHV2Order memory order =
+      _order(address(0), _calls(_calleeCall(0, hex'01')), 90, vm.getBlockTimestamp() + 1 hours);
 
     _assertDirtyTokenWordIsRefused(
-      owner,
-      abi.encodeCall(
-        IKSAllowanceHubV2.settleOrder,
-        (order, '', _route(order, _calls(_calleeCall(0, hex'01'))), '', false)
-      )
+      owner, abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', _route(order), '', false))
     );
   }
 
@@ -38,13 +35,13 @@ contract CalldataHygieneTest is SignerAuthenticatorBase {
    * @dev The witness binds the same order members.
    */
   function test_DIRTY_02_permit2Witnessed() public {
-    AHV2Order memory order = _order(permit2, 91, vm.getBlockTimestamp() + 1 hours);
+    AHV2Order memory order =
+      _order(permit2, _calls(_calleeCall(0, hex'01')), 91, vm.getBlockTimestamp() + 1 hours);
 
     _assertDirtyTokenWordIsRefused(
       relayer,
       abi.encodeCall(
-        IKSAllowanceHubV2.settleOrder,
-        (order, _signWitness(order), _route(order, _calls(_calleeCall(0, hex'01'))), '', false)
+        IKSAllowanceHubV2.settleOrder, (order, _signWitness(order), _route(order), '', false)
       )
     );
   }
@@ -52,19 +49,15 @@ contract CalldataHygieneTest is SignerAuthenticatorBase {
   /// DIRTY-03 — a dirty token address word is refused for a delegated authenticator
   function test_DIRTY_03_delegatedAuthenticated() public {
     _delegateSignerThroughHub(signer);
-    AHV2Order memory order = _order(address(authenticator), 92, vm.getBlockTimestamp() + 1 hours);
+    AHV2Order memory order = _order(
+      address(authenticator), _calls(_calleeCall(0, hex'01')), 92, vm.getBlockTimestamp() + 1 hours
+    );
 
     _assertDirtyTokenWordIsRefused(
       relayer,
       abi.encodeCall(
         IKSAllowanceHubV2.settleOrder,
-        (
-          order,
-          _orderAuthData(order, signer, signerPk),
-          _route(order, _calls(_calleeCall(0, hex'01'))),
-          '',
-          false
-        )
+        (order, _orderAuthData(order, signer, signerPk), _route(order), '', false)
       )
     );
   }
@@ -72,7 +65,8 @@ contract CalldataHygieneTest is SignerAuthenticatorBase {
   /// DIRTY-04 — a dirty token address word is refused for the Permit2 authenticator, owner
   /// submitted
   function test_DIRTY_04_permit2OwnerSubmitted() public {
-    AHV2Order memory order = _order(permit2, 93, vm.getBlockTimestamp() + 1 hours);
+    AHV2Order memory order =
+      _order(permit2, _calls(_calleeCall(0, hex'02')), 93, vm.getBlockTimestamp() + 1 hours);
 
     _assertDirtyTokenWordIsRefused(
       owner,
@@ -81,7 +75,7 @@ contract CalldataHygieneTest is SignerAuthenticatorBase {
         (
           order,
           _signPlainPermit(order.erc20Allowances, order.nonce, order.expiration),
-          _route(order, _calls(_calleeCall(0, hex'02'))),
+          _route(order),
           '',
           false
         )
@@ -91,16 +85,17 @@ contract CalldataHygieneTest is SignerAuthenticatorBase {
 
   /// @dev The sentinel approver, so no approval signature stands between the settlement and the
   /// hash
-  function _order(address orderAuthenticator, uint256 nonce, uint256 expiration)
-    internal
-    view
-    returns (AHV2Order memory)
-  {
+  function _order(
+    address orderAuthenticator,
+    CallParams[] memory calls,
+    uint256 nonce,
+    uint256 expiration
+  ) internal view returns (AHV2Order memory) {
     return _openAhv2Order(
       orderAuthenticator,
       _allowances(_tokenAllowance(AMOUNT)),
       new HookParams[](0),
-      new CallParams[](0),
+      calls,
       nonce,
       expiration
     );

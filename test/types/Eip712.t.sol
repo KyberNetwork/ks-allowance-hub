@@ -128,10 +128,10 @@ contract Eip712Test is V2TestBase {
 
   /**
    * The witness hash matches the independent encoding with empty client data
-   * @dev The hooks and the owner's calls are non-empty here, so those members are encoded
+   * @dev The hooks and the calls are non-empty here, so those members are encoded
    */
   function test_T712_witnessStructHash() public view {
-    CallParams[] memory ownerCalls = _sampleCalls();
+    CallParams[] memory calls = _sampleCalls();
     ERC721Approval[] memory approvals = _sampleApprovals();
     HookParams[] memory hooks = _sampleHooks();
     address approver = address(0xBEEF);
@@ -140,13 +140,13 @@ contract Eip712Test is V2TestBase {
         exclusiveCaller: ANY,
         erc721Approvals: approvals,
         hooks: hooks,
-        ownerCalls: ownerCalls,
+        calls: calls,
         solutionApprover: approver,
         clientData: ''
       })
     );
 
-    assertEq(this.extHashWitness(approvals, hooks, ownerCalls, approver, ''), expected, 'hasher');
+    assertEq(this.extHashWitness(approvals, hooks, calls, approver, ''), expected, 'hasher');
   }
 
   /**
@@ -162,7 +162,7 @@ contract Eip712Test is V2TestBase {
       exclusiveCaller: ANY,
       erc721Approvals: approvals,
       hooks: hooks,
-      ownerCalls: calls,
+      calls: calls,
       solutionApprover: approver,
       clientData: CLIENT_DATA
     });
@@ -424,11 +424,11 @@ contract Eip712Test is V2TestBase {
   function extHashWitness(
     ERC721Approval[] calldata approvals,
     HookParams[] calldata hooks,
-    CallParams[] calldata ownerCalls,
+    CallParams[] calldata calls,
     address approver,
     bytes calldata clientData
   ) external pure returns (bytes32) {
-    return AHV2WitnessLib.hash(ANY, approvals, hooks, ownerCalls, approver, clientData);
+    return AHV2WitnessLib.hash(ANY, approvals, hooks, calls, approver, clientData);
   }
 
   function extHashSolution(AHV2Solution calldata s) external pure returns (bytes32) {
@@ -486,7 +486,7 @@ contract Eip712Test is V2TestBase {
       erc20Allowances: _sampleAllowances(),
       erc721Approvals: _sampleApprovals(),
       hooks: _sampleHooks(),
-      ownerCalls: _sampleCalls(),
+      calls: _sampleCalls(),
       solutionApprover: address(0xBEEF),
       nonce: 12,
       expiration: 5678,
@@ -495,7 +495,7 @@ contract Eip712Test is V2TestBase {
   }
 
   /// @dev One target and amount per ERC20 transfer, one target per NFT transfer and one `solverData`
-  /// entry per owner call of {_sampleOrder}, none of the targets a callee
+  /// entry per call of {_sampleOrder}, none of the targets a callee
   function _sampleSolution() private pure returns (AHV2Solution memory) {
     address[] memory erc20Targets = new address[](2);
     erc20Targets[0] = address(0xBBB1);
@@ -512,7 +512,6 @@ contract Eip712Test is V2TestBase {
       erc20Targets: erc20Targets,
       erc20Amounts: erc20Amounts,
       erc721Targets: erc721Targets,
-      solverCalls: _sampleCalls(),
       solverData: solverData,
       nonce: 3456,
       expiration: 9012

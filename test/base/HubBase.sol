@@ -252,7 +252,7 @@ abstract contract HubBase is V2TestBase {
     ERC20Allowance[] memory erc20Allowances,
     ERC721Approval[] memory erc721Approvals,
     HookParams[] memory hooks,
-    CallParams[] memory ownerCalls,
+    CallParams[] memory orderCalls,
     address solutionApprover,
     uint256 nonce,
     uint256 expiration
@@ -263,7 +263,7 @@ abstract contract HubBase is V2TestBase {
       erc20Allowances,
       erc721Approvals,
       hooks,
-      ownerCalls,
+      orderCalls,
       solutionApprover,
       nonce,
       expiration
@@ -277,7 +277,7 @@ abstract contract HubBase is V2TestBase {
     ERC20Allowance[] memory erc20Allowances,
     ERC721Approval[] memory erc721Approvals,
     HookParams[] memory hooks,
-    CallParams[] memory ownerCalls,
+    CallParams[] memory orderCalls,
     address solutionApprover,
     uint256 nonce,
     uint256 expiration
@@ -289,7 +289,7 @@ abstract contract HubBase is V2TestBase {
       erc20Allowances: erc20Allowances,
       erc721Approvals: erc721Approvals,
       hooks: hooks,
-      ownerCalls: ownerCalls,
+      calls: orderCalls,
       solutionApprover: solutionApprover,
       nonce: nonce,
       expiration: expiration,
@@ -297,16 +297,16 @@ abstract contract HubBase is V2TestBase {
     });
   }
 
-  /// @dev Open to any submitter, any route, plain ERC20 allowance, no NFT approval, zero
+  /// @dev Open to any submitter, any solution, plain ERC20 allowance, no NFT approval, zero
   /// authenticator
   function _openAhv2Order(
     ERC20Allowance[] memory erc20Allowances,
     HookParams[] memory hooks,
-    CallParams[] memory ownerCalls,
+    CallParams[] memory orderCalls,
     uint256 nonce,
     uint256 expiration
   ) internal view returns (AHV2Order memory) {
-    return _openAhv2Order(address(0), erc20Allowances, hooks, ownerCalls, nonce, expiration);
+    return _openAhv2Order(address(0), erc20Allowances, hooks, orderCalls, nonce, expiration);
   }
 
   /// @dev As above, with the authenticator `orderAuthenticator`
@@ -314,7 +314,7 @@ abstract contract HubBase is V2TestBase {
     address orderAuthenticator,
     ERC20Allowance[] memory erc20Allowances,
     HookParams[] memory hooks,
-    CallParams[] memory ownerCalls,
+    CallParams[] memory orderCalls,
     uint256 nonce,
     uint256 expiration
   ) internal view returns (AHV2Order memory) {
@@ -324,7 +324,7 @@ abstract contract HubBase is V2TestBase {
       erc20Allowances,
       new ERC721Approval[](0),
       hooks,
-      ownerCalls,
+      orderCalls,
       ANY,
       nonce,
       expiration
@@ -341,10 +341,9 @@ abstract contract HubBase is V2TestBase {
     address[] memory erc20Targets,
     uint160[] memory erc20Amounts,
     address[] memory erc721Targets,
-    CallParams[] memory solverCalls,
     uint256 expiration
   ) internal pure returns (AHV2Solution memory) {
-    return _solution(erc20Targets, erc20Amounts, erc721Targets, solverCalls, 0, expiration);
+    return _solution(erc20Targets, erc20Amounts, erc721Targets, 0, expiration);
   }
 
   /// @dev A solution with nonce `nonce`
@@ -352,7 +351,6 @@ abstract contract HubBase is V2TestBase {
     address[] memory erc20Targets,
     uint160[] memory erc20Amounts,
     address[] memory erc721Targets,
-    CallParams[] memory solverCalls,
     uint256 nonce,
     uint256 expiration
   ) internal pure returns (AHV2Solution memory) {
@@ -360,7 +358,6 @@ abstract contract HubBase is V2TestBase {
       erc20Targets: erc20Targets,
       erc20Amounts: erc20Amounts,
       erc721Targets: erc721Targets,
-      solverCalls: solverCalls,
       solverData: new bytes[](0),
       nonce: nonce,
       expiration: expiration
@@ -369,14 +366,13 @@ abstract contract HubBase is V2TestBase {
 
   /**
    * @dev As above, sending the full allowance of every ERC20 transfer of `order` to `callee` and
-   * every NFT transfer to `callee2`, with one empty `solverData` entry per owner call
+   * every NFT transfer to `callee2`, with one empty `solverData` entry per call
    */
-  function _solution(
-    AHV2Order memory order,
-    CallParams[] memory solverCalls,
-    uint256 nonce,
-    uint256 expiration
-  ) internal view returns (AHV2Solution memory) {
+  function _solution(AHV2Order memory order, uint256 nonce, uint256 expiration)
+    internal
+    view
+    returns (AHV2Solution memory)
+  {
     address[] memory erc20Targets = new address[](order.erc20Allowances.length);
     uint160[] memory erc20Amounts = new uint160[](order.erc20Allowances.length);
     for (uint256 i = 0; i < erc20Targets.length; i++) {
@@ -388,36 +384,32 @@ abstract contract HubBase is V2TestBase {
       erc721Targets[i] = address(callee2);
     }
     AHV2Solution memory solution =
-      _solution(erc20Targets, erc20Amounts, erc721Targets, solverCalls, nonce, expiration);
-    solution.solverData = _solverData(order.ownerCalls.length);
+      _solution(erc20Targets, erc20Amounts, erc721Targets, nonce, expiration);
+    solution.solverData = _solverData(order.calls.length);
     return solution;
   }
 
   /// @dev As above, with solution nonce 0
-  function _solution(AHV2Order memory order, CallParams[] memory solverCalls, uint256 expiration)
+  function _solution(AHV2Order memory order, uint256 expiration)
     internal
     view
     returns (AHV2Solution memory)
   {
-    return _solution(order, solverCalls, 0, expiration);
+    return _solution(order, 0, expiration);
   }
 
-  /// @dev The route a solver supplies for `order` when the owner pinned nothing, valid for an hour
-  function _route(AHV2Order memory order, CallParams[] memory solverCalls)
-    internal
-    view
-    returns (AHV2Solution memory)
-  {
-    return _route(order, solverCalls, 0);
+  /// @dev The solution for `order` with its default targets, valid for an hour
+  function _route(AHV2Order memory order) internal view returns (AHV2Solution memory) {
+    return _route(order, 0);
   }
 
   /// @dev As above, with the solution nonce `nonce`
-  function _route(AHV2Order memory order, CallParams[] memory solverCalls, uint256 nonce)
+  function _route(AHV2Order memory order, uint256 nonce)
     internal
     view
     returns (AHV2Solution memory)
   {
-    return _solution(order, solverCalls, nonce, vm.getBlockTimestamp() + 1 hours);
+    return _solution(order, nonce, vm.getBlockTimestamp() + 1 hours);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -436,7 +428,7 @@ abstract contract HubBase is V2TestBase {
   function _signWitness(
     AHV2Order memory order,
     address witnessExclusiveCaller,
-    CallParams[] memory witnessOwnerCalls,
+    CallParams[] memory witnessCalls,
     address witnessApprover,
     uint256 signerKey
   ) internal view returns (bytes memory) {
@@ -444,7 +436,7 @@ abstract contract HubBase is V2TestBase {
       exclusiveCaller: witnessExclusiveCaller,
       erc721Approvals: order.erc721Approvals,
       hooks: order.hooks,
-      ownerCalls: witnessOwnerCalls,
+      calls: witnessCalls,
       solutionApprover: witnessApprover,
       clientData: order.clientData
     });
@@ -461,15 +453,15 @@ abstract contract HubBase is V2TestBase {
   function _signWitness(
     AHV2Order memory order,
     address witnessExclusiveCaller,
-    CallParams[] memory witnessOwnerCalls,
+    CallParams[] memory witnessCalls,
     address witnessApprover
   ) internal view returns (bytes memory) {
-    return _signWitness(order, witnessExclusiveCaller, witnessOwnerCalls, witnessApprover, ownerKey);
+    return _signWitness(order, witnessExclusiveCaller, witnessCalls, witnessApprover, ownerKey);
   }
 
   /// @dev As above, with the witness agreeing with the order in every member
   function _signWitness(AHV2Order memory order) internal view returns (bytes memory) {
-    return _signWitness(order, order.exclusiveCaller, order.ownerCalls, order.solutionApprover);
+    return _signWitness(order, order.exclusiveCaller, order.calls, order.solutionApprover);
   }
 
   /// @dev As above, signed by `signerKey`, for an order owned by the account of that key
@@ -478,9 +470,8 @@ abstract contract HubBase is V2TestBase {
     view
     returns (bytes memory)
   {
-    return _signWitness(
-      order, order.exclusiveCaller, order.ownerCalls, order.solutionApprover, signerKey
-    );
+    return
+      _signWitness(order, order.exclusiveCaller, order.calls, order.solutionApprover, signerKey);
   }
 
   /// @dev Permit2 self-transfer: the owner submits, so there is no witness to bind

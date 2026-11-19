@@ -13,12 +13,12 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * @notice Witness the owner's Permit2 signature covers when another account submits
  * {IKSAllowanceHubV2-settleOrder} for an order whose `authenticator` is the Permit2 address
  * @dev Covers the parts of the order the permit does not; the permit covers the ERC20 tokens and
- * amounts. The route and the targets of the transfers are not covered; the witness specifies the
- * exclusive caller, the hooks and the solution approver instead.
+ * amounts. The targets of the transfers and the solver data are not covered; the witness specifies
+ * the exclusive caller, the hooks and the solution approver instead.
  * @param exclusiveCaller Account that may submit the order; the zero address allows any account
  * @param erc721Approvals ERC721 transfers
  * @param hooks Hooks of the order
- * @param ownerCalls Callee calls fixed by the owner
+ * @param calls Callee calls fixed by the owner
  * @param solutionApprover Account whose signature the solution requires; the zero address requires
  * none
  * @param clientData The order's client data
@@ -27,7 +27,7 @@ struct AHV2Witness {
   address exclusiveCaller;
   ERC721Approval[] erc721Approvals;
   HookParams[] hooks;
-  CallParams[] ownerCalls;
+  CallParams[] calls;
   address solutionApprover;
   bytes clientData;
 }
@@ -55,14 +55,14 @@ library AHV2WitnessLib {
   using HookParamsLib for HookParams[];
 
   string internal constant AHV2_WITNESS_PERMIT2_TYPE_STRING = 'AHV2Witness witness)'
-    'AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,bytes clientData)'
+    'AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,bytes clientData)'
     'CallParams(address callee,uint256 value,bytes data)'
     'ERC721Approval(address token,uint256 tokenId)'
     'HookParams(address hook,bytes32 flags,bytes data)'
     'TokenPermissions(address token,uint256 amount)';
 
   bytes32 internal constant AHV2_WITNESS_TYPEHASH = keccak256(
-    'AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,bytes clientData)'
+    'AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,bytes clientData)'
     'CallParams(address callee,uint256 value,bytes data)'
     'ERC721Approval(address token,uint256 tokenId)'
     'HookParams(address hook,bytes32 flags,bytes data)'
@@ -73,7 +73,7 @@ library AHV2WitnessLib {
     address exclusiveCaller,
     ERC721Approval[] calldata erc721Approvals,
     HookParams[] calldata hooks,
-    CallParams[] calldata ownerCalls,
+    CallParams[] calldata calls,
     address solutionApprover,
     bytes calldata clientData
   ) internal pure returns (bytes32) {
@@ -81,7 +81,7 @@ library AHV2WitnessLib {
       exclusiveCaller,
       erc721Approvals.hash(),
       hooks.hash(),
-      ownerCalls.hash(),
+      calls.hash(),
       solutionApprover,
       clientData.hashCalldata()
     );
@@ -92,7 +92,7 @@ library AHV2WitnessLib {
     address exclusiveCaller,
     bytes32 erc721ApprovalsHash,
     bytes32 hooksHash,
-    bytes32 ownerCallsHash,
+    bytes32 callsHash,
     address solutionApprover,
     bytes32 clientDataHash
   ) internal pure returns (bytes32) {
@@ -102,7 +102,7 @@ library AHV2WitnessLib {
         exclusiveCaller,
         erc721ApprovalsHash,
         hooksHash,
-        ownerCallsHash,
+        callsHash,
         solutionApprover,
         clientDataHash
       )

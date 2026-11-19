@@ -85,7 +85,7 @@ contract MulticallTest is SignerAuthenticatorBase {
     assertEq(address(hub).balance, VALUE - 0.5 ether, 'the unspent half stayed behind');
 
     bytes[] memory inner = abi.decode(results[1], (bytes[]));
-    assertEq(inner.length, 1, 'the order reported its own solver call');
+    assertEq(inner.length, 1, 'the order reported its own call');
     assertEq(gasUsages.length, 2, 'one gas figure per sub-call');
     assertGt(gasUsages[1], 0, 'and the order reported the gas it spent');
   }
@@ -234,11 +234,11 @@ contract MulticallTest is SignerAuthenticatorBase {
       address(authenticator),
       _allowances(_tokenAllowance(AMOUNT)),
       new HookParams[](0),
-      new CallParams[](0),
+      _calls(_calleeCall(0, hex'01')),
       81,
       deadline
     );
-    AHV2Solution memory solution = _route(order, _calls(_calleeCall(0, hex'01')));
+    AHV2Solution memory solution = _route(order);
     bytes memory orderAuth = _orderAuthData(order, signer, signerPk);
 
     bytes[] memory relayed = new bytes[](1);
@@ -315,11 +315,11 @@ contract MulticallTest is SignerAuthenticatorBase {
       address(authenticator),
       _allowances(_tokenAllowance(AMOUNT)),
       new HookParams[](0),
-      new CallParams[](0),
+      _calls(_calleeCall(0, hex'01')),
       orderNonce,
       deadline
     );
-    AHV2Solution memory solution = _route(order, _calls(_calleeCall(0, hex'01')));
+    AHV2Solution memory solution = _route(order);
     bytes memory approvalSig = _signSignerUpdate(signer, true, approvalNonce, deadline);
     bytes memory orderAuth = _orderAuthData(order, signer, signerPk);
 
@@ -451,15 +451,15 @@ contract MulticallTest is SignerAuthenticatorBase {
     AHV2Order memory order = _openAhv2Order(
       _allowances(_tokenAllowance(amount)),
       new HookParams[](0),
-      new CallParams[](0),
+      _calls(_calleeCall(0, data)),
       0,
       vm.getBlockTimestamp()
     );
 
-    return _settleCalldata(order, _calls(_calleeCall(0, data)));
+    return _settleCalldata(order, order.calls);
   }
 
-  /// @dev An order of `owner` with no transfers, no hooks and no owner calls
+  /// @dev An order of `owner` with no transfers, no hooks and no calls
   function _emptyOrder(uint256 nonce) internal view returns (AHV2Order memory) {
     return _openAhv2Order(
       new ERC20Allowance[](0),
@@ -470,15 +470,14 @@ contract MulticallTest is SignerAuthenticatorBase {
     );
   }
 
-  /// @dev The call that `owner` makes to settle `order` with the solver calls `solverCalls`
-  function _settleCalldata(AHV2Order memory order, CallParams[] memory solverCalls)
+  /// @dev The call that `owner` makes to settle `order` after its calls are set to `calls`
+  function _settleCalldata(AHV2Order memory order, CallParams[] memory calls)
     internal
     view
     returns (bytes memory)
   {
-    return abi.encodeCall(
-      IKSAllowanceHubV2.settleOrder, (order, '', _route(order, solverCalls), '', false)
-    );
+    order.calls = calls;
+    return abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', _route(order), '', false));
   }
 
   /// @dev A whole EIP-2612 `permit` call for {IKSAllowanceHubV2-forwardCalls} to relay to token6

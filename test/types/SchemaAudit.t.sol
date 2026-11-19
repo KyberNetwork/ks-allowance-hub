@@ -106,9 +106,9 @@ contract SchemaAuditTest is Test {
     string memory erc20Allowance = 'ERC20Allowance(address token,uint160 amount)';
     string memory erc721Approval = 'ERC721Approval(address token,uint256 tokenId)';
     string memory order =
-      'AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)';
+      'AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)';
     string memory solution =
-      'AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,CallParams[] solverCalls,bytes[] solverData,uint256 nonce,uint256 expiration)';
+      'AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,bytes[] solverData,uint256 nonce,uint256 expiration)';
 
     assertEq(
       AHV2OrderLib.AHV2_ORDER_TYPEHASH,
@@ -116,15 +116,13 @@ contract SchemaAuditTest is Test {
       'AHV2Order'
     );
     assertEq(
-      AHV2SolutionLib.AHV2_SOLUTION_TYPEHASH,
-      keccak256(abi.encodePacked(solution, callParams)),
-      'AHV2Solution'
+      AHV2SolutionLib.AHV2_SOLUTION_TYPEHASH, keccak256(abi.encodePacked(solution)), 'AHV2Solution'
     );
     assertEq(
       AHV2WitnessLib.AHV2_WITNESS_TYPEHASH,
       keccak256(
         abi.encodePacked(
-          'AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,bytes clientData)',
+          'AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,bytes clientData)',
           callParams,
           erc721Approval,
           hookParams

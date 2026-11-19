@@ -742,8 +742,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
 
     reentrant.setReentry(
       abi.encodeCall(
-        IKSAllowanceHubV2.settleOrder,
-        (order, _signWitness(order), _route(order, new CallParams[](0)), '', false)
+        IKSAllowanceHubV2.settleOrder, (order, _signWitness(order), _route(order), '', false)
       )
     );
 
@@ -763,7 +762,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
     assertEq(
       IERC20(token18).balanceOf(address(callee)) - before, amount, 'the reentrant order settled'
     );
-    assertEq(callee.callCount(), 1, 'and its owner call ran');
+    assertEq(callee.callCount(), 1, 'and its call ran');
     assertEq(callee.seenMsgSender(), owner, 'with the owner as the sender while it ran');
   }
 
