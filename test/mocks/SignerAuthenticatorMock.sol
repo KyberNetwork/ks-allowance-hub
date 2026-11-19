@@ -4,7 +4,6 @@ pragma solidity ^0.8.0;
 import {IAHV2Authenticator} from '../../src/interfaces/base/IAHV2Authenticator.sol';
 
 import {AHV2AuthenticatorBase} from '../../src/base/AHV2AuthenticatorBase.sol';
-import {DeadlineChecker} from '../../src/base/DeadlineChecker.sol';
 import {UnorderedNonce} from '../../src/base/UnorderedNonce.sol';
 
 import {AHV2Order} from '../../src/types/AHV2Order.sol';
@@ -23,9 +22,12 @@ import {
  * `order.nonce` in the signer's address namespace, and a signed update spends `nonce` in the
  * owner's address namespace.
  */
-contract SignerAuthenticatorMock is AHV2AuthenticatorBase, DeadlineChecker, UnorderedNonce, EIP712 {
+contract SignerAuthenticatorMock is AHV2AuthenticatorBase, UnorderedNonce, EIP712 {
   bytes32 internal constant SIGNER_UPDATE_TYPEHASH =
     keccak256('SignerUpdate(address owner,bytes data,uint256 nonce,uint256 deadline)');
+
+  /// @notice The update's deadline has passed
+  error DeadlinePassed(uint256 deadline, uint256 currentTime);
 
   /// @notice The owner's signature over the update is not valid
   error InvalidUpdateSignature();
@@ -69,7 +71,11 @@ contract SignerAuthenticatorMock is AHV2AuthenticatorBase, DeadlineChecker, Unor
     uint256 nonce,
     uint256 deadline,
     bytes calldata signature
-  ) external checkDeadline(deadline) {
+  ) external {
+    if (block.timestamp > deadline) {
+      revert DeadlinePassed(deadline, block.timestamp);
+    }
+
     (address signer, bool approved) = abi.decode(data, (address, bool));
     if (msg.sender != owner) {
       _useUnorderedNonce(owner, nonce);

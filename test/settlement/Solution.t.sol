@@ -402,7 +402,7 @@ contract SolutionTest is SettlementBase {
 
     AHV2Order memory order =
       _openAhv2Order(new ERC20Allowance[](0), _noHooks(), calls, 0, vm.getBlockTimestamp());
-    AHV2Solution memory solution = _route(order);
+    AHV2Solution memory solution = _defaultSolution(order);
     for (uint256 i = 0; i < 3; i++) {
       solution.solverData[i] = solverEntries[i];
     }
@@ -436,8 +436,8 @@ contract SolutionTest is SettlementBase {
     relayed.authenticator = permit2;
     bytes memory witness = _signWitness(relayed);
 
-    AHV2Solution memory delegatedSolution = _route(delegated);
-    AHV2Solution memory relayedSolution = _route(relayed);
+    AHV2Solution memory delegatedSolution = _defaultSolution(delegated);
+    AHV2Solution memory relayedSolution = _defaultSolution(relayed);
     uint256 before = _calleeBalance();
 
     uint256[3] memory wrongLengths = [uint256(0), 1, 3];
@@ -488,9 +488,9 @@ contract SolutionTest is SettlementBase {
       expiration
     );
 
-    AHV2Solution memory approved = _route(order);
+    AHV2Solution memory approved = _defaultSolution(order);
     approved.solverData[0] = hex'aa';
-    AHV2Solution memory presented = _route(order);
+    AHV2Solution memory presented = _defaultSolution(order);
     presented.solverData[0] = hex'bb';
 
     bytes memory approval = _signSolutionApproval(approverKey, order, approved);
@@ -522,9 +522,9 @@ contract SolutionTest is SettlementBase {
     order.authenticator = permit2;
     bytes memory witness = _signWitness(order);
 
-    AHV2Solution memory solutionA = _route(order);
+    AHV2Solution memory solutionA = _defaultSolution(order);
     solutionA.solverData[0] = hex'aa';
-    AHV2Solution memory solutionB = _route(order);
+    AHV2Solution memory solutionB = _defaultSolution(order);
     solutionB.solverData[0] = hex'bb';
 
     uint256 snapshot = vm.snapshotState();

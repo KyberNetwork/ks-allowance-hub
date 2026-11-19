@@ -42,7 +42,7 @@ A settlement runs in this order:
 3. the solution approval is checked, unless `solutionApprover` is the dead address or the caller is
    the owner;
 4. each hook's `beforeSettlement` runs when its flags select it;
-5. the `TransferTokens` event is emitted;
+5. the `SettleOrder` event is emitted;
 6. the ERC20 tokens are pulled to the targets of the solution;
 7. the ERC721 tokens are transferred to the targets of the solution;
 8. `order.calls` run in order through `IAHV2Callee.execute(ownerData, solverData)`, with the data
@@ -253,7 +253,7 @@ The domain is published through ERC-5267's `eip712Domain()`.
 ```
 src/
   KSAllowanceHubV2.sol
-  base/            AHV2AuthenticatorBase, AuthDelegator, DeadlineChecker, MsgSender, Multicall,
+  base/            AHV2AuthenticatorBase, AuthDelegator, MsgSender, Multicall,
                    NativeSpendGuard, UnorderedNonce
   interfaces/      IKSAllowanceHubV2; base/ holds the interfaces of the base contracts, IAHV2Hook,
                    IAHV2Authenticator and IAHV2Callee

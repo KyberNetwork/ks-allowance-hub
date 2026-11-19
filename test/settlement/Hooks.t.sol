@@ -66,7 +66,7 @@ contract HooksTest is SettlementBase {
     );
 
     vm.prank(owner);
-    hub.settleOrder(order, '', _route(order), '', false);
+    hub.settleOrder(order, '', _defaultSolution(order), '', false);
 
     assertEq(hook.sequenceLength(), 2, 'both hook calls ran');
     assertEq(hook.sequence(0), 'before');
@@ -133,7 +133,7 @@ contract HooksTest is SettlementBase {
     bytes memory signature = _signWitness(order);
 
     vm.prank(solver);
-    hub.settleOrder(order, signature, _route(order), '', false);
+    hub.settleOrder(order, signature, _defaultSolution(order), '', false);
 
     assertEq(hook.sequenceLength(), 2, 'both hook calls ran');
     assertEq(
@@ -164,13 +164,13 @@ contract HooksTest is SettlementBase {
       0,
       vm.getBlockTimestamp()
     );
-    AHV2Solution memory route = _route(order);
+    AHV2Solution memory solution = _defaultSolution(order);
     uint256 before = _calleeBalance();
 
     hook.setReverts(true, false);
     vm.prank(owner);
     vm.expectRevert(bytes('before'));
-    hub.settleOrder(order, '', route, '', false);
+    hub.settleOrder(order, '', solution, '', false);
 
     assertEq(_calleeBalance(), before, 'the refused order moved nothing');
     assertEq(callee.callCount(), 0, 'and ran no callee call');
@@ -178,7 +178,7 @@ contract HooksTest is SettlementBase {
     hook.setReverts(false, true);
     vm.prank(owner);
     vm.expectRevert(bytes('after'));
-    hub.settleOrder(order, '', route, '', false);
+    hub.settleOrder(order, '', solution, '', false);
 
     assertEq(_calleeBalance(), before, 'the transfer rolled back');
     assertEq(callee.callCount(), 0, 'callee call rolled back');
@@ -186,7 +186,7 @@ contract HooksTest is SettlementBase {
 
     hook.setReverts(false, false);
     vm.prank(owner);
-    hub.settleOrder(order, '', route, '', false);
+    hub.settleOrder(order, '', solution, '', false);
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the same order settles once the hook accepts');
     assertEq(callee.callCount(), 1);
@@ -203,7 +203,7 @@ contract HooksTest is SettlementBase {
     );
 
     vm.prank(owner);
-    hub.settleOrder(order, '', _route(order), '', false);
+    hub.settleOrder(order, '', _defaultSolution(order), '', false);
 
     assertEq(callee.callCount(), 1);
   }
@@ -290,7 +290,7 @@ contract HooksTest is SettlementBase {
       0,
       vm.getBlockTimestamp()
     );
-    AHV2Solution memory solution = _route(order);
+    AHV2Solution memory solution = _defaultSolution(order);
     bytes32 orderHash = SchemaHash.ahv2Order(order);
 
     vm.expectCall(
@@ -333,7 +333,7 @@ contract HooksTest is SettlementBase {
     bytes memory auth = _authOf(order);
 
     vm.prank(relayer);
-    hub.settleOrder(order, auth, _route(order), '', false);
+    hub.settleOrder(order, auth, _defaultSolution(order), '', false);
 
     assertEq(hook.seenMsgSenderBefore(), owner, 'the before call saw the owner');
     assertEq(hook.seenMsgSenderAfter(), owner, 'and so did the after call');
@@ -356,7 +356,9 @@ contract HooksTest is SettlementBase {
       _openAhv2Order(permit2, erc20s, _hooks(_hook(hook, HOOK_BOTH)), _noCalls(), 100, expiration);
 
     vm.prank(solver);
-    hub.settleOrder(signedPermit, _signWitness(signedPermit), _route(signedPermit), '', false);
+    hub.settleOrder(
+      signedPermit, _signWitness(signedPermit), _defaultSolution(signedPermit), '', false
+    );
     assertEq(hook.sequenceLength(), 2, 'the order as signed settled');
 
     AHV2Order memory signedFlags =
@@ -364,7 +366,7 @@ contract HooksTest is SettlementBase {
     bytes memory signature = _signWitness(signedFlags);
     AHV2Order memory changedFlags =
       _openAhv2Order(permit2, erc20s, _hooks(_hook(hook, HOOK_AFTER)), _noCalls(), 101, expiration);
-    AHV2Solution memory changedFlagsRoute = _route(changedFlags);
+    AHV2Solution memory changedFlagsRoute = _defaultSolution(changedFlags);
 
     vm.prank(solver);
     vm.expectRevert(PERMIT2_INVALID_SIGNER);
@@ -382,7 +384,9 @@ contract HooksTest is SettlementBase {
     bytes memory controlAuth = _orderAuthData(signedAuthenticated, signer, signerPk);
 
     vm.prank(relayer);
-    hub.settleOrder(signedAuthenticated, controlAuth, _route(signedAuthenticated), '', false);
+    hub.settleOrder(
+      signedAuthenticated, controlAuth, _defaultSolution(signedAuthenticated), '', false
+    );
     assertEq(hook.sequenceLength(), 4, 'the authenticated order as signed settled');
 
     AHV2Order memory signedData = _openAhv2Order(
@@ -402,7 +406,7 @@ contract HooksTest is SettlementBase {
       103,
       expiration
     );
-    AHV2Solution memory changedDataRoute = _route(changedData);
+    AHV2Solution memory changedDataRoute = _defaultSolution(changedData);
 
     vm.prank(relayer);
     vm.expectRevert(SignerAuthenticatorMock.InvalidOrderSignature.selector);
@@ -433,7 +437,7 @@ contract HooksTest is SettlementBase {
     );
 
     vm.prank(owner);
-    hub.settleOrder(order, '', _route(order), '', false);
+    hub.settleOrder(order, '', _defaultSolution(order), '', false);
 
     assertEq(callee.callCount(), 1, 'the call ran');
     assertEq(hook.balanceAtBefore(), calleeBefore, 'the before call saw no transfer');
@@ -457,6 +461,6 @@ contract HooksTest is SettlementBase {
       _openAhv2Order(new ERC20Allowance[](0), hooks, _noCalls(), 0, vm.getBlockTimestamp());
 
     vm.prank(owner);
-    hub.settleOrder(order, '', _route(order), '', false);
+    hub.settleOrder(order, '', _defaultSolution(order), '', false);
   }
 }

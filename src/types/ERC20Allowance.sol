@@ -61,7 +61,7 @@ library ERC20AllowanceLib {
 
   /// @dev Transfers `amounts[i]` of each allowance from `owner` to `targets[i]`; reverts when an
   /// amount exceeds its allowance
-  function execute(
+  function executeERC20Transfer(
     ERC20Allowance[] calldata allowances,
     address owner,
     address[] calldata targets,
@@ -70,12 +70,13 @@ library ERC20AllowanceLib {
     for (uint256 i = 0; i < allowances.length; i++) {
       ERC20Allowance calldata allowance = allowances[i];
       _checkAmount(i, amounts[i], allowance.amount);
+
       allowance.token.safeTransferFrom(owner, targets[i], amounts[i]);
     }
   }
 
-  /// @dev As {execute}, through the Permit2 allowances of `owner` at `permit2`
-  function executePermit2(
+  /// @dev As {executeERC20Transfer}, through the Permit2 allowances of `owner` at `permit2`
+  function executeAllowanceTransfer(
     ERC20Allowance[] calldata allowances,
     address owner,
     address[] calldata targets,
@@ -83,8 +84,30 @@ library ERC20AllowanceLib {
     address permit2
   ) internal {
     IAllowanceTransfer.AllowanceTransferDetails[] memory details =
-      toAllowanceTransferDetails(allowances, owner, targets, amounts);
+      allowances.length.mallocAllowanceTransferDetails();
+    for (uint256 i = 0; i < allowances.length; i++) {
+      ERC20Allowance calldata allowance = allowances[i];
+      _checkAmount(i, amounts[i], allowance.amount);
+
+      details[i] = IAllowanceTransfer.AllowanceTransferDetails({
+        from: owner, to: targets[i], token: allowance.token, amount: amounts[i]
+      });
+    }
+
     IAllowanceTransfer(permit2).transferFrom(details);
+  }
+
+  /// @dev The allowances as transfers, each paired with `targets[i]` and `amounts[i]`
+  function toTransfers(
+    ERC20Allowance[] calldata allowances,
+    address[] calldata targets,
+    uint160[] calldata amounts
+  ) internal pure returns (ERC20Transfer[] memory transfers) {
+    transfers = allowances.length.mallocERC20Transfers();
+    for (uint256 i = 0; i < allowances.length; i++) {
+      transfers[i] =
+        ERC20Transfer({token: allowances[i].token, target: targets[i], amount: amounts[i]});
+    }
   }
 
   /// @dev Converts the allowances into a Permit2 batch permit
@@ -116,37 +139,6 @@ library ERC20AllowanceLib {
       _checkAmount(i, amounts[i], allowances[i].amount);
       details[i] =
         ISignatureTransfer.SignatureTransferDetails({to: targets[i], requestedAmount: amounts[i]});
-    }
-  }
-
-  /// @dev Converts the allowances into Permit2 allowance-transfer details, all drawn from `owner`,
-  /// each moving `amounts[i]` to `targets[i]`; reverts when an amount exceeds its allowance
-  function toAllowanceTransferDetails(
-    ERC20Allowance[] calldata allowances,
-    address owner,
-    address[] calldata targets,
-    uint160[] calldata amounts
-  ) internal pure returns (IAllowanceTransfer.AllowanceTransferDetails[] memory details) {
-    details = allowances.length.mallocAllowanceTransferDetails();
-    for (uint256 i = 0; i < allowances.length; i++) {
-      ERC20Allowance calldata allowance = allowances[i];
-      _checkAmount(i, amounts[i], allowance.amount);
-      details[i] = IAllowanceTransfer.AllowanceTransferDetails({
-        from: owner, to: targets[i], token: allowance.token, amount: amounts[i]
-      });
-    }
-  }
-
-  /// @dev The allowances as transfers, each paired with `targets[i]` and `amounts[i]`
-  function toTransfers(
-    ERC20Allowance[] calldata allowances,
-    address[] calldata targets,
-    uint160[] calldata amounts
-  ) internal pure returns (ERC20Transfer[] memory transfers) {
-    transfers = allowances.length.mallocERC20Transfers();
-    for (uint256 i = 0; i < allowances.length; i++) {
-      transfers[i] =
-        ERC20Transfer({token: allowances[i].token, target: targets[i], amount: amounts[i]});
     }
   }
 

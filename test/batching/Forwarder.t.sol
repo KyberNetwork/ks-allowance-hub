@@ -467,7 +467,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
       'the authenticator burned that nonce'
     );
     assertEq(
-      hub.nonces(lNonceKey(owner), nonce >> 8), 0, 'and the hub burned nothing on this route'
+      hub.nonces(lNonceKey(owner), nonce >> 8), 0, 'and the hub burned nothing on this solution'
     );
     assertEq(results[0].returnData.length, 0, 'updateAuthentication returns nothing');
     assertFalse(hub.authDelegated(owner, address(authenticator)), 'and still nothing is delegated');
@@ -742,7 +742,8 @@ contract ForwarderTest is SignerAuthenticatorBase {
 
     reentrant.setReentry(
       abi.encodeCall(
-        IKSAllowanceHubV2.settleOrder, (order, _signWitness(order), _route(order), '', false)
+        IKSAllowanceHubV2.settleOrder,
+        (order, _signWitness(order), _defaultSolution(order), '', false)
       )
     );
 

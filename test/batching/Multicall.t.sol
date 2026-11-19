@@ -238,7 +238,7 @@ contract MulticallTest is SignerAuthenticatorBase {
       81,
       deadline
     );
-    AHV2Solution memory solution = _route(order);
+    AHV2Solution memory solution = _defaultSolution(order);
     bytes memory orderAuth = _orderAuthData(order, signer, signerPk);
 
     bytes[] memory relayed = new bytes[](1);
@@ -319,7 +319,7 @@ contract MulticallTest is SignerAuthenticatorBase {
       orderNonce,
       deadline
     );
-    AHV2Solution memory solution = _route(order);
+    AHV2Solution memory solution = _defaultSolution(order);
     bytes memory approvalSig = _signSignerUpdate(signer, true, approvalNonce, deadline);
     bytes memory orderAuth = _orderAuthData(order, signer, signerPk);
 
@@ -477,7 +477,8 @@ contract MulticallTest is SignerAuthenticatorBase {
     returns (bytes memory)
   {
     order.calls = calls;
-    return abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', _route(order), '', false));
+    return
+      abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', _defaultSolution(order), '', false));
   }
 
   /// @dev A whole EIP-2612 `permit` call for {IKSAllowanceHubV2-forwardCalls} to relay to token6

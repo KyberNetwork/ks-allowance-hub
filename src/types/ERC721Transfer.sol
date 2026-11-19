@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 /**
- * @notice An ERC721 transfer as {IKSAllowanceHubV2-TransferTokens} reports it, from the owner to
+ * @notice An ERC721 transfer as {IKSAllowanceHubV2-SettleOrder} reports it, from the owner to
  * `target`
  * @dev In {IKSAllowanceHubV2-rescueTokens}, the entry is a transfer from the hub.
  * @param token The ERC721 contract

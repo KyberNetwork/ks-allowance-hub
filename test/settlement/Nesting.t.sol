@@ -79,7 +79,7 @@ contract NestingTest is SettlementBase {
 
     address topSubmitter = p.topViaPermit2 ? relayer : owner;
 
-    AHV2Solution memory topSolution = _route(top);
+    AHV2Solution memory topSolution = _defaultSolution(top);
     bytes memory signature = p.topViaPermit2 ? _signWitness(top) : bytes('');
 
     vm.recordLogs();
@@ -102,8 +102,8 @@ contract NestingTest is SettlementBase {
     assertEq(callee2.callCount(), 1, 'the trailing call of level 0 ran once');
     assertEq(callee2.seenMsgSender(), owner, 'level 0 owner was restored after the whole chain');
 
-    Vm.Log[] memory logs = _transferTokensLogs();
-    assertEq(logs.length, depth + 1, 'one TransferTokens per level');
+    Vm.Log[] memory logs = _settleOrderLogs();
+    assertEq(logs.length, depth + 1, 'one SettleOrder per level');
     _assertEmptySettlement(logs[0], topSubmitter, owner, hashes[0]);
     for (uint256 k = 1; k <= depth; k++) {
       address levelOwner = address(evils[k - 1]);
@@ -116,7 +116,7 @@ contract NestingTest is SettlementBase {
   /**
    * NEST-02 — the ERC721 receiver hook of an order may settle an order
    * @dev The NFT target of the outer order is a receiver whose hook settles an order it owns and
-   * that calls `callee` once. The hub emits `TransferTokens` for an order before it moves any asset
+   * that calls `callee` once. The hub emits `SettleOrder` for an order before it moves any asset
    * of it, so the outer order's log precedes the log of the order settled by the hook.
    */
   function test_NEST_02_receiverHookSettlesAnOrderInsideAnOrder() public {
@@ -151,8 +151,8 @@ contract NestingTest is SettlementBase {
     assertEq(callee.seenMsgSender(), address(receiver), 'under the nested owner');
 
     // The outer order announces itself before it moves the NFT, and the hook runs during the move
-    Vm.Log[] memory logs = _transferTokensLogs();
-    assertEq(logs.length, 2, 'one TransferTokens per order');
+    Vm.Log[] memory logs = _settleOrderLogs();
+    assertEq(logs.length, 2, 'one SettleOrder per order');
     assertEq(logs[0].topics.length, 4, 'caller, owner and the order hash are indexed');
     assertEq(_topicAddress(logs[0].topics[1]), owner, 'the outer order caller');
     assertEq(_topicAddress(logs[0].topics[2]), owner, 'the outer order owner');
@@ -225,9 +225,9 @@ contract NestingTest is SettlementBase {
     assertEq(callee.callCount(), 1, 'the nested callee ran once');
     assertEq(callee.seenMsgSender(), nestedOrderOwner, 'under the nested owner');
 
-    Vm.Log[] memory logs = _transferTokensLogs();
+    Vm.Log[] memory logs = _settleOrderLogs();
     uint256 base = p.wrapped ? 1 : 0;
-    assertEq(logs.length, base + 2, 'one TransferTokens per order');
+    assertEq(logs.length, base + 2, 'one SettleOrder per order');
     if (p.wrapped) {
       _assertEmptySettlement(logs[0], owner, owner, topHash);
     }
@@ -251,7 +251,7 @@ contract NestingTest is SettlementBase {
     order.calls = _calls(_callTo(address(evil)));
 
     vm.prank(owner);
-    bytes[] memory results = hub.settleOrder(order, '', _route(order), '', false);
+    bytes[] memory results = hub.settleOrder(order, '', _defaultSolution(order), '', false);
 
     assertEq(results.length, 1, 'the order settled');
     assertEq(results[0].length, 0, 'revokeNonce returns nothing');
@@ -279,7 +279,7 @@ contract NestingTest is SettlementBase {
     vm.deal(owner, VALUE);
 
     vm.prank(owner);
-    hub.settleOrder{value: VALUE}(outer, '', _route(outer), '', false);
+    hub.settleOrder{value: VALUE}(outer, '', _defaultSolution(outer), '', false);
 
     assertEq(callee.callCount(), 1, 'the outer callee call ran');
     assertEq(callee.lastValue(), VALUE, 'with the outer value');
@@ -294,7 +294,7 @@ contract NestingTest is SettlementBase {
 
     vm.prank(owner);
     vm.expectRevert(abi.encodeWithSelector(NativeSpendGuard.NativeOverspent.selector, VALUE, 0));
-    hub.settleOrder{value: VALUE}(outerB, '', _route(outerB), '', false);
+    hub.settleOrder{value: VALUE}(outerB, '', _defaultSolution(outerB), '', false);
 
     assertEq(callee.callCount(), 1, 'the nested callee call rolled back');
     assertEq(address(hub).balance, PREFUND, "the hub's native balance is intact");
@@ -324,7 +324,8 @@ contract NestingTest is SettlementBase {
     returns (bytes memory)
   {
     order.calls = calls;
-    return abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', _route(order), '', false));
+    return
+      abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', _defaultSolution(order), '', false));
   }
 
   /**
@@ -350,7 +351,7 @@ contract NestingTest is SettlementBase {
     if (viaPermit2) {
       data = abi.encodeCall(
         IKSAllowanceHubV2.settleOrder,
-        (order, _signWitness(order, signerKey), _route(order), '', false)
+        (order, _signWitness(order, signerKey), _defaultSolution(order), '', false)
       );
     } else {
       data = _settleCall(order, calls);
@@ -393,8 +394,8 @@ contract NestingTest is SettlementBase {
     hashes[0] = SchemaHash.ahv2Order(top);
   }
 
-  /// @dev Every `TransferTokens` the hub emitted, in emission order
-  function _transferTokensLogs() internal view returns (Vm.Log[] memory logs) {
+  /// @dev Every `SettleOrder` the hub emitted, in emission order
+  function _settleOrderLogs() internal view returns (Vm.Log[] memory logs) {
     Vm.Log[] memory entries = vm.getRecordedLogs();
 
     uint256 found;
@@ -406,7 +407,7 @@ contract NestingTest is SettlementBase {
       if (entries[i].topics.length == 0) {
         continue;
       }
-      if (entries[i].topics[0] != TRANSFER_TOKENS_TOPIC) {
+      if (entries[i].topics[0] != SETTLE_ORDER_TOPIC) {
         continue;
       }
 
@@ -419,7 +420,7 @@ contract NestingTest is SettlementBase {
   }
 
   /**
-   * @dev Asserts a `TransferTokens` of an order that moves nothing, owned by `orderOwner` and
+   * @dev Asserts a `SettleOrder` of an order that moves nothing, owned by `orderOwner` and
    * submitted by `submitter`
    */
   function _assertEmptySettlement(

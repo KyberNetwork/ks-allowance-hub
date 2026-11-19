@@ -24,9 +24,9 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 /**
  * @title EventsTest
- * @notice `SET-01`, `SET-03`, `CLIENT-01..02` and `EVT-01` — the `TransferTokens` event and the
+ * @notice `SET-01`, `SET-03`, `CLIENT-01..02` and `EVT-01` — the `SettleOrder` event and the
  * results array
- * @dev The `TransferTokens` topic is written out in {HubBase} rather than imported: an expected
+ * @dev The `SettleOrder` topic is written out in {HubBase} rather than imported: an expected
  * value taken from the contract under test would agree with a wrong one.
  */
 contract EventsTest is SettlementBase {
@@ -56,12 +56,12 @@ contract EventsTest is SettlementBase {
   // -----------------------------------------------------------------------------------------
 
   /**
-   * SET-01 — the whole `TransferTokens` payload of a relayed order, byte for byte
+   * SET-01 — the whole `SettleOrder` payload of a relayed order, byte for byte
    * @dev `orderHash` is indexed, so there are four topics, and the third is compared against the
    * order hash rebuilt from the independent oracle. The order carries an allowance and an NFT
    * approval, which the solution routes to `callee` and `callee2`.
    */
-  function test_SET_01_transferTokensPayload() public {
+  function test_SET_01_settleOrderPayload() public {
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
     ERC20Transfer[] memory erc20s = _erc20s(_tokenTransfer(AMOUNT));
     ERC721Transfer[] memory nfts = _erc721s(_nftTransfer(address(callee2)));
@@ -77,7 +77,7 @@ contract EventsTest is SettlementBase {
       11,
       expiration
     );
-    AHV2Solution memory solution = _route(order);
+    AHV2Solution memory solution = _defaultSolution(order);
     bytes memory signature = _signWitness(order);
 
     vm.recordLogs();
@@ -105,7 +105,7 @@ contract EventsTest is SettlementBase {
     vm.recordLogs();
 
     vm.prank(owner);
-    bytes[] memory results = hub.settleOrder(order, '', _route(order), '', false);
+    bytes[] memory results = hub.settleOrder(order, '', _defaultSolution(order), '', false);
 
     assertEq(results.length, 0, 'no calls, no results');
     assertEq(callee.callCount(), 0, 'no callee was called');
@@ -123,7 +123,7 @@ contract EventsTest is SettlementBase {
   // -----------------------------------------------------------------------------------------
 
   /**
-   * CLIENT-01 — the `TransferTokens` of a settled order carries exactly the order's client data
+   * CLIENT-01 — the `SettleOrder` of a settled order carries exactly the order's client data
    * @dev Over both entry points, and over any client data drawn: delegated authentication and
    * the Permit2 signature, each submitted by the solver.
    */
@@ -174,7 +174,7 @@ contract EventsTest is SettlementBase {
   /**
    * @dev Authenticates or signs an order carrying `signedData`, and submits the same order carrying
    * `submittedData` on the entry point `entry`, from the solver. When the two are equal the call is
-   * expected to emit `TransferTokens` with that data; otherwise it is expected to revert with the
+   * expected to emit `SettleOrder` with that data; otherwise it is expected to revert with the
    * error of the entry point's own check.
    */
   function _submitWithClientData(
@@ -188,7 +188,7 @@ contract EventsTest is SettlementBase {
     address orderAuthenticator = entry == 0 ? address(authenticator) : permit2;
     AHV2Order memory signed = _clientDataOrder(orderAuthenticator, nonce, signedData);
     AHV2Order memory order = _clientDataOrder(orderAuthenticator, nonce, submittedData);
-    AHV2Solution memory route = _route(order);
+    AHV2Solution memory solution = _defaultSolution(order);
 
     if (entry == 0) {
       _delegateSignerThroughHub(signer);
@@ -197,12 +197,12 @@ contract EventsTest is SettlementBase {
         matches, SignerAuthenticatorMock.InvalidOrderSignature.selector, order, submittedData
       );
       vm.prank(solver);
-      hub.settleOrder(order, auth, route, '', false);
+      hub.settleOrder(order, auth, solution, '', false);
     } else {
       bytes memory signature = _signWitness(signed);
       _expectClientData(matches, PERMIT2_INVALID_SIGNER, order, submittedData);
       vm.prank(solver);
-      hub.settleOrder(order, signature, route, '', false);
+      hub.settleOrder(order, signature, solution, '', false);
     }
   }
 
@@ -224,7 +224,7 @@ contract EventsTest is SettlementBase {
     order.clientData = clientData;
   }
 
-  /// @dev Expects the full `TransferTokens` payload of `order` from the solver when `matches`, and
+  /// @dev Expects the full `SettleOrder` payload of `order` from the solver when `matches`, and
   /// `refusal` otherwise
   function _expectClientData(
     bool matches,
@@ -234,7 +234,7 @@ contract EventsTest is SettlementBase {
   ) internal {
     if (matches) {
       vm.expectEmit(true, true, true, true, address(hub));
-      emit IKSAllowanceHubV2.TransferTokens(
+      emit IKSAllowanceHubV2.SettleOrder(
         solver,
         owner,
         SchemaHash.ahv2Order(order),
@@ -253,7 +253,7 @@ contract EventsTest is SettlementBase {
   // -------------------------------------------------------------------------------------------
 
   /**
-   * EVT-01 — `TransferTokens` lists the transfers that happened, each with the solution's target
+   * EVT-01 — `SettleOrder` lists the transfers that happened, each with the solution's target
    * @dev Two ERC20 transfers of different tokens and amounts go to two different targets, so the
    * pairing cannot come out right by symmetry.
    */

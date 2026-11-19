@@ -76,15 +76,15 @@ contract AuthenticationTest is SettlementBase {
       61,
       deadline
     );
-    AHV2Solution memory route = _solution(order, deadline);
+    AHV2Solution memory solution = _solution(order, deadline);
 
     bytes memory permitSig = _signPlainPermit(erc20s, 61, deadline);
-    bytes memory approval = _signSolutionApproval(approverKey, order, route);
+    bytes memory approval = _signSolutionApproval(approverKey, order, solution);
 
     uint256 before = _calleeBalance();
 
     vm.prank(owner);
-    bytes[] memory results = hub.settleOrder(order, permitSig, route, approval, false);
+    bytes[] memory results = hub.settleOrder(order, permitSig, solution, approval, false);
 
     assertEq(_calleeBalance() - before, AMOUNT, 'erc20 transfer');
     assertEq(results.length, 1, 'one callee result');
@@ -132,17 +132,17 @@ contract AuthenticationTest is SettlementBase {
     uint256 before = _calleeBalance();
 
     vm.prank(solver);
-    hub.settleOrder(pinned, matching, _route(pinned), '', false);
+    hub.settleOrder(pinned, matching, _defaultSolution(pinned), '', false);
     assertEq(_calleeBalance() - before, AMOUNT, 'the matching order settled');
 
     AHV2Order memory openOrder =
       _openAhv2Order(permit2, erc20s, _noHooks(), _noCalls(), 4, expiration);
     bytes memory forTheSolver = _signWitness(openOrder, solver, openOrder.calls, ANY);
-    AHV2Solution memory route = _route(openOrder);
+    AHV2Solution memory solution = _defaultSolution(openOrder);
 
     vm.prank(solver);
     vm.expectRevert(PERMIT2_INVALID_SIGNER);
-    hub.settleOrder(openOrder, forTheSolver, route, '', false);
+    hub.settleOrder(openOrder, forTheSolver, solution, '', false);
   }
 
   /**
@@ -163,7 +163,7 @@ contract AuthenticationTest is SettlementBase {
     uint256 before = _calleeBalance();
 
     vm.prank(solver);
-    bytes[] memory results = hub.settleOrder(order, signature, _route(order), '', false);
+    bytes[] memory results = hub.settleOrder(order, signature, _defaultSolution(order), '', false);
 
     assertEq(_calleeBalance() - before, AMOUNT, 'erc20 transfer');
     assertEq(results.length, 1, 'one callee result');
@@ -184,27 +184,27 @@ contract AuthenticationTest is SettlementBase {
 
     AHV2Order memory named =
       _ahv2Order(permit2, ANY, erc20s, _noNfts(), _noHooks(), calls, approver, 31, deadline);
-    AHV2Solution memory route = _solution(named, deadline);
-    bytes memory approval = _signSolutionApproval(approverKey, named, route);
+    AHV2Solution memory solution = _solution(named, deadline);
+    bytes memory approval = _signSolutionApproval(approverKey, named, solution);
     bytes memory matchingWitness = _signWitness(named);
 
     uint256 before = _calleeBalance();
 
     vm.prank(solver);
-    hub.settleOrder(named, matchingWitness, route, approval, false);
+    hub.settleOrder(named, matchingWitness, solution, approval, false);
     assertEq(_calleeBalance() - before, AMOUNT, 'the matching order settled');
 
     AHV2Order memory swapped =
       _ahv2Order(permit2, ANY, erc20s, _noNfts(), _noHooks(), calls, approver, 32, deadline);
-    AHV2Solution memory route2 = _solution(swapped, 1, deadline);
-    bytes memory approval2 = _signSolutionApproval(approverKey, swapped, route2);
+    AHV2Solution memory solution2 = _solution(swapped, 1, deadline);
+    bytes memory approval2 = _signSolutionApproval(approverKey, swapped, solution2);
     // the owner signed a witness that specifies no approver, so the approver in the order is not
     // the one signed
     bytes memory openWitness = _signWitness(swapped, swapped.exclusiveCaller, swapped.calls, ANY);
 
     vm.prank(solver);
     vm.expectRevert(PERMIT2_INVALID_SIGNER);
-    hub.settleOrder(swapped, openWitness, route2, approval2, false);
+    hub.settleOrder(swapped, openWitness, solution2, approval2, false);
   }
 
   /**
@@ -218,13 +218,13 @@ contract AuthenticationTest is SettlementBase {
    */
   function test_ORD_03_exclusiveCallerPinningAndTheOpenSentinel() public {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
-    AHV2Solution memory route = _solution(
+    AHV2Solution memory solution = _solution(
       _addresses(address(callee)),
       _amounts(AMOUNT),
       new address[](0),
       vm.getBlockTimestamp() + 1 hours
     );
-    route.solverData = _solverData(1);
+    solution.solverData = _solverData(1);
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     AHV2Order memory pinned = _ahv2Order(
@@ -242,7 +242,7 @@ contract AuthenticationTest is SettlementBase {
 
     uint256 before = _calleeBalance();
     vm.prank(solver);
-    hub.settleOrder(pinned, pinnedSig, route, '', false);
+    hub.settleOrder(pinned, pinnedSig, solution, '', false);
     assertEq(_calleeBalance() - before, AMOUNT, 'the named exclusive caller may submit');
 
     AHV2Order memory pinnedAgain = _ahv2Order(
@@ -260,7 +260,7 @@ contract AuthenticationTest is SettlementBase {
 
     vm.prank(relayer);
     vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.NotExclusiveCaller.selector, relayer));
-    hub.settleOrder(pinnedAgain, againSig, route, '', false);
+    hub.settleOrder(pinnedAgain, againSig, solution, '', false);
 
     assertEq(
       _permit2NonceBitmap(owner, 62 >> 8) & (1 << 62),
@@ -274,7 +274,7 @@ contract AuthenticationTest is SettlementBase {
 
     before = _calleeBalance();
     vm.prank(relayer);
-    hub.settleOrder(openOrder, openSig, route, '', false);
+    hub.settleOrder(openOrder, openSig, solution, '', false);
     assertEq(
       _calleeBalance() - before, AMOUNT, 'the sentinel opened submission to the very same stranger'
     );
@@ -298,11 +298,11 @@ contract AuthenticationTest is SettlementBase {
       0,
       vm.getBlockTimestamp() + 1 hours
     );
-    AHV2Solution memory route = _route(order);
+    AHV2Solution memory solution = _defaultSolution(order);
     uint256 before = _calleeBalance();
 
     vm.prank(owner);
-    hub.settleOrder(order, '', route, '', false);
+    hub.settleOrder(order, '', solution, '', false);
 
     assertEq(_calleeBalance() - before, AMOUNT, 'no authenticator at all');
 
@@ -313,7 +313,7 @@ contract AuthenticationTest is SettlementBase {
       address(authenticator), abi.encodeWithSelector(IAHV2Authenticator.authenticate.selector), 0
     );
     vm.prank(owner);
-    hub.settleOrder(order, hex'00', route, '', false);
+    hub.settleOrder(order, hex'00', solution, '', false);
 
     assertEq(_calleeBalance() - before, 2 * AMOUNT, 'a delegated authenticator is not consulted');
   }
@@ -334,7 +334,7 @@ contract AuthenticationTest is SettlementBase {
     );
 
     vm.prank(owner);
-    hub.settleOrder(order, '', _route(order), '', true);
+    hub.settleOrder(order, '', _defaultSolution(order), '', true);
 
     assertEq(_calleeBalance() - before, AMOUNT);
     assertEq(allowanceBefore - _permit2Allowance(token18), AMOUNT, 'drawn on the Permit2 allowance');
@@ -353,7 +353,7 @@ contract AuthenticationTest is SettlementBase {
       0,
       vm.getBlockTimestamp() + 1 hours
     );
-    AHV2Solution memory route = _route(order);
+    AHV2Solution memory solution = _defaultSolution(order);
     bytes memory authData = _authData(signer, hex'00');
 
     vm.expectCall(
@@ -365,7 +365,7 @@ contract AuthenticationTest is SettlementBase {
         IAuthDelegator.AuthenticatorNotDelegated.selector, address(authenticator)
       )
     );
-    hub.settleOrder(order, authData, route, '', false);
+    hub.settleOrder(order, authData, solution, '', false);
   }
 
   /**
@@ -391,7 +391,7 @@ contract AuthenticationTest is SettlementBase {
     uint160 allowanceBefore = _permit2Allowance(token18);
 
     vm.prank(relayer);
-    hub.settleOrder(plainOrder, plainAuth, _route(plainOrder), '', false);
+    hub.settleOrder(plainOrder, plainAuth, _defaultSolution(plainOrder), '', false);
 
     assertEq(_calleeBalance() - before, AMOUNT, 'plain allowance path');
     assertEq(_permit2Allowance(token18), allowanceBefore, 'and it left the Permit2 allowance alone');
@@ -403,7 +403,7 @@ contract AuthenticationTest is SettlementBase {
     before = _calleeBalance();
 
     vm.prank(relayer);
-    hub.settleOrder(permit2Order, permit2Auth, _route(permit2Order), '', true);
+    hub.settleOrder(permit2Order, permit2Auth, _defaultSolution(permit2Order), '', true);
 
     assertEq(_calleeBalance() - before, AMOUNT, 'permit2 allowance path');
     assertEq(allowanceBefore - _permit2Allowance(token18), AMOUNT, 'and that path did claim it');
@@ -436,7 +436,7 @@ contract AuthenticationTest is SettlementBase {
     uint256 before = _calleeBalance();
 
     vm.prank(relayer);
-    hub.settleOrder(order, witness, _route(order), '', false);
+    hub.settleOrder(order, witness, _defaultSolution(order), '', false);
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the signature transfer ran');
     assertEq(
@@ -462,15 +462,15 @@ contract AuthenticationTest is SettlementBase {
       0,
       vm.getBlockTimestamp() + 1 hours
     );
-    AHV2Solution memory route = _route(order);
+    AHV2Solution memory solution = _defaultSolution(order);
 
     vm.prank(relayer);
     vm.expectRevert(bytes(''));
-    hub.settleOrder(order, _encodeSigner(signer), route, '', false);
+    hub.settleOrder(order, _encodeSigner(signer), solution, '', false);
 
     vm.prank(relayer);
     vm.expectRevert(SignerAuthenticatorMock.InvalidOrderSignature.selector);
-    hub.settleOrder(order, _authData(signer, ''), route, '', false);
+    hub.settleOrder(order, _authData(signer, ''), solution, '', false);
 
     bytes memory whole = _orderAuthData(order, signer, signerPk);
     bytes memory truncated = new bytes(whole.length - 32);
@@ -480,7 +480,7 @@ contract AuthenticationTest is SettlementBase {
 
     vm.prank(relayer);
     vm.expectRevert(bytes(''));
-    hub.settleOrder(order, truncated, route, '', false);
+    hub.settleOrder(order, truncated, solution, '', false);
   }
 
   /**
@@ -564,13 +564,13 @@ contract AuthenticationTest is SettlementBase {
     order.owner = other;
     vm.prank(relayer);
     vm.expectRevert(SignerAuthenticatorMock.InvalidOrderSignature.selector);
-    hub.settleOrder(order, authData, _route(order), '', false);
+    hub.settleOrder(order, authData, _defaultSolution(order), '', false);
 
     order.owner = owner;
     uint256 before = _calleeBalance();
     uint256 otherBefore = IERC20(token18).balanceOf(other);
     vm.prank(relayer);
-    hub.settleOrder(order, authData, _route(order), '', false);
+    hub.settleOrder(order, authData, _defaultSolution(order), '', false);
     assertEq(_calleeBalance() - before, PARTY_AMOUNT, 'the named account paid');
     assertEq(IERC20(token18).balanceOf(other), otherBefore, 'and the other one did not');
   }
@@ -589,7 +589,9 @@ contract AuthenticationTest is SettlementBase {
     );
     uint256 before = _calleeBalance();
     vm.prank(solver);
-    hub.settleOrder(pinned, _orderAuthData(pinned, signer, signerPk), _route(pinned), '', false);
+    hub.settleOrder(
+      pinned, _orderAuthData(pinned, signer, signerPk), _defaultSolution(pinned), '', false
+    );
     assertEq(_calleeBalance() - before, PARTY_AMOUNT, 'the named solver may submit');
 
     AHV2Order memory again = _ahv2Order(
@@ -597,7 +599,9 @@ contract AuthenticationTest is SettlementBase {
     );
     vm.prank(relayer);
     vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.NotExclusiveCaller.selector, relayer));
-    hub.settleOrder(again, _orderAuthData(again, signer, signerPk), _route(again), '', false);
+    hub.settleOrder(
+      again, _orderAuthData(again, signer, signerPk), _defaultSolution(again), '', false
+    );
 
     // The pin is read before the signature, so an unnamed submitter is refused as such even when
     // the signature it presents could never have passed
@@ -606,7 +610,7 @@ contract AuthenticationTest is SettlementBase {
     );
     vm.prank(relayer);
     vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.NotExclusiveCaller.selector, relayer));
-    hub.settleOrder(third, _authData(signer, hex'00'), _route(third), '', false);
+    hub.settleOrder(third, _authData(signer, hex'00'), _defaultSolution(third), '', false);
 
     // The same stranger settles an order that specifies no exclusive caller, so the refusals were
     // about the pin
@@ -614,14 +618,14 @@ contract AuthenticationTest is SettlementBase {
       _openAhv2Order(address(authenticator), allowances, noHooks, calls, 83, expiration);
     before = _calleeBalance();
     vm.prank(relayer);
-    hub.settleOrder(open, _orderAuthData(open, signer, signerPk), _route(open), '', false);
+    hub.settleOrder(open, _orderAuthData(open, signer, signerPk), _defaultSolution(open), '', false);
     assertEq(_calleeBalance() - before, PARTY_AMOUNT, 'the sentinel leaves it open to anyone');
 
     AHV2Order memory byOwner =
       _ahv2Order(solver, allowances, noNfts, noHooks, calls, ANY, 84, expiration);
     before = _calleeBalance();
     vm.prank(owner);
-    hub.settleOrder(byOwner, '', _route(byOwner), '', false);
+    hub.settleOrder(byOwner, '', _defaultSolution(byOwner), '', false);
     assertEq(
       _calleeBalance() - before, PARTY_AMOUNT, 'the owner may submit an order naming someone else'
     );

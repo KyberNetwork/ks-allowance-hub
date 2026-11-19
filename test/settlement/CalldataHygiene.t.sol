@@ -26,7 +26,8 @@ contract CalldataHygieneTest is SignerAuthenticatorBase {
       _order(address(0), _calls(_calleeCall(0, hex'01')), 90, vm.getBlockTimestamp() + 1 hours);
 
     _assertDirtyTokenWordIsRefused(
-      owner, abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', _route(order), '', false))
+      owner,
+      abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', _defaultSolution(order), '', false))
     );
   }
 
@@ -41,7 +42,8 @@ contract CalldataHygieneTest is SignerAuthenticatorBase {
     _assertDirtyTokenWordIsRefused(
       relayer,
       abi.encodeCall(
-        IKSAllowanceHubV2.settleOrder, (order, _signWitness(order), _route(order), '', false)
+        IKSAllowanceHubV2.settleOrder,
+        (order, _signWitness(order), _defaultSolution(order), '', false)
       )
     );
   }
@@ -57,7 +59,7 @@ contract CalldataHygieneTest is SignerAuthenticatorBase {
       relayer,
       abi.encodeCall(
         IKSAllowanceHubV2.settleOrder,
-        (order, _orderAuthData(order, signer, signerPk), _route(order), '', false)
+        (order, _orderAuthData(order, signer, signerPk), _defaultSolution(order), '', false)
       )
     );
   }
@@ -75,7 +77,7 @@ contract CalldataHygieneTest is SignerAuthenticatorBase {
         (
           order,
           _signPlainPermit(order.erc20Allowances, order.nonce, order.expiration),
-          _route(order),
+          _defaultSolution(order),
           '',
           false
         )

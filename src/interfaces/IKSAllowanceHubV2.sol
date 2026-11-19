@@ -16,6 +16,12 @@ interface IKSAllowanceHubV2 {
   /// specifies an exclusive caller
   error NotExclusiveCaller(address caller);
 
+  /// @notice The order's expiration has passed
+  error OrderExpired(uint256 expiration, uint256 currentTime);
+
+  /// @notice The solution's expiration has passed
+  error SolutionExpired(uint256 expiration, uint256 currentTime);
+
   /// @notice The owner's signature is not valid for the order
   error InvalidOrderSignature();
 
@@ -29,13 +35,12 @@ interface IKSAllowanceHubV2 {
    * @notice Emitted once for each settled order, before its assets move and its calls run
    * @dev Each ERC20 and ERC721 entry pairs a transfer of the order with the target the solution
    * specifies for it. `nativeTransfers` lists only the calls that carry native value, in order,
-   * and is empty when no call carries value. `clientData` is
-   * the order's client data.
+   * and is empty when no call carries value.
    *
    * An order settled by a callee call of another order emits its event after the other order's
    * and before that order's remaining calls run.
    */
-  event TransferTokens(
+  event SettleOrder(
     address indexed caller,
     address indexed owner,
     bytes32 indexed orderHash,

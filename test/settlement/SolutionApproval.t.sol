@@ -51,15 +51,15 @@ contract SolutionApprovalTest is SettlementBase {
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     AHV2Order memory withCallsA = _orderWithCalls(_calls(_calleeCall(0, hex'aa')), 60, deadline);
-    AHV2Solution memory route = _solution(withCallsA, deadline);
+    AHV2Solution memory solution = _solution(withCallsA, deadline);
     bytes32 hashA = SchemaHash.ahv2Order(withCallsA);
-    bytes memory approvalA = _signSolutionApproval(approverKey, withCallsA, route);
+    bytes memory approvalA = _signSolutionApproval(approverKey, withCallsA, solution);
 
     uint256 before = _calleeBalance();
 
     bytes memory authA = _authOf(withCallsA);
     vm.prank(relayer);
-    bytes[] memory results = hub.settleOrder(withCallsA, authA, route, approvalA, false);
+    bytes[] memory results = hub.settleOrder(withCallsA, authA, solution, approvalA, false);
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the approved order settled');
     assertEq(results.length, 1, 'the call ran');
@@ -68,21 +68,21 @@ contract SolutionApprovalTest is SettlementBase {
     assertTrue(SchemaHash.ahv2Order(withCallsB) != hashA, 'the two orders really do differ');
 
     // a fresh solution nonce, as the first approval spent nonce 0
-    AHV2Solution memory routeB = _solution(withCallsB, 1, deadline);
-    bytes memory approvalOfAForB = _signSolutionApproval(approverKey, withCallsA, routeB);
+    AHV2Solution memory solutionB = _solution(withCallsB, 1, deadline);
+    bytes memory approvalOfAForB = _signSolutionApproval(approverKey, withCallsA, solutionB);
 
     bytes memory authB = _authOf(withCallsB);
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.settleOrder(withCallsB, authB, routeB, approvalOfAForB, false);
+    hub.settleOrder(withCallsB, authB, solutionB, approvalOfAForB, false);
 
     assertEq(callee.callCount(), 1, 'the refused order ran nothing');
 
     // the same order with its own approval does settle, so the refusal was the approval's doing
-    bytes memory approvalB = _signSolutionApproval(approverKey, withCallsB, routeB);
+    bytes memory approvalB = _signSolutionApproval(approverKey, withCallsB, solutionB);
 
     vm.prank(relayer);
-    hub.settleOrder(withCallsB, authB, routeB, approvalB, false);
+    hub.settleOrder(withCallsB, authB, solutionB, approvalB, false);
     assertEq(callee.callCount(), 2, 'the call of the second order ran too');
   }
 
@@ -112,7 +112,7 @@ contract SolutionApprovalTest is SettlementBase {
     uint256 stale = vm.getBlockTimestamp() - 1;
 
     vm.prank(owner);
-    vm.expectRevert(_deadlinePassed(stale));
+    vm.expectRevert(_solutionExpired(stale));
     hub.settleOrder(open, '', _solution(open, stale), '', false);
 
     // and the same on the Permit2 entry point, whose modifier stack is written out separately
@@ -127,7 +127,7 @@ contract SolutionApprovalTest is SettlementBase {
     bytes memory witness = _signWitness(forRelay);
 
     vm.prank(relayer);
-    vm.expectRevert(_deadlinePassed(stale));
+    vm.expectRevert(_solutionExpired(stale));
     hub.settleOrder(forRelay, witness, _solution(forRelay, stale), '', false);
   }
 
@@ -151,13 +151,13 @@ contract SolutionApprovalTest is SettlementBase {
       80,
       deadline
     );
-    AHV2Solution memory route = _solution(named, SOLUTION_NONCE, deadline);
-    bytes memory approval = _signSolutionApproval(approverKey, named, route);
+    AHV2Solution memory solution = _solution(named, SOLUTION_NONCE, deadline);
+    bytes memory approval = _signSolutionApproval(approverKey, named, solution);
     bytes memory witness = _signWitness(named);
 
     uint256 before = _calleeBalance();
     vm.prank(relayer);
-    hub.settleOrder(named, witness, route, approval, false);
+    hub.settleOrder(named, witness, solution, approval, false);
     assertEq(_calleeBalance() - before, AMOUNT, 'the order settled');
     assertEq(
       hub.nonces(lNonceKey(approver), SOLUTION_NONCE >> 8),
@@ -171,7 +171,7 @@ contract SolutionApprovalTest is SettlementBase {
         IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(approver), SOLUTION_NONCE
       )
     );
-    hub.settleOrder(named, witness, route, approval, false);
+    hub.settleOrder(named, witness, solution, approval, false);
   }
 
   /**
@@ -187,7 +187,7 @@ contract SolutionApprovalTest is SettlementBase {
     AHV2Order memory open = _openAhv2Order(
       new ERC20Allowance[](0), _noHooks(), _calls(_calleeCall(0, hex'01')), 0, expiration
     );
-    AHV2Solution memory first = _route(open);
+    AHV2Solution memory first = _defaultSolution(open);
     first.solverData[0] = hex'01';
 
     vm.prank(owner);
@@ -197,7 +197,7 @@ contract SolutionApprovalTest is SettlementBase {
     assertEq(callee.callCount(), 1, 'once');
     assertEq(hub.nonces(lNonceKey(owner), 0), 0, 'the sentinel approver burns no nonce');
 
-    AHV2Solution memory second = _route(open);
+    AHV2Solution memory second = _defaultSolution(open);
     second.solverData[0] = hex'02';
 
     vm.prank(owner);
@@ -221,7 +221,7 @@ contract SolutionApprovalTest is SettlementBase {
     bytes memory auth = _authOf(withApprover);
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.settleOrder(withApprover, auth, _route(withApprover), '', false);
+    hub.settleOrder(withApprover, auth, _defaultSolution(withApprover), '', false);
   }
 
   /**
@@ -247,7 +247,7 @@ contract SolutionApprovalTest is SettlementBase {
     bytes memory auth = _authOf(order);
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.settleOrder(order, auth, _route(order), hex'1234', false);
+    hub.settleOrder(order, auth, _defaultSolution(order), hex'1234', false);
 
     assertEq(callee.callCount(), 0, 'and nothing ran');
   }
@@ -274,10 +274,10 @@ contract SolutionApprovalTest is SettlementBase {
       expiration
     );
     bytes memory authData = _orderAuthData(order, signer, signerPk);
-    AHV2Solution memory route = _route(order);
+    AHV2Solution memory solution = _defaultSolution(order);
 
     vm.prank(relayer);
-    hub.settleOrder(order, authData, route, '', false);
+    hub.settleOrder(order, authData, solution, '', false);
 
     assertEq(authenticator.nonces(lNonceKey(signer), 0), 1 << 21, 'the order nonce burned');
     assertEq(callee.callCount(), 1, 'the solution ran once');
@@ -286,7 +286,7 @@ contract SolutionApprovalTest is SettlementBase {
     vm.expectRevert(
       abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(signer), 21)
     );
-    hub.settleOrder(order, authData, route, '', false);
+    hub.settleOrder(order, authData, solution, '', false);
 
     assertEq(callee.callCount(), 1, 'and not a second time');
   }
@@ -298,16 +298,16 @@ contract SolutionApprovalTest is SettlementBase {
    */
   function test_SOL_07_anApprovalNonceCannotBeReusedForAnotherOrder() public {
     AHV2Order memory first = _approverOrder(90);
-    AHV2Solution memory route = _route(first, 4);
-    bytes memory approval = _signSolutionApproval(approverKey, first, route);
+    AHV2Solution memory solution = _defaultSolution(first, 4);
+    bytes memory approval = _signSolutionApproval(approverKey, first, solution);
     bytes memory firstAuth = _authOf(first);
 
     vm.prank(relayer);
-    hub.settleOrder(first, firstAuth, route, approval, false);
+    hub.settleOrder(first, firstAuth, solution, approval, false);
     assertEq(callee.callCount(), 1, 'the first settlement ran');
 
     AHV2Order memory second = _approverOrder(96);
-    AHV2Solution memory reused = _route(second, 4);
+    AHV2Solution memory reused = _defaultSolution(second, 4);
     bytes memory reusedApproval = _signSolutionApproval(approverKey, second, reused);
     bytes memory secondAuth = _authOf(second);
     vm.prank(relayer);
@@ -317,7 +317,7 @@ contract SolutionApprovalTest is SettlementBase {
     hub.settleOrder(second, secondAuth, reused, reusedApproval, false);
     assertEq(callee.callCount(), 1, 'the reuse ran nothing');
 
-    AHV2Solution memory fresh = _route(second, 5);
+    AHV2Solution memory fresh = _defaultSolution(second, 5);
     bytes memory freshApproval = _signSolutionApproval(approverKey, second, fresh);
     vm.prank(relayer);
     hub.settleOrder(second, secondAuth, fresh, freshApproval, false);
@@ -328,8 +328,8 @@ contract SolutionApprovalTest is SettlementBase {
   /// SOL-08 — the approver revokes an unused approval with `revokeNonce`
   function test_SOL_08_theApproverRevokesAnApproval() public {
     AHV2Order memory order = _approverOrder(91);
-    AHV2Solution memory route = _route(order, 9);
-    bytes memory approval = _signSolutionApproval(approverKey, order, route);
+    AHV2Solution memory solution = _defaultSolution(order, 9);
+    bytes memory approval = _signSolutionApproval(approverKey, order, solution);
 
     vm.expectEmit(address(hub));
     emit IUnorderedNonce.RevokeNonce(lNonceKey(approver), 9);
@@ -341,7 +341,7 @@ contract SolutionApprovalTest is SettlementBase {
     vm.expectRevert(
       abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(approver), 9)
     );
-    hub.settleOrder(order, auth, route, approval, false);
+    hub.settleOrder(order, auth, solution, approval, false);
     assertEq(callee.callCount(), 0, 'the revoked approval ran nothing');
   }
 
@@ -354,11 +354,11 @@ contract SolutionApprovalTest is SettlementBase {
       0,
       vm.getBlockTimestamp() + 1 hours
     );
-    AHV2Solution memory route = _route(open, 7);
+    AHV2Solution memory solution = _defaultSolution(open, 7);
 
     vm.startPrank(owner);
-    hub.settleOrder(open, '', route, '', false);
-    hub.settleOrder(open, '', route, '', false);
+    hub.settleOrder(open, '', solution, '', false);
+    hub.settleOrder(open, '', solution, '', false);
     vm.stopPrank();
 
     assertEq(callee.callCount(), 2, 'both settlements ran with the same nonce');
@@ -379,14 +379,14 @@ contract SolutionApprovalTest is SettlementBase {
       92,
       deadline
     );
-    AHV2Solution memory route = _route(order, 6);
-    bytes memory approval = _signSolutionApproval(approverKey, order, route);
+    AHV2Solution memory solution = _defaultSolution(order, 6);
+    bytes memory approval = _signSolutionApproval(approverKey, order, solution);
     bytes memory permitSig = _signWitness(order);
 
     assertEq(hub.nonces(lNonceKey(approver), 0), 0, 'nothing is spent before the settlement');
 
     vm.prank(solver);
-    hub.settleOrder(order, permitSig, route, approval, false);
+    hub.settleOrder(order, permitSig, solution, approval, false);
 
     assertEq(hub.nonces(lNonceKey(approver), 0), 1 << 6, "the approver's bit is set");
   }
@@ -398,12 +398,12 @@ contract SolutionApprovalTest is SettlementBase {
    */
   function testFuzz_SOL_11_exactlyTheSolutionNonceIsSpent(SolutionNonceFuzz memory f) public {
     AHV2Order memory order = _approverOrder(93);
-    AHV2Solution memory route = _route(order, f.nonce);
-    bytes memory approval = _signSolutionApproval(approverKey, order, route);
+    AHV2Solution memory solution = _defaultSolution(order, f.nonce);
+    bytes memory approval = _signSolutionApproval(approverKey, order, solution);
     bytes memory auth = _authOf(order);
 
     vm.prank(relayer);
-    hub.settleOrder(order, auth, route, approval, false);
+    hub.settleOrder(order, auth, solution, approval, false);
 
     assertEq(
       hub.nonces(lNonceKey(approver), f.nonce >> 8),
@@ -412,7 +412,7 @@ contract SolutionApprovalTest is SettlementBase {
     );
 
     AHV2Order memory other = _approverOrder(95);
-    AHV2Solution memory replay = _route(other, f.nonce);
+    AHV2Solution memory replay = _defaultSolution(other, f.nonce);
     bytes memory replayApproval = _signSolutionApproval(approverKey, other, replay);
     bytes memory otherAuth = _authOf(other);
 
@@ -439,15 +439,15 @@ contract SolutionApprovalTest is SettlementBase {
     assertEq(hub.nonces(lNonceKey(approver), 0), 1 << 11, 'the delegation spent nonce 11');
 
     AHV2Order memory order = _approverOrder(94);
-    AHV2Solution memory route = _route(order, 11);
-    bytes memory approval = _signSolutionApproval(approverKey, order, route);
+    AHV2Solution memory solution = _defaultSolution(order, 11);
+    bytes memory approval = _signSolutionApproval(approverKey, order, solution);
 
     bytes memory auth = _authOf(order);
     vm.prank(relayer);
     vm.expectRevert(
       abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(approver), 11)
     );
-    hub.settleOrder(order, auth, route, approval, false);
+    hub.settleOrder(order, auth, solution, approval, false);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -459,7 +459,7 @@ contract SolutionApprovalTest is SettlementBase {
    * @dev The signature is not read and the solution nonce is not spent, on both entry points.
    */
   function testFuzz_OWNER_APR_01_ownerSettlesWithoutAnApproval(OwnerApprovalFuzz memory f) public {
-    (AHV2Order memory order, AHV2Solution memory route, ERC20Allowance[] memory erc20s) =
+    (AHV2Order memory order, AHV2Solution memory solution, ERC20Allowance[] memory erc20s) =
       _namedApproverSettlement(f.viaPermit2 ? permit2 : address(0), 98);
     bytes memory garbage = f.emptySignature ? bytes('') : bytes(hex'dead');
     uint256 before = _calleeBalance();
@@ -467,15 +467,17 @@ contract SolutionApprovalTest is SettlementBase {
     if (f.viaPermit2) {
       bytes memory permitSig = _signPlainPermit(erc20s, 98, order.expiration);
       vm.prank(owner);
-      hub.settleOrder(order, permitSig, route, garbage, false);
+      hub.settleOrder(order, permitSig, solution, garbage, false);
     } else {
       vm.prank(owner);
-      hub.settleOrder(order, '', route, garbage, false);
+      hub.settleOrder(order, '', solution, garbage, false);
     }
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the owner settled');
     assertEq(
-      hub.nonces(lNonceKey(approver), route.nonce >> 8), 0, "the approver's namespace is untouched"
+      hub.nonces(lNonceKey(approver), solution.nonce >> 8),
+      0,
+      "the approver's namespace is untouched"
     );
   }
 
@@ -486,7 +488,7 @@ contract SolutionApprovalTest is SettlementBase {
   function testFuzz_OWNER_APR_02_solverIsRefusedWithoutAnApproval(OwnerApprovalFuzz memory f)
     public
   {
-    (AHV2Order memory order, AHV2Solution memory route,) =
+    (AHV2Order memory order, AHV2Solution memory solution,) =
       _namedApproverSettlement(f.viaPermit2 ? permit2 : address(authenticator), 99);
     bytes memory garbage = f.emptySignature ? bytes('') : bytes(hex'dead');
     uint256 before = _calleeBalance();
@@ -495,12 +497,12 @@ contract SolutionApprovalTest is SettlementBase {
       bytes memory witnessSig = _signWitness(order);
       vm.prank(solver);
       vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-      hub.settleOrder(order, witnessSig, route, garbage, false);
+      hub.settleOrder(order, witnessSig, solution, garbage, false);
     } else {
       bytes memory auth = _authOf(order);
       vm.prank(solver);
       vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-      hub.settleOrder(order, auth, route, garbage, false);
+      hub.settleOrder(order, auth, solution, garbage, false);
     }
 
     assertEq(_calleeBalance(), before, 'nothing moved');
@@ -540,7 +542,7 @@ contract SolutionApprovalTest is SettlementBase {
       nonce,
       vm.getBlockTimestamp() + 1 hours
     );
-    return (order, _route(order, SOLUTION_NONCE), erc20s);
+    return (order, _defaultSolution(order, SOLUTION_NONCE), erc20s);
   }
 
   /// @dev An order with no transfers and one call whose approver is `approver`, valid for an hour

@@ -13,9 +13,10 @@ import {ERC20Mock, ERC721Mock} from '../mocks/TokenMocks.sol';
 
 import {KSAllowanceHubV2} from '../../src/KSAllowanceHubV2.sol';
 
-import {IUnorderedNonce} from '../../src/interfaces/base/IUnorderedNonce.sol';
+import {IKSAllowanceHubV2} from '../../src/interfaces/IKSAllowanceHubV2.sol';
 
-import {DeadlineChecker} from '../../src/base/DeadlineChecker.sol';
+import {IAuthDelegator} from '../../src/interfaces/base/IAuthDelegator.sol';
+import {IUnorderedNonce} from '../../src/interfaces/base/IUnorderedNonce.sol';
 
 import {AHV2Order} from '../../src/types/AHV2Order.sol';
 import {AHV2Solution} from '../../src/types/AHV2Solution.sol';
@@ -59,11 +60,11 @@ abstract contract HubBase is V2TestBase {
   address internal multicall3 = 0xcA11bde05977b3631167028862bE2a173976CA11;
 
   /**
-   * @dev Transcribed from {IKSAllowanceHubV2-TransferTokens}, never imported: an expected topic
+   * @dev Transcribed from {IKSAllowanceHubV2-SettleOrder}, never imported: an expected topic
    * taken from the contract under test would agree with a wrong one.
    */
-  bytes32 internal constant TRANSFER_TOKENS_TOPIC = keccak256(
-    'TransferTokens(address,address,bytes32,(address,address,uint160)[],(address,uint256,address)[],(address,uint256)[],bytes)'
+  bytes32 internal constant SETTLE_ORDER_TOPIC = keccak256(
+    'SettleOrder(address,address,bytes32,(address,address,uint160)[],(address,uint256,address)[],(address,uint256)[],bytes)'
   );
 
   function setUp() public virtual {
@@ -161,16 +162,30 @@ abstract contract HubBase is V2TestBase {
   }
 
   /**
-   * @dev The whole {DeadlineChecker-DeadlinePassed} payload, with the argument order written out
+   * @dev The whole {IAuthDelegator-DeadlinePassed} payload, with the argument order written out
    * here. The error carries values, so a selector-only expectation would not match it.
    */
   function _deadlinePassed(uint256 deadline) internal view returns (bytes memory) {
     return abi.encodeWithSelector(
-      DeadlineChecker.DeadlinePassed.selector, deadline, vm.getBlockTimestamp()
+      IAuthDelegator.DeadlinePassed.selector, deadline, vm.getBlockTimestamp()
     );
   }
 
-  /// @dev Selects the single `TransferTokens` the hub emitted from the fork's log stream
+  /// @dev The whole {IKSAllowanceHubV2-OrderExpired} payload
+  function _orderExpired(uint256 expiration) internal view returns (bytes memory) {
+    return abi.encodeWithSelector(
+      IKSAllowanceHubV2.OrderExpired.selector, expiration, vm.getBlockTimestamp()
+    );
+  }
+
+  /// @dev The whole {IKSAllowanceHubV2-SolutionExpired} payload
+  function _solutionExpired(uint256 expiration) internal view returns (bytes memory) {
+    return abi.encodeWithSelector(
+      IKSAllowanceHubV2.SolutionExpired.selector, expiration, vm.getBlockTimestamp()
+    );
+  }
+
+  /// @dev Selects the single `SettleOrder` the hub emitted from the fork's log stream
   function _settlementLog() internal view returns (Vm.Log memory entry) {
     Vm.Log[] memory entries = vm.getRecordedLogs();
 
@@ -182,7 +197,7 @@ abstract contract HubBase is V2TestBase {
       if (entries[i].topics.length == 0) {
         continue;
       }
-      if (entries[i].topics[0] != TRANSFER_TOKENS_TOPIC) {
+      if (entries[i].topics[0] != SETTLE_ORDER_TOPIC) {
         continue;
       }
 
@@ -190,7 +205,7 @@ abstract contract HubBase is V2TestBase {
       found++;
     }
 
-    assertEq(found, 1, 'exactly one TransferTokens per order');
+    assertEq(found, 1, 'exactly one SettleOrder per order');
   }
 
   /// @dev Expects the next call to emit no `RevokeNonce` from any contract
@@ -399,12 +414,12 @@ abstract contract HubBase is V2TestBase {
   }
 
   /// @dev The solution for `order` with its default targets, valid for an hour
-  function _route(AHV2Order memory order) internal view returns (AHV2Solution memory) {
-    return _route(order, 0);
+  function _defaultSolution(AHV2Order memory order) internal view returns (AHV2Solution memory) {
+    return _defaultSolution(order, 0);
   }
 
   /// @dev As above, with the solution nonce `nonce`
-  function _route(AHV2Order memory order, uint256 nonce)
+  function _defaultSolution(AHV2Order memory order, uint256 nonce)
     internal
     view
     returns (AHV2Solution memory)

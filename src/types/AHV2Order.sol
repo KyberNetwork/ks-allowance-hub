@@ -3,15 +3,15 @@ pragma solidity ^0.8.0;
 
 import {IKSAllowanceHubV2} from '../interfaces/IKSAllowanceHubV2.sol';
 
-import {DeadlineChecker} from '../base/DeadlineChecker.sol';
-
 import {AHV2Solution} from './AHV2Solution.sol';
+import {AHV2WitnessLib} from './AHV2Witness.sol';
 import {CallParams, CallParamsLib} from './CallParams.sol';
 import {ERC20Allowance, ERC20AllowanceLib} from './ERC20Allowance.sol';
 import {ERC721Approval, ERC721ApprovalLib} from './ERC721Approval.sol';
 import {HookParams, HookParamsLib} from './HookParams.sol';
 
 import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
+import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
@@ -40,7 +40,7 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * address, used as the Permit2 nonce when it is the Permit2 address, and for the authenticator to
  * spend otherwise
  * @param expiration Last timestamp at which the order may settle
- * @param clientData Data for off-chain clients, emitted in {IKSAllowanceHubV2-TransferTokens}
+ * @param clientData Data for off-chain clients, emitted in {IKSAllowanceHubV2-SettleOrder}
  */
 struct AHV2Order {
   address owner;
@@ -129,29 +129,16 @@ library AHV2OrderLib {
     orderHash = hash(order, erc721ApprovalsHash, hooksHash, callsHash, clientDataHash);
   }
 
-  /**
-   * @dev Emits {IKSAllowanceHubV2-TransferTokens} for the order with hash `orderHash`, pairing
-   * each transfer with the target and amount `solution` specifies for it
-   */
-  function announce(AHV2Order calldata order, bytes32 orderHash, AHV2Solution calldata solution)
-    internal
-  {
-    emit IKSAllowanceHubV2.TransferTokens(
-      msg.sender,
-      order.owner,
-      orderHash,
-      order.erc20Allowances.toTransfers(solution.erc20Targets, solution.erc20Amounts),
-      order.erc721Approvals.toTransfers(solution.erc721Targets),
-      order.calls.toNativeTransfers(),
-      order.clientData
-    );
-  }
-
   /// @dev Checks the expirations of the order and `solution`, and that `solution` fits the order
   function checkSettlement(AHV2Order calldata order, AHV2Solution calldata solution) internal view {
     // A call at the expiration is accepted
-    _checkDeadline(order.expiration);
-    _checkDeadline(solution.expiration);
+    if (block.timestamp > order.expiration) {
+      revert IKSAllowanceHubV2.OrderExpired(order.expiration, block.timestamp);
+    }
+    if (block.timestamp > solution.expiration) {
+      revert IKSAllowanceHubV2.SolutionExpired(solution.expiration, block.timestamp);
+    }
+
     // One target and one amount for each ERC20 transfer, one target for each ERC721 transfer and
     // one `solverData` entry for each call
     _checkLengths(solution.erc20Targets.length, order.erc20Allowances.length);
@@ -160,10 +147,48 @@ library AHV2OrderLib {
     _checkLengths(solution.solverData.length, order.calls.length);
   }
 
-  /// @dev Reverts when the current block timestamp is later than `deadline`
-  function _checkDeadline(uint256 deadline) private view {
-    if (block.timestamp > deadline) {
-      revert DeadlineChecker.DeadlinePassed(deadline, block.timestamp);
+  /**
+   * @dev Transfers the order's ERC20 tokens as `solution` specifies, through a Permit2 signature
+   * transfer at `permit2`, with `signature` by the owner over the permit. When the caller is not
+   * the owner, the signature also covers the order's witness, computed from the already computed
+   * hashes of `erc721Approvals`, `hooks`, `calls` and `clientData`.
+   */
+  function executeSignatureTransfer(
+    AHV2Order calldata order,
+    AHV2Solution calldata solution,
+    bytes calldata signature,
+    bytes32 erc721ApprovalsHash,
+    bytes32 hooksHash,
+    bytes32 callsHash,
+    bytes32 clientDataHash,
+    address permit2
+  ) internal {
+    ISignatureTransfer.PermitBatchTransferFrom memory permit =
+      order.erc20Allowances.toPermitBatchTransferFrom(order.nonce, order.expiration);
+    ISignatureTransfer.SignatureTransferDetails[] memory details =
+      order.erc20Allowances.toSignatureTransferDetails(solution.erc20Targets, solution.erc20Amounts);
+
+    if (msg.sender == order.owner) {
+      ISignatureTransfer(permit2).permitTransferFrom(permit, details, order.owner, signature);
+    } else {
+      bytes32 witness = AHV2WitnessLib.hash(
+        order.exclusiveCaller,
+        erc721ApprovalsHash,
+        hooksHash,
+        callsHash,
+        order.solutionApprover,
+        clientDataHash
+      );
+
+      ISignatureTransfer(permit2)
+        .permitWitnessTransferFrom(
+          permit,
+          details,
+          order.owner,
+          witness,
+          AHV2WitnessLib.AHV2_WITNESS_PERMIT2_TYPE_STRING,
+          signature
+        );
     }
   }
 

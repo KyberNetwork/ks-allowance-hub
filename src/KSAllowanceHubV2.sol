@@ -13,7 +13,7 @@ import {DynamicArrayLibExt} from './libraries/DynamicArrayLibExt.sol';
 
 import {AHV2Order} from './types/AHV2Order.sol';
 import {AHV2Solution} from './types/AHV2Solution.sol';
-import {AHV2WitnessLib} from './types/AHV2Witness.sol';
+import {CallParams, CallParamsLib} from './types/CallParams.sol';
 import {ERC20Allowance, ERC20AllowanceLib} from './types/ERC20Allowance.sol';
 import {ERC20Transfer} from './types/ERC20Transfer.sol';
 import {ERC721Approval, ERC721ApprovalLib} from './types/ERC721Approval.sol';
@@ -25,15 +25,10 @@ import {IMulticall3} from 'forge-std/interfaces/IMulticall3.sol';
 
 import {ManagementSimple} from 'ks-common-sc/src/base/ManagementSimple.sol';
 
-import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
-
 import {KSRoles} from 'ks-common-sc/src/libraries/KSRoles.sol';
 import {TokenHelper} from 'ks-common-sc/src/libraries/token/TokenHelper.sol';
 
 import {IERC721} from 'openzeppelin-contracts/contracts/token/ERC721/IERC721.sol';
-import {
-  SignatureChecker
-} from 'openzeppelin-contracts/contracts/utils/cryptography/SignatureChecker.sol';
 
 /**
  * @title KSAllowanceHubV2
@@ -52,6 +47,7 @@ contract KSAllowanceHubV2 is
   Multicall,
   MsgSender
 {
+  using CallParamsLib for CallParams[];
   using DynamicArrayLibExt for uint256;
   using ERC20AllowanceLib for ERC20Allowance[];
   using ERC721ApprovalLib for ERC721Approval[];
@@ -106,7 +102,6 @@ contract KSAllowanceHubV2 is
     guardNativeSpend
     returns (bytes[] memory results)
   {
-    // The order and the solution must not have expired, and the solution must fit the order
     order.checkSettlement(solution);
 
     (
@@ -122,8 +117,6 @@ contract KSAllowanceHubV2 is
     // ignored and no nonce is spent, so the owner may settle the same order more than once. On the
     // Permit2 flow, the owner's Permit2 signature still authorizes the ERC20 transfers below.
     if (msg.sender != order.owner) {
-      // Any other caller must be the exclusive caller, or any account when the exclusive caller is
-      // the zero address
       if (msg.sender != order.exclusiveCaller && order.exclusiveCaller != Constants.ADDRESS_ZERO) {
         revert NotExclusiveCaller(msg.sender);
       }
@@ -131,10 +124,7 @@ contract KSAllowanceHubV2 is
       if (order.authenticator == Constants.ADDRESS_ZERO) {
         // The owner's signature over the order spends `order.nonce` in the owner's namespace, so
         // each signed order settles at most once
-        _useUnorderedNonce(order.owner, order.nonce);
-        if (!SignatureChecker.isValidSignatureNow(
-            order.owner, _hashTypedDataV4(orderHash), authenticationData
-          )) {
+        if (!_verifySignature(order.owner, order.nonce, orderHash, authenticationData)) {
           revert InvalidOrderSignature();
         }
       } else if (order.authenticator != PERMIT2) {
@@ -149,44 +139,57 @@ contract KSAllowanceHubV2 is
       }
       // On the Permit2 flow, Permit2 checks the owner's signature when the ERC20 tokens move
 
-      // The approval is not required when the approver is the zero address. Otherwise it spends
-      // `solution.nonce` in the approver's namespace, so each approval settles at most once.
+      // The approval spends `solution.nonce` in the approver's namespace, so each approval settles
+      // at most once
       if (order.solutionApprover != Constants.ADDRESS_ZERO) {
-        _checkSolutionApproval(order.solutionApprover, orderHash, solution, solutionSignature);
+        bytes32 approvalHash = SolutionApprovalLib.hash(orderHash, solution);
+        if (!_verifySignature(
+            order.solutionApprover, solution.nonce, approvalHash, solutionSignature
+          )) {
+          revert InvalidSolutionSignature();
+        }
       }
     }
 
-    // Runs before any asset moves, and on the Permit2 flow before Permit2 checks the owner's
-    // signature; each hook reads the state before settlement
+    // On the Permit2 flow the hooks run before Permit2 checks the owner's signature
     bytes[] memory beforeSettlementResults =
       order.hooks.beforeSettlement(order, orderHash, solution);
 
-    // Emitted before the assets move and the calls run
-    order.announce(orderHash, solution);
+    emit SettleOrder(
+      msg.sender,
+      order.owner,
+      orderHash,
+      order.erc20Allowances.toTransfers(solution.erc20Targets, solution.erc20Amounts),
+      order.erc721Approvals.toTransfers(solution.erc721Targets),
+      order.calls.toNativeTransfers(),
+      order.clientData
+    );
 
-    // Each ERC20 transfer sends `solution.erc20Amounts[i]`, at most its allowance
+    // On the Permit2 flow, the permit's nonce is `order.nonce` and its deadline is
+    // `order.expiration`, so Permit2 provides the replay protection. The owner's signature covers
+    // the order's witness when another account calls.
     if (order.authenticator == PERMIT2) {
-      _transferWithPermit2Signature(
-        order,
+      order.executeSignatureTransfer(
         solution,
         authenticationData,
         erc721ApprovalsHash,
         hooksHash,
         callsHash,
-        clientDataHash
+        clientDataHash,
+        PERMIT2
       );
     } else if (usePermit2Allowances) {
       order.erc20Allowances
-        .executePermit2(order.owner, solution.erc20Targets, solution.erc20Amounts, PERMIT2);
+        .executeAllowanceTransfer(
+          order.owner, solution.erc20Targets, solution.erc20Amounts, PERMIT2
+        );
     } else {
-      order.erc20Allowances.execute(order.owner, solution.erc20Targets, solution.erc20Amounts);
+      order.erc20Allowances
+        .executeERC20Transfer(order.owner, solution.erc20Targets, solution.erc20Amounts);
     }
 
-    // The ERC721 transfers precede the calls, and the hooks' `afterSettlement` runs last
     order.erc721Approvals.execute(order.owner, solution.erc721Targets);
 
-    // Each call runs with its entry of `solverData`, and each callee must hold the whitelisted
-    // callee role
     results = order.calls.length.mallocBytes();
     for (uint256 i = 0; i < order.calls.length; i++) {
       _checkRole(Constants.WHITELISTED_CALLEE_ROLE, order.calls[i].callee);
@@ -226,65 +229,5 @@ contract KSAllowanceHubV2 is
     }
 
     emit RescueTokens(erc20Transfers, erc721Transfers);
-  }
-
-  /// @dev Transfers the order's ERC20 tokens to the solution's targets with the owner's Permit2
-  /// signature; the signature also covers the order's witness when the caller is not the owner
-  function _transferWithPermit2Signature(
-    AHV2Order calldata order,
-    AHV2Solution calldata solution,
-    bytes calldata permit2Signature,
-    bytes32 erc721ApprovalsHash,
-    bytes32 hooksHash,
-    bytes32 callsHash,
-    bytes32 clientDataHash
-  ) internal {
-    // The permit's nonce is `order.nonce` and its deadline is `order.expiration`, so Permit2
-    // provides the replay protection. Its permitted amounts are the order's allowances.
-    ISignatureTransfer.PermitBatchTransferFrom memory permit =
-      order.erc20Allowances.toPermitBatchTransferFrom(order.nonce, order.expiration);
-    ISignatureTransfer.SignatureTransferDetails[] memory details =
-      order.erc20Allowances.toSignatureTransferDetails(solution.erc20Targets, solution.erc20Amounts);
-
-    // The owner's signature covers the permit alone when the owner calls, and also the order's
-    // witness when another account calls
-    if (msg.sender == order.owner) {
-      ISignatureTransfer(PERMIT2).permitTransferFrom(permit, details, order.owner, permit2Signature);
-    } else {
-      bytes32 witness = AHV2WitnessLib.hash(
-        order.exclusiveCaller,
-        erc721ApprovalsHash,
-        hooksHash,
-        callsHash,
-        order.solutionApprover,
-        clientDataHash
-      );
-
-      ISignatureTransfer(PERMIT2)
-        .permitWitnessTransferFrom(
-          permit,
-          details,
-          order.owner,
-          witness,
-          AHV2WitnessLib.AHV2_WITNESS_PERMIT2_TYPE_STRING,
-          permit2Signature
-        );
-    }
-  }
-
-  /// @dev Reverts unless `solutionApprover` signed `solution` for the order with hash `orderHash`,
-  /// and spends `solution.nonce` in the approver's namespace
-  function _checkSolutionApproval(
-    address solutionApprover,
-    bytes32 orderHash,
-    AHV2Solution calldata solution,
-    bytes calldata solutionSignature
-  ) internal {
-    _useUnorderedNonce(solutionApprover, solution.nonce);
-
-    bytes32 digest = _hashTypedDataV4(SolutionApprovalLib.hash(orderHash, solution));
-    if (!SignatureChecker.isValidSignatureNow(solutionApprover, digest, solutionSignature)) {
-      revert InvalidSolutionSignature();
-    }
   }
 }

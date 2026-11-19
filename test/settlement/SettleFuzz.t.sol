@@ -72,13 +72,13 @@ contract SettleFuzzTest is SettlementBase {
 
     address orderAuthenticator =
       rail == 0 ? address(0) : rail == 1 ? permit2 : address(authenticator);
-    (AHV2Order memory order, AHV2Solution memory route, uint256 value) =
+    (AHV2Order memory order, AHV2Solution memory solution, uint256 value) =
       _fuzzOrder(f, relayer, orderAuthenticator);
     bytes memory authData = rail == 0
       ? _signOrder(order)
       : rail == 1 ? _signWitness(order) : _orderAuthData(order, signer, signerPk);
     bytes memory approval =
-      f.approveSolution ? _signSolutionApproval(approverKey, order, route) : bytes('');
+      f.approveSolution ? _signSolutionApproval(approverKey, order, solution) : bytes('');
 
     uint256 before = IERC20(token18).balanceOf(f.erc20Target);
     uint256 nativeBefore = address(callee).balance;
@@ -89,7 +89,7 @@ contract SettleFuzzTest is SettlementBase {
 
     vm.prank(relayer);
     bytes[] memory results =
-      hub.settleOrder{value: value}(order, authData, route, approval, f.usePermit2Allowances);
+      hub.settleOrder{value: value}(order, authData, solution, approval, f.usePermit2Allowances);
 
     _assertFuzzSettled(f, order, results, before, nativeBefore, value);
     assertEq(
@@ -144,7 +144,7 @@ contract SettleFuzzTest is SettlementBase {
   function _fuzzOrder(OrderFuzz memory f, address submitter, address orderAuthenticator)
     private
     view
-    returns (AHV2Order memory order, AHV2Solution memory route, uint256 value)
+    returns (AHV2Order memory order, AHV2Solution memory solution, uint256 value)
   {
     value = f.callCount == 0 ? 0 : f.msgValue;
 
@@ -166,13 +166,13 @@ contract SettleFuzzTest is SettlementBase {
       f.nonce,
       vm.getBlockTimestamp() + f.expirationOffset
     );
-    route = _solution(
+    solution = _solution(
       _addresses(f.erc20Target),
       _amounts(f.amount),
       f.moveNft ? _addresses(f.erc721Target) : new address[](0),
       vm.getBlockTimestamp() + f.expirationOffset
     );
-    route.solverData = _solverData(f.callCount);
+    solution.solverData = _solverData(f.callCount);
   }
 
   function _assertFuzzSettled(

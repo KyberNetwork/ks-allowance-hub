@@ -10,6 +10,9 @@ interface IAuthDelegator {
   /// @notice The owner called directly, which takes an empty signature, and gave a signature
   error UnexpectedSignature();
 
+  /// @notice The delegation's deadline has passed
+  error DeadlinePassed(uint256 deadline, uint256 currentTime);
+
   /// @notice The order's owner has not delegated this authenticator
   error AuthenticatorNotDelegated(address authenticator);
 

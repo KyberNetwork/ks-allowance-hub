@@ -4,7 +4,6 @@ pragma solidity ^0.8.0;
 import {IAHV2Authenticator} from '../interfaces/base/IAHV2Authenticator.sol';
 import {IAuthDelegator} from '../interfaces/base/IAuthDelegator.sol';
 
-import {DeadlineChecker} from './DeadlineChecker.sol';
 import {UnorderedNonce} from './UnorderedNonce.sol';
 
 import {AuthDelegationLib} from '../types/AuthDelegation.sol';
@@ -21,7 +20,7 @@ import {
  * @dev An authenticator is trusted by the owner who delegates it. This contract checks only that
  * the delegation is in place.
  */
-abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNonce, EIP712 {
+abstract contract AuthDelegator is IAuthDelegator, UnorderedNonce, EIP712 {
   /// @inheritdoc IAuthDelegator
   mapping(address owner => mapping(address authenticator => bool)) public authDelegated;
 
@@ -40,17 +39,18 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
     uint256 nonce,
     uint256 deadline,
     bytes calldata signature
-  ) external payable checkDeadline(deadline) {
+  ) external payable {
+    if (block.timestamp > deadline) {
+      revert DeadlinePassed(deadline, block.timestamp);
+    }
+
     // The owner's call is its own authorization: `signature` must be empty and no nonce is spent.
     // Any other caller, including Multicall3 relaying the call through `forwardCalls`, needs the
     // owner's signature over the {AuthDelegation}, which spends `nonce` in the owner's namespace.
     if (owner != msg.sender) {
-      _useUnorderedNonce(owner, nonce);
-
-      bytes32 hash = _hashTypedDataV4(
-        AuthDelegationLib.hash(owner, authenticator, delegated, data, nonce, deadline)
-      );
-      if (!SignatureChecker.isValidSignatureNow(owner, hash, signature)) {
+      bytes32 delegationHash =
+        AuthDelegationLib.hash(owner, authenticator, delegated, data, nonce, deadline);
+      if (!_verifySignature(owner, nonce, delegationHash, signature)) {
         revert InvalidDelegationSignature();
       }
     } else if (signature.length != 0) {
@@ -67,5 +67,18 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
     authDelegated[owner][authenticator] = delegated;
 
     emit UpdateDelegation(owner, authenticator, delegated);
+  }
+
+  /// @dev Spends `nonce` in the namespace of `signer` and returns whether `signature` by `signer`
+  /// is valid for the EIP-712 digest of `structHash`
+  function _verifySignature(
+    address signer,
+    uint256 nonce,
+    bytes32 structHash,
+    bytes calldata signature
+  ) internal returns (bool) {
+    _useUnorderedNonce(signer, nonce);
+
+    return SignatureChecker.isValidSignatureNow(signer, _hashTypedDataV4(structHash), signature);
   }
 }
