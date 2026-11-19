@@ -71,15 +71,13 @@ contract SolutionTest is SettlementBase {
     for (uint256 i = 0; i < 4; i++) {
       vm.prank(owner);
       vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-      hub.settleOrderWithDelegatedAuthentication(order, address(0), '', _mismatched(i), '', false);
+      hub.settleOrder(order, '', _mismatched(i), '', false);
     }
     assertEq(_balance(owner), ownerBefore, 'no refused solution moved the ERC20');
     assertEq(nft.ownerOf(NFT_ID), owner, 'or the NFT');
 
     vm.prank(owner);
-    hub.settleOrderWithDelegatedAuthentication(
-      order, address(0), '', _toSolverAndRecipient(), '', false
-    );
+    hub.settleOrder(order, '', _toSolverAndRecipient(), '', false);
 
     _assertLanded(ownerBefore);
     assertEq(_balance(address(callee)), calleeBefore, 'no callee received the transfer');
@@ -93,9 +91,7 @@ contract SolutionTest is SettlementBase {
     uint256 ownerBefore = _balance(owner);
 
     vm.prank(owner);
-    hub.settleOrderWithDelegatedAuthentication(
-      order, address(0), '', _toSolverAndRecipient(), '', true
-    );
+    hub.settleOrder(order, '', _toSolverAndRecipient(), '', true);
 
     _assertLanded(ownerBefore);
     assertEq(_permit2Allowance(token18), 0, 'the Permit2 allowance paid for the transfer');
@@ -110,13 +106,14 @@ contract SolutionTest is SettlementBase {
    */
   function test_TGT_03_witnessDoesNotBindTheErc20Targets() public {
     AHV2Order memory order = _bothTransfers(ANY, 1);
+    order.authenticator = permit2;
     bytes memory witness = _signWitness(order);
     uint256 ownerBefore = _balance(owner);
 
     for (uint256 i = 0; i < 4; i++) {
       vm.prank(solver);
       vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-      hub.settleOrderWithPermit2Signature(order, witness, _mismatched(i), '');
+      hub.settleOrder(order, witness, _mismatched(i), '', false);
     }
     assertEq(_balance(owner), ownerBefore, 'no refused solution moved the ERC20');
     assertEq(nft.ownerOf(NFT_ID), owner, 'or the NFT');
@@ -124,13 +121,13 @@ contract SolutionTest is SettlementBase {
     uint256 snapshot = vm.snapshotState();
 
     vm.prank(solver);
-    hub.settleOrderWithPermit2Signature(order, witness, _toSolverAndRecipient(), '');
+    hub.settleOrder(order, witness, _toSolverAndRecipient(), '', false);
     _assertLanded(ownerBefore);
 
     vm.revertToState(snapshot);
 
     vm.prank(solver);
-    hub.settleOrderWithPermit2Signature(
+    hub.settleOrder(
       order,
       witness,
       _solution(
@@ -140,7 +137,8 @@ contract SolutionTest is SettlementBase {
         _calls(_calleeCall(0, hex'01')),
         vm.getBlockTimestamp() + 1 hours
       ),
-      ''
+      '',
+      false
     );
     assertEq(_balance(address(callee2)), AMOUNT, 'the same witness, another ERC20 target');
     assertEq(nft.ownerOf(NFT_ID), solverWallet, 'and another NFT target');
@@ -149,11 +147,12 @@ contract SolutionTest is SettlementBase {
   /// TGT-04 — the owner submits over Permit2 with a plain permit, and still picks the targets
   function test_TGT_04_ownerSubmitsWithTargetsOfTheirChoice() public {
     AHV2Order memory order = _bothTransfers(ANY, 2);
+    order.authenticator = permit2;
     bytes memory permit = _signPlainPermit(order.erc20Allowances, 2, order.expiration);
     uint256 ownerBefore = _balance(owner);
 
     vm.prank(owner);
-    hub.settleOrderWithPermit2Signature(order, permit, _toSolverAndRecipient(), '');
+    hub.settleOrder(order, permit, _toSolverAndRecipient(), '', false);
 
     _assertLanded(ownerBefore);
   }
@@ -169,6 +168,7 @@ contract SolutionTest is SettlementBase {
    */
   function test_APR_01_theApprovalBindsTheTargets() public {
     AHV2Order memory order = _bothTransfers(approver, 0);
+    order.authenticator = address(authenticator);
     AHV2Solution memory toCallees = _solution(
       _addresses(address(callee)),
       _amounts(AMOUNT),
@@ -184,15 +184,11 @@ contract SolutionTest is SettlementBase {
     bytes memory auth = _authOf(order);
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.settleOrderWithDelegatedAuthentication(
-      order, address(authenticator), auth, toSolver, calleesApproval, false
-    );
+    hub.settleOrder(order, auth, toSolver, calleesApproval, false);
 
     bytes memory solverApproval = _signSolutionApproval(approverKey, order, toSolver);
     vm.prank(relayer);
-    hub.settleOrderWithDelegatedAuthentication(
-      order, address(authenticator), auth, toSolver, solverApproval, false
-    );
+    hub.settleOrder(order, auth, toSolver, solverApproval, false);
     _assertLanded(ownerBefore);
   }
 
@@ -299,7 +295,8 @@ contract SolutionTest is SettlementBase {
   function test_AMT_04_amountsOfTheWrongLengthAreRefused() public {
     uint160 sixAllowance = 7e6;
     AHV2Order memory order = _twoTransferOrder(AMOUNT, sixAllowance, 1);
-    bytes memory permit = _preparePath(PATH_PERMIT2_SIGNATURE, order);
+    AHV2Order memory permitOrder = _twoTransferOrder(AMOUNT, sixAllowance, 1);
+    bytes memory permit = _preparePath(PATH_PERMIT2_SIGNATURE, permitOrder);
 
     for (uint256 length = 1; length <= 3; length += 2) {
       AHV2Solution memory solution = _twoTransferSolution(AMOUNT, sixAllowance);
@@ -307,11 +304,11 @@ contract SolutionTest is SettlementBase {
 
       vm.prank(owner);
       vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-      hub.settleOrderWithDelegatedAuthentication(order, address(0), '', solution, '', false);
+      hub.settleOrder(order, '', solution, '', false);
 
       vm.prank(solver);
       vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-      hub.settleOrderWithPermit2Signature(order, permit, solution, '');
+      hub.settleOrder(permitOrder, permit, solution, '', false);
     }
 
     uint256 ownerBefore = _balance(owner);
@@ -327,6 +324,7 @@ contract SolutionTest is SettlementBase {
   function test_AMT_05_theApprovalBindsTheAmounts() public {
     AHV2Order memory order = _amountOrder(AMOUNT, 1);
     order.solutionApprover = approver;
+    order.authenticator = address(authenticator);
     AHV2Solution memory approved = _amountSolution(AMOUNT);
     AHV2Solution memory lower = _amountSolution(2 ether);
     bytes memory approval = _signSolutionApproval(approverKey, order, approved);
@@ -335,15 +333,11 @@ contract SolutionTest is SettlementBase {
     bytes memory auth = _authOf(order);
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.settleOrderWithDelegatedAuthentication(
-      order, address(authenticator), auth, lower, approval, false
-    );
+    hub.settleOrder(order, auth, lower, approval, false);
 
     uint256 ownerBefore = _balance(owner);
     vm.prank(relayer);
-    hub.settleOrderWithDelegatedAuthentication(
-      order, address(authenticator), auth, approved, approval, false
-    );
+    hub.settleOrder(order, auth, approved, approval, false);
     assertEq(ownerBefore - _balance(owner), AMOUNT, 'the approved amounts settle');
   }
 
@@ -416,8 +410,7 @@ contract SolutionTest is SettlementBase {
     }
 
     vm.prank(owner);
-    bytes[] memory results =
-      hub.settleOrderWithDelegatedAuthentication(order, address(0), '', solution, '', false);
+    bytes[] memory results = hub.settleOrder(order, '', solution, '', false);
 
     assertEq(results.length, 3, 'one result per owner call');
     for (uint256 i = 0; i < 3; i++) {
@@ -442,6 +435,7 @@ contract SolutionTest is SettlementBase {
       _openAhv2Order(_allowances(_tokenAllowance(AMOUNT)), _noHooks(), ownerCalls, 0, expiration);
     AHV2Order memory relayed =
       _openAhv2Order(_allowances(_tokenAllowance(AMOUNT)), _noHooks(), ownerCalls, 110, expiration);
+    relayed.authenticator = permit2;
     bytes memory witness = _signWitness(relayed);
 
     AHV2Solution memory delegatedSolution = _route(delegated, _noCalls());
@@ -455,13 +449,11 @@ contract SolutionTest is SettlementBase {
 
       vm.prank(owner);
       vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-      hub.settleOrderWithDelegatedAuthentication(
-        delegated, address(0), '', delegatedSolution, '', false
-      );
+      hub.settleOrder(delegated, '', delegatedSolution, '', false);
 
       vm.prank(relayer);
       vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-      hub.settleOrderWithPermit2Signature(relayed, witness, relayedSolution, '');
+      hub.settleOrder(relayed, witness, relayedSolution, '', false);
 
       assertEq(_calleeBalance(), before, 'a refused order moved nothing');
       assertEq(callee.callCount(), 0, 'and ran no call');
@@ -471,11 +463,9 @@ contract SolutionTest is SettlementBase {
     relayedSolution.solverData = _solverData(2);
 
     vm.prank(owner);
-    hub.settleOrderWithDelegatedAuthentication(
-      delegated, address(0), '', delegatedSolution, '', false
-    );
+    hub.settleOrder(delegated, '', delegatedSolution, '', false);
     vm.prank(relayer);
-    hub.settleOrderWithPermit2Signature(relayed, witness, relayedSolution, '');
+    hub.settleOrder(relayed, witness, relayedSolution, '', false);
 
     assertEq(_calleeBalance() - before, 2 * AMOUNT, 'a list of the right length settles');
     assertEq(callee.ownerCallCount(), 4, 'and runs both owner calls of both orders');
@@ -489,6 +479,7 @@ contract SolutionTest is SettlementBase {
   function test_SD_03_theSolutionApprovalBindsSolverData() public {
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
     AHV2Order memory order = _ahv2Order(
+      address(authenticator),
       ANY,
       new ERC20Allowance[](0),
       _noNfts(),
@@ -509,15 +500,11 @@ contract SolutionTest is SettlementBase {
 
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.settleOrderWithDelegatedAuthentication(
-      order, address(authenticator), auth, presented, approval, false
-    );
+    hub.settleOrder(order, auth, presented, approval, false);
     assertEq(callee.callCount(), 0, 'the refused order ran nothing');
 
     vm.prank(relayer);
-    hub.settleOrderWithDelegatedAuthentication(
-      order, address(authenticator), auth, approved, approval, false
-    );
+    hub.settleOrder(order, auth, approved, approval, false);
     assertEq(callee.lastSolverData(), hex'aa', 'the control settled with the approved entry');
   }
 
@@ -534,6 +521,7 @@ contract SolutionTest is SettlementBase {
       111,
       vm.getBlockTimestamp() + 1 hours
     );
+    order.authenticator = permit2;
     bytes memory witness = _signWitness(order);
 
     AHV2Solution memory solutionA = _route(order, _noCalls());
@@ -544,13 +532,13 @@ contract SolutionTest is SettlementBase {
     uint256 snapshot = vm.snapshotState();
 
     vm.prank(solver);
-    hub.settleOrderWithPermit2Signature(order, witness, solutionA, '');
+    hub.settleOrder(order, witness, solutionA, '', false);
     assertEq(callee.lastSolverData(), hex'aa', 'the witness settled with the first list');
 
     vm.revertToState(snapshot);
 
     vm.prank(solver);
-    hub.settleOrderWithPermit2Signature(order, witness, solutionB, '');
+    hub.settleOrder(order, witness, solutionB, '', false);
     assertEq(callee.lastSolverData(), hex'bb', 'and with the second');
   }
 
@@ -683,7 +671,8 @@ contract SolutionTest is SettlementBase {
   /**
    * @dev Prepares what `path` needs before the submission: a Permit2 allowance of twice each
    * transfer for the allowance branch, so that Permit2 does not refuse an amount first, and the
-   * owner's witness signature for the signature branch
+   * owner's witness signature for the signature branch, for which `order` is set to the Permit2
+   * authenticator before it is signed
    */
   function _preparePath(uint8 path, AHV2Order memory order) private returns (bytes memory permit) {
     if (path == PATH_PERMIT2_ALLOWANCE) {
@@ -691,6 +680,7 @@ contract SolutionTest is SettlementBase {
         _grantPermit2Allowance(order.erc20Allowances[i].token, 2 * order.erc20Allowances[i].amount);
       }
     } else if (path == PATH_PERMIT2_SIGNATURE) {
+      order.authenticator = permit2;
       permit = _signWitness(order);
     }
   }
@@ -704,12 +694,10 @@ contract SolutionTest is SettlementBase {
   ) private {
     if (path == PATH_PERMIT2_SIGNATURE) {
       vm.prank(solver);
-      hub.settleOrderWithPermit2Signature(order, permit, solution, '');
+      hub.settleOrder(order, permit, solution, '', false);
     } else {
       vm.prank(owner);
-      hub.settleOrderWithDelegatedAuthentication(
-        order, address(0), '', solution, '', path == PATH_PERMIT2_ALLOWANCE
-      );
+      hub.settleOrder(order, '', solution, '', path == PATH_PERMIT2_ALLOWANCE);
     }
   }
 

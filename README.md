@@ -11,14 +11,14 @@ owners' allowances to the hub. Guardians can revoke that role without the admin.
 
 ### Orders
 
-The owner signs an `AHV2Order`, which names the assets that may leave the owner, the account that
-may submit the order, the hooks that constrain the result and the callee calls the owner fixes. A
-solver supplies an `AHV2Solution`, which the owner does not sign: the target and the amount of each
-ERC20 transfer, the target of each ERC721 transfer, the solver's calls and the data of each owner
-call.
+The owner authorises an `AHV2Order`, which names the assets that may leave the owner, how another
+account's submission is authenticated, the account that may submit the order, the hooks that
+constrain the result and the callee calls the owner fixes. A solver supplies an `AHV2Solution`,
+which the owner does not sign: the target and the amount of each ERC20 transfer, the target of
+each ERC721 transfer, the solver's calls and the data of each owner call.
 
 ```
-AHV2Order(address owner,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)
+AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)
 AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,CallParams[] solverCalls,bytes[] solverData,uint256 nonce,uint256 expiration)
 CallParams(address callee,uint256 value,bytes data)
 HookParams(address hook,bytes32 flags,bytes data)
@@ -37,7 +37,8 @@ ERC721 transfer and one `solverData` entry per owner call. An ERC20 transfer sen
 A settlement runs in this order:
 
 1. the expirations and the lengths of the solution's arrays are checked;
-2. the caller is checked against `exclusiveCaller` and authenticated, as the entry point requires;
+2. the caller is checked against `exclusiveCaller` and authenticated, as `order.authenticator`
+   requires;
 3. the solution approval is checked, unless `solutionApprover` is the dead address or the caller is
    the owner;
 4. each hook's `beforeSettlement` runs when its flags select it;
@@ -74,7 +75,8 @@ in `order.hooks`. The hook reads its own `data` from the order at that index. Th
 `beforeSettlement` is passed to `afterSettlement` as `beforeSettlementResult`, which is empty when
 the entry's flags do not select `beforeSettlement`. A hook reverts to refuse the order.
 
-On the Permit2 entry point, the before hooks run before the permit signature is checked.
+When `order.authenticator` is the Permit2 address, the before hooks run before the permit signature
+is checked.
 
 ### `solverData`
 
@@ -82,17 +84,34 @@ On the Permit2 entry point, the before hooks run before the permit signature is 
 solution approval covers it, when one is required. The owner's signature does not, so an owner call
 treats `solverData` as untrusted input within the limits that `ownerData` sets.
 
-### Entry points
+### Authorisation
 
-| Function | Authorisation |
+`settleOrder(order, authenticationData, solution, solutionSignature, usePermit2Allowances)` is the
+only entry point. `order.authenticator` selects how an order that another account submits is
+authorised:
+
+| `order.authenticator` | Authorisation |
 |---|---|
-| `settleOrderWithDelegatedAuthentication` | an authenticator the owner delegated |
-| `settleOrderWithPermit2Signature` | the owner's Permit2 signature |
+| the zero address | the owner's EIP-712 signature over the order, passed as `authenticationData` |
+| the Permit2 address | the owner's Permit2 signature, passed as `authenticationData` |
+| any other address | an authenticator the owner delegated, which accepts `authenticationData` |
 
-On the **Permit2 entry point**, the ERC20 transfers are executed through a Permit2 batch permit
-whose nonce is `order.nonce` and whose deadline is `order.expiration`. The permitted amounts are the
-order's allowances, and the requested amounts are `solution.erc20Amounts`. When another account
-submits, the owner's signature must also cover a single witness:
+When another account submits, an authenticator other than the zero address and the Permit2 address
+must have been delegated by the owner, and the hub reverts with `AuthenticatorNotDelegated`
+otherwise. The owner's own call requires no delegation.
+
+When `order.authenticator` is the zero address, the signature is an EIP-712 signature over the
+`AHV2Order` under the hub's domain, made by the owner or validated through ERC-1271 when the owner
+is a contract. The hub spends `order.nonce` in the owner's namespace, so a signed order settles at
+most once, and reverts with `InvalidOrderSignature` when the signature is not valid. The ERC20
+transfers are drawn from the owner's allowances to the hub, or from the owner's Permit2 allowances
+when `usePermit2Allowances` is set.
+
+When `order.authenticator` is the Permit2 address, the ERC20 transfers are executed through a
+Permit2 batch permit whose nonce is `order.nonce` and whose deadline is `order.expiration`. The
+permitted amounts are the order's allowances, and the requested amounts are
+`solution.erc20Amounts`. `usePermit2Allowances` is ignored. When another account submits, the
+owner's signature must also cover a single witness:
 
 ```
 AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,bytes clientData)
@@ -104,23 +123,24 @@ The Permit2 witness type string is:
 AHV2Witness witness)AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,bytes clientData)CallParams(address callee,uint256 value,bytes data)ERC721Approval(address token,uint256 tokenId)HookParams(address hook,bytes32 flags,bytes data)TokenPermissions(address token,uint256 amount)
 ```
 
-On the **delegated entry point**, the owner must have delegated the authenticator, the caller must
-be the order's `exclusiveCaller`, and the authenticator must accept `authenticationData` for the
-order. The hub does not spend `order.nonce` and keeps no record of settled orders, so whether an
-order may be settled more than once is the authenticator's decision. The ERC20 transfers are drawn
-from the owner's allowances to the hub, or from the owner's Permit2 allowances when
-`usePermit2Allowances` is set.
+When `order.authenticator` is a delegated authenticator, the caller must be the order's
+`exclusiveCaller`, and the authenticator must accept `authenticationData` for the order. The hub
+does not spend `order.nonce` and keeps no record of settled orders, so whether an order may be
+settled more than once is the authenticator's decision. The ERC20 transfers are drawn from the
+owner's allowances to the hub, or from the owner's Permit2 allowances when `usePermit2Allowances`
+is set.
 
 ### Orders submitted by the owner
 
 When the caller is `order.owner`, the call itself authorises the order:
 
 - `exclusiveCaller` does not apply;
-- on the Permit2 entry point, the owner signs the permit without a witness, and the Permit2 nonce is
-  still spent;
-- on the delegated entry point, the authenticator is not called, `authenticationData` is ignored and
-  no nonce is spent, so the same order may settle more than once. `authenticator` may be the zero
-  address in this case only;
+- when `order.authenticator` is the Permit2 address, the owner signs the permit without a witness,
+  and the Permit2 nonce is still spent;
+- otherwise no signature is checked, no authenticator is called, `authenticationData` is ignored and
+  no nonce is spent, so the same order may settle more than once. The owner submits an order with
+  the zero address as `order.authenticator` to avoid delegating an authenticator;
+- an authenticator other than the zero address and the Permit2 address must still be delegated;
 - `solutionApprover` does not apply: no solution approval is checked and no approval nonce is spent.
 
 ### Delegation
@@ -173,8 +193,7 @@ with `forwardCalls` is not forwarded and remains in the hub.
 hub.multicall([
   abi.encodeCall(hub.forwardCalls, (permitCalls)),
   abi.encodeCall(
-    hub.settleOrderWithDelegatedAuthentication,
-    (order, authenticator, authData, solution, solutionSignature, false)
+    hub.settleOrder, (order, authData, solution, solutionSignature, false)
   )
 ]);
 ```
@@ -199,7 +218,7 @@ hub.
 While an order settles, `msgSender()` returns its owner, so a callee called by the hub can identify
 the owner. A callee treats `solverData` as untrusted input, because the owner does not sign it.
 
-A callee call of an order may settle another order of either entry point, and `msgSender()` returns
+A callee call of an order may settle another order of any authenticator, and `msgSender()` returns
 the outer order's owner again once it returns. The hub refuses no order for settling inside another.
 
 ### Reentrancy and hooks

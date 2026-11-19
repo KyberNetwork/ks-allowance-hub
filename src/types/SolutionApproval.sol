@@ -19,7 +19,7 @@ struct SolutionApproval {
 library SolutionApprovalLib {
   bytes32 internal constant SOLUTION_APPROVAL_TYPEHASH = keccak256(
     'SolutionApproval(AHV2Order order,AHV2Solution solution)'
-    'AHV2Order(address owner,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)'
+    'AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)'
     'AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,CallParams[] solverCalls,bytes[] solverData,uint256 nonce,uint256 expiration)'
     'CallParams(address callee,uint256 value,bytes data)'
     'ERC20Allowance(address token,uint160 amount)' 'ERC721Approval(address token,uint256 tokenId)'

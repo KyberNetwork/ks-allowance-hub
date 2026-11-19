@@ -97,26 +97,24 @@ contract CallsTest is SettlementBase {
     uint256 before = _calleeBalance();
 
     AHV2Order memory control =
-      _ahv2Order(ANY, erc20s, _noNfts(), _noHooks(), signedTail, ANY, 70, expiration);
+      _ahv2Order(permit2, ANY, erc20s, _noNfts(), _noHooks(), signedTail, ANY, 70, expiration);
 
     vm.prank(solver);
-    hub.settleOrderWithPermit2Signature(
-      control, _signWitness(control), _route(control, solverCalls), ''
-    );
+    hub.settleOrder(control, _signWitness(control), _route(control, solverCalls), '', false);
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the signed owner call settled');
     assertEq(callee.callCount(), 2, 'one solver call and one owner call');
 
     AHV2Order memory signed =
-      _ahv2Order(ANY, erc20s, _noNfts(), _noHooks(), signedTail, ANY, 71, expiration);
+      _ahv2Order(permit2, ANY, erc20s, _noNfts(), _noHooks(), signedTail, ANY, 71, expiration);
     bytes memory signature = _signWitness(signed);
 
     AHV2Order memory tampered =
-      _ahv2Order(ANY, erc20s, _noNfts(), _noHooks(), swappedTail, ANY, 71, expiration);
+      _ahv2Order(permit2, ANY, erc20s, _noNfts(), _noHooks(), swappedTail, ANY, 71, expiration);
 
     vm.prank(solver);
     vm.expectRevert(PERMIT2_INVALID_SIGNER);
-    hub.settleOrderWithPermit2Signature(tampered, signature, _route(tampered, solverCalls), '');
+    hub.settleOrder(tampered, signature, _route(tampered, solverCalls), '', false);
   }
 
   /**
@@ -137,31 +135,30 @@ contract CallsTest is SettlementBase {
 
     uint256 before = _calleeBalance();
 
-    AHV2Order memory control =
-      _ahv2Order(ANY, erc20s, _noNfts(), hooks, signedTail, ANY, 72, expiration);
+    AHV2Order memory control = _ahv2Order(
+      address(authenticator), ANY, erc20s, _noNfts(), hooks, signedTail, ANY, 72, expiration
+    );
     bytes memory controlAuth = _orderAuthData(control, signer, signerPk);
 
     vm.prank(relayer);
-    hub.settleOrderWithDelegatedAuthentication(
-      control, address(authenticator), controlAuth, _route(control, solverCalls), '', false
-    );
+    hub.settleOrder(control, controlAuth, _route(control, solverCalls), '', false);
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the signed owner call settled');
     assertEq(callee.callCount(), 2, 'one solver call and one owner call');
     assertEq(hook.sequenceLength(), 2, 'the hook still bracketed the order');
 
-    AHV2Order memory signed =
-      _ahv2Order(ANY, erc20s, _noNfts(), hooks, signedTail, ANY, 73, expiration);
+    AHV2Order memory signed = _ahv2Order(
+      address(authenticator), ANY, erc20s, _noNfts(), hooks, signedTail, ANY, 73, expiration
+    );
     bytes memory signedAuth = _orderAuthData(signed, signer, signerPk);
 
-    AHV2Order memory tampered =
-      _ahv2Order(ANY, erc20s, _noNfts(), hooks, swappedTail, ANY, 73, expiration);
+    AHV2Order memory tampered = _ahv2Order(
+      address(authenticator), ANY, erc20s, _noNfts(), hooks, swappedTail, ANY, 73, expiration
+    );
 
     vm.prank(relayer);
     vm.expectRevert(SignerAuthenticatorMock.InvalidOrderSignature.selector);
-    hub.settleOrderWithDelegatedAuthentication(
-      tampered, address(authenticator), signedAuth, _route(tampered, solverCalls), '', false
-    );
+    hub.settleOrder(tampered, signedAuth, _route(tampered, solverCalls), '', false);
   }
 
   /**
@@ -252,8 +249,7 @@ contract CallsTest is SettlementBase {
     solution.solverData[1] = hex'e2e2';
 
     vm.prank(owner);
-    bytes[] memory results =
-      hub.settleOrderWithDelegatedAuthentication(order, address(0), '', solution, '', false);
+    bytes[] memory results = hub.settleOrder(order, '', solution, '', false);
 
     assertEq(results.length, 4, 'one result per call across both lists');
 
@@ -303,9 +299,7 @@ contract CallsTest is SettlementBase {
     vm.recordLogs();
 
     vm.prank(owner);
-    hub.settleOrderWithDelegatedAuthentication{value: 3}(
-      order, address(0), '', _route(order, solverCalls), '', false
-    );
+    hub.settleOrder{value: 3}(order, '', _route(order, solverCalls), '', false);
 
     Vm.Log memory entry = _settlementLog();
 
@@ -355,7 +349,7 @@ contract CallsTest is SettlementBase {
         IAccessControl.AccessControlUnauthorizedAccount.selector, address(stranger), CALLEE_ROLE
       )
     );
-    hub.settleOrderWithDelegatedAuthentication(order, address(0), '', solution, '', false);
+    hub.settleOrder(order, '', solution, '', false);
 
     assertEq(stranger.callCount(), 0, 'never called');
     assertEq(
@@ -372,9 +366,7 @@ contract CallsTest is SettlementBase {
     assertTrue(hub.hasRole(CALLEE_ROLE, address(callee)), 'whitelisted at deploy');
 
     vm.prank(owner);
-    hub.settleOrderWithDelegatedAuthentication(
-      order, address(0), '', _route(order, calls), '', false
-    );
+    hub.settleOrder(order, '', _route(order, calls), '', false);
     assertEq(callee.callCount(), 1, 'the first order went through');
 
     vm.prank(guardian);
@@ -387,9 +379,7 @@ contract CallsTest is SettlementBase {
         IAccessControl.AccessControlUnauthorizedAccount.selector, address(callee), CALLEE_ROLE
       )
     );
-    hub.settleOrderWithDelegatedAuthentication(
-      order, address(0), '', _route(order, calls), '', false
-    );
+    hub.settleOrder(order, '', _route(order, calls), '', false);
 
     assertEq(callee.callCount(), 1, 'and no second call happened');
   }
@@ -409,9 +399,7 @@ contract CallsTest is SettlementBase {
     AHV2Order memory order = _ownedOrder(owner);
 
     vm.prank(owner);
-    hub.settleOrderWithDelegatedAuthentication(
-      order, address(0), '', _route(order, calls), '', false
-    );
+    hub.settleOrder(order, '', _route(order, calls), '', false);
 
     assertEq(callee.callCount(), 1, 'callee once');
     assertEq(callee2.callCount(), 1, 'callee2 once');
@@ -451,7 +439,7 @@ contract CallsTest is SettlementBase {
     vm.expectCall(address(callee2), 0, abi.encodeCall(IAHV2Callee.execute, ('', ownerCallData)), 0);
 
     vm.prank(owner);
-    hub.settleOrderWithDelegatedAuthentication(order, address(0), '', solution, '', false);
+    hub.settleOrder(order, '', solution, '', false);
 
     assertEq(callee.callCount(), 1, 'the solver callee ran once');
     assertEq(callee.ownerCallCount(), 0, 'and never as an owner callee');
@@ -474,8 +462,6 @@ contract CallsTest is SettlementBase {
     AHV2Order memory order = _openAhv2Order(
       new ERC20Allowance[](0), _noHooks(), ownerCalls, 0, vm.getBlockTimestamp()
     );
-    results = hub.settleOrderWithDelegatedAuthentication(
-      order, address(0), '', _route(order, solverCalls), '', false
-    );
+    results = hub.settleOrder(order, '', _route(order, solverCalls), '', false);
   }
 }

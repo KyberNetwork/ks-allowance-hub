@@ -732,6 +732,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     AHV2Order memory order = _openAhv2Order(
+      permit2,
       _allowances(ERC20Allowance({token: token18, amount: amount})),
       new HookParams[](0),
       _calls(_calleeCall(0, hex'01')),
@@ -741,8 +742,8 @@ contract ForwarderTest is SignerAuthenticatorBase {
 
     reentrant.setReentry(
       abi.encodeCall(
-        IKSAllowanceHubV2.settleOrderWithPermit2Signature,
-        (order, _signWitness(order), _route(order, new CallParams[](0)), '')
+        IKSAllowanceHubV2.settleOrder,
+        (order, _signWitness(order), _route(order, new CallParams[](0)), '', false)
       )
     );
 

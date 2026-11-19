@@ -11,7 +11,7 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
  * @notice Witness the owner's Permit2 signature covers when another account submits
- * {IKSAllowanceHubV2-settleOrderWithPermit2Signature}
+ * {IKSAllowanceHubV2-settleOrder} for an order whose `authenticator` is the Permit2 address
  * @dev Covers the parts of the order the permit does not; the permit covers the ERC20 tokens and
  * amounts. The route and the targets of the transfers are not covered; the witness specifies the
  * exclusive caller, the hooks and the solution approver instead.

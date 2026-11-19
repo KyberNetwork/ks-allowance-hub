@@ -231,7 +231,12 @@ contract MulticallTest is SignerAuthenticatorBase {
       deadline
     );
     AHV2Order memory order = _openAhv2Order(
-      _allowances(_tokenAllowance(AMOUNT)), new HookParams[](0), new CallParams[](0), 81, deadline
+      address(authenticator),
+      _allowances(_tokenAllowance(AMOUNT)),
+      new HookParams[](0),
+      new CallParams[](0),
+      81,
+      deadline
     );
     AHV2Solution memory solution = _route(order, _calls(_calleeCall(0, hex'01')));
     bytes memory orderAuth = _orderAuthData(order, signer, signerPk);
@@ -253,10 +258,8 @@ contract MulticallTest is SignerAuthenticatorBase {
     targets[0] = address(hub);
 
     bytes[] memory batch = new bytes[](2);
-    batch[1] = abi.encodeCall(
-      IKSAllowanceHubV2.settleOrderWithDelegatedAuthentication,
-      (order, address(authenticator), orderAuth, solution, '', false)
-    );
+    batch[1] =
+      abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, orderAuth, solution, '', false));
 
     // the front-runner lands the same signed delegation first
     vm.prank(recipient);
@@ -309,6 +312,7 @@ contract MulticallTest is SignerAuthenticatorBase {
     );
 
     AHV2Order memory order = _openAhv2Order(
+      address(authenticator),
       _allowances(_tokenAllowance(AMOUNT)),
       new HookParams[](0),
       new CallParams[](0),
@@ -330,10 +334,8 @@ contract MulticallTest is SignerAuthenticatorBase {
 
     bytes[] memory batch = new bytes[](2);
     batch[0] = abi.encodeCall(IKSAllowanceHubV2.forwardCalls, (_call3s(targets, relayed, 0)));
-    batch[1] = abi.encodeCall(
-      IKSAllowanceHubV2.settleOrderWithDelegatedAuthentication,
-      (order, address(authenticator), orderAuth, solution, '', false)
-    );
+    batch[1] =
+      abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, orderAuth, solution, '', false));
 
     // the second half on its own is refused, so the batch below is evidence that the first half
     // did the approving rather than that the order never needed one
@@ -475,8 +477,7 @@ contract MulticallTest is SignerAuthenticatorBase {
     returns (bytes memory)
   {
     return abi.encodeCall(
-      IKSAllowanceHubV2.settleOrderWithDelegatedAuthentication,
-      (order, address(0), '', _route(order, solverCalls), '', false)
+      IKSAllowanceHubV2.settleOrder, (order, '', _route(order, solverCalls), '', false)
     );
   }
 

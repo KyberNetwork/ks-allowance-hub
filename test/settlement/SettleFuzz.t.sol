@@ -15,7 +15,7 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 /**
  * @title SettleFuzzTest
- * @notice `ORDER-FUZZ` — one successful settlement property per entry point
+ * @notice `ORDER-FUZZ` — one successful settlement property per authorization rail
  * @dev Each property draws the order, the solution and the submitter through one struct.
  */
 contract SettleFuzzTest is SettlementBase {
@@ -28,7 +28,7 @@ contract SettleFuzzTest is SettlementBase {
   }
 
   // -------------------------------------------------------------------------------------------
-  // ORDER-FUZZ — one property per entry point
+  // ORDER-FUZZ — one property per authorization rail
   // -------------------------------------------------------------------------------------------
 
   /// @dev One parameter struct for the settlement fuzz tests
@@ -42,23 +42,29 @@ contract SettleFuzzTest is SettlementBase {
     bool usePermit2Allowances;
     bool pinSubmitter;
     bool approveSolution;
+    uint8 rail;
     uint256 nonce;
     address erc20Target;
     address erc721Target;
   }
 
   /**
-   * ORDER-FUZZ — a relayed order authenticated by an approved signer settles for any drawn order
-   * and spends no hub nonce
-   * @dev Entry point `settleOrderWithDelegatedAuthentication`. Both call lists range over empty
-   * and non-empty, and they go to different callees so each has a counter of its own.
-   * `approveSolution` switches between a specified approver with a real approval and the
-   * sentinel; `usePermit2Allowances` picks the pull path; `pinSubmitter` and the nonce are
-   * covered by the order hash the event reports and by the authenticator's bitmap. The solution's
-   * targets are drawn and receive the transfers, and the drawn native value is placed on the
-   * first solver call.
+   * ORDER-FUZZ — a relayed order settles for any drawn order on each of the three authenticator
+   * flows
+   * @dev `rail % 3` selects the authenticator: the zero address, with the owner's EIP-712
+   * signature over the order spending the order nonce in the owner's namespace of the hub; the
+   * Permit2 address, with a witness signature spending the Permit2 nonce; or an approved signer
+   * through the delegated authenticator, which spends the order nonce in its own bitmap. Both call
+   * lists range over empty and non-empty, and they go to different callees so each has a counter
+   * of its own. `approveSolution` switches between a specified approver with a real approval and
+   * the sentinel; `usePermit2Allowances` picks the pull path of the zero and the delegated rail,
+   * and the Permit2 rail ignores it; `pinSubmitter` and the nonce are covered by the order hash
+   * the event reports and by the signature of the rail. The solution's targets are drawn and
+   * receive the transfers, and the drawn native value is placed on the first solver call.
    */
-  function testFuzz_ORDER_FUZZ_delegatedEntryPoint(OrderFuzz memory f) public {
+  function testFuzz_ORDER_FUZZ_settleOrder(OrderFuzz memory f) public {
+    uint8 rail = f.rail % 3;
+
     _delegateSignerThroughHub(signer);
 
     _boundFuzz(f);
@@ -66,67 +72,49 @@ contract SettleFuzzTest is SettlementBase {
       _grantPermit2Allowance(token18, uint160(100 ether));
     }
 
-    (AHV2Order memory order, AHV2Solution memory route, uint256 value) = _fuzzOrder(f, relayer);
-    bytes memory authData = _orderAuthData(order, signer, signerPk);
+    address orderAuthenticator =
+      rail == 0 ? address(0) : rail == 1 ? permit2 : address(authenticator);
+    (AHV2Order memory order, AHV2Solution memory route, uint256 value) =
+      _fuzzOrder(f, relayer, orderAuthenticator);
+    bytes memory authData = rail == 0
+      ? _signOrder(order)
+      : rail == 1 ? _signWitness(order) : _orderAuthData(order, signer, signerPk);
     bytes memory approval =
       f.approveSolution ? _signSolutionApproval(approverKey, order, route) : bytes('');
 
     uint256 before = IERC20(token18).balanceOf(f.erc20Target);
     uint256 nativeBefore = address(callee).balance;
+    uint256 permit2BitmapBefore = _permit2NonceBitmap(owner, f.nonce >> 8);
     vm.deal(relayer, value);
 
     vm.recordLogs();
 
     vm.prank(relayer);
-    bytes[] memory results = hub.settleOrderWithDelegatedAuthentication{value: value}(
-      order, address(authenticator), authData, route, approval, f.usePermit2Allowances
-    );
+    bytes[] memory results =
+      hub.settleOrder{value: value}(order, authData, route, approval, f.usePermit2Allowances);
 
     _assertFuzzSettled(f, order, results, before, nativeBefore, value);
-    assertEq(
-      authenticator.nonces(lNonceKey(signer), f.nonce >> 8),
-      1 << (f.nonce & 0xff),
-      'the authenticator burned exactly the order nonce'
-    );
-    assertEq(hub.nonces(lNonceKey(owner), f.nonce >> 8), 0, 'and the hub burned none of its own');
     assertEq(
       hub.nonces(lNonceKey(approver), 0),
       f.approveSolution ? 1 : 0,
-      "and the approval spent solution nonce 0 of the approver's namespace, unless waived"
+      "the approval spent solution nonce 0 of the approver's namespace, unless waived"
     );
-  }
 
-  /**
-   * ORDER-FUZZ — a relayed Permit2 order settles for any drawn order and spends its nonce
-   * @dev Entry point `settleOrderWithPermit2Signature`, where the witness is the binding.
-   * `pinSubmitter` is live control flow here: it decides whether the hub compares the submitter
-   * against a specified exclusive caller or against the sentinel, and it changes the witness
-   * either way. The Permit2 nonce is the replay oracle.
-   */
-  function testFuzz_ORDER_FUZZ_permit2EntryPoint(OrderFuzz memory f) public {
-    _boundFuzz(f);
-
-    (AHV2Order memory order, AHV2Solution memory route, uint256 value) = _fuzzOrder(f, solver);
-    bytes memory signature = _signWitness(order);
-    bytes memory approval =
-      f.approveSolution ? _signSolutionApproval(approverKey, order, route) : bytes('');
-
-    uint256 before = IERC20(token18).balanceOf(f.erc20Target);
-    uint256 nativeBefore = address(callee).balance;
-    uint256 bitmapBefore = _permit2NonceBitmap(owner, f.nonce >> 8);
-    vm.deal(solver, value);
-
-    vm.recordLogs();
-
-    vm.prank(solver);
-    bytes[] memory results =
-      hub.settleOrderWithPermit2Signature{value: value}(order, signature, route, approval);
-
-    _assertFuzzSettled(f, order, results, before, nativeBefore, value);
+    uint256 nonceBit = 1 << (f.nonce & 0xff);
+    assertEq(
+      hub.nonces(lNonceKey(owner), f.nonce >> 8),
+      rail == 0 ? nonceBit : 0,
+      'the hub burned the order nonce only for the zero authenticator'
+    );
+    assertEq(
+      authenticator.nonces(lNonceKey(signer), f.nonce >> 8),
+      rail == 2 ? nonceBit : 0,
+      'the authenticator burned the order nonce only on its own rail'
+    );
     assertEq(
       _permit2NonceBitmap(owner, f.nonce >> 8),
-      bitmapBefore | (1 << (f.nonce & 0xff)),
-      'Permit2 burned exactly the signed nonce'
+      rail == 1 ? permit2BitmapBefore | nonceBit : permit2BitmapBefore,
+      'Permit2 burned the order nonce only on its own rail'
     );
   }
 
@@ -153,9 +141,10 @@ contract SettleFuzzTest is SettlementBase {
     vm.assume(f.erc721Target != owner);
   }
 
-  /// @dev The drawn order and solution, and the native value the submitter sends: the drawn
-  /// value goes to the first solver call, and is zero when there is none
-  function _fuzzOrder(OrderFuzz memory f, address submitter)
+  /// @dev The drawn order, authorized through `orderAuthenticator`, and solution, and the native
+  /// value the submitter sends: the drawn value goes to the first solver call, and is zero when
+  /// there is none
+  function _fuzzOrder(OrderFuzz memory f, address submitter, address orderAuthenticator)
     private
     view
     returns (AHV2Order memory order, AHV2Solution memory route, uint256 value)
@@ -175,6 +164,7 @@ contract SettleFuzzTest is SettlementBase {
     }
 
     order = _ahv2Order(
+      orderAuthenticator,
       f.pinSubmitter ? submitter : ANY,
       _allowances(_tokenAllowance(f.amount)),
       f.moveNft ? _approvals(_nftApproval()) : _noNfts(),

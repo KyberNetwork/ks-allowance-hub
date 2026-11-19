@@ -200,6 +200,30 @@ contract Eip712Test is V2TestBase {
   }
 
   /**
+   * T712-DIFF — the authenticator alone moves the order hash and the approval hash
+   * @dev The two orders differ only in `authenticator`, and the production hashers agree with
+   * {SchemaHash} on both.
+   */
+  function test_T712_DIFF_authenticatorMovesOrderAndApprovalHash() public view {
+    AHV2Order memory order = _sampleOrder();
+    AHV2Solution memory solution = _sampleSolution();
+    AHV2Order memory other = _sampleOrder();
+    other.authenticator = address(0xAD8);
+
+    bytes32 orderHash = SchemaHash.ahv2Order(order);
+    bytes32 otherHash = SchemaHash.ahv2Order(other);
+    assertTrue(orderHash != otherHash, 'the authenticator is in the order hash');
+    assertEq(this.extHashOrder(order), orderHash, 'order hasher');
+    assertEq(this.extHashOrder(other), otherHash, 'other order hasher');
+
+    bytes32 approval = _approvalHash(order, solution);
+    bytes32 otherApproval = _approvalHash(other, solution);
+    assertTrue(approval != otherApproval, 'the authenticator is in the approval hash');
+    assertEq(this.extHashSolutionApproval(orderHash, solution), approval, 'approval hasher');
+    assertEq(this.extHashSolutionApproval(otherHash, solution), otherApproval, 'other hasher');
+  }
+
+  /**
    * The solution hash matches {SchemaHash}, and the nonce and `solverData` move the hash
    * @dev The `solverData` is changed in one entry, then in length, so both its elements and its
    * count are encoded.
@@ -457,6 +481,7 @@ contract Eip712Test is V2TestBase {
   function _sampleOrder() private pure returns (AHV2Order memory) {
     return AHV2Order({
       owner: address(0xA11CE),
+      authenticator: address(0xAD7),
       exclusiveCaller: ANY,
       erc20Allowances: _sampleAllowances(),
       erc721Approvals: _sampleApprovals(),

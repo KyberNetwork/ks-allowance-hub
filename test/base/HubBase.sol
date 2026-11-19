@@ -246,7 +246,33 @@ abstract contract HubBase is V2TestBase {
   // Order building
   // ---------------------------------------------------------------------------------------------
 
+  /// @dev An order with the zero authenticator
   function _ahv2Order(
+    address orderExclusiveCaller,
+    ERC20Allowance[] memory erc20Allowances,
+    ERC721Approval[] memory erc721Approvals,
+    HookParams[] memory hooks,
+    CallParams[] memory ownerCalls,
+    address solutionApprover,
+    uint256 nonce,
+    uint256 expiration
+  ) internal view returns (AHV2Order memory) {
+    return _ahv2Order(
+      address(0),
+      orderExclusiveCaller,
+      erc20Allowances,
+      erc721Approvals,
+      hooks,
+      ownerCalls,
+      solutionApprover,
+      nonce,
+      expiration
+    );
+  }
+
+  /// @dev As above, with the authenticator `orderAuthenticator`
+  function _ahv2Order(
+    address orderAuthenticator,
     address orderExclusiveCaller,
     ERC20Allowance[] memory erc20Allowances,
     ERC721Approval[] memory erc721Approvals,
@@ -258,6 +284,7 @@ abstract contract HubBase is V2TestBase {
   ) internal view returns (AHV2Order memory) {
     return AHV2Order({
       owner: owner,
+      authenticator: orderAuthenticator,
       exclusiveCaller: orderExclusiveCaller,
       erc20Allowances: erc20Allowances,
       erc721Approvals: erc721Approvals,
@@ -270,7 +297,8 @@ abstract contract HubBase is V2TestBase {
     });
   }
 
-  /// @dev Open to any submitter, any route, plain ERC20 allowance, no NFT approval
+  /// @dev Open to any submitter, any route, plain ERC20 allowance, no NFT approval, zero
+  /// authenticator
   function _openAhv2Order(
     ERC20Allowance[] memory erc20Allowances,
     HookParams[] memory hooks,
@@ -278,8 +306,28 @@ abstract contract HubBase is V2TestBase {
     uint256 nonce,
     uint256 expiration
   ) internal view returns (AHV2Order memory) {
+    return _openAhv2Order(address(0), erc20Allowances, hooks, ownerCalls, nonce, expiration);
+  }
+
+  /// @dev As above, with the authenticator `orderAuthenticator`
+  function _openAhv2Order(
+    address orderAuthenticator,
+    ERC20Allowance[] memory erc20Allowances,
+    HookParams[] memory hooks,
+    CallParams[] memory ownerCalls,
+    uint256 nonce,
+    uint256 expiration
+  ) internal view returns (AHV2Order memory) {
     return _ahv2Order(
-      ANY, erc20Allowances, new ERC721Approval[](0), hooks, ownerCalls, ANY, nonce, expiration
+      orderAuthenticator,
+      ANY,
+      erc20Allowances,
+      new ERC721Approval[](0),
+      hooks,
+      ownerCalls,
+      ANY,
+      nonce,
+      expiration
     );
   }
 
@@ -443,6 +491,16 @@ abstract contract HubBase is V2TestBase {
   ) internal view returns (bytes memory) {
     (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(erc20Allowances);
     return _sign(ownerKey, lPermit2BatchDigest(tokens, amounts, address(hub), nonce, deadline));
+  }
+
+  /// @dev The signature of the account holding `key` over `order` for the zero-authenticator flow
+  function _signOrder(AHV2Order memory order, uint256 key) internal view returns (bytes memory) {
+    return _sign(key, lTypedDataHash(_hubDomain(), SchemaHash.ahv2Order(order)));
+  }
+
+  /// @dev As above, signed by the owner
+  function _signOrder(AHV2Order memory order) internal view returns (bytes memory) {
+    return _signOrder(order, ownerKey);
   }
 
   /// @dev The solution approval lives under the hub's own EIP-712 domain

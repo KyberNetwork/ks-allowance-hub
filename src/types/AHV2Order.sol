@@ -22,6 +22,9 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * solution, and `solutionApprover` may be required to approve it. When `owner` submits the order,
  * `exclusiveCaller` and `solutionApprover` do not apply.
  * @param owner Account the assets are transferred from
+ * @param authenticator How the order is authorized when another account submits it: the zero
+ * address requires the owner's EIP-712 signature over the order, the Permit2 address requires the
+ * owner's Permit2 signature, and any other address is an {IAHV2Authenticator} the owner delegated
  * @param exclusiveCaller Account that may submit the order besides the owner; the zero address
  * allows any account
  * @param erc20Allowances ERC20 transfers, each of at most its `amount`, sent from the owner to the
@@ -32,13 +35,15 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * @param ownerCalls Callee calls fixed by the owner, run after the solver's calls
  * @param solutionApprover Account whose signature the solution requires when the owner does not
  * submit the order; the zero address requires none
- * @param nonce Permit2 nonce on the Permit2 entry points; on the delegated entry points, for the
- * authenticator to spend
+ * @param nonce Spent in the owner's namespace of the hub's nonces when `authenticator` is the zero
+ * address, used as the Permit2 nonce when it is the Permit2 address, and for the authenticator to
+ * spend otherwise
  * @param expiration Last timestamp at which the order may settle
  * @param clientData Data for off-chain clients, emitted in {IKSAllowanceHubV2-TransferTokens}
  */
 struct AHV2Order {
   address owner;
+  address authenticator;
   address exclusiveCaller;
   ERC20Allowance[] erc20Allowances;
   ERC721Approval[] erc721Approvals;
@@ -60,7 +65,7 @@ library AHV2OrderLib {
   using HookParamsLib for HookParams[];
 
   bytes32 internal constant AHV2_ORDER_TYPEHASH = keccak256(
-    'AHV2Order(address owner,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)'
+    'AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)'
     'CallParams(address callee,uint256 value,bytes data)'
     'ERC20Allowance(address token,uint160 amount)' 'ERC721Approval(address token,uint256 tokenId)'
     'HookParams(address hook,bytes32 flags,bytes data)'
@@ -90,6 +95,7 @@ library AHV2OrderLib {
       abi.encode(
         AHV2_ORDER_TYPEHASH,
         order.owner,
+        order.authenticator,
         order.exclusiveCaller,
         order.erc20Allowances.hash(),
         erc721ApprovalsHash,

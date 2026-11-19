@@ -67,6 +67,7 @@ contract EventsTest is SettlementBase {
     ERC721Transfer[] memory nfts = _erc721s(_nftTransfer(address(callee2)));
 
     AHV2Order memory order = _ahv2Order(
+      permit2,
       ANY,
       _allowances(_tokenAllowance(AMOUNT)),
       _approvals(_nftApproval()),
@@ -82,7 +83,7 @@ contract EventsTest is SettlementBase {
     vm.recordLogs();
 
     vm.prank(relayer);
-    hub.settleOrderWithPermit2Signature(order, signature, solution, '');
+    hub.settleOrder(order, signature, solution, '', false);
 
     Vm.Log memory entry = _settlementLog();
 
@@ -104,9 +105,8 @@ contract EventsTest is SettlementBase {
     vm.recordLogs();
 
     vm.prank(owner);
-    bytes[] memory results = hub.settleOrderWithDelegatedAuthentication(
-      order, address(0), '', _route(order, new CallParams[](0)), '', false
-    );
+    bytes[] memory results =
+      hub.settleOrder(order, '', _route(order, new CallParams[](0)), '', false);
 
     assertEq(results.length, 0, 'no calls, no results');
 
@@ -185,8 +185,9 @@ contract EventsTest is SettlementBase {
   ) internal {
     bool matches = keccak256(signedData) == keccak256(submittedData);
 
-    AHV2Order memory signed = _clientDataOrder(nonce, signedData);
-    AHV2Order memory order = _clientDataOrder(nonce, submittedData);
+    address orderAuthenticator = entry == 0 ? address(authenticator) : permit2;
+    AHV2Order memory signed = _clientDataOrder(orderAuthenticator, nonce, signedData);
+    AHV2Order memory order = _clientDataOrder(orderAuthenticator, nonce, submittedData);
     AHV2Solution memory route = _route(order, _calls(_calleeCall(0, hex'01')));
 
     if (entry == 0) {
@@ -196,24 +197,24 @@ contract EventsTest is SettlementBase {
         matches, SignerAuthenticatorMock.InvalidOrderSignature.selector, order, submittedData
       );
       vm.prank(solver);
-      hub.settleOrderWithDelegatedAuthentication(
-        order, address(authenticator), auth, route, '', false
-      );
+      hub.settleOrder(order, auth, route, '', false);
     } else {
       bytes memory signature = _signWitness(signed);
       _expectClientData(matches, PERMIT2_INVALID_SIGNER, order, submittedData);
       vm.prank(solver);
-      hub.settleOrderWithPermit2Signature(order, signature, route, '');
+      hub.settleOrder(order, signature, route, '', false);
     }
   }
 
   /// @dev An order open to any submitter that draws {AMOUNT} of `token18`, carrying `clientData`
-  function _clientDataOrder(uint256 nonce, bytes memory clientData)
+  /// and authorized through `orderAuthenticator`
+  function _clientDataOrder(address orderAuthenticator, uint256 nonce, bytes memory clientData)
     internal
     view
     returns (AHV2Order memory order)
   {
     order = _openAhv2Order(
+      orderAuthenticator,
       _allowances(_tokenAllowance(AMOUNT)),
       new HookParams[](0),
       new CallParams[](0),
@@ -293,7 +294,7 @@ contract EventsTest is SettlementBase {
 
     vm.recordLogs();
     vm.prank(owner);
-    hub.settleOrderWithDelegatedAuthentication(order, address(0), '', solution, '', false);
+    hub.settleOrder(order, '', solution, '', false);
     Vm.Log memory entry = _settlementLog();
 
     assertEq(_topicAddress(entry.topics[1]), owner, 'the caller');

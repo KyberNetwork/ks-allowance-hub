@@ -16,6 +16,9 @@ interface IKSAllowanceHubV2 {
   /// specifies an exclusive caller
   error NotExclusiveCaller(address caller);
 
+  /// @notice The owner's signature is not valid for the order
+  error InvalidOrderSignature();
+
   /// @notice The solution signature is not valid for the `solutionApprover` the order specifies
   error InvalidSolutionSignature();
 
@@ -46,48 +49,29 @@ interface IKSAllowanceHubV2 {
   event RescueTokens(ERC20Transfer[] erc20Transfers, ERC721Transfer[] erc721Transfers);
 
   /**
-   * @notice Settles an order authenticated by an {IAHV2Authenticator} the owner has delegated,
-   * along the route in `solution`
-   * @dev `authenticator` must be delegated by `order.owner`, or be the zero address. The owner's
-   * own call needs no authentication and spends no nonce.
+   * @notice Settles an order along the route in `solution`, authorized as `order.authenticator`
+   * specifies
+   * @dev The zero address requires the owner's EIP-712 signature over the order, the Permit2
+   * address requires the owner's Permit2 signature, and any other address is an
+   * {IAHV2Authenticator} the owner has delegated. The owner's own call needs no authorization,
+   * except the Permit2 signature that moves the ERC20 tokens on the Permit2 flow.
    * @param order The order to settle
-   * @param authenticator The authenticator that checks `authenticationData`
-   * @param authenticationData Credential and signature, in the encoding the authenticator reads
+   * @param authenticationData The owner's signature over the order, the owner's Permit2 signature,
+   * or the credential the authenticator reads
    * @param solution The route, the target of each transfer, the amount of each ERC20 transfer and
    * the data of each owner call the solver chose
    * @param solutionSignature The `solutionApprover`'s signature over the {SolutionApproval}; not
    * read when the caller is `order.owner` or `order.solutionApprover` is the zero address
    * @param usePermit2Allowances Whether the ERC20 transfers are drawn from the owner's Permit2
-   * allowances instead of the owner's allowances to this hub
+   * allowances instead of the owner's allowances to this hub; not read on the Permit2 flow
    * @return results Return data of each callee call, the solver's calls first
    */
-  function settleOrderWithDelegatedAuthentication(
+  function settleOrder(
     AHV2Order calldata order,
-    address authenticator,
     bytes calldata authenticationData,
     AHV2Solution calldata solution,
     bytes calldata solutionSignature,
     bool usePermit2Allowances
-  ) external payable returns (bytes[] memory results);
-
-  /**
-   * @notice Settles an order authorized by the owner's Permit2 signature, along the route in
-   * `solution`
-   * @dev `permit2Signature` must also sign the order's {AHV2Witness} unless the caller is the
-   * owner.
-   * @param order The order to settle
-   * @param permit2Signature The owner's Permit2 signature
-   * @param solution The route, the target of each transfer, the amount of each ERC20 transfer and
-   * the data of each owner call the solver chose
-   * @param solutionSignature The `solutionApprover`'s signature over the {SolutionApproval}; not
-   * read when the caller is `order.owner` or `order.solutionApprover` is the zero address
-   * @return results Return data of each callee call, the solver's calls first
-   */
-  function settleOrderWithPermit2Signature(
-    AHV2Order calldata order,
-    bytes calldata permit2Signature,
-    AHV2Solution calldata solution,
-    bytes calldata solutionSignature
   ) external payable returns (bytes[] memory results);
 
   /**

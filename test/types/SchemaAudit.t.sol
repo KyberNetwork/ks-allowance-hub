@@ -106,7 +106,7 @@ contract SchemaAuditTest is Test {
     string memory erc20Allowance = 'ERC20Allowance(address token,uint160 amount)';
     string memory erc721Approval = 'ERC721Approval(address token,uint256 tokenId)';
     string memory order =
-      'AHV2Order(address owner,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)';
+      'AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] ownerCalls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)';
     string memory solution =
       'AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,CallParams[] solverCalls,bytes[] solverData,uint256 nonce,uint256 expiration)';
 

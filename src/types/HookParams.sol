@@ -15,8 +15,8 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * @notice A hook an order calls around its settlement
  * @dev {Constants-BEFORE_SETTLEMENT_HOOK_FLAG} selects {IAHV2Hook-beforeSettlement} and
  * {Constants-AFTER_SETTLEMENT_HOOK_FLAG} selects {IAHV2Hook-afterSettlement}. Other bits are
- * ignored. On the Permit2 entry point, `beforeSettlement` runs before the owner's signature is
- * checked.
+ * ignored. On the Permit2 flow, `beforeSettlement` runs before Permit2 checks the owner's
+ * signature.
  * @param hook Hook contract; any address, with no role required
  * @param flags Bit mask of the calls the hub makes to `hook`
  * @param data Hook-specific data, which the hook reads from `order.hooks` at the index it is called

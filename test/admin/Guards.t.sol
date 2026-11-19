@@ -60,10 +60,9 @@ contract AHV2AuthenticatorStub is IAHV2Authenticator {
  * over-spend step therefore needs the hub to hold native of its own beforehand, or there is
  * nothing left to over-spend.
  *
- * The two entry points carry nine modifier applications between them. `GUARD-*` takes the
- * delegated entry point, `GATE-01` takes `settleOrderWithPermit2Signature` and `GATE-02` takes the
- * applications neither of those reaches. `NEST-03` of {NestingTest} observes `setMsgSender` on
- * both, so every one of the nine is observed somewhere.
+ * `settleOrder` carries three modifiers and the inline delegation check. `GUARD-*` takes the
+ * owner-submitted path, `GATE-01` takes the Permit2 path and `GATE-02` takes the guards neither of
+ * those reaches. `NEST-03` of {NestingTest} observes `setMsgSender`.
  */
 contract GuardsTest is SignerAuthenticatorBase {
   uint160 internal constant AMOUNT = 1 ether;
@@ -98,25 +97,24 @@ contract GuardsTest is SignerAuthenticatorBase {
     assertFalse(hub.paused(), 'live again');
   }
 
-  /// GUARD-02 — a pause closes both order entry points but leaves delegation open
+  /// GUARD-02 — a pause closes both settlement paths but leaves delegation open
   function test_GUARD_02_pauseClosesOrdersNotDelegation() public {
     AHV2AuthenticatorStub mock = new AHV2AuthenticatorStub();
 
     AHV2Order memory order = _openOrder(90, vm.getBlockTimestamp() + 1 hours);
-    bytes memory permitSig = _signWitness(order);
+    AHV2Order memory permitOrder = _permit2Order(90, vm.getBlockTimestamp() + 1 hours);
+    bytes memory permitSig = _signWitness(permitOrder);
 
     vm.prank(guardian);
     hub.pause();
 
     vm.prank(owner);
     vm.expectRevert(Pausable.EnforcedPause.selector);
-    hub.settleOrderWithDelegatedAuthentication(
-      order, address(0), '', _route(order, new CallParams[](0)), '', false
-    );
+    hub.settleOrder(order, '', _route(order, new CallParams[](0)), '', false);
 
     vm.prank(relayer);
     vm.expectRevert(Pausable.EnforcedPause.selector);
-    hub.settleOrderWithPermit2Signature(order, permitSig, _route(order, new CallParams[](0)), '');
+    hub.settleOrder(permitOrder, permitSig, _route(permitOrder, new CallParams[](0)), '', false);
 
     // Delegation carries no assets, so the pause does not reach it
     vm.prank(owner);
@@ -171,19 +169,20 @@ contract GuardsTest is SignerAuthenticatorBase {
     _settleAtExpiration(t, true);
     _settleAtExpiration(t + 1, true);
 
-    // the Permit2 entry point carries the same expiration into the permit, so the hub's own
+    // the Permit2 path carries the same expiration into the permit, so the hub's own
     // modifier has to be the one that fires: a stale order must not reach Permit2 at all
-    AHV2Order memory stale = _openOrder(91, t - 1);
+    AHV2Order memory stale = _permit2Order(91, t - 1);
     bytes memory staleSig = _signWitness(stale);
 
     vm.prank(relayer);
     vm.expectRevert(_deadlinePassed(t - 1));
-    hub.settleOrderWithPermit2Signature(stale, staleSig, _route(stale, new CallParams[](0)), '');
+    hub.settleOrder(stale, staleSig, _route(stale, new CallParams[](0)), '', false);
   }
 
   /// GUARD-05 — when both guards would fire, the pause wins, because it is the outer modifier
   function test_GUARD_05_pauseTakesPrecedenceOverTheExpiration() public {
-    AHV2Order memory stale = _openOrder(0, vm.getBlockTimestamp() - 1);
+    AHV2Order memory stale = _permit2Order(0, vm.getBlockTimestamp() - 1);
+    AHV2Order memory ownerStale = _openOrder(0, vm.getBlockTimestamp() - 1);
     bytes memory staleSig = _signWitness(stale);
 
     vm.prank(guardian);
@@ -191,13 +190,11 @@ contract GuardsTest is SignerAuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(Pausable.EnforcedPause.selector);
-    hub.settleOrderWithPermit2Signature(stale, staleSig, _route(stale, new CallParams[](0)), '');
+    hub.settleOrder(stale, staleSig, _route(stale, new CallParams[](0)), '', false);
 
     vm.prank(owner);
     vm.expectRevert(Pausable.EnforcedPause.selector);
-    hub.settleOrderWithDelegatedAuthentication(
-      stale, address(0), '', _route(stale, new CallParams[](0)), '', false
-    );
+    hub.settleOrder(ownerStale, '', _route(ownerStale, new CallParams[](0)), '', false);
   }
 
   // -----------------------------------------------------------------------------------------
@@ -212,11 +209,11 @@ contract GuardsTest is SignerAuthenticatorBase {
   }
 
   // -----------------------------------------------------------------------------------------
-  // GATE-01 — the three modifiers on `settleOrderWithPermit2Signature`
+  // GATE-01 — the three modifiers on the Permit2 path of `settleOrder`
   // -----------------------------------------------------------------------------------------
 
   /**
-   * GATE-01 — the Permit2 entry point is pausable, expiration-checked and native-guarded
+   * GATE-01 — the Permit2 path is pausable, expiration-checked and native-guarded
    * @dev Three modifiers, one step each. The control at the top is what makes the three refusals
    * evidence: the same shape of order settles when none of them fires, so each step differs from a
    * settling order in exactly the one thing its modifier reads.
@@ -226,16 +223,16 @@ contract GuardsTest is SignerAuthenticatorBase {
 
     // control
     uint256 before = IERC20(token18).balanceOf(address(callee));
-    AHV2Order memory control = _openOrder(100, expiration);
+    AHV2Order memory control = _permit2Order(100, expiration);
 
     vm.prank(solver);
-    hub.settleOrderWithPermit2Signature(
-      control, _signWitness(control), _route(control, _calls(_calleeCall(0, hex'01'))), ''
+    hub.settleOrder(
+      control, _signWitness(control), _route(control, _calls(_calleeCall(0, hex'01'))), '', false
     );
     assertEq(IERC20(token18).balanceOf(address(callee)) - before, AMOUNT, 'the control settled');
 
     // whenNotPaused
-    AHV2Order memory paused = _openOrder(101, expiration);
+    AHV2Order memory paused = _permit2Order(101, expiration);
     bytes memory pausedSig = _signWitness(paused);
 
     vm.prank(guardian);
@@ -243,28 +240,24 @@ contract GuardsTest is SignerAuthenticatorBase {
 
     vm.prank(solver);
     vm.expectRevert(Pausable.EnforcedPause.selector);
-    hub.settleOrderWithPermit2Signature(
-      paused, pausedSig, _route(paused, _calls(_calleeCall(0, hex'01'))), ''
-    );
+    hub.settleOrder(paused, pausedSig, _route(paused, _calls(_calleeCall(0, hex'01'))), '', false);
 
     vm.prank(admin);
     hub.unpause();
 
     // checkSettlement
-    AHV2Order memory stale = _openOrder(102, vm.getBlockTimestamp() - 1);
+    AHV2Order memory stale = _permit2Order(102, vm.getBlockTimestamp() - 1);
     bytes memory staleSig = _signWitness(stale);
 
     vm.prank(solver);
     vm.expectRevert(_deadlinePassed(vm.getBlockTimestamp() - 1));
-    hub.settleOrderWithPermit2Signature(
-      stale, staleSig, _route(stale, _calls(_calleeCall(0, hex'01'))), ''
-    );
+    hub.settleOrder(stale, staleSig, _route(stale, _calls(_calleeCall(0, hex'01'))), '', false);
 
     // guardNativeSpend
     vm.deal(address(hub), PREFUND);
     vm.deal(solver, VALUE);
 
-    AHV2Order memory overSpending = _openOrder(104, expiration);
+    AHV2Order memory overSpending = _permit2Order(104, expiration);
     bytes memory overSpendingSig = _signWitness(overSpending);
     AHV2Solution memory greedyRoute = _route(overSpending, _calls(_calleeCall(VALUE + 1, hex'01')));
 
@@ -272,25 +265,23 @@ contract GuardsTest is SignerAuthenticatorBase {
     vm.expectRevert(
       abi.encodeWithSelector(NativeSpendGuard.NativeOverspent.selector, VALUE + 1, VALUE)
     );
-    hub.settleOrderWithPermit2Signature{value: VALUE}(
-      overSpending, overSpendingSig, greedyRoute, ''
-    );
+    hub.settleOrder{value: VALUE}(overSpending, overSpendingSig, greedyRoute, '', false);
 
     assertEq(address(hub).balance, PREFUND, "the hub's own native balance is intact");
   }
 
   /**
-   * GATE-02 — an undelegated authenticator and overspent native are refused on the delegated
-   * entry point
-   * @dev These are the modifier applications no other case watches. One step each for
-   * `checkDelegation` and `guardNativeSpend` on `settleOrderWithDelegatedAuthentication`. Each
-   * step is written so that only its own modifier can produce the result.
+   * GATE-02 — an undelegated authenticator and overspent native are refused by `settleOrder`
+   * @dev These are the guards no other case watches. One step each for the inline delegation
+   * check and for `guardNativeSpend` on `settleOrder`. Each step is written so that only its own
+   * guard can produce the result.
    */
-  function test_GATE_02_theUnwatchedModifierApplications() public {
+  function test_GATE_02_theUnwatchedGuards() public {
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
-    // checkDelegation
+    // delegation check
     AHV2Order memory undelegated = _openOrder(111, deadline);
+    undelegated.authenticator = address(authenticator);
 
     vm.prank(relayer);
     vm.expectRevert(
@@ -298,9 +289,7 @@ contract GuardsTest is SignerAuthenticatorBase {
         IAuthDelegator.AuthenticatorNotDelegated.selector, address(authenticator)
       )
     );
-    hub.settleOrderWithDelegatedAuthentication(
-      undelegated, address(authenticator), '', _route(undelegated, new CallParams[](0)), '', false
-    );
+    hub.settleOrder(undelegated, '', _route(undelegated, new CallParams[](0)), '', false);
 
     // guardNativeSpend
     vm.deal(address(hub), PREFUND);
@@ -314,13 +303,8 @@ contract GuardsTest is SignerAuthenticatorBase {
     vm.expectRevert(
       abi.encodeWithSelector(NativeSpendGuard.NativeOverspent.selector, VALUE + 1, VALUE)
     );
-    hub.settleOrderWithDelegatedAuthentication{value: VALUE}(
-      overSpending,
-      address(0),
-      '',
-      _route(overSpending, _calls(_calleeCall(VALUE + 1, hex'01'))),
-      '',
-      false
+    hub.settleOrder{value: VALUE}(
+      overSpending, '', _route(overSpending, _calls(_calleeCall(VALUE + 1, hex'01'))), '', false
     );
 
     assertEq(address(hub).balance, PREFUND, 'the hub kept its native balance');
@@ -337,6 +321,16 @@ contract GuardsTest is SignerAuthenticatorBase {
     );
   }
 
+  /// @dev As {_openOrder}, authorized through Permit2
+  function _permit2Order(uint256 nonce, uint256 expiration)
+    internal
+    view
+    returns (AHV2Order memory order)
+  {
+    order = _openOrder(nonce, expiration);
+    order.authenticator = permit2;
+  }
+
   function _settleAtExpiration(uint256 expiration, bool shouldSettle) internal {
     uint256 calleeBefore = IERC20(token18).balanceOf(address(callee));
 
@@ -347,12 +341,12 @@ contract GuardsTest is SignerAuthenticatorBase {
     if (!shouldSettle) {
       vm.expectRevert(_deadlinePassed(expiration));
     }
-    hub.settleOrderWithDelegatedAuthentication(order, address(0), '', route, '', false);
+    hub.settleOrder(order, '', route, '', false);
 
     assertEq(
       IERC20(token18).balanceOf(address(callee)) - calleeBefore,
       shouldSettle ? AMOUNT : 0,
-      'the delegated entry point moved assets only up to the expiration'
+      'the owner-submitted path moved assets only up to the expiration'
     );
   }
 
@@ -373,9 +367,7 @@ contract GuardsTest is SignerAuthenticatorBase {
         abi.encodeWithSelector(NativeSpendGuard.NativeOverspent.selector, spend, VALUE)
       );
     }
-    hub.settleOrderWithDelegatedAuthentication{value: VALUE}(
-      order, address(0), '', _route(order, calls), '', false
-    );
+    hub.settleOrder{value: VALUE}(order, '', _route(order, calls), '', false);
 
     if (shouldSettle) {
       assertEq(address(callee).balance - calleeBefore, spend, 'the callee was paid exactly');

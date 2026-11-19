@@ -10,8 +10,8 @@ import {AHV2Solution} from '../../types/AHV2Solution.sol';
 /// during both calls.
 interface IAHV2Hook {
   /**
-   * @notice Called before any asset moves, and on the Permit2 entry point before the owner's
-   * signature is checked
+   * @notice Called before any asset moves, and on the Permit2 flow before Permit2 checks the
+   * owner's signature
    * @param order The order being settled
    * @param orderHash EIP-712 struct hash of `order`
    * @param solution The solution the order settles with

@@ -76,7 +76,7 @@ contract NestingTest is SettlementBase {
     }
 
     (AHV2Order memory top, CallParams[] memory topCalls, bytes32[] memory hashes) =
-      _buildChain(evils);
+      _buildChain(evils, p.topViaPermit2);
 
     address topSubmitter = p.topViaPermit2 ? relayer : owner;
 
@@ -87,9 +87,9 @@ contract NestingTest is SettlementBase {
 
     vm.prank(topSubmitter);
     if (p.topViaPermit2) {
-      hub.settleOrderWithPermit2Signature(top, signature, topSolution, '');
+      hub.settleOrder(top, signature, topSolution, '', false);
     } else {
-      hub.settleOrderWithDelegatedAuthentication(top, address(0), '', topSolution, '', false);
+      hub.settleOrder(top, '', topSolution, '', false);
     }
 
     for (uint256 k = 0; k < depth; k++) {
@@ -146,7 +146,7 @@ contract NestingTest is SettlementBase {
     vm.recordLogs();
 
     vm.prank(owner);
-    hub.settleOrderWithDelegatedAuthentication(order, address(0), '', solution, '', false);
+    hub.settleOrder(order, '', solution, '', false);
 
     assertEq(nft.ownerOf(NFT_ID), address(receiver), 'the NFT moved to the receiver');
     assertEq(callee.callCount(), 1, 'the callee call of the nested order ran');
@@ -252,9 +252,8 @@ contract NestingTest is SettlementBase {
     AHV2Order memory order = _ownedOrder(owner);
 
     vm.prank(owner);
-    bytes[] memory results = hub.settleOrderWithDelegatedAuthentication(
-      order, address(0), '', _route(order, _calls(_callTo(address(evil)))), '', false
-    );
+    bytes[] memory results =
+      hub.settleOrder(order, '', _route(order, _calls(_callTo(address(evil)))), '', false);
 
     assertEq(results.length, 1, 'the order settled');
     assertEq(results[0].length, 0, 'revokeNonce returns nothing');
@@ -281,9 +280,8 @@ contract NestingTest is SettlementBase {
     vm.deal(owner, VALUE);
 
     vm.prank(owner);
-    hub.settleOrderWithDelegatedAuthentication{value: VALUE}(
+    hub.settleOrder{value: VALUE}(
       outer,
-      address(0),
       '',
       _route(outer, _calls(_callTo(address(evil)), _calleeCall(VALUE, hex'01'))),
       '',
@@ -301,8 +299,8 @@ contract NestingTest is SettlementBase {
 
     vm.prank(owner);
     vm.expectRevert(abi.encodeWithSelector(NativeSpendGuard.NativeOverspent.selector, VALUE, 0));
-    hub.settleOrderWithDelegatedAuthentication{value: VALUE}(
-      outer, address(0), '', _route(outer, _calls(_callTo(address(evil)))), '', false
+    hub.settleOrder{value: VALUE}(
+      outer, '', _route(outer, _calls(_callTo(address(evil)))), '', false
     );
 
     assertEq(callee.callCount(), 1, 'the nested callee call rolled back');
@@ -326,22 +324,21 @@ contract NestingTest is SettlementBase {
     return CallParams({callee: target, value: 0, data: hex''});
   }
 
-  /// @dev The delegated-entry-point call that settles `order` with the solver calls `solverCalls`
+  /// @dev The call by the owner that settles `order` with the solver calls `solverCalls`
   function _settleCall(AHV2Order memory order, CallParams[] memory solverCalls)
     internal
     view
     returns (bytes memory)
   {
     return abi.encodeCall(
-      IKSAllowanceHubV2.settleOrderWithDelegatedAuthentication,
-      (order, address(0), '', _route(order, solverCalls), '', false)
+      IKSAllowanceHubV2.settleOrder, (order, '', _route(order, solverCalls), '', false)
     );
   }
 
   /**
    * @dev The call of an order owned by `orderOwner` with its order hash, whose solver calls are
-   * `calls`. The call is delegated, or carries the open witness signature of `signerKey` for the
-   * Permit2 entry point, where the order moves no token and spends `nonce`.
+   * `calls`. The call is made by the owner, or carries the open witness signature of `signerKey`
+   * for the Permit2 entry point, where the order moves no token and spends `nonce`.
    */
   function _orderCall(
     bool viaPermit2,
@@ -352,12 +349,15 @@ contract NestingTest is SettlementBase {
   ) internal view returns (bytes memory data, bytes32 orderHash) {
     AHV2Order memory order = _ownedOrder(orderOwner);
     order.nonce = nonce;
+    if (viaPermit2) {
+      order.authenticator = permit2;
+    }
     orderHash = SchemaHash.ahv2Order(order);
 
     if (viaPermit2) {
       data = abi.encodeCall(
-        IKSAllowanceHubV2.settleOrderWithPermit2Signature,
-        (order, _signWitness(order, signerKey), _route(order, calls), '')
+        IKSAllowanceHubV2.settleOrder,
+        (order, _signWitness(order, signerKey), _route(order, calls), '', false)
       );
     } else {
       data = _settleCall(order, calls);
@@ -367,9 +367,9 @@ contract NestingTest is SettlementBase {
   /**
    * @dev Builds the nested orders of {testFuzz_NEST_01_nestedOrdersRestoreEachOwner} and arms each
    * of `evils` to settle the next level, returning level 0, its solver calls and the order hash of
-   * every level
+   * every level. Level 0 is authorized through Permit2 when `topViaPermit2` is set.
    */
-  function _buildChain(ReentrantCalleeMock[] memory evils)
+  function _buildChain(ReentrantCalleeMock[] memory evils, bool topViaPermit2)
     internal
     returns (AHV2Order memory top, CallParams[] memory topCalls, bytes32[] memory hashes)
   {
@@ -394,6 +394,9 @@ contract NestingTest is SettlementBase {
       _callTo(address(evils[0])), CallParams({callee: address(callee2), value: 0, data: hex'02'})
     );
     top = _ownedOrder(owner);
+    if (topViaPermit2) {
+      top.authenticator = permit2;
+    }
     hashes[0] = SchemaHash.ahv2Order(top);
   }
 

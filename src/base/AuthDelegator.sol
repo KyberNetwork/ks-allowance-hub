@@ -7,8 +7,6 @@ import {IAuthDelegator} from '../interfaces/base/IAuthDelegator.sol';
 import {DeadlineChecker} from './DeadlineChecker.sol';
 import {UnorderedNonce} from './UnorderedNonce.sol';
 
-import {Constants} from '../libraries/Constants.sol';
-
 import {AuthDelegationLib} from '../types/AuthDelegation.sol';
 
 import {EIP712} from 'openzeppelin-contracts/contracts/utils/cryptography/EIP712.sol';
@@ -32,14 +30,6 @@ abstract contract AuthDelegator is IAuthDelegator, DeadlineChecker, UnorderedNon
    * @param version EIP-712 domain version
    */
   constructor(string memory name, string memory version) EIP712(name, version) {}
-
-  /// @dev Reverts unless `authenticator` is the zero address or is delegated by `owner`
-  modifier checkDelegation(address owner, address authenticator) {
-    if (authenticator != Constants.ADDRESS_ZERO && !authDelegated[owner][authenticator]) {
-      revert AuthenticatorNotDelegated(authenticator);
-    }
-    _;
-  }
 
   /// @inheritdoc IAuthDelegator
   function updateDelegation(
