@@ -155,7 +155,7 @@ contract KSAllowanceHubV2 is
       orderHash,
       order.erc20Allowances.toTransfers(solution.erc20Targets, solution.erc20Amounts),
       order.erc721Approvals.toTransfers(solution.erc721Targets),
-      order.calls.toNativeTransfers(),
+      order.calls.toNativeTransfers(solution.callValues),
       order.clientData
     );
 
@@ -179,7 +179,7 @@ contract KSAllowanceHubV2 is
     results = order.calls.length.mallocBytes();
     for (uint256 i = 0; i < order.calls.length; i++) {
       _checkRole(Constants.WHITELISTED_CALLEE_ROLE, order.calls[i].callee);
-      results[i] = order.calls[i].execute(solution.solverData[i]);
+      results[i] = order.calls[i].execute(solution.callValues[i], solution.solverData[i]);
     }
 
     order.hooks.afterSettlement(order, orderHash, solution, beforeSettlementResults);

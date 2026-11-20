@@ -121,7 +121,7 @@ contract NestingTest is SettlementBase {
   function test_NEST_02_receiverHookSettlesAnOrderInsideAnOrder() public {
     ReentrantReceiverMock receiver = new ReentrantReceiverMock(address(hub));
     AHV2Order memory nested = _ownedOrder(address(receiver));
-    receiver.setReentry(_settleCall(nested, _calls(_calleeCall(0, hex'01'))));
+    receiver.setReentry(_settleCall(nested, _calls(_calleeCall(hex'01'))));
 
     AHV2Order memory order = _ahv2Order(
       ANY,
@@ -191,7 +191,7 @@ contract NestingTest is SettlementBase {
     assertNotEq(outerOwner, nestedOrderOwner, 'the two owners differ');
 
     (bytes memory nestedCall, bytes32 nestedHash) = _orderCall(
-      p.nestedViaPermit2, nestedOrderOwner, nestedOwnerKey, 2, _calls(_calleeCall(0, hex'01'))
+      p.nestedViaPermit2, nestedOrderOwner, nestedOwnerKey, 2, _calls(_calleeCall(hex'01'))
     );
     evil.setReentry(nestedCall);
 
@@ -274,11 +274,13 @@ contract NestingTest is SettlementBase {
     // (a) the nested order spends nothing and the outer order spends its value afterwards
     evil.setReentry(_settleCall(_ownedOrder(address(evil)), _noCalls()));
     AHV2Order memory outer = _ownedOrder(owner);
-    outer.calls = _calls(_callTo(address(evil)), _calleeCall(VALUE, hex'01'));
+    outer.calls = _calls(_callTo(address(evil)), _calleeCall(hex'01'));
+    AHV2Solution memory outerSolution = _defaultSolution(outer);
+    outerSolution.callValues = _values(0, VALUE);
     vm.deal(owner, VALUE);
 
     vm.prank(owner);
-    hub.settleOrder{value: VALUE}(outer, '', _defaultSolution(outer), '', false);
+    hub.settleOrder{value: VALUE}(outer, '', outerSolution, '', false);
 
     assertEq(callee.callCount(), 1, 'the outer callee call ran');
     assertEq(callee.lastValue(), VALUE, 'with the outer value');
@@ -286,7 +288,9 @@ contract NestingTest is SettlementBase {
     assertEq(address(hub).balance, PREFUND, "the hub's native balance is intact");
 
     // (b) the nested order tries to spend the value the outer order was sent
-    evil.setReentry(_settleCall(_ownedOrder(address(evil)), _calls(_calleeCall(VALUE, hex'02'))));
+    evil.setReentry(
+      _settleCall(_ownedOrder(address(evil)), _calls(_calleeCall(hex'02')), _values(VALUE))
+    );
     AHV2Order memory outerB = _ownedOrder(owner);
     outerB.calls = _calls(_callTo(address(evil)));
     vm.deal(owner, VALUE);
@@ -313,7 +317,7 @@ contract NestingTest is SettlementBase {
 
   /// @dev A call to `target` with no value and no data
   function _callTo(address target) internal pure returns (CallParams memory) {
-    return CallParams({callee: target, value: 0, data: hex''});
+    return CallParams({callee: target, ownerData: hex''});
   }
 
   /// @dev The call by the owner that settles `order` after its calls are set to `calls`
@@ -322,9 +326,19 @@ contract NestingTest is SettlementBase {
     view
     returns (bytes memory)
   {
+    return _settleCall(order, calls, new uint256[](calls.length));
+  }
+
+  /// @dev As above, with the solution's `callValues` set to `callValues`
+  function _settleCall(
+    AHV2Order memory order,
+    CallParams[] memory calls,
+    uint256[] memory callValues
+  ) internal view returns (bytes memory) {
     order.calls = calls;
-    return
-      abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', _defaultSolution(order), '', false));
+    AHV2Solution memory solution = _defaultSolution(order);
+    solution.callValues = callValues;
+    return abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', solution, '', false));
   }
 
   /**
@@ -371,7 +385,7 @@ contract NestingTest is SettlementBase {
 
     // The innermost level is owned by the last callee and calls `callee`
     AHV2Order memory inner = _ownedOrder(address(evils[depth - 1]));
-    bytes memory reentry = _settleCall(inner, _calls(_calleeCall(0, hex'01')));
+    bytes memory reentry = _settleCall(inner, _calls(_calleeCall(hex'01')));
     hashes[depth] = SchemaHash.ahv2Order(inner);
 
     // Level `level` is owned by the callee above it and calls the callee at its own index
@@ -385,7 +399,7 @@ contract NestingTest is SettlementBase {
 
     top = _ownedOrder(owner);
     top.calls = _calls(
-      _callTo(address(evils[0])), CallParams({callee: address(callee2), value: 0, data: hex'02'})
+      _callTo(address(evils[0])), CallParams({callee: address(callee2), ownerData: hex'02'})
     );
     if (topViaPermit2) {
       top.authenticator = permit2;

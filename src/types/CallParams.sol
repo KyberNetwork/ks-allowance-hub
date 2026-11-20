@@ -13,13 +13,11 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * @notice A call the hub makes to a callee for an order
  * @dev The callee may read the order's owner from {IMsgSender-msgSender}.
  * @param callee Contract called; must hold the whitelisted callee role when the call runs
- * @param value Native value sent with the call, paid from the native value sent with the order
- * @param data Passed to {IAHV2Callee-execute} as `ownerData`
+ * @param ownerData Callee-specific payload the owner signs, passed to {IAHV2Callee-execute}
  */
 struct CallParams {
   address callee;
-  uint256 value;
-  bytes data;
+  bytes ownerData;
 }
 
 using CallParamsLib for CallParams global;
@@ -29,12 +27,11 @@ library CallParamsLib {
   using EfficientHashLib for *;
 
   bytes32 internal constant CALL_PARAMS_TYPEHASH =
-    keccak256('CallParams(address callee,uint256 value,bytes data)');
+    keccak256('CallParams(address callee,bytes ownerData)');
 
   /// @dev EIP-712 hash of one call
   function hash(CallParams calldata self) internal pure returns (bytes32) {
-    return
-      keccak256(abi.encode(CALL_PARAMS_TYPEHASH, self.callee, self.value, self.data.hashCalldata()));
+    return keccak256(abi.encode(CALL_PARAMS_TYPEHASH, self.callee, self.ownerData.hashCalldata()));
   }
 
   /// @dev EIP-712 hash of the array: its member hashes, concatenated and hashed
@@ -47,17 +44,16 @@ library CallParamsLib {
     return callHashes.hash();
   }
 
-  /// @dev Calls `execute` on the callee with the call's data as `ownerData`, `solverData` and the
-  /// call's native value
-  function execute(CallParams calldata self, bytes calldata solverData)
+  /// @dev Calls `execute` on the callee with `value`, the call's `ownerData` and `solverData`
+  function execute(CallParams calldata self, uint256 value, bytes calldata solverData)
     internal
     returns (bytes memory)
   {
-    return IAHV2Callee(self.callee).execute{value: self.value}(self.data, solverData);
+    return IAHV2Callee(self.callee).execute{value: value}(self.ownerData, solverData);
   }
 
-  /// @dev The calls that carry native value, as native transfers to their callees, in order
-  function toNativeTransfers(CallParams[] calldata calls)
+  /// @dev The calls given native value by `values`, as native transfers to their callees, in order
+  function toNativeTransfers(CallParams[] calldata calls, uint256[] calldata values)
     internal
     pure
     returns (NativeTransfer[] memory transfers)
@@ -67,8 +63,8 @@ library CallParamsLib {
 
     for (uint256 i = 0; i < calls.length; i++) {
       CallParams calldata call = calls[i];
-      if (call.value > 0) {
-        transfers[index++] = NativeTransfer({target: call.callee, amount: call.value});
+      if (values[i] > 0) {
+        transfers[index++] = NativeTransfer({target: call.callee, amount: values[i]});
       }
     }
 

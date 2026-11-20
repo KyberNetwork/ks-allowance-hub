@@ -25,12 +25,12 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 /**
  * @title SolutionTest
- * @notice `TGT-01..04` with `LEN-01..02`, `APR-01`, `AMT-01..05` with `AMT-FUZZ`, and `SD-01..04` — what the solver specifies in
+ * @notice `TGT-01..04` with `LEN-01..02`, `APR-01`, `AMT-01..05` with `AMT-FUZZ`, and `SD-01..07` — what the solver specifies in
  * the solution
  * @dev The order specifies only what may leave the owner; the solution specifies one target per
- * transfer, one amount per ERC20 transfer and the `solverData` entry of each call. Every
- * target case sends the transfers somewhere no order signed: `solverWallet` for an ERC20 transfer
- * and `nftRecipient` for the NFT, neither of them a callee.
+ * transfer, one amount per ERC20 transfer and the `callValues` and `solverData` entries of each
+ * call. Every target case sends the transfers somewhere no order signed: `solverWallet` for an
+ * ERC20 transfer and `nftRecipient` for the NFT, neither of them a callee.
  */
 contract SolutionTest is SettlementBase {
   /// @dev Written out rather than imported: a role read from the hub would agree with a wrong one
@@ -388,8 +388,7 @@ contract SolutionTest is SettlementBase {
     vm.startPrank(admin);
     for (uint256 i = 0; i < 3; i++) {
       hub.grantRole(CALLEE_ROLE, address(echoes[i]));
-      calls[i] =
-        CallParams({callee: address(echoes[i]), value: 0, data: abi.encodePacked(uint8(i + 1))});
+      calls[i] = CallParams({callee: address(echoes[i]), ownerData: abi.encodePacked(uint8(i + 1))});
     }
     vm.stopPrank();
 
@@ -408,7 +407,7 @@ contract SolutionTest is SettlementBase {
       (address seenCallee, bytes memory seenData, bytes memory seenSolverData) =
         abi.decode(results[i], (address, bytes, bytes));
       assertEq(seenCallee, address(echoes[i]), 'the result came from the callee of that index');
-      assertEq(seenData, calls[i].data, 'with the data of its own call');
+      assertEq(seenData, calls[i].ownerData, 'with the data of its own call');
       assertEq(seenSolverData, solverEntries[i], 'and the solver data of its own index');
     }
   }
@@ -419,7 +418,7 @@ contract SolutionTest is SettlementBase {
    * length 2 settles.
    */
   function test_SD_02_solverDataLengthMustMatchTheCalls() public {
-    CallParams[] memory calls = _calls(_calleeCall(0, hex'01'), _calleeCall(0, hex'02'));
+    CallParams[] memory calls = _calls(_calleeCall(hex'01'), _calleeCall(hex'02'));
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     AHV2Order memory delegated =
@@ -475,7 +474,7 @@ contract SolutionTest is SettlementBase {
       new ERC20Allowance[](0),
       _noNfts(),
       _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       approver,
       0,
       expiration
@@ -508,7 +507,7 @@ contract SolutionTest is SettlementBase {
     AHV2Order memory order = _openAhv2Order(
       new ERC20Allowance[](0),
       _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       111,
       vm.getBlockTimestamp() + 1 hours
     );
@@ -531,6 +530,116 @@ contract SolutionTest is SettlementBase {
     vm.prank(solver);
     hub.settleOrder(order, witness, solutionB, '', false);
     assertEq(callee.lastSolverData(), hex'bb', 'and with the second');
+  }
+
+  /**
+   * SD-05 — a `callValues` list of the wrong length is refused on both entry points
+   * @dev The order has two calls. Lengths 0, 1 and 3 are refused with nothing moved.
+   */
+  function test_SD_05_callValuesLengthMustMatchTheCalls() public {
+    CallParams[] memory calls = _calls(_calleeCall(hex'01'), _calleeCall(hex'02'));
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
+
+    AHV2Order memory delegated =
+      _openAhv2Order(_allowances(_tokenAllowance(AMOUNT)), _noHooks(), calls, 0, expiration);
+    AHV2Order memory relayed =
+      _openAhv2Order(_allowances(_tokenAllowance(AMOUNT)), _noHooks(), calls, 112, expiration);
+    relayed.authenticator = permit2;
+    bytes memory witness = _signPermit2Order(relayed);
+
+    AHV2Solution memory delegatedSolution = _defaultSolution(delegated);
+    AHV2Solution memory relayedSolution = _defaultSolution(relayed);
+    uint256 before = _calleeBalance();
+
+    uint256[3] memory wrongLengths = [uint256(0), 1, 3];
+    for (uint256 i = 0; i < wrongLengths.length; i++) {
+      delegatedSolution.callValues = new uint256[](wrongLengths[i]);
+      relayedSolution.callValues = new uint256[](wrongLengths[i]);
+
+      vm.prank(owner);
+      vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
+      hub.settleOrder(delegated, '', delegatedSolution, '', false);
+
+      vm.prank(relayer);
+      vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
+      hub.settleOrder(relayed, witness, relayedSolution, '', false);
+
+      assertEq(_calleeBalance(), before, 'a refused order moved nothing');
+      assertEq(callee.callCount(), 0, 'and ran no call');
+    }
+  }
+
+  /**
+   * SD-06 — the solution approval binds `callValues`
+   * @dev The presented solution differs from the approved one only in the native value of its call,
+   * and the submitter sends that value, so the refusal is the approval's.
+   */
+  function test_SD_06_theSolutionApprovalBindsCallValues() public {
+    uint256 expiration = vm.getBlockTimestamp() + 1 hours;
+    AHV2Order memory order = _ahv2Order(
+      address(authenticator),
+      ANY,
+      new ERC20Allowance[](0),
+      _noNfts(),
+      _noHooks(),
+      _calls(_calleeCall(hex'01')),
+      approver,
+      0,
+      expiration
+    );
+
+    AHV2Solution memory approved = _defaultSolution(order);
+    approved.callValues[0] = 1;
+    AHV2Solution memory presented = _defaultSolution(order);
+    presented.callValues[0] = 2;
+
+    bytes memory approval = _signSolutionApproval(approverKey, order, approved);
+    bytes memory auth = _authOf(order);
+    vm.deal(relayer, 3);
+
+    vm.prank(relayer);
+    vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
+    hub.settleOrder{value: 2}(order, auth, presented, approval, false);
+    assertEq(callee.callCount(), 0, 'the refused order ran nothing');
+
+    vm.prank(relayer);
+    hub.settleOrder{value: 1}(order, auth, approved, approval, false);
+    assertEq(callee.lastValue(), 1, 'the control settled with the approved value');
+  }
+
+  /**
+   * SD-07 — the owner's signature does not bind `callValues`
+   * @dev With the sentinel approver, one witness settles with either of two values. Each run starts
+   * from the same snapshot, so the second is not a replay of the first.
+   */
+  function test_SD_07_theOwnersSignatureDoesNotBindCallValues() public {
+    AHV2Order memory order = _openAhv2Order(
+      new ERC20Allowance[](0),
+      _noHooks(),
+      _calls(_calleeCall(hex'01')),
+      113,
+      vm.getBlockTimestamp() + 1 hours
+    );
+    order.authenticator = permit2;
+    bytes memory witness = _signPermit2Order(order);
+
+    AHV2Solution memory solutionA = _defaultSolution(order);
+    solutionA.callValues[0] = 1;
+    AHV2Solution memory solutionB = _defaultSolution(order);
+    solutionB.callValues[0] = 2;
+    vm.deal(solver, 2);
+
+    uint256 snapshot = vm.snapshotState();
+
+    vm.prank(solver);
+    hub.settleOrder{value: 1}(order, witness, solutionA, '', false);
+    assertEq(callee.lastValue(), 1, 'the witness settled with the first value');
+
+    vm.revertToState(snapshot);
+
+    vm.prank(solver);
+    hub.settleOrder{value: 2}(order, witness, solutionB, '', false);
+    assertEq(callee.lastValue(), 2, 'and with the second');
   }
 
   // -------------------------------------------------------------------------------------------

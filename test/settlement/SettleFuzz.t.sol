@@ -142,9 +142,7 @@ contract SettleFuzzTest is SettlementBase {
 
     CallParams[] memory calls = new CallParams[](f.callCount);
     for (uint256 i = 0; i < f.callCount; i++) {
-      calls[i] = CallParams({
-        callee: address(callee), value: i == 0 ? f.msgValue : 0, data: abi.encodePacked(uint8(i))
-      });
+      calls[i] = CallParams({callee: address(callee), ownerData: abi.encodePacked(uint8(i))});
     }
 
     order = _ahv2Order(
@@ -164,6 +162,10 @@ contract SettleFuzzTest is SettlementBase {
       f.moveNft ? _addresses(f.erc721Target) : new address[](0),
       vm.getBlockTimestamp() + f.expirationOffset
     );
+    solution.callValues = new uint256[](f.callCount);
+    if (f.callCount > 0) {
+      solution.callValues[0] = f.msgValue;
+    }
     solution.solverData = _solverData(f.callCount);
   }
 

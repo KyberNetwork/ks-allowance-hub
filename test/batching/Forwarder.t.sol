@@ -747,7 +747,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
       permit2,
       _allowances(ERC20Allowance({token: token18, amount: amount})),
       _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       nonce,
       deadline
     );

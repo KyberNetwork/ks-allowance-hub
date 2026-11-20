@@ -176,7 +176,8 @@ contract Eip712Test is V2TestBase {
   }
 
   /**
-   * The solution hash matches {SchemaHash}, and the nonce and `solverData` move the hash
+   * The solution hash matches {SchemaHash}, and the nonce, `callValues` and `solverData` move the
+   * hash
    * @dev The `solverData` is changed in one entry, then in length, so both its elements and its
    * count are encoded.
    */
@@ -191,6 +192,19 @@ contract Eip712Test is V2TestBase {
     bytes32 changed = SchemaHash.ahv2Solution(otherNonce);
     assertTrue(changed != expected, 'the nonce changes the solution hash');
     assertEq(this.extHashSolution(otherNonce), changed, 'changed nonce');
+
+    AHV2Solution memory otherValue = _sampleSolution();
+    otherValue.callValues[1] += 1;
+    changed = SchemaHash.ahv2Solution(otherValue);
+    assertTrue(changed != expected, 'an entry of callValues changes the solution hash');
+    assertEq(this.extHashSolution(otherValue), changed, 'changed value');
+
+    AHV2Solution memory longerValues = _sampleSolution();
+    longerValues.callValues = new uint256[](3);
+    longerValues.callValues[0] = 1 ether;
+    changed = SchemaHash.ahv2Solution(longerValues);
+    assertTrue(changed != expected, 'the count of callValues changes the solution hash');
+    assertEq(this.extHashSolution(longerValues), changed, 'longer callValues');
 
     AHV2Solution memory otherData = _sampleSolution();
     otherData.solverData[0] = hex'5e';
@@ -207,11 +221,11 @@ contract Eip712Test is V2TestBase {
   }
 
   /**
-   * The approval hash matches the independent encoding, and the order, targets, solverData and
-   * nonce move it
+   * The approval hash matches the independent encoding, and the order, targets, callValues,
+   * solverData and nonce move it
    * @dev The whole order is a member, encoded by its own struct hash, so the production hasher
    * takes that hash and the expected side nests the order. One approval ties to one order and to
-   * the targets and `solverData` it specifies.
+   * the targets, `callValues` and `solverData` it specifies.
    */
   function test_T712_solutionApprovalStructHash() public view {
     AHV2Order memory order = _sampleOrder();
@@ -229,9 +243,15 @@ contract Eip712Test is V2TestBase {
     otherTargets.erc20Targets[0] = address(0xBBB9);
     assertTrue(_approvalHash(order, otherTargets) != expected, 'the targets change the approval');
 
+    AHV2Solution memory otherValue = _sampleSolution();
+    otherValue.callValues[0] += 1;
+    bytes32 changed = _approvalHash(order, otherValue);
+    assertTrue(changed != expected, 'callValues changes the approval');
+    assertEq(this.extHashSolutionApproval(orderHash, otherValue), changed, 'new value');
+
     AHV2Solution memory otherData = _sampleSolution();
     otherData.solverData[0] = hex'5e';
-    bytes32 changed = _approvalHash(order, otherData);
+    changed = _approvalHash(order, otherData);
     assertTrue(changed != expected, 'solverData changes the approval');
     assertEq(this.extHashSolutionApproval(orderHash, otherData), changed, 'new data');
 
@@ -399,8 +419,8 @@ contract Eip712Test is V2TestBase {
 
   function _sampleCalls() private pure returns (CallParams[] memory calls) {
     calls = new CallParams[](2);
-    calls[0] = CallParams({callee: address(0xCCC1), value: 1 ether, data: hex'deadbeef'});
-    calls[1] = CallParams({callee: address(0xCCC2), value: 0, data: ''});
+    calls[0] = CallParams({callee: address(0xCCC1), ownerData: hex'deadbeef'});
+    calls[1] = CallParams({callee: address(0xCCC2), ownerData: ''});
   }
 
   function _sampleHooks() private pure returns (HookParams[] memory hooks) {
@@ -436,8 +456,8 @@ contract Eip712Test is V2TestBase {
     });
   }
 
-  /// @dev One target and amount per ERC20 transfer, one target per NFT transfer and one `solverData`
-  /// entry per call of {_sampleOrder}, none of the targets a callee
+  /// @dev One target and amount per ERC20 transfer, one target per NFT transfer and one
+  /// `callValues` and `solverData` entry per call of {_sampleOrder}, none of the targets a callee
   function _sampleSolution() private pure returns (AHV2Solution memory) {
     address[] memory erc20Targets = new address[](2);
     erc20Targets[0] = address(0xBBB1);
@@ -447,6 +467,9 @@ contract Eip712Test is V2TestBase {
     erc20Amounts[1] = 2000;
     address[] memory erc721Targets = new address[](1);
     erc721Targets[0] = address(0xBBB3);
+    uint256[] memory callValues = new uint256[](2);
+    callValues[0] = 1 ether;
+    callValues[1] = 0;
     bytes[] memory solverData = new bytes[](2);
     solverData[0] = hex'5d';
     solverData[1] = '';
@@ -454,6 +477,7 @@ contract Eip712Test is V2TestBase {
       erc20Targets: erc20Targets,
       erc20Amounts: erc20Amounts,
       erc721Targets: erc721Targets,
+      callValues: callValues,
       solverData: solverData,
       nonce: 3456,
       expiration: 9012

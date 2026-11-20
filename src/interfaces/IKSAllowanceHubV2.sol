@@ -34,8 +34,8 @@ interface IKSAllowanceHubV2 {
   /**
    * @notice Emitted once for each settled order, before its assets move and its calls run
    * @dev Each ERC20 and ERC721 entry pairs a transfer of the order with the target the solution
-   * specifies for it. `nativeTransfers` lists only the calls that carry native value, in order,
-   * and is empty when no call carries value.
+   * specifies for it. `nativeTransfers` lists only the calls to which the solution's `callValues`
+   * give native value, in order, and is empty when it gives none.
    *
    * An order settled by a callee call of another order emits its event after the other order's
    * and before that order's remaining calls run.

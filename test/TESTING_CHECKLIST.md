@@ -1749,3 +1749,17 @@ Scope: on the Permit2 flow the witness is the whole `AHV2Order`, and `AHV2Witnes
 ### Notes for this run
 
 The suite went from 199 to 197 tests: `test_T712_witnessStructHash` and `test_T712_witnessClientDataStructHash` tested the removed witness hasher. The order hash they would now cover is tested by the T712 order cases. `relayedPermit2Witness` fell from 122,313 to 121,907 gas, and the other settlement paths by 23 to 75 gas. Removing the `lastAfterIndex` store from `HookMock` lowers `ownerTransferWithHooks` by a further 2,237 gas; the hub is unchanged.
+
+## Run `20261120T081850Z`
+
+Scope: `CallParams.data` renamed `ownerData`, and the native value of each call moved from `CallParams.value` to the solver's `AHV2Solution.callValues`.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261120T081850Z/MIGRATE-03` | Every suite builds calls without a value and sets native values on the solution before any approval is signed; the native-spend guard, the event's native transfers and the nested-order value cases read `callValues` | OWN-07 in `Calls.t.sol`, GATE-01, GATE-02 in `Guards.t.sol`, NEST-05 in `Nesting.t.sol`, MC-01, MC-02 in `Multicall.t.sol`, `testFuzz_ORDER_FUZZ_settleOrder` in `SettleFuzz.t.sol` | `FOUNDRY_PROFILE=solar forge test --isolate` and `forge test --isolate`: 200 passed, 0 failed |
+| - [x] | - [ ] | `20261120T081850Z/CALLVALUES-01` | A `callValues` list of the wrong length is refused on both entry points; the solution approval binds `callValues`; the owner's signature does not, so one Permit2 signature settles with either of two values under the sentinel approver | SD-05, SD-06, SD-07 in `test/settlement/Solution.t.sol` | `FOUNDRY_PROFILE=solar forge test --isolate` and `forge test --isolate`: 200 passed, 0 failed |
+| - [x] | - [ ] | `20261120T081850Z/SCHEMA-06` | `CallParams(address callee,bytes ownerData)` and `AHV2Solution` with `uint256[] callValues` in every written-out type string; `callValues` moves the solution and approval hashes | `test/types/Eip712.t.sol`, `test/types/SchemaAudit.t.sol` | `FOUNDRY_PROFILE=solar forge test --isolate` and `forge test --isolate`: 200 passed, 0 failed |
+
+### Notes for this run
+
+The suite went from 197 to 200 tests. No existing test asserted that the owner's signature binds a call's value, so no baseline was weakened; SD-06 and SD-07 pin the new split. Each settlement snapshot rises by 829 to 1,173 gas for the added array, and the hub's runtime size from 22,578 to 22,953 bytes.

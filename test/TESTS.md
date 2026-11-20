@@ -1,6 +1,6 @@
 # Tests
 
-The suite has 197 tests in 19 contracts. Each row links to a test and gives the
+The suite has 200 tests in 19 contracts. Each row links to a test and gives the
 first sentence of its documentation, or of the section heading above it. A test with neither
 takes its ID and description from its name.
 
@@ -77,7 +77,7 @@ takes its ID and description from its name.
 | --- | --- | --- |
 | MC-01 | [`test_MC_01_permitAndOrderInOneBatch`](batching/Multicall.t.sol#L48) | A permit and the order that uses the approval share one transaction, with value |
 | MC-02 | [`test_MC_02_batchIsBoundedAsAWhole`](batching/Multicall.t.sol#L88) | Each sub-call may spend the value, but the batch as a whole may not spend it twice |
-| MC-03 | [`test_MC_03_subCallRevertBubbles`](batching/Multicall.t.sol#L112) | A sub-call's revert arrives at the caller with its arguments intact |
+| MC-03 | [`test_MC_03_subCallRevertBubbles`](batching/Multicall.t.sol#L113) | A sub-call's revert arrives at the caller with its arguments intact |
 | MC-04 | [`test_MC_04_twoOrdersInOneBatch`](batching/Multicall.t.sol#L131) | Two independent orders in one batch both settle, in the order given |
 | MC-07 | [`test_MC_07_gasIsMeasuredPerEntry`](batching/Multicall.t.sol#L161) | Each entry is measured on its own, not given a running total of the batch |
 | MC-05 | [`test_MC_05_plainNativeTransferIsRefused`](batching/Multicall.t.sol#L192) | The hub has no `receive`, so a bare transfer cannot strand native in it |
@@ -143,19 +143,19 @@ takes its ID and description from its name.
 | ID | Test | Description |
 | --- | --- | --- |
 | AUTH-01b | [`test_AUTH_01b_permit2SelfSubmittedChecksNoApproval`](settlement/Authentication.t.sol#L53) | The owner submits their own order, so the permit witnesses nothing and no approval is checked |
-| AUTH-04 | [`test_AUTH_04_witnessPinsTheExclusiveCaller`](settlement/Authentication.t.sol#L114) | The exclusive caller the owner specified is part of what the witness binds |
-| AUTH-07 | [`test_AUTH_07_permit2Witness`](settlement/Authentication.t.sol#L144) | A solver settles a witnessed order under the sentinel approver with its own solution |
-| AUTH-07b | [`test_AUTH_07b_solutionApproverIsBoundByTheWitness`](settlement/Authentication.t.sol#L172) | The solver cannot swap in a different approver than the one the owner signed |
-| ORD-03 | [`test_ORD_03_exclusiveCallerPinningAndTheOpenSentinel`](settlement/Authentication.t.sol#L213) | Only the named exclusive caller may submit a Permit2 settlement, the sentinel admits anyone |
-| AUTH-06 | [`test_AUTH_06_ownerCallerNeedsNoAuthentication`](settlement/Authentication.t.sol#L287) | An owner acting for themselves needs no authenticator at all |
-| AUTH-06b | [`test_AUTH_06b_ownerCallerViaPermit2Allowance`](settlement/Authentication.t.sol#L316) | An owner's own call without an authenticator draws on the Permit2 allowance |
-| AUTH-08 | [`test_AUTH_08_undelegatedAuthenticatorRefused`](settlement/Authentication.t.sol#L341) | An authenticator the owner never delegated is refused before it is ever called |
-| ORD-01 | [`test_ORD_01_theAssetSourceIsTheSubmittersArgument`](settlement/Authentication.t.sol#L373) | The asset source is the submitter's parameter, and the same order settles either way |
-| ORD-01b | [`test_ORD_01b_thePermit2SignatureEntryPointConsultsNoAllowance`](settlement/Authentication.t.sol#L416) | The Permit2 signature entry point takes no source argument and claims neither allowance |
-| AUTH-13 | [`test_AUTH_13_malformedAuthenticationDataRejected`](settlement/Authentication.t.sol#L448) | Authentication data too short to settle is rejected, on whichever gate it reaches |
-| AUTH-18 | [`test_AUTH_18_authenticatorReceivesTheOrderAndTheSolution`](settlement/Authentication.t.sol#L489) | The authenticator receives the order, its hash, the solution and the data, unaltered |
-| ORD-04 | [`test_ORD_04_delegatedEntryPointDrawsOnTheNamedOwner`](settlement/Authentication.t.sol#L529) | An order repointed to another owner who approved the same signer reverts |
-| ORD-03b | [`test_ORD_03b_delegatedEntryPointHonoursTheExclusiveCaller`](settlement/Authentication.t.sol#L573) | The delegated entry point refuses a submitter the order did not specify |
+| AUTH-04 | [`test_AUTH_04_witnessPinsTheExclusiveCaller`](settlement/Authentication.t.sol#L98) | The exclusive caller the owner specified is part of what the witness binds |
+| AUTH-07 | [`test_AUTH_07_permit2Witness`](settlement/Authentication.t.sol#L128) | A solver settles a witnessed order under the sentinel approver with its own solution |
+| AUTH-07b | [`test_AUTH_07b_solutionApproverIsBoundByTheWitness`](settlement/Authentication.t.sol#L156) | The solver cannot swap in a different approver than the one the owner signed |
+| ORD-03 | [`test_ORD_03_exclusiveCallerPinningAndTheOpenSentinel`](settlement/Authentication.t.sol#L197) | Only the named exclusive caller may submit a Permit2 settlement, the sentinel admits anyone |
+| AUTH-06 | [`test_AUTH_06_ownerCallerNeedsNoAuthentication`](settlement/Authentication.t.sol#L272) | An owner acting for themselves needs no authenticator at all |
+| AUTH-06b | [`test_AUTH_06b_ownerCallerViaPermit2Allowance`](settlement/Authentication.t.sol#L301) | An owner's own call without an authenticator draws on the Permit2 allowance |
+| AUTH-08 | [`test_AUTH_08_undelegatedAuthenticatorRefused`](settlement/Authentication.t.sol#L326) | An authenticator the owner never delegated is refused before it is ever called |
+| ORD-01 | [`test_ORD_01_theAssetSourceIsTheSubmittersArgument`](settlement/Authentication.t.sol#L358) | The asset source is the submitter's parameter, and the same order settles either way |
+| ORD-01b | [`test_ORD_01b_thePermit2SignatureEntryPointConsultsNoAllowance`](settlement/Authentication.t.sol#L401) | The Permit2 signature entry point takes no source argument and claims neither allowance |
+| AUTH-13 | [`test_AUTH_13_malformedAuthenticationDataRejected`](settlement/Authentication.t.sol#L433) | Authentication data too short to settle is rejected, on whichever gate it reaches |
+| AUTH-18 | [`test_AUTH_18_authenticatorReceivesTheOrderAndTheSolution`](settlement/Authentication.t.sol#L474) | The authenticator receives the order, its hash, the solution and the data, unaltered |
+| ORD-04 | [`test_ORD_04_delegatedEntryPointDrawsOnTheNamedOwner`](settlement/Authentication.t.sol#L515) | An order repointed to another owner who approved the same signer reverts |
+| ORD-03b | [`test_ORD_03b_delegatedEntryPointHonoursTheExclusiveCaller`](settlement/Authentication.t.sol#L559) | The delegated entry point refuses a submitter the order did not specify |
 
 ## CalldataHygieneTest
 
@@ -178,9 +178,9 @@ takes its ID and description from its name.
 | OWN-02 | [`test_OWN_02_witnessBindsCalls`](settlement/Calls.t.sol#L86) | The Permit2 witness pins the calls the owner signed |
 | OWN-03 | [`test_OWN_03_authenticationBindsCalls`](settlement/Calls.t.sol#L121) | Calls swapped after the authenticator's signature are refused on the delegated entry point |
 | OWN-07 | [`test_OWN_07_eventListsTheValueOfEachCall`](settlement/Calls.t.sol#L165) | The event lists the value of each call with a value, in order |
-| CALLEE-01 | [`test_CALLEE_01_unwhitelistedCalleeIsRejected`](settlement/Calls.t.sol#L211) | A callee without the role is refused, and the order rolls back whole, earlier calls included |
-| CALLEE-02 | [`test_CALLEE_02_guardianRevokeStopsTheNextOrder`](settlement/Calls.t.sol#L260) | A guardian can drop a callee, and the very next order stops working |
-| CALLEE-03 | [`test_CALLEE_03_eachCalleeCalledOnce`](settlement/Calls.t.sol#L286) | Every whitelisted callee in the list is called exactly once, with its own data |
+| CALLEE-01 | [`test_CALLEE_01_unwhitelistedCalleeIsRejected`](settlement/Calls.t.sol#L215) | A callee without the role is refused, and the order rolls back whole, earlier calls included |
+| CALLEE-02 | [`test_CALLEE_02_guardianRevokeStopsTheNextOrder`](settlement/Calls.t.sol#L263) | A guardian can drop a callee, and the very next order stops working |
+| CALLEE-03 | [`test_CALLEE_03_eachCalleeCalledOnce`](settlement/Calls.t.sol#L289) | Every whitelisted callee in the list is called exactly once, with its own data |
 
 ## EventsTest
 
@@ -205,12 +205,12 @@ takes its ID and description from its name.
 | HOOK-02 | [`test_HOOK_02_hooksRunAroundThePermit2EntryPoint`](settlement/Hooks.t.sol#L110) | The hooks bracket the Permit2 entry point, the after hook following the calls |
 | HOOK-03 | [`test_HOOK_03_aRevertingHookRevertsTheOrder`](settlement/Hooks.t.sol#L157) | A reverting hook reverts the order |
 | HOOK-04 | [`test_HOOK_04_noHooks`](settlement/Hooks.t.sol#L194) | An order with no hooks settles and runs its callee call |
-| HOOK-05 | [`test_HOOK_05_flagsSelectTheCalls`](settlement/Hooks.t.sol#L215) | The flags select which of the two calls a hook receives |
-| HOOK-06 | [`testFuzz_HOOK_06_flagsSelectTheCalls`](settlement/Hooks.t.sol#L253) | Only the two lowest bits of the flags select calls |
-| HOOK-07 | [`test_HOOK_07_hooksReceiveTheOrderTheSolutionAndTheirIndex`](settlement/Hooks.t.sol#L280) | A hook receives the order, its hash, the solution and the index of its entry |
-| HOOK-08 | [`test_HOOK_08_hooksRunWhileMsgSenderIsTheOwner`](settlement/Hooks.t.sol#L322) | The hooks run while `msgSender` returns the owner |
-| HOOK-09 | [`test_HOOK_09_signaturesBindTheHooks`](settlement/Hooks.t.sol#L346) | Both signatures bind the hooks |
-| HOOK-10 | [`test_HOOK_10_theAfterHookSeesTheCalls`](settlement/Hooks.t.sol#L420) | The after hook observes the effects of the calls |
+| HOOK-05 | [`test_HOOK_05_flagsSelectTheCalls`](settlement/Hooks.t.sol#L211) | The flags select which of the two calls a hook receives |
+| HOOK-06 | [`testFuzz_HOOK_06_flagsSelectTheCalls`](settlement/Hooks.t.sol#L249) | Only the two lowest bits of the flags select calls |
+| HOOK-07 | [`test_HOOK_07_hooksReceiveTheOrderTheSolutionAndTheirIndex`](settlement/Hooks.t.sol#L276) | A hook receives the order, its hash, the solution and the index of its entry |
+| HOOK-08 | [`test_HOOK_08_hooksRunWhileMsgSenderIsTheOwner`](settlement/Hooks.t.sol#L318) | The hooks run while `msgSender` returns the owner |
+| HOOK-09 | [`test_HOOK_09_signaturesBindTheHooks`](settlement/Hooks.t.sol#L342) | Both signatures bind the hooks |
+| HOOK-10 | [`test_HOOK_10_theAfterHookSeesTheCalls`](settlement/Hooks.t.sol#L416) | The after hook observes the effects of the calls |
 
 ## NestingTest
 
@@ -273,9 +273,12 @@ takes its ID and description from its name.
 | AMT-05 | [`test_AMT_05_theApprovalBindsTheAmounts`](settlement/Solution.t.sol#L315) | An approval signed for amounts of 5 ether is refused for a solution with 2 ether |
 | AMT-FUZZ | [`testFuzz_AMT_FUZZ_solverAmount`](settlement/Solution.t.sol#L352) | The solver's amount moves exactly, or is refused above the allowance |
 | SD-01 | [`test_SD_01_eachCallReceivesItsOwnSolverData`](settlement/Solution.t.sol#L382) | Each call receives the `solverData` entry of its own index |
-| SD-02 | [`test_SD_02_solverDataLengthMustMatchTheCalls`](settlement/Solution.t.sol#L421) | A `solverData` list of the wrong length is refused on both entry points |
-| SD-03 | [`test_SD_03_theSolutionApprovalBindsSolverData`](settlement/Solution.t.sol#L470) | The solution approval binds `solverData` |
-| SD-04 | [`test_SD_04_theOwnersSignatureDoesNotBindSolverData`](settlement/Solution.t.sol#L507) | The owner's signature does not bind `solverData` |
+| SD-02 | [`test_SD_02_solverDataLengthMustMatchTheCalls`](settlement/Solution.t.sol#L420) | A `solverData` list of the wrong length is refused on both entry points |
+| SD-03 | [`test_SD_03_theSolutionApprovalBindsSolverData`](settlement/Solution.t.sol#L469) | The solution approval binds `solverData` |
+| SD-04 | [`test_SD_04_theOwnersSignatureDoesNotBindSolverData`](settlement/Solution.t.sol#L506) | The owner's signature does not bind `solverData` |
+| SD-05 | [`test_SD_05_callValuesLengthMustMatchTheCalls`](settlement/Solution.t.sol#L539) | A `callValues` list of the wrong length is refused on both entry points |
+| SD-06 | [`test_SD_06_theSolutionApprovalBindsCallValues`](settlement/Solution.t.sol#L577) | The solution approval binds `callValues` |
+| SD-07 | [`test_SD_07_theOwnersSignatureDoesNotBindCallValues`](settlement/Solution.t.sol#L615) | The owner's signature does not bind `callValues` |
 
 ## SolutionApprovalTest
 
@@ -310,19 +313,19 @@ takes its ID and description from its name.
 | T712 | [`test_T712_orderStructHash`](types/Eip712.t.sol#L130) | The order hash matches {SchemaHash} |
 | T712 | [`test_T712_orderClientDataStructHash`](types/Eip712.t.sol#L141) | The order hash matches {SchemaHash} with client data, and clearing it moves the hash |
 | T712-DIFF | [`test_T712_DIFF_authenticatorMovesOrderAndApprovalHash`](types/Eip712.t.sol#L159) | The authenticator alone moves the order hash and the approval hash |
-| T712 | [`test_T712_solutionStructHash`](types/Eip712.t.sol#L183) | The solution hash matches {SchemaHash}, and the nonce and `solverData` move the hash |
-| T712 | [`test_T712_solutionApprovalStructHash`](types/Eip712.t.sol#L216) | The approval hash matches the independent encoding, and the order, targets, solverData and nonce move it |
-| T712 | [`test_T712_erc20AllowanceStructHash`](types/Eip712.t.sol#L249) | The hash of each sample {ERC20Allowance} matches {SchemaHash} |
-| T712 | [`test_T712_erc721ApprovalStructHash`](types/Eip712.t.sol#L258) | The hash of a sample {ERC721Approval} matches {SchemaHash} |
-| T712-ARRAY | [`test_T712_ARRAY_addressArrayEncoding`](types/Eip712.t.sol#L270) | The packed encoding of an address array equals the per-element encoding |
-| T712-ARRAY | [`testFuzz_T712_ARRAY_efficientHashLibExt`](types/Eip712.t.sol#L288) | The address array hash equals the hash of the words encoded one by one |
-| T712-ARRAY | [`testFuzz_T712_ARRAY_bytesArrayHash`](types/Eip712.t.sol#L303) | The `bytes[]` hash equals the hash of the element hashes concatenated |
-| T712-FUZZ | [`testFuzz_T712_FUZZ_callParamsStructHash`](types/Eip712.t.sol#L318) | The {CallParams} hash equals its EIP-712 struct hash |
-| T712-FUZZ | [`testFuzz_T712_FUZZ_erc20AllowanceStructHash`](types/Eip712.t.sol#L323) | The {ERC20Allowance} hash equals its EIP-712 struct hash |
-| T712-FUZZ | [`testFuzz_T712_FUZZ_erc721ApprovalStructHash`](types/Eip712.t.sol#L328) | The {ERC721Approval} hash equals its EIP-712 struct hash |
-| T712-FUZZ | [`testFuzz_T712_FUZZ_hookParamsStructHash`](types/Eip712.t.sol#L333) | The {HookParams} hash equals its EIP-712 struct hash |
-| T712-FUZZ | [`testFuzz_T712_FUZZ_orderStructHash`](types/Eip712.t.sol#L338) | The {AHV2Order} hash equals its EIP-712 struct hash |
-| T712-FUZZ | [`testFuzz_T712_FUZZ_solutionStructHash`](types/Eip712.t.sol#L343) | The {AHV2Solution} hash equals its EIP-712 struct hash |
+| T712 | [`test_T712_solutionStructHash`](types/Eip712.t.sol#L184) | The solution hash matches {SchemaHash}, and the nonce, `callValues` and `solverData` move the hash |
+| T712 | [`test_T712_solutionApprovalStructHash`](types/Eip712.t.sol#L230) | The approval hash matches the independent encoding, and the order, targets, callValues, solverData and nonce move it |
+| T712 | [`test_T712_erc20AllowanceStructHash`](types/Eip712.t.sol#L269) | The hash of each sample {ERC20Allowance} matches {SchemaHash} |
+| T712 | [`test_T712_erc721ApprovalStructHash`](types/Eip712.t.sol#L278) | The hash of a sample {ERC721Approval} matches {SchemaHash} |
+| T712-ARRAY | [`test_T712_ARRAY_addressArrayEncoding`](types/Eip712.t.sol#L290) | The packed encoding of an address array equals the per-element encoding |
+| T712-ARRAY | [`testFuzz_T712_ARRAY_efficientHashLibExt`](types/Eip712.t.sol#L308) | The address array hash equals the hash of the words encoded one by one |
+| T712-ARRAY | [`testFuzz_T712_ARRAY_bytesArrayHash`](types/Eip712.t.sol#L323) | The `bytes[]` hash equals the hash of the element hashes concatenated |
+| T712-FUZZ | [`testFuzz_T712_FUZZ_callParamsStructHash`](types/Eip712.t.sol#L338) | The {CallParams} hash equals its EIP-712 struct hash |
+| T712-FUZZ | [`testFuzz_T712_FUZZ_erc20AllowanceStructHash`](types/Eip712.t.sol#L343) | The {ERC20Allowance} hash equals its EIP-712 struct hash |
+| T712-FUZZ | [`testFuzz_T712_FUZZ_erc721ApprovalStructHash`](types/Eip712.t.sol#L348) | The {ERC721Approval} hash equals its EIP-712 struct hash |
+| T712-FUZZ | [`testFuzz_T712_FUZZ_hookParamsStructHash`](types/Eip712.t.sol#L353) | The {HookParams} hash equals its EIP-712 struct hash |
+| T712-FUZZ | [`testFuzz_T712_FUZZ_orderStructHash`](types/Eip712.t.sol#L358) | The {AHV2Order} hash equals its EIP-712 struct hash |
+| T712-FUZZ | [`testFuzz_T712_FUZZ_solutionStructHash`](types/Eip712.t.sol#L363) | The {AHV2Solution} hash equals its EIP-712 struct hash |
 
 ## SchemaAuditTest
 

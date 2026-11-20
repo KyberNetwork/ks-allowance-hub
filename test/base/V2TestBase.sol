@@ -195,6 +195,19 @@ abstract contract V2TestBase is Test {
     out[0] = a;
   }
 
+  /// @dev A one-entry list of native values
+  function _values(uint256 a) internal pure returns (uint256[] memory out) {
+    out = new uint256[](1);
+    out[0] = a;
+  }
+
+  /// @dev A two-entry list of native values
+  function _values(uint256 a, uint256 b) internal pure returns (uint256[] memory out) {
+    out = new uint256[](2);
+    out[0] = a;
+    out[1] = b;
+  }
+
   function _calls(CallParams memory a) internal pure returns (CallParams[] memory out) {
     out = new CallParams[](1);
     out[0] = a;

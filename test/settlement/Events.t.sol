@@ -68,7 +68,7 @@ contract EventsTest is SettlementBase {
       _allowances(_tokenAllowance(AMOUNT)),
       _approvals(_nftApproval()),
       _noHooks(),
-      _calls(_calleeCall(0, hex'abcd')),
+      _calls(_calleeCall(hex'abcd')),
       ANY,
       11,
       expiration
@@ -213,7 +213,7 @@ contract EventsTest is SettlementBase {
       orderAuthenticator,
       _allowances(_tokenAllowance(AMOUNT)),
       _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       nonce,
       vm.getBlockTimestamp() + 1 hours
     );

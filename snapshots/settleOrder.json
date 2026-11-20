@@ -1,11 +1,11 @@
 {
-  "ownerPermit2Allowance": "90184",
-  "ownerPermit2Signature": "116964",
-  "ownerTransfer": "80360",
-  "ownerTransferWithHooks": "334050",
-  "ownerTransferWithNftAndCall": "210795",
-  "relayedDelegatedAuthenticator": "124010",
-  "relayedOrderSignature": "111089",
-  "relayedOrderSignatureWithSolutionApproval": "143280",
-  "relayedPermit2Witness": "121907"
+  "ownerPermit2Allowance": "91013",
+  "ownerPermit2Signature": "117793",
+  "ownerTransfer": "81199",
+  "ownerTransferWithHooks": "335251",
+  "ownerTransferWithNftAndCall": "211901",
+  "relayedDelegatedAuthenticator": "125183",
+  "relayedOrderSignature": "111927",
+  "relayedOrderSignatureWithSolutionApproval": "144375",
+  "relayedPermit2Witness": "122737"
 }

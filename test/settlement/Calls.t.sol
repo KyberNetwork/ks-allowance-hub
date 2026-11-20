@@ -59,10 +59,10 @@ contract CallsTest is SettlementBase {
     bytes memory lastProduct = hex'b2';
 
     CallParams[] memory calls = new CallParams[](4);
-    calls[0] = CallParams({callee: address(ledger), value: 0, data: ledger.observe()});
-    calls[1] = CallParams({callee: address(ledger), value: 0, data: ledger.produce(firstProduct)});
-    calls[2] = CallParams({callee: address(ledger), value: 0, data: ledger.produce(lastProduct)});
-    calls[3] = CallParams({callee: address(ledger), value: 0, data: ledger.observe()});
+    calls[0] = CallParams({callee: address(ledger), ownerData: ledger.observe()});
+    calls[1] = CallParams({callee: address(ledger), ownerData: ledger.produce(firstProduct)});
+    calls[2] = CallParams({callee: address(ledger), ownerData: ledger.produce(lastProduct)});
+    calls[3] = CallParams({callee: address(ledger), ownerData: ledger.observe()});
 
     AHV2Order memory order =
       _openAhv2Order(new ERC20Allowance[](0), _noHooks(), calls, 0, vm.getBlockTimestamp());
@@ -85,8 +85,8 @@ contract CallsTest is SettlementBase {
    */
   function test_OWN_02_witnessBindsCalls() public {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
-    CallParams[] memory signedCalls = _calls(_calleeCall(0, hex'aa'));
-    CallParams[] memory swappedCalls = _calls(_calleeCall(0, hex'bb'));
+    CallParams[] memory signedCalls = _calls(_calleeCall(hex'aa'));
+    CallParams[] memory swappedCalls = _calls(_calleeCall(hex'bb'));
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     uint256 before = _calleeBalance();
@@ -123,8 +123,8 @@ contract CallsTest is SettlementBase {
 
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     HookParams[] memory hooks = _hooks(_hook(hook, HOOK_BOTH));
-    CallParams[] memory signedCalls = _calls(_calleeCall(0, hex'aa'));
-    CallParams[] memory swappedCalls = _calls(_calleeCall(0, hex'bb'));
+    CallParams[] memory signedCalls = _calls(_calleeCall(hex'aa'));
+    CallParams[] memory swappedCalls = _calls(_calleeCall(hex'bb'));
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     uint256 before = _calleeBalance();
@@ -164,10 +164,10 @@ contract CallsTest is SettlementBase {
    */
   function test_OWN_07_eventListsTheValueOfEachCall() public {
     CallParams[] memory calls = new CallParams[](4);
-    calls[0] = _calleeCall(0, hex'01');
-    calls[1] = _calleeCall(1, hex'02');
-    calls[2] = CallParams({callee: address(callee2), value: 2, data: hex'03'});
-    calls[3] = CallParams({callee: address(callee2), value: 0, data: hex'04'});
+    calls[0] = _calleeCall(hex'01');
+    calls[1] = _calleeCall(hex'02');
+    calls[2] = CallParams({callee: address(callee2), ownerData: hex'03'});
+    calls[3] = CallParams({callee: address(callee2), ownerData: hex'04'});
 
     NativeTransfer[] memory expected = new NativeTransfer[](2);
     expected[0] = NativeTransfer({target: address(callee), amount: 1});
@@ -182,8 +182,12 @@ contract CallsTest is SettlementBase {
 
     vm.recordLogs();
 
+    AHV2Solution memory solution = _defaultSolution(order);
+    solution.callValues[1] = 1;
+    solution.callValues[2] = 2;
+
     vm.prank(owner);
-    hub.settleOrder{value: 3}(order, '', _defaultSolution(order), '', false);
+    hub.settleOrder{value: 3}(order, '', solution, '', false);
 
     Vm.Log memory entry = _settlementLog();
 
@@ -214,9 +218,7 @@ contract CallsTest is SettlementBase {
     AHV2Order memory order = _openAhv2Order(
       _allowances(_tokenAllowance(AMOUNT)),
       _noHooks(),
-      _calls(
-        _calleeCall(0, hex'01'), CallParams({callee: address(stranger), value: 0, data: hex'01'})
-      ),
+      _calls(_calleeCall(hex'01'), CallParams({callee: address(stranger), ownerData: hex'01'})),
       0,
       vm.getBlockTimestamp() + 1 hours
     );
@@ -226,6 +228,7 @@ contract CallsTest is SettlementBase {
       new address[](0),
       vm.getBlockTimestamp() + 1 hours
     );
+    solution.callValues = new uint256[](2);
     solution.solverData = _solverData(2);
 
     uint256 ownerBalanceBefore = IERC20(token18).balanceOf(owner);
@@ -259,7 +262,7 @@ contract CallsTest is SettlementBase {
   /// CALLEE-02 — a guardian can drop a callee, and the very next order stops working
   function test_CALLEE_02_guardianRevokeStopsTheNextOrder() public {
     AHV2Order memory order = _ownedOrder(owner);
-    order.calls = _calls(_calleeCall(0, hex'01'));
+    order.calls = _calls(_calleeCall(hex'01'));
 
     assertTrue(hub.hasRole(CALLEE_ROLE, address(callee)), 'whitelisted at deploy');
 
@@ -288,8 +291,8 @@ contract CallsTest is SettlementBase {
     bytes memory dataB = hex'b2';
 
     CallParams[] memory calls = new CallParams[](2);
-    calls[0] = CallParams({callee: address(callee), value: 0, data: dataA});
-    calls[1] = CallParams({callee: address(callee2), value: 0, data: dataB});
+    calls[0] = CallParams({callee: address(callee), ownerData: dataA});
+    calls[1] = CallParams({callee: address(callee2), ownerData: dataB});
 
     vm.expectCall(address(callee), 0, abi.encodeCall(IAHV2Callee.execute, (dataA, '')), 1);
     vm.expectCall(address(callee2), 0, abi.encodeCall(IAHV2Callee.execute, (dataB, '')), 1);

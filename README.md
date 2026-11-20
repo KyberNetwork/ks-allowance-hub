@@ -19,8 +19,8 @@ each ERC721 transfer and the solver data of each call.
 
 ```
 AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)
-AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,bytes[] solverData,uint256 nonce,uint256 expiration)
-CallParams(address callee,uint256 value,bytes data)
+AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,uint256[] callValues,bytes[] solverData,uint256 nonce,uint256 expiration)
+CallParams(address callee,bytes ownerData)
 HookParams(address hook,bytes32 flags,bytes data)
 SolutionApproval(AHV2Order order,AHV2Solution solution)
 ```
@@ -31,8 +31,8 @@ an approval.
 
 The hub reverts when either `expiration` has passed, or when the solution does not have one
 `erc20Targets` entry and one `erc20Amounts` entry per ERC20 transfer, one `erc721Targets` entry per
-ERC721 transfer and one `solverData` entry per call. An ERC20 transfer sends
-`solution.erc20Amounts[i]`, at most its allowance.
+ERC721 transfer and one `callValues` entry and one `solverData` entry per call. An ERC20 transfer
+sends `solution.erc20Amounts[i]`, at most its allowance.
 
 A settlement runs in this order:
 
@@ -45,8 +45,9 @@ A settlement runs in this order:
 5. the `SettleOrder` event is emitted;
 6. the ERC20 tokens are pulled to the targets of the solution;
 7. the ERC721 tokens are transferred to the targets of the solution;
-8. `order.calls` run in order through `IAHV2Callee.execute(ownerData, solverData)`, with the data
-   of the call as `ownerData` and `solution.solverData[i]` as `solverData`;
+8. `order.calls` run in order through `IAHV2Callee.execute(ownerData, solverData)`, with the
+   `ownerData` of the call, `solution.callValues[i]` as native value and `solution.solverData[i]`
+   as `solverData`;
 9. each hook's `afterSettlement` runs when its flags select it.
 
 The results list the return data of each call, in order.
@@ -112,7 +113,7 @@ permit also covers the order, so the owner's signature covers the `AHV2Order` as
 string the hub passes to Permit2 is:
 
 ```
-AHV2Order order)AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)CallParams(address callee,uint256 value,bytes data)ERC20Allowance(address token,uint160 amount)ERC721Approval(address token,uint256 tokenId)HookParams(address hook,bytes32 flags,bytes data)TokenPermissions(address token,uint256 amount)
+AHV2Order order)AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)CallParams(address callee,bytes ownerData)ERC20Allowance(address token,uint160 amount)ERC721Approval(address token,uint256 tokenId)HookParams(address hook,bytes32 flags,bytes data)TokenPermissions(address token,uint256 amount)
 ```
 
 When `order.authenticator` is a delegated authenticator, the caller must be the order's
@@ -201,8 +202,9 @@ interface IAHV2Callee {
 }
 ```
 
-Each callee must hold `WHITELISTED_CALLEE_ROLE` when its call runs. `CallParams.value` is the native value sent with the call, paid from the `msg.value` sent with
-the order. The hub reverts when the order spends more native value than it was sent. The hub has no
+Each callee must hold `WHITELISTED_CALLEE_ROLE` when its call runs. `AHV2Solution.callValues` holds
+the native value of each call, chosen by the solver and paid from the `msg.value` sent with the
+order. The hub reverts when the order spends more native value than it was sent. The hub has no
 `receive` function, so a callee cannot refund native value to it; unspent `msg.value` remains in the
 hub.
 

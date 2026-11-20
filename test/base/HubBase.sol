@@ -243,8 +243,8 @@ abstract contract HubBase is V2TestBase {
     return ERC721Approval({token: address(nft), tokenId: NFT_ID});
   }
 
-  function _calleeCall(uint256 value, bytes memory data) internal view returns (CallParams memory) {
-    return CallParams({callee: address(callee), value: value, data: data});
+  function _calleeCall(bytes memory ownerData) internal view returns (CallParams memory) {
+    return CallParams({callee: address(callee), ownerData: ownerData});
   }
 
   /// @dev A hook entry with data `hex'11'`
@@ -376,6 +376,7 @@ abstract contract HubBase is V2TestBase {
       erc20Targets: erc20Targets,
       erc20Amounts: erc20Amounts,
       erc721Targets: erc721Targets,
+      callValues: new uint256[](0),
       solverData: new bytes[](0),
       nonce: nonce,
       expiration: expiration
@@ -384,7 +385,8 @@ abstract contract HubBase is V2TestBase {
 
   /**
    * @dev As above, sending the full allowance of every ERC20 transfer of `order` to `callee` and
-   * every NFT transfer to `callee2`, with one empty `solverData` entry per call
+   * every NFT transfer to `callee2`, with one zero `callValues` entry and one empty `solverData` entry
+   * per call
    */
   function _solution(AHV2Order memory order, uint256 nonce, uint256 expiration)
     internal
@@ -403,6 +405,7 @@ abstract contract HubBase is V2TestBase {
     }
     AHV2Solution memory solution =
       _solution(erc20Targets, erc20Amounts, erc721Targets, nonce, expiration);
+    solution.callValues = new uint256[](order.calls.length);
     solution.solverData = _solverData(order.calls.length);
     return solution;
   }

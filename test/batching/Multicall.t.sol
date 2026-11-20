@@ -61,7 +61,7 @@ contract MulticallTest is SignerAuthenticatorBase {
 
     bytes[] memory batch = new bytes[](2);
     batch[0] = abi.encodeCall(IKSAllowanceHubV2.forwardCalls, (_call3s(tokens, permits, 0)));
-    batch[1] = _settleCalldata(order, _calls(_calleeCall(0.5 ether, hex'01')));
+    batch[1] = _settleCalldata(order, _calls(_calleeCall(hex'01')), _values(0.5 ether));
 
     uint256 calleeWethBefore = _calleeBalance();
     uint256 calleeNativeBefore = address(callee).balance;
@@ -89,7 +89,8 @@ contract MulticallTest is SignerAuthenticatorBase {
     vm.deal(address(hub), 2 * VALUE);
     vm.deal(owner, VALUE);
 
-    bytes memory order = _settleCalldata(_emptyOrder(0), _calls(_calleeCall(VALUE, hex'01')));
+    bytes memory order =
+      _settleCalldata(_emptyOrder(0), _calls(_calleeCall(hex'01')), _values(VALUE));
 
     bytes[] memory batch = new bytes[](2);
     batch[0] = order;
@@ -112,8 +113,7 @@ contract MulticallTest is SignerAuthenticatorBase {
   function test_MC_03_subCallRevertBubbles() public {
     CalleeMock stranger = new CalleeMock();
 
-    CallParams[] memory calls =
-      _calls(CallParams({callee: address(stranger), value: 0, data: hex'01'}));
+    CallParams[] memory calls = _calls(CallParams({callee: address(stranger), ownerData: hex'01'}));
 
     bytes[] memory batch = new bytes[](1);
     batch[0] = _settleCalldata(_emptyOrder(0), calls);
@@ -224,7 +224,7 @@ contract MulticallTest is SignerAuthenticatorBase {
       address(authenticator),
       _allowances(_tokenAllowance(AMOUNT)),
       _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       81,
       deadline
     );
@@ -305,7 +305,7 @@ contract MulticallTest is SignerAuthenticatorBase {
       address(authenticator),
       _allowances(_tokenAllowance(AMOUNT)),
       _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       orderNonce,
       deadline
     );
@@ -441,7 +441,7 @@ contract MulticallTest is SignerAuthenticatorBase {
     AHV2Order memory order = _openAhv2Order(
       _allowances(_tokenAllowance(amount)),
       _noHooks(),
-      _calls(_calleeCall(0, data)),
+      _calls(_calleeCall(data)),
       0,
       vm.getBlockTimestamp()
     );
@@ -461,8 +461,18 @@ contract MulticallTest is SignerAuthenticatorBase {
     view
     returns (bytes memory)
   {
+    return _settleCalldata(order, calls, new uint256[](calls.length));
+  }
+
+  /// @dev As above, with the solution's `callValues` set to `callValues`
+  function _settleCalldata(
+    AHV2Order memory order,
+    CallParams[] memory calls,
+    uint256[] memory callValues
+  ) internal view returns (bytes memory) {
     order.calls = calls;
-    return
-      abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', _defaultSolution(order), '', false));
+    AHV2Solution memory solution = _defaultSolution(order);
+    solution.callValues = callValues;
+    return abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', solution, '', false));
   }
 }

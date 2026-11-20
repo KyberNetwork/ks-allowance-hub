@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /// @title EfficientHashLibExt
-/// @notice EIP-712 hashing of an `address[]`, `uint160[]` or `bytes[]` member, which
+/// @notice EIP-712 hashing of an `address[]`, `uint160[]`, `uint256[]` or `bytes[]` member, which
 /// {EfficientHashLib} does not provide
 library EfficientHashLibExt {
   using EfficientHashLib for *;
@@ -21,6 +21,16 @@ library EfficientHashLibExt {
 
   /// @dev EIP-712 hash of the array: the hash of its elements as 32-byte words
   function hash(uint160[] calldata values) internal pure returns (bytes32) {
+    bytes calldata words;
+    assembly ('memory-safe') {
+      words.offset := values.offset
+      words.length := shl(5, values.length)
+    }
+    return words.hashCalldata();
+  }
+
+  /// @dev EIP-712 hash of the array: the hash of its elements as 32-byte words
+  function hash(uint256[] calldata values) internal pure returns (bytes32) {
     bytes calldata words;
     assembly ('memory-safe') {
       words.offset := values.offset

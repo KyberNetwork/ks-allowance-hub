@@ -32,7 +32,8 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * @param erc721Approvals ERC721 transfers, each sent from the owner to the target the solution
  * specifies for it
  * @param hooks Hooks called before the assets move and after the calls
- * @param calls Callee calls fixed by the owner, each run with the solution's `solverData` entry
+ * @param calls Callee calls fixed by the owner, each run with the solution's `callValues` and
+ * `solverData` entries
  * @param solutionApprover Account whose signature the solution requires when the owner does not
  * submit the order; the zero address requires none
  * @param nonce Spent in the owner's namespace of the hub's nonces when `authenticator` is the zero
@@ -82,16 +83,16 @@ library AHV2OrderLib {
 
   bytes32 internal constant AHV2_ORDER_TYPEHASH = keccak256(
     'AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)'
-    'CallParams(address callee,uint256 value,bytes data)'
-    'ERC20Allowance(address token,uint160 amount)' 'ERC721Approval(address token,uint256 tokenId)'
+    'CallParams(address callee,bytes ownerData)' 'ERC20Allowance(address token,uint160 amount)'
+    'ERC721Approval(address token,uint256 tokenId)'
     'HookParams(address hook,bytes32 flags,bytes data)'
   );
 
   /// @dev Completes Permit2's `PermitBatchWitnessTransferFrom` type stub with the order
   string internal constant PERMIT2_ORDER_TYPE_STRING = 'AHV2Order order)'
     'AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)'
-    'CallParams(address callee,uint256 value,bytes data)'
-    'ERC20Allowance(address token,uint160 amount)' 'ERC721Approval(address token,uint256 tokenId)'
+    'CallParams(address callee,bytes ownerData)' 'ERC20Allowance(address token,uint160 amount)'
+    'ERC721Approval(address token,uint256 tokenId)'
     'HookParams(address hook,bytes32 flags,bytes data)'
     'TokenPermissions(address token,uint256 amount)';
 
@@ -126,10 +127,11 @@ library AHV2OrderLib {
     }
 
     // One target and one amount for each ERC20 transfer, one target for each ERC721 transfer and
-    // one `solverData` entry for each call
+    // one `callValues` and one `solverData` entry for each call
     _checkLengths(solution.erc20Targets.length, order.erc20Allowances.length);
     _checkLengths(solution.erc20Amounts.length, order.erc20Allowances.length);
     _checkLengths(solution.erc721Targets.length, order.erc721Approvals.length);
+    _checkLengths(solution.callValues.length, order.calls.length);
     _checkLengths(solution.solverData.length, order.calls.length);
   }
 

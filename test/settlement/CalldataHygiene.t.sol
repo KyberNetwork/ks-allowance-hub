@@ -20,7 +20,7 @@ contract CalldataHygieneTest is SettlementBase {
   /// DIRTY-01 — a dirty token address word is refused for the zero authenticator, owner submitted
   function test_DIRTY_01_delegatedOwnerSubmitted() public {
     AHV2Order memory order =
-      _order(address(0), _calls(_calleeCall(0, hex'01')), 90, vm.getBlockTimestamp() + 1 hours);
+      _order(address(0), _calls(_calleeCall(hex'01')), 90, vm.getBlockTimestamp() + 1 hours);
 
     _assertDirtyTokenWordIsRefused(
       owner,
@@ -34,7 +34,7 @@ contract CalldataHygieneTest is SettlementBase {
    */
   function test_DIRTY_02_permit2Witnessed() public {
     AHV2Order memory order =
-      _order(permit2, _calls(_calleeCall(0, hex'01')), 91, vm.getBlockTimestamp() + 1 hours);
+      _order(permit2, _calls(_calleeCall(hex'01')), 91, vm.getBlockTimestamp() + 1 hours);
 
     _assertDirtyTokenWordIsRefused(
       relayer,
@@ -49,7 +49,7 @@ contract CalldataHygieneTest is SettlementBase {
   function test_DIRTY_03_delegatedAuthenticated() public {
     _delegateSignerThroughHub(signer);
     AHV2Order memory order = _order(
-      address(authenticator), _calls(_calleeCall(0, hex'01')), 92, vm.getBlockTimestamp() + 1 hours
+      address(authenticator), _calls(_calleeCall(hex'01')), 92, vm.getBlockTimestamp() + 1 hours
     );
 
     _assertDirtyTokenWordIsRefused(
@@ -65,7 +65,7 @@ contract CalldataHygieneTest is SettlementBase {
   /// submitted
   function test_DIRTY_04_permit2OwnerSubmitted() public {
     AHV2Order memory order =
-      _order(permit2, _calls(_calleeCall(0, hex'02')), 93, vm.getBlockTimestamp() + 1 hours);
+      _order(permit2, _calls(_calleeCall(hex'02')), 93, vm.getBlockTimestamp() + 1 hours);
 
     _assertDirtyTokenWordIsRefused(
       owner,

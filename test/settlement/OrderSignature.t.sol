@@ -147,7 +147,7 @@ contract OrderSignatureTest is SettlementBase {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
 
     AHV2Order memory order =
-      _openAhv2Order(erc20s, _noHooks(), _calls(_calleeCall(0, hex'01')), 10, expiration);
+      _openAhv2Order(erc20s, _noHooks(), _calls(_calleeCall(hex'01')), 10, expiration);
     AHV2Solution memory solution = _defaultSolution(order);
 
     vm.prank(relayer);
@@ -178,12 +178,12 @@ contract OrderSignatureTest is SettlementBase {
     assertEq(hub.nonces(lNonceKey(owner), 0) & (1 << 10), 0, 'client data: nonce unspent');
     order.clientData = '';
 
-    order.calls[0].data = hex'02';
+    order.calls[0].ownerData = hex'02';
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidOrderSignature.selector);
     hub.settleOrder(order, signature, solution, '', false);
     assertEq(hub.nonces(lNonceKey(owner), 0) & (1 << 10), 0, 'call data: nonce unspent');
-    order.calls[0].data = hex'01';
+    order.calls[0].ownerData = hex'01';
 
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidOrderSignature.selector);
@@ -249,9 +249,9 @@ contract OrderSignatureTest is SettlementBase {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
 
     AHV2Order memory first =
-      _openAhv2Order(erc20s, _noHooks(), _calls(_calleeCall(0, hex'01')), 1, expiration);
+      _openAhv2Order(erc20s, _noHooks(), _calls(_calleeCall(hex'01')), 1, expiration);
     AHV2Order memory second =
-      _openAhv2Order(erc20s, _noHooks(), _calls(_calleeCall(0, hex'01')), 2, expiration);
+      _openAhv2Order(erc20s, _noHooks(), _calls(_calleeCall(hex'01')), 2, expiration);
     AHV2Solution memory solutionA = _defaultSolution(first);
     solutionA.solverData[0] = hex'0a';
     AHV2Solution memory solutionB = _defaultSolution(second);
@@ -270,7 +270,7 @@ contract OrderSignatureTest is SettlementBase {
     assertEq(hub.nonces(lNonceKey(owner), 0), (1 << 1) | (1 << 2), 'each spent its own nonce');
 
     AHV2Order memory named = _ahv2Order(
-      ANY, erc20s, _noNfts(), _noHooks(), _calls(_calleeCall(0, hex'01')), approver, 3, expiration
+      ANY, erc20s, _noNfts(), _noHooks(), _calls(_calleeCall(hex'01')), approver, 3, expiration
     );
     AHV2Solution memory solutionC = _defaultSolution(named);
     bytes memory signature = _signOrder(named);

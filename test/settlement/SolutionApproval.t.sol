@@ -40,7 +40,7 @@ contract SolutionApprovalTest is SettlementBase {
   function test_SOL_01_oneApprovalBindsOneOrder() public {
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
-    AHV2Order memory withCallsA = _orderWithCalls(_calls(_calleeCall(0, hex'aa')), 60, deadline);
+    AHV2Order memory withCallsA = _orderWithCalls(_calls(_calleeCall(hex'aa')), 60, deadline);
     AHV2Solution memory solution = _solution(withCallsA, deadline);
     bytes32 hashA = SchemaHash.ahv2Order(withCallsA);
     bytes memory approvalA = _signSolutionApproval(approverKey, withCallsA, solution);
@@ -54,7 +54,7 @@ contract SolutionApprovalTest is SettlementBase {
     assertEq(_calleeBalance() - before, AMOUNT, 'the approved order settled');
     assertEq(results.length, 1, 'the call ran');
 
-    AHV2Order memory withCallsB = _orderWithCalls(_calls(_calleeCall(0, hex'bb')), 63, deadline);
+    AHV2Order memory withCallsB = _orderWithCalls(_calls(_calleeCall(hex'bb')), 63, deadline);
     assertTrue(SchemaHash.ahv2Order(withCallsB) != hashA, 'the two orders really do differ');
 
     // a fresh solution nonce, as the first approval spent nonce 0
@@ -88,7 +88,7 @@ contract SolutionApprovalTest is SettlementBase {
     AHV2Order memory open = _openAhv2Order(
       _allowances(_tokenAllowance(AMOUNT)),
       _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       70,
       orderExpiration
     );
@@ -109,7 +109,7 @@ contract SolutionApprovalTest is SettlementBase {
     AHV2Order memory forRelay = _openAhv2Order(
       _allowances(_tokenAllowance(AMOUNT)),
       _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       72,
       orderExpiration
     );
@@ -136,7 +136,7 @@ contract SolutionApprovalTest is SettlementBase {
       _allowances(_tokenAllowance(AMOUNT)),
       _noNfts(),
       _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       approver,
       80,
       deadline
@@ -175,7 +175,7 @@ contract SolutionApprovalTest is SettlementBase {
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     AHV2Order memory open = _openAhv2Order(
-      new ERC20Allowance[](0), _noHooks(), _calls(_calleeCall(0, hex'01')), 0, expiration
+      new ERC20Allowance[](0), _noHooks(), _calls(_calleeCall(hex'01')), 0, expiration
     );
     AHV2Solution memory first = _defaultSolution(open);
     first.solverData[0] = hex'01';
@@ -202,7 +202,7 @@ contract SolutionApprovalTest is SettlementBase {
       new ERC20Allowance[](0),
       _noNfts(),
       _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       approver,
       0,
       expiration
@@ -228,7 +228,7 @@ contract SolutionApprovalTest is SettlementBase {
       new ERC20Allowance[](0),
       _noNfts(),
       _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       approver,
       0,
       expiration
@@ -258,7 +258,7 @@ contract SolutionApprovalTest is SettlementBase {
       _allowances(_tokenAllowance(AMOUNT)),
       _noNfts(),
       _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       ANY,
       21,
       expiration
@@ -340,7 +340,7 @@ contract SolutionApprovalTest is SettlementBase {
     AHV2Order memory open = _openAhv2Order(
       new ERC20Allowance[](0),
       _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       0,
       vm.getBlockTimestamp() + 1 hours
     );
@@ -364,7 +364,7 @@ contract SolutionApprovalTest is SettlementBase {
       _allowances(_tokenAllowance(AMOUNT)),
       _noNfts(),
       _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       approver,
       92,
       deadline
@@ -527,7 +527,7 @@ contract SolutionApprovalTest is SettlementBase {
       erc20s,
       _noNfts(),
       _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       approver,
       nonce,
       vm.getBlockTimestamp() + 1 hours
@@ -543,7 +543,7 @@ contract SolutionApprovalTest is SettlementBase {
       new ERC20Allowance[](0),
       _noNfts(),
       _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       approver,
       nonce,
       vm.getBlockTimestamp() + 1 hours

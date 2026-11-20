@@ -56,15 +56,7 @@ contract AuthenticationTest is SettlementBase {
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     AHV2Order memory order = _ahv2Order(
-      permit2,
-      ANY,
-      erc20s,
-      _noNfts(),
-      hooks,
-      _calls(_calleeCall(0, hex'01')),
-      approver,
-      61,
-      deadline
+      permit2, ANY, erc20s, _noNfts(), hooks, _calls(_calleeCall(hex'01')), approver, 61, deadline
     );
     AHV2Solution memory solution = _solution(order, deadline);
 
@@ -81,15 +73,7 @@ contract AuthenticationTest is SettlementBase {
     assertEq(hook.sequenceLength(), 2, 'the hook bracketed the order');
 
     AHV2Order memory again = _ahv2Order(
-      permit2,
-      ANY,
-      erc20s,
-      _noNfts(),
-      hooks,
-      _calls(_calleeCall(0, hex'02')),
-      approver,
-      62,
-      deadline
+      permit2, ANY, erc20s, _noNfts(), hooks, _calls(_calleeCall(hex'02')), approver, 62, deadline
     );
     // a fresh solution nonce, so the approval would not fit the solution if it were checked
     AHV2Solution memory otherRoute = _solution(again, 1, deadline);
@@ -148,7 +132,7 @@ contract AuthenticationTest is SettlementBase {
 
     // the sentinel approver, so the owner is signing "any solution the solver picks"
     AHV2Order memory order = _ahv2Order(
-      permit2, ANY, erc20s, _noNfts(), hooks, _calls(_calleeCall(0, hex'01')), ANY, 30, expiration
+      permit2, ANY, erc20s, _noNfts(), hooks, _calls(_calleeCall(hex'01')), ANY, 30, expiration
     );
     bytes memory signature = _signPermit2Order(order);
 
@@ -171,7 +155,7 @@ contract AuthenticationTest is SettlementBase {
    */
   function test_AUTH_07b_solutionApproverIsBoundByTheWitness() public {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
-    CallParams[] memory calls = _calls(_calleeCall(0, hex'01'));
+    CallParams[] memory calls = _calls(_calleeCall(hex'01'));
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     AHV2Order memory named =
@@ -218,6 +202,7 @@ contract AuthenticationTest is SettlementBase {
       new address[](0),
       vm.getBlockTimestamp() + 1 hours
     );
+    solution.callValues = new uint256[](1);
     solution.solverData = _solverData(1);
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
@@ -227,7 +212,7 @@ contract AuthenticationTest is SettlementBase {
       erc20s,
       _noNfts(),
       _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       ANY,
       61,
       expiration
@@ -245,7 +230,7 @@ contract AuthenticationTest is SettlementBase {
       erc20s,
       _noNfts(),
       _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       ANY,
       62,
       expiration
@@ -263,7 +248,7 @@ contract AuthenticationTest is SettlementBase {
     );
 
     AHV2Order memory openOrder =
-      _openAhv2Order(permit2, erc20s, _noHooks(), _calls(_calleeCall(0, hex'01')), 63, expiration);
+      _openAhv2Order(permit2, erc20s, _noHooks(), _calls(_calleeCall(hex'01')), 63, expiration);
     bytes memory openSig = _signPermit2Order(openOrder);
 
     before = _calleeBalance();
@@ -493,13 +478,14 @@ contract AuthenticationTest is SettlementBase {
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     AHV2Order memory order = _openAhv2Order(
-      address(authenticator), erc20s, _noHooks(), _calls(_calleeCall(0, hex'01')), 37, deadline
+      address(authenticator), erc20s, _noHooks(), _calls(_calleeCall(hex'01')), 37, deadline
     );
     bytes memory authData = _orderAuthData(order, signer, signerPk);
 
     uint160 paid = AMOUNT - 1 ether;
     AHV2Solution memory solution =
       _solution(_addresses(address(callee)), _amounts(paid), new address[](0), deadline - 1);
+    solution.callValues = new uint256[](1);
     solution.solverData = _solverData(1);
 
     bytes memory expectedCall = abi.encodeCall(
@@ -575,7 +561,7 @@ contract AuthenticationTest is SettlementBase {
     ERC20Allowance[] memory allowances = _allowances(_tokenAllowance(PARTY_AMOUNT));
     ERC721Approval[] memory noNfts = _noNfts();
     HookParams[] memory noHooks = _noHooks();
-    CallParams[] memory calls = _calls(_calleeCall(0, hex'01'));
+    CallParams[] memory calls = _calls(_calleeCall(hex'01'));
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     AHV2Order memory pinned = _ahv2Order(

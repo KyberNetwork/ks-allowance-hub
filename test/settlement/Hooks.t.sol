@@ -58,7 +58,7 @@ contract HooksTest is SettlementBase {
     AHV2Order memory order = _openAhv2Order(
       _allowances(_tokenAllowance(amount)),
       _hooks(_hook(hook, HOOK_BOTH, hex'11'), _hook(hook2, HOOK_BOTH, hex'22')),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       0,
       vm.getBlockTimestamp()
     );
@@ -123,7 +123,7 @@ contract HooksTest is SettlementBase {
       _allowances(_tokenAllowance(amount)),
       _noNfts(),
       _hooks(_hook(hook, HOOK_BOTH)),
-      _calls(_calleeCall(0, hex'99'), _calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'99'), _calleeCall(hex'01')),
       ANY,
       80,
       deadline
@@ -158,7 +158,7 @@ contract HooksTest is SettlementBase {
     AHV2Order memory order = _openAhv2Order(
       _allowances(_tokenAllowance(AMOUNT)),
       _hooks(_hook(hook, HOOK_BOTH)),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       0,
       vm.getBlockTimestamp()
     );
@@ -193,11 +193,7 @@ contract HooksTest is SettlementBase {
   /// HOOK-04 — an order with no hooks settles and runs its callee call
   function test_HOOK_04_noHooks() public {
     AHV2Order memory order = _openAhv2Order(
-      new ERC20Allowance[](0),
-      _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
-      0,
-      vm.getBlockTimestamp()
+      new ERC20Allowance[](0), _noHooks(), _calls(_calleeCall(hex'01')), 0, vm.getBlockTimestamp()
     );
 
     vm.prank(owner);
@@ -284,7 +280,7 @@ contract HooksTest is SettlementBase {
     AHV2Order memory order = _openAhv2Order(
       new ERC20Allowance[](0),
       _hooks(_hook(hook, HOOK_BOTH, hex'11'), _hook(hook2, HOOK_BOTH, hex'22')),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       0,
       vm.getBlockTimestamp()
     );
@@ -429,7 +425,7 @@ contract HooksTest is SettlementBase {
     AHV2Order memory order = _openAhv2Order(
       _allowances(_tokenAllowance(amount)),
       _hooks(_hook(hook, HOOK_BOTH)),
-      _calls(_calleeCall(0, hex'99')),
+      _calls(_calleeCall(hex'99')),
       0,
       vm.getBlockTimestamp()
     );

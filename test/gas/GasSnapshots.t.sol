@@ -129,7 +129,7 @@ contract GasSnapshotsTest is SettlementBase {
       _allowances(_tokenAllowance(AMOUNT)),
       _approvals(_nftApproval()),
       _noHooks(),
-      _calls(_calleeCall(0, hex'01')),
+      _calls(_calleeCall(hex'01')),
       ANY,
       0,
       vm.getBlockTimestamp() + 1 hours
