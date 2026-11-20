@@ -4,7 +4,6 @@ pragma solidity ^0.8.0;
 import {IKSAllowanceHubV2} from '../interfaces/IKSAllowanceHubV2.sol';
 
 import {AHV2Solution} from './AHV2Solution.sol';
-import {AHV2WitnessLib} from './AHV2Witness.sol';
 import {CallParams, CallParamsLib} from './CallParams.sol';
 import {ERC20Allowance, ERC20AllowanceLib} from './ERC20Allowance.sol';
 import {ERC721Approval, ERC721ApprovalLib} from './ERC721Approval.sol';
@@ -56,6 +55,22 @@ struct AHV2Order {
   bytes clientData;
 }
 
+/**
+ * @notice The struct Permit2 hashes for a permit that also covers an order
+ * @param permitted Tokens and amounts the permit covers
+ * @param spender Account that may transfer them
+ * @param nonce Permit2 nonce
+ * @param deadline Last timestamp at which the permit may be used
+ * @param order The order
+ */
+struct PermitBatchWitnessTransferFrom {
+  ISignatureTransfer.TokenPermissions[] permitted;
+  address spender;
+  uint256 nonce;
+  uint256 deadline;
+  AHV2Order order;
+}
+
 using AHV2OrderLib for AHV2Order global;
 
 library AHV2OrderLib {
@@ -72,26 +87,16 @@ library AHV2OrderLib {
     'HookParams(address hook,bytes32 flags,bytes data)'
   );
 
+  /// @dev Completes Permit2's `PermitBatchWitnessTransferFrom` type stub with the order
+  string internal constant PERMIT2_ORDER_TYPE_STRING = 'AHV2Order order)'
+    'AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)'
+    'CallParams(address callee,uint256 value,bytes data)'
+    'ERC20Allowance(address token,uint160 amount)' 'ERC721Approval(address token,uint256 tokenId)'
+    'HookParams(address hook,bytes32 flags,bytes data)'
+    'TokenPermissions(address token,uint256 amount)';
+
   /// @dev EIP-712 hash of the order
   function hash(AHV2Order calldata order) internal pure returns (bytes32) {
-    return hash(
-      order,
-      order.erc721Approvals.hash(),
-      order.hooks.hash(),
-      order.calls.hash(),
-      order.clientData.hashCalldata()
-    );
-  }
-
-  /// @dev As {hash}, from the already computed hashes of `erc721Approvals`, `hooks`, `calls`
-  /// and `clientData`
-  function hash(
-    AHV2Order calldata order,
-    bytes32 erc721ApprovalsHash,
-    bytes32 hooksHash,
-    bytes32 callsHash,
-    bytes32 clientDataHash
-  ) internal pure returns (bytes32) {
     return keccak256(
       abi.encode(
         AHV2_ORDER_TYPEHASH,
@@ -99,34 +104,15 @@ library AHV2OrderLib {
         order.authenticator,
         order.exclusiveCaller,
         order.erc20Allowances.hash(),
-        erc721ApprovalsHash,
-        hooksHash,
-        callsHash,
+        order.erc721Approvals.hash(),
+        order.hooks.hash(),
+        order.calls.hash(),
         order.solutionApprover,
         order.nonce,
         order.expiration,
-        clientDataHash
+        order.clientData.hashCalldata()
       )
     );
-  }
-
-  /// @dev As {hash}, also returning the hashes of the members the order's witness covers
-  function membersHash(AHV2Order calldata order)
-    internal
-    pure
-    returns (
-      bytes32 orderHash,
-      bytes32 erc721ApprovalsHash,
-      bytes32 hooksHash,
-      bytes32 callsHash,
-      bytes32 clientDataHash
-    )
-  {
-    erc721ApprovalsHash = order.erc721Approvals.hash();
-    hooksHash = order.hooks.hash();
-    callsHash = order.calls.hash();
-    clientDataHash = order.clientData.hashCalldata();
-    orderHash = hash(order, erc721ApprovalsHash, hooksHash, callsHash, clientDataHash);
   }
 
   /// @dev Checks the expirations of the order and `solution`, and that `solution` fits the order
@@ -150,17 +136,13 @@ library AHV2OrderLib {
   /**
    * @dev Transfers the order's ERC20 tokens as `solution` specifies, through a Permit2 signature
    * transfer at `permit2`, with `signature` by the owner over the permit. When the caller is not
-   * the owner, the signature also covers the order's witness, computed from the already computed
-   * hashes of `erc721Approvals`, `hooks`, `calls` and `clientData`.
+   * the owner, the permit also covers the order, of hash `orderHash`.
    */
   function executeSignatureTransfer(
     AHV2Order calldata order,
+    bytes32 orderHash,
     AHV2Solution calldata solution,
     bytes calldata signature,
-    bytes32 erc721ApprovalsHash,
-    bytes32 hooksHash,
-    bytes32 callsHash,
-    bytes32 clientDataHash,
     address permit2
   ) internal {
     ISignatureTransfer.PermitBatchTransferFrom memory permit =
@@ -171,23 +153,9 @@ library AHV2OrderLib {
     if (msg.sender == order.owner) {
       ISignatureTransfer(permit2).permitTransferFrom(permit, details, order.owner, signature);
     } else {
-      bytes32 witness = AHV2WitnessLib.hash(
-        order.exclusiveCaller,
-        erc721ApprovalsHash,
-        hooksHash,
-        callsHash,
-        order.solutionApprover,
-        clientDataHash
-      );
-
       ISignatureTransfer(permit2)
         .permitWitnessTransferFrom(
-          permit,
-          details,
-          order.owner,
-          witness,
-          AHV2WitnessLib.AHV2_WITNESS_PERMIT2_TYPE_STRING,
-          signature
+          permit, details, order.owner, orderHash, PERMIT2_ORDER_TYPE_STRING, signature
         );
     }
   }

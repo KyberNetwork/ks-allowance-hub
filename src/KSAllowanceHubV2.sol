@@ -104,13 +104,7 @@ contract KSAllowanceHubV2 is
   {
     order.checkSettlement(solution);
 
-    (
-      bytes32 orderHash,
-      bytes32 erc721ApprovalsHash,
-      bytes32 hooksHash,
-      bytes32 callsHash,
-      bytes32 clientDataHash
-    ) = order.membersHash();
+    bytes32 orderHash = order.hash();
 
     // The owner's call is its own authorization and approves its own solution: no signature is
     // checked, no delegation is required, no authenticator is called, `order.exclusiveCaller` is
@@ -166,18 +160,10 @@ contract KSAllowanceHubV2 is
     );
 
     // On the Permit2 flow, the permit's nonce is `order.nonce` and its deadline is
-    // `order.expiration`, so Permit2 provides the replay protection. The owner's signature covers
-    // the order's witness when another account calls.
+    // `order.expiration`, so Permit2 provides the replay protection. When another account calls,
+    // the owner's signature also covers the order.
     if (order.authenticator == PERMIT2) {
-      order.executeSignatureTransfer(
-        solution,
-        authenticationData,
-        erc721ApprovalsHash,
-        hooksHash,
-        callsHash,
-        clientDataHash,
-        PERMIT2
-      );
+      order.executeSignatureTransfer(orderHash, solution, authenticationData, PERMIT2);
     } else if (usePermit2Allowances) {
       order.erc20Allowances
         .executeAllowanceTransfer(

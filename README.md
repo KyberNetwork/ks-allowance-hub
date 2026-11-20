@@ -108,16 +108,11 @@ When `order.authenticator` is the Permit2 address, the ERC20 transfers are execu
 Permit2 batch permit whose nonce is `order.nonce` and whose deadline is `order.expiration`. The
 permitted amounts are the order's allowances, and the requested amounts are
 `solution.erc20Amounts`. `usePermit2Allowances` is ignored. When another account submits, the
-owner's signature must also cover a single witness:
+permit also covers the order, so the owner's signature covers the `AHV2Order` as well. The type
+string the hub passes to Permit2 is:
 
 ```
-AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,bytes clientData)
-```
-
-The Permit2 witness type string is:
-
-```
-AHV2Witness witness)AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,bytes clientData)CallParams(address callee,uint256 value,bytes data)ERC721Approval(address token,uint256 tokenId)HookParams(address hook,bytes32 flags,bytes data)TokenPermissions(address token,uint256 amount)
+AHV2Order order)AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)CallParams(address callee,uint256 value,bytes data)ERC20Allowance(address token,uint160 amount)ERC721Approval(address token,uint256 tokenId)HookParams(address hook,bytes32 flags,bytes data)TokenPermissions(address token,uint256 amount)
 ```
 
 When `order.authenticator` is a delegated authenticator, the caller must be the order's
@@ -132,8 +127,8 @@ is set.
 When the caller is `order.owner`, the call itself authorises the order:
 
 - `exclusiveCaller` does not apply;
-- when `order.authenticator` is the Permit2 address, the owner signs the permit without a witness,
-  and the Permit2 nonce is still spent;
+- when `order.authenticator` is the Permit2 address, the owner signs a permit that does not cover
+  the order, and the Permit2 nonce is still spent;
 - otherwise no signature is checked, no authenticator is called, `authenticationData` is ignored and
   no nonce is spent, so the same order may settle more than once. The owner submits an order with
   the zero address as `order.authenticator` to avoid delegating an authenticator;
@@ -258,7 +253,7 @@ src/
   interfaces/      IKSAllowanceHubV2; base/ holds the interfaces of the base contracts, IAHV2Hook,
                    IAHV2Authenticator and IAHV2Callee
   libraries/       Constants, DynamicArrayLibExt, EfficientHashLibExt
-  types/           AHV2Order, AHV2Solution, AHV2Witness, AuthDelegation, CallParams, HookParams,
+  types/           AHV2Order, AHV2Solution, AuthDelegation, CallParams, HookParams,
                    SolutionApproval, ERC20Allowance, ERC20Transfer, ERC721Approval, ERC721Transfer,
                    NativeTransfer
 test/
