@@ -7,6 +7,7 @@ import {IMulticall3} from 'forge-std/interfaces/IMulticall3.sol';
 import {SchemaHash} from './SchemaHash.sol';
 import {V2TestBase} from './V2TestBase.sol';
 
+import {PermitHash} from '../libraries/PermitHash.sol';
 import {CalleeMock} from '../mocks/CalleeMocks.sol';
 import {HookMock} from '../mocks/HookMock.sol';
 import {ERC20Mock, ERC721Mock} from '../mocks/TokenMocks.sol';
@@ -18,9 +19,11 @@ import {IKSAllowanceHubV2} from '../../src/interfaces/IKSAllowanceHubV2.sol';
 import {IAuthDelegator} from '../../src/interfaces/base/IAuthDelegator.sol';
 import {IUnorderedNonce} from '../../src/interfaces/base/IUnorderedNonce.sol';
 
-import {AHV2Order} from '../../src/types/AHV2Order.sol';
+import {
+  AHV2Order,
+  PermitBatchWitnessTransferFrom as Permit2Order
+} from '../../src/types/AHV2Order.sol';
 import {AHV2Solution} from '../../src/types/AHV2Solution.sol';
-import {AHV2Witness} from '../../src/types/AHV2Witness.sol';
 import {AuthDelegation} from '../../src/types/AuthDelegation.sol';
 import {CallParams} from '../../src/types/CallParams.sol';
 import {ERC20Allowance} from '../../src/types/ERC20Allowance.sol';
@@ -431,72 +434,78 @@ abstract contract HubBase is V2TestBase {
   // Signatures, built from the independent oracle only
   // ---------------------------------------------------------------------------------------------
 
+  /// @dev An empty list of calls
+  function _noCalls() internal pure returns (CallParams[] memory) {
+    return new CallParams[](0);
+  }
+
+  /// @dev An empty list of hooks
+  function _noHooks() internal pure returns (HookParams[] memory) {
+    return new HookParams[](0);
+  }
+
+  /// @dev An empty list of ERC721 approvals
+  function _noNfts() internal pure returns (ERC721Approval[] memory) {
+    return new ERC721Approval[](0);
+  }
+
+  /// @dev The balance of `token18` held by the callee that receives the transfers
+  function _calleeBalance() internal view returns (uint256) {
+    return IERC20(token18).balanceOf(address(callee));
+  }
+
   function _hubDomain() internal view returns (bytes32) {
     return lDomainSeparator('KyberSwap Allowance Hub', '2.0.0', address(hub));
   }
 
-  /**
-   * @dev The owner's Permit2 signature for a settlement submitted by someone else: the permit
-   * covers tokens and amounts, the witness everything else the order pins. The witness members are
-   * passed separately so a test can sign a witness that disagrees with the order it submits.
-   */
-  function _signWitness(
-    AHV2Order memory order,
-    address witnessExclusiveCaller,
-    CallParams[] memory witnessCalls,
-    address witnessApprover,
-    uint256 signerKey
-  ) internal view returns (bytes memory) {
-    AHV2Witness memory witness = AHV2Witness({
-      exclusiveCaller: witnessExclusiveCaller,
-      erc721Approvals: order.erc721Approvals,
-      hooks: order.hooks,
-      calls: witnessCalls,
-      solutionApprover: witnessApprover,
-      clientData: order.clientData
-    });
-
-    (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(order.erc20Allowances);
-
-    return _sign(
-      signerKey,
-      lPermit2WitnessDigest(tokens, amounts, address(hub), order.nonce, order.expiration, witness)
-    );
-  }
-
-  /// @dev As above, signed by the owner
-  function _signWitness(
-    AHV2Order memory order,
-    address witnessExclusiveCaller,
-    CallParams[] memory witnessCalls,
-    address witnessApprover
-  ) internal view returns (bytes memory) {
-    return _signWitness(order, witnessExclusiveCaller, witnessCalls, witnessApprover, ownerKey);
-  }
-
-  /// @dev As above, with the witness agreeing with the order in every member
-  function _signWitness(AHV2Order memory order) internal view returns (bytes memory) {
-    return _signWitness(order, order.exclusiveCaller, order.calls, order.solutionApprover);
-  }
-
-  /// @dev As above, signed by `signerKey`, for an order owned by the account of that key
-  function _signWitness(AHV2Order memory order, uint256 signerKey)
+  /// @dev Permit2 signature by `signerKey` over a permit that also covers `order`, for another
+  /// account to submit
+  function _signPermit2Order(AHV2Order memory order, uint256 signerKey)
     internal
     view
     returns (bytes memory)
   {
-    return
-      _signWitness(order, order.exclusiveCaller, order.calls, order.solutionApprover, signerKey);
+    (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(order.erc20Allowances);
+    bytes32 structHash = SchemaHash.permit2Order(
+      Permit2Order({
+        permitted: lTokenPermissions(tokens, amounts),
+        spender: address(hub),
+        nonce: order.nonce,
+        deadline: order.expiration,
+        order: order
+      })
+    );
+    return _sign(signerKey, lTypedDataHash(_permit2DomainSeparator(), structHash));
   }
 
-  /// @dev Permit2 self-transfer: the owner submits, so there is no witness to bind
+  /// @dev As above, signed by the owner
+  function _signPermit2Order(AHV2Order memory order) internal view returns (bytes memory) {
+    return _signPermit2Order(order, ownerKey);
+  }
+
+  /// @dev The owner's Permit2 signature over a permit that does not cover an order, for the owner
+  /// to submit
   function _signPlainPermit(
     ERC20Allowance[] memory erc20Allowances,
     uint256 nonce,
     uint256 deadline
   ) internal view returns (bytes memory) {
     (address[] memory tokens, uint256[] memory amounts) = _tokensAndAmounts(erc20Allowances);
-    return _sign(ownerKey, lPermit2BatchDigest(tokens, amounts, address(hub), nonce, deadline));
+    bytes32[] memory permitted = new bytes32[](tokens.length);
+    for (uint256 i = 0; i < tokens.length; i++) {
+      permitted[i] =
+        keccak256(abi.encode(PermitHash._TOKEN_PERMISSIONS_TYPEHASH, tokens[i], amounts[i]));
+    }
+    bytes32 structHash = keccak256(
+      abi.encode(
+        PermitHash._PERMIT_BATCH_TRANSFER_FROM_TYPEHASH,
+        keccak256(abi.encodePacked(permitted)),
+        address(hub),
+        nonce,
+        deadline
+      )
+    );
+    return _sign(ownerKey, lTypedDataHash(_permit2DomainSeparator(), structHash));
   }
 
   /// @dev The signature of the account holding `key` over `order` for the zero-authenticator flow

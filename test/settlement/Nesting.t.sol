@@ -21,7 +21,6 @@ import {CallParams} from 'src/types/CallParams.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/types/ERC721Transfer.sol';
-import {HookParams} from 'src/types/HookParams.sol';
 import {NativeTransfer} from 'src/types/NativeTransfer.sol';
 
 /**
@@ -80,7 +79,7 @@ contract NestingTest is SettlementBase {
     address topSubmitter = p.topViaPermit2 ? relayer : owner;
 
     AHV2Solution memory topSolution = _defaultSolution(top);
-    bytes memory signature = p.topViaPermit2 ? _signWitness(top) : bytes('');
+    bytes memory signature = p.topViaPermit2 ? _signPermit2Order(top) : bytes('');
 
     vm.recordLogs();
 
@@ -128,8 +127,8 @@ contract NestingTest is SettlementBase {
       ANY,
       new ERC20Allowance[](0),
       _approvals(_nftApproval()),
-      new HookParams[](0),
-      new CallParams[](0),
+      _noHooks(),
+      _noCalls(),
       ANY,
       0,
       vm.getBlockTimestamp() + 1 hours
@@ -273,7 +272,7 @@ contract NestingTest is SettlementBase {
     uint256 calleeBalanceBefore = address(callee).balance;
 
     // (a) the nested order spends nothing and the outer order spends its value afterwards
-    evil.setReentry(_settleCall(_ownedOrder(address(evil)), new CallParams[](0)));
+    evil.setReentry(_settleCall(_ownedOrder(address(evil)), _noCalls()));
     AHV2Order memory outer = _ownedOrder(owner);
     outer.calls = _calls(_callTo(address(evil)), _calleeCall(VALUE, hex'01'));
     vm.deal(owner, VALUE);
@@ -351,7 +350,7 @@ contract NestingTest is SettlementBase {
     if (viaPermit2) {
       data = abi.encodeCall(
         IKSAllowanceHubV2.settleOrder,
-        (order, _signWitness(order, signerKey), _defaultSolution(order), '', false)
+        (order, _signPermit2Order(order, signerKey), _defaultSolution(order), '', false)
       );
     } else {
       data = _settleCall(order, calls);

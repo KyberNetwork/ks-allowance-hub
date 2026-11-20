@@ -5,9 +5,8 @@ import {Vm} from 'forge-std/Vm.sol';
 
 import {JsonBindings} from '../../utils/JsonBindings.sol';
 
-import {AHV2Order} from '../../src/types/AHV2Order.sol';
+import {AHV2Order, PermitBatchWitnessTransferFrom} from '../../src/types/AHV2Order.sol';
 import {AHV2Solution} from '../../src/types/AHV2Solution.sol';
-import {AHV2Witness, PermitBatchWitnessTransferFrom} from '../../src/types/AHV2Witness.sol';
 import {AuthDelegation} from '../../src/types/AuthDelegation.sol';
 import {CallParams} from '../../src/types/CallParams.sol';
 import {ERC20Allowance} from '../../src/types/ERC20Allowance.sol';
@@ -36,10 +35,6 @@ library SchemaHash {
     return VM.eip712HashStruct(JsonBindings.schema_AHV2Solution, abi.encode(s));
   }
 
-  function ahv2Witness(AHV2Witness memory w) internal pure returns (bytes32) {
-    return VM.eip712HashStruct(JsonBindings.schema_AHV2Witness, abi.encode(w));
-  }
-
   function solutionApproval(SolutionApproval memory a) internal pure returns (bytes32) {
     return VM.eip712HashStruct(JsonBindings.schema_SolutionApproval, abi.encode(a));
   }
@@ -65,7 +60,7 @@ library SchemaHash {
   }
 
   /// @dev The `structHash` Permit2 signs for a witness permit
-  function permit2Witness(PermitBatchWitnessTransferFrom memory p) internal pure returns (bytes32) {
+  function permit2Order(PermitBatchWitnessTransferFrom memory p) internal pure returns (bytes32) {
     return VM.eip712HashStruct(JsonBindings.schema_PermitBatchWitnessTransferFrom, abi.encode(p));
   }
 }

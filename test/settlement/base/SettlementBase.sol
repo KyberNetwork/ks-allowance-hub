@@ -6,8 +6,6 @@ import {SignerAuthenticatorBase} from 'test/base/SignerAuthenticatorBase.sol';
 import {AHV2Order} from 'src/types/AHV2Order.sol';
 import {CallParams} from 'src/types/CallParams.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
-import {ERC721Approval} from 'src/types/ERC721Approval.sol';
-import {HookParams} from 'src/types/HookParams.sol';
 
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
@@ -16,24 +14,14 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  * @notice Contract base for the settlement test files: the helpers more than one of them uses
  */
 abstract contract SettlementBase is SignerAuthenticatorBase {
-  /// @dev An empty list of calls
-  function _noCalls() internal pure returns (CallParams[] memory) {
-    return new CallParams[](0);
-  }
+  uint160 internal constant AMOUNT = 5 ether;
 
-  /// @dev An empty list of hooks
-  function _noHooks() internal pure returns (HookParams[] memory) {
-    return new HookParams[](0);
-  }
+  address internal approver;
+  uint256 internal approverKey;
 
-  /// @dev An empty list of ERC721 approvals
-  function _noNfts() internal pure returns (ERC721Approval[] memory) {
-    return new ERC721Approval[](0);
-  }
-
-  /// @dev The balance of `token18` held by the callee that receives the transfers
-  function _calleeBalance() internal view returns (uint256) {
-    return IERC20(token18).balanceOf(address(callee));
+  function setUp() public virtual override {
+    super.setUp();
+    (approver, approverKey) = makeAddrAndKey('solution approver');
   }
 
   /// @dev The balance of `token18` held by `account`
@@ -54,12 +42,20 @@ abstract contract SettlementBase is SignerAuthenticatorBase {
    */
   function _ownedOrder(address orderOwner) internal view returns (AHV2Order memory order) {
     order = _openAhv2Order(
-      new ERC20Allowance[](0),
-      new HookParams[](0),
-      new CallParams[](0),
-      0,
-      vm.getBlockTimestamp() + 1 hours
+      new ERC20Allowance[](0), _noHooks(), _noCalls(), 0, vm.getBlockTimestamp() + 1 hours
     );
     order.owner = orderOwner;
+  }
+
+  /// @dev An open order with one `AMOUNT` allowance of `token18` and no hooks
+  function _order(
+    address orderAuthenticator,
+    CallParams[] memory calls,
+    uint256 nonce,
+    uint256 expiration
+  ) internal view returns (AHV2Order memory) {
+    return _openAhv2Order(
+      orderAuthenticator, _allowances(_tokenAllowance(AMOUNT)), _noHooks(), calls, nonce, expiration
+    );
   }
 }

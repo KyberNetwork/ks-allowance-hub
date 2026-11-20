@@ -17,7 +17,6 @@ import {AHV2Order} from 'src/types/AHV2Order.sol';
 import {AHV2Solution} from 'src/types/AHV2Solution.sol';
 import {CallParams} from 'src/types/CallParams.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
-import {HookParams} from 'src/types/HookParams.sol';
 
 import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
@@ -41,10 +40,6 @@ contract MulticallTest is SignerAuthenticatorBase {
   uint256 internal constant PREFUND = 1 ether;
   uint256 internal constant VALUE = 1 ether;
 
-  /// @dev EIP-2612, transcribed rather than imported from any token or helper
-  bytes32 internal constant L_PERMIT_TYPEHASH =
-    keccak256('Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)');
-
   // -----------------------------------------------------------------------------------------
   // MC — the batching surface
   // -----------------------------------------------------------------------------------------
@@ -57,17 +52,18 @@ contract MulticallTest is SignerAuthenticatorBase {
     address[] memory tokens = new address[](1);
     tokens[0] = token6;
     bytes[] memory permits = new bytes[](1);
-    permits[0] = _usdcPermitCall(address(hub), permitValue, deadline);
-
-    AHV2Order memory order = _openAhv2Order(
-      _allowances(_tokenAllowance(AMOUNT)), new HookParams[](0), new CallParams[](0), 0, deadline
+    permits[0] = _erc2612PermitCall(
+      'Token Six', token6, address(hub), permitValue, IERC20Permit(token6).nonces(owner), deadline
     );
+
+    AHV2Order memory order =
+      _openAhv2Order(_allowances(_tokenAllowance(AMOUNT)), _noHooks(), _noCalls(), 0, deadline);
 
     bytes[] memory batch = new bytes[](2);
     batch[0] = abi.encodeCall(IKSAllowanceHubV2.forwardCalls, (_call3s(tokens, permits, 0)));
     batch[1] = _settleCalldata(order, _calls(_calleeCall(0.5 ether, hex'01')));
 
-    uint256 calleeWethBefore = IERC20(token18).balanceOf(address(callee));
+    uint256 calleeWethBefore = _calleeBalance();
     uint256 calleeNativeBefore = address(callee).balance;
     vm.deal(owner, VALUE);
 
@@ -76,9 +72,7 @@ contract MulticallTest is SignerAuthenticatorBase {
 
     assertEq(results.length, 2, 'one result per sub-call');
     assertEq(IERC20(token6).allowance(owner, address(hub)), permitValue, 'the permit was relayed');
-    assertEq(
-      IERC20(token18).balanceOf(address(callee)) - calleeWethBefore, AMOUNT, 'the order settled'
-    );
+    assertEq(_calleeBalance() - calleeWethBefore, AMOUNT, 'the order settled');
     assertEq(
       address(callee).balance - calleeNativeBefore, 0.5 ether, 'the native transfer was paid'
     );
@@ -139,17 +133,13 @@ contract MulticallTest is SignerAuthenticatorBase {
     batch[0] = _orderCalldata(1 ether, hex'a1');
     batch[1] = _orderCalldata(2 ether, hex'b2');
 
-    uint256 calleeWethBefore = IERC20(token18).balanceOf(address(callee));
+    uint256 calleeWethBefore = _calleeBalance();
 
     vm.prank(owner);
     (bytes[] memory results,) = hub.multicall(batch);
 
     assertEq(results.length, 2, 'two results');
-    assertEq(
-      IERC20(token18).balanceOf(address(callee)) - calleeWethBefore,
-      3 ether,
-      'both transfers pulled'
-    );
+    assertEq(_calleeBalance() - calleeWethBefore, 3 ether, 'both transfers pulled');
     assertEq(callee.callCount(), 2, 'both calls ran');
     assertEq(callee.lastData(), hex'b2', 'the second order ran last');
 
@@ -233,7 +223,7 @@ contract MulticallTest is SignerAuthenticatorBase {
     AHV2Order memory order = _openAhv2Order(
       address(authenticator),
       _allowances(_tokenAllowance(AMOUNT)),
-      new HookParams[](0),
+      _noHooks(),
       _calls(_calleeCall(0, hex'01')),
       81,
       deadline
@@ -281,13 +271,13 @@ contract MulticallTest is SignerAuthenticatorBase {
 
     // with it true, the batch carries past the delegation and settles the order
     batch[0] = abi.encodeCall(IKSAllowanceHubV2.forwardCalls, (_call3s(targets, relayed, 1)));
-    uint256 calleeBefore = IERC20(token18).balanceOf(address(callee));
+    uint256 calleeBefore = _calleeBalance();
 
     vm.prank(relayer);
     hub.multicall(batch);
 
     assertTrue(hub.authDelegated(owner, address(authenticator)), 'delegated by the front-runner');
-    assertEq(IERC20(token18).balanceOf(address(callee)) - calleeBefore, AMOUNT, 'the order settled');
+    assertEq(_calleeBalance() - calleeBefore, AMOUNT, 'the order settled');
   }
 
   /**
@@ -314,7 +304,7 @@ contract MulticallTest is SignerAuthenticatorBase {
     AHV2Order memory order = _openAhv2Order(
       address(authenticator),
       _allowances(_tokenAllowance(AMOUNT)),
-      new HookParams[](0),
+      _noHooks(),
       _calls(_calleeCall(0, hex'01')),
       orderNonce,
       deadline
@@ -348,7 +338,7 @@ contract MulticallTest is SignerAuthenticatorBase {
     );
     hub.multicall(orderOnly);
 
-    uint256 calleeWethBefore = IERC20(token18).balanceOf(address(callee));
+    uint256 calleeWethBefore = _calleeBalance();
 
     vm.prank(relayer);
     (bytes[] memory results,) = hub.multicall(batch);
@@ -356,7 +346,7 @@ contract MulticallTest is SignerAuthenticatorBase {
     assertEq(results.length, 2, 'one result per sub-call');
     assertTrue(authenticator.approvedSigners(owner, signer), 'the batch approved the signer');
     assertEq(
-      IERC20(token18).balanceOf(address(callee)) - calleeWethBefore,
+      _calleeBalance() - calleeWethBefore,
       AMOUNT,
       'and the order spent on it in the same transaction'
     );
@@ -450,7 +440,7 @@ contract MulticallTest is SignerAuthenticatorBase {
   function _orderCalldata(uint160 amount, bytes memory data) internal view returns (bytes memory) {
     AHV2Order memory order = _openAhv2Order(
       _allowances(_tokenAllowance(amount)),
-      new HookParams[](0),
+      _noHooks(),
       _calls(_calleeCall(0, data)),
       0,
       vm.getBlockTimestamp()
@@ -461,13 +451,8 @@ contract MulticallTest is SignerAuthenticatorBase {
 
   /// @dev An order of `owner` with no transfers, no hooks and no calls
   function _emptyOrder(uint256 nonce) internal view returns (AHV2Order memory) {
-    return _openAhv2Order(
-      new ERC20Allowance[](0),
-      new HookParams[](0),
-      new CallParams[](0),
-      nonce,
-      vm.getBlockTimestamp()
-    );
+    return
+      _openAhv2Order(new ERC20Allowance[](0), _noHooks(), _noCalls(), nonce, vm.getBlockTimestamp());
   }
 
   /// @dev The call that `owner` makes to settle `order` after its calls are set to `calls`
@@ -479,34 +464,5 @@ contract MulticallTest is SignerAuthenticatorBase {
     order.calls = calls;
     return
       abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', _defaultSolution(order), '', false));
-  }
-
-  /// @dev A whole EIP-2612 `permit` call for {IKSAllowanceHubV2-forwardCalls} to relay to token6
-  function _usdcPermitCall(address spender, uint256 value, uint256 deadline)
-    internal
-    view
-    returns (bytes memory)
-  {
-    bytes32 structHash = keccak256(
-      abi.encode(L_PERMIT_TYPEHASH, owner, spender, value, _usdcNonce(owner), deadline)
-    );
-    (uint8 v, bytes32 r, bytes32 s) =
-      vm.sign(ownerKey, lTypedDataHash(_usdcDomainSeparator(), structHash));
-
-    return abi.encodeCall(IERC20Permit.permit, (owner, spender, value, deadline, v, r, s));
-  }
-
-  /// @dev Read off the deployed token, which is an external dependency rather than code under test
-  function _usdcDomainSeparator() internal view returns (bytes32) {
-    (bool ok, bytes memory data) = token6.staticcall(abi.encodeWithSignature('DOMAIN_SEPARATOR()'));
-    require(ok, 'usdc domain');
-    return abi.decode(data, (bytes32));
-  }
-
-  function _usdcNonce(address account) internal view returns (uint256) {
-    (bool ok, bytes memory data) =
-      token6.staticcall(abi.encodeWithSignature('nonces(address)', account));
-    require(ok, 'usdc nonce');
-    return abi.decode(data, (uint256));
   }
 }

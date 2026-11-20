@@ -20,7 +20,6 @@ contract HookMock is IAHV2Hook {
 
   bytes32 public lastOrderHash;
   uint256 public lastBeforeIndex;
-  uint256 public lastAfterIndex;
 
   /// @dev `order.hooks[index].data` as read by each call
   bytes public beforeData;
@@ -102,7 +101,6 @@ contract HookMock is IAHV2Hook {
     sequence.push('after');
     afterCount++;
     lastOrderHash = orderHash;
-    lastAfterIndex = index;
     afterData = order.hooks[index].data;
     receivedBeforeResult = beforeSettlementResult;
     seenMsgSenderAfter = IMsgSender(msg.sender).msgSender();

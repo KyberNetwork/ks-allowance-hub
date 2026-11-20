@@ -3,14 +3,6 @@ pragma solidity ^0.8.0;
 
 import {Test} from 'forge-std/Test.sol';
 
-import {SchemaHash} from './SchemaHash.sol';
-
-import {PermitHash} from '../libraries/PermitHash.sol';
-
-import {
-  AHV2Witness,
-  PermitBatchWitnessTransferFrom as Permit2Witness
-} from '../../src/types/AHV2Witness.sol';
 import {CallParams} from '../../src/types/CallParams.sol';
 import {ERC20Allowance} from '../../src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from '../../src/types/ERC20Transfer.sol';
@@ -19,6 +11,10 @@ import {ERC721Transfer} from '../../src/types/ERC721Transfer.sol';
 import {HookParams} from '../../src/types/HookParams.sol';
 
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
+
+import {
+  IERC20Permit
+} from 'openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol';
 
 /**
  * @title V2TestBase
@@ -89,61 +85,6 @@ abstract contract V2TestBase is Test {
     }
   }
 
-  /// @dev The digest the owner signs for a settlement submitted by someone else, hashed from the
-  /// Permit2 struct
-  function lPermit2WitnessDigest(
-    address[] memory tokens,
-    uint256[] memory amounts,
-    address spender,
-    uint256 nonce,
-    uint256 deadline,
-    AHV2Witness memory witness
-  ) internal view returns (bytes32) {
-    return lPermit2Digest(
-      SchemaHash.permit2Witness(
-        Permit2Witness({
-          permitted: lTokenPermissions(tokens, amounts),
-          spender: spender,
-          nonce: nonce,
-          deadline: deadline,
-          witness: witness
-        })
-      )
-    );
-  }
-
-  /// @dev Binds a Permit2 `structHash` to Permit2's own domain
-  function lPermit2Digest(bytes32 structHash) internal view returns (bytes32) {
-    return keccak256(abi.encodePacked('\x19\x01', _permit2DomainSeparator(), structHash));
-  }
-
-  /// @dev The witness-free batch permit, for orders the owner submits themselves
-  function lPermit2BatchDigest(
-    address[] memory tokens,
-    uint256[] memory amounts,
-    address spender,
-    uint256 nonce,
-    uint256 deadline
-  ) internal view returns (bytes32) {
-    bytes32[] memory permitted = new bytes32[](tokens.length);
-    for (uint256 i = 0; i < tokens.length; i++) {
-      permitted[i] =
-        keccak256(abi.encode(PermitHash._TOKEN_PERMISSIONS_TYPEHASH, tokens[i], amounts[i]));
-    }
-
-    bytes32 structHash = keccak256(
-      abi.encode(
-        PermitHash._PERMIT_BATCH_TRANSFER_FROM_TYPEHASH,
-        keccak256(abi.encodePacked(permitted)),
-        spender,
-        nonce,
-        deadline
-      )
-    );
-
-    return keccak256(abi.encodePacked('\x19\x01', _permit2DomainSeparator(), structHash));
-  }
-
   /// @dev Read from the deployed Permit2, which is an external dependency rather than code under
   /// test
   function _permit2DomainSeparator() internal view returns (bytes32 separator) {
@@ -154,10 +95,34 @@ abstract contract V2TestBase is Test {
 
   /// @dev Permit2's signature-transfer nonce bitmap, read off the deployed contract
   function _permit2NonceBitmap(address account, uint256 word) internal view returns (uint256) {
-    (bool ok, bytes memory data) =
-      permit2.staticcall(abi.encodeWithSignature('nonceBitmap(address,uint256)', account, word));
-    require(ok, 'permit2 nonceBitmap');
-    return abi.decode(data, (uint256));
+    return ISignatureTransfer(permit2).nonceBitmap(account, word);
+  }
+
+  /// @dev Calldata of an EIP-2612 `permit` of `token`, named `name`, signed by the owner
+  function _erc2612PermitCall(
+    string memory name,
+    address token,
+    address spender,
+    uint256 value,
+    uint256 nonce,
+    uint256 deadline
+  ) internal view returns (bytes memory) {
+    bytes32 structHash = keccak256(
+      abi.encode(
+        keccak256(
+          'Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)'
+        ),
+        owner,
+        spender,
+        value,
+        nonce,
+        deadline
+      )
+    );
+    // OpenZeppelin's ERC20Permit takes its domain name from the token and versions it '1'
+    (uint8 v, bytes32 r, bytes32 s) =
+      vm.sign(ownerKey, lTypedDataHash(lDomainSeparator(name, '1', token), structHash));
+    return abi.encodeCall(IERC20Permit.permit, (owner, spender, value, deadline, v, r, s));
   }
 
   /// @dev Builds a domain separator from parts, so a test never reuses the contract's own value
@@ -243,17 +208,6 @@ abstract contract V2TestBase is Test {
     out = new CallParams[](2);
     out[0] = a;
     out[1] = b;
-  }
-
-  function _calls(CallParams memory a, CallParams memory b, CallParams memory c)
-    internal
-    pure
-    returns (CallParams[] memory out)
-  {
-    out = new CallParams[](3);
-    out[0] = a;
-    out[1] = b;
-    out[2] = c;
   }
 
   function _hooks(HookParams memory a) internal pure returns (HookParams[] memory out) {

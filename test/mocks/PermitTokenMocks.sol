@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {ERC1155Mock} from './TokenMocks.sol';
-
 import {ERC20} from 'openzeppelin-contracts/contracts/token/ERC20/ERC20.sol';
 import {ERC721} from 'openzeppelin-contracts/contracts/token/ERC721/ERC721.sol';
 import {ECDSA} from 'openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol';
@@ -189,21 +187,5 @@ contract CallerRecorderMock {
   function permit(address, address, uint256, uint256, uint8, bytes32, bytes32) external {
     lastCaller = msg.sender;
     permitCount++;
-  }
-}
-
-/**
- * @notice ERC-1155 that can be seeded onto a contract holding no receiver hook
- * @dev {ERC1155-_mint} runs the acceptance check and would revert against the hub, so the only
- * way a balance can become stranded there, and so the only way a rescue path can be reached, is an
- * update that skips the check, as a non-standard token or a direct storage write would.
- */
-contract ERC1155SeedMock is ERC1155Mock {
-  function mintUnchecked(address to, uint256 id, uint256 amount) external {
-    uint256[] memory ids = new uint256[](1);
-    uint256[] memory values = new uint256[](1);
-    ids[0] = id;
-    values[0] = amount;
-    _update(address(0), to, ids, values);
   }
 }

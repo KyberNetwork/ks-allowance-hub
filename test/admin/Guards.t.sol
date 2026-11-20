@@ -12,12 +12,10 @@ import {AHV2Order} from 'src/types/AHV2Order.sol';
 import {AHV2Solution} from 'src/types/AHV2Solution.sol';
 import {CallParams} from 'src/types/CallParams.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
-import {HookParams} from 'src/types/HookParams.sol';
 
 import {IManagementSimple} from 'ks-common-sc/src/interfaces/IManagementSimple.sol';
 
 import {IAccessControl} from 'openzeppelin-contracts/contracts/access/IAccessControl.sol';
-import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 import {Pausable} from 'openzeppelin-contracts/contracts/utils/Pausable.sol';
 
 /**
@@ -102,9 +100,8 @@ contract GuardsTest is SignerAuthenticatorBase {
     AHV2AuthenticatorStub mock = new AHV2AuthenticatorStub();
 
     AHV2Order memory order = _openOrder(90, vm.getBlockTimestamp() + 1 hours);
-    AHV2Order memory permitOrder =
-      _permit2Order(90, vm.getBlockTimestamp() + 1 hours, new CallParams[](0));
-    bytes memory permitSig = _signWitness(permitOrder);
+    AHV2Order memory permitOrder = _permit2Order(90, vm.getBlockTimestamp() + 1 hours, _noCalls());
+    bytes memory permitSig = _signPermit2Order(permitOrder);
 
     vm.prank(guardian);
     hub.pause();
@@ -172,8 +169,8 @@ contract GuardsTest is SignerAuthenticatorBase {
 
     // the Permit2 path carries the same expiration into the permit, so the hub's own
     // modifier has to be the one that fires: a stale order must not reach Permit2 at all
-    AHV2Order memory stale = _permit2Order(91, t - 1, new CallParams[](0));
-    bytes memory staleSig = _signWitness(stale);
+    AHV2Order memory stale = _permit2Order(91, t - 1, _noCalls());
+    bytes memory staleSig = _signPermit2Order(stale);
 
     vm.prank(relayer);
     vm.expectRevert(_orderExpired(t - 1));
@@ -182,9 +179,9 @@ contract GuardsTest is SignerAuthenticatorBase {
 
   /// GUARD-05 — when both guards would fire, the pause wins, because it is the outer modifier
   function test_GUARD_05_pauseTakesPrecedenceOverTheExpiration() public {
-    AHV2Order memory stale = _permit2Order(0, vm.getBlockTimestamp() - 1, new CallParams[](0));
+    AHV2Order memory stale = _permit2Order(0, vm.getBlockTimestamp() - 1, _noCalls());
     AHV2Order memory ownerStale = _openOrder(0, vm.getBlockTimestamp() - 1);
-    bytes memory staleSig = _signWitness(stale);
+    bytes memory staleSig = _signPermit2Order(stale);
 
     vm.prank(guardian);
     hub.pause();
@@ -226,16 +223,16 @@ contract GuardsTest is SignerAuthenticatorBase {
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 
     // control
-    uint256 before = IERC20(token18).balanceOf(address(callee));
+    uint256 before = _calleeBalance();
     AHV2Order memory control = _permit2Order(100, expiration, _calls(_calleeCall(0, hex'01')));
 
     vm.prank(solver);
-    hub.settleOrder(control, _signWitness(control), _defaultSolution(control), '', false);
-    assertEq(IERC20(token18).balanceOf(address(callee)) - before, AMOUNT, 'the control settled');
+    hub.settleOrder(control, _signPermit2Order(control), _defaultSolution(control), '', false);
+    assertEq(_calleeBalance() - before, AMOUNT, 'the control settled');
 
     // whenNotPaused
     AHV2Order memory paused = _permit2Order(101, expiration, _calls(_calleeCall(0, hex'01')));
-    bytes memory pausedSig = _signWitness(paused);
+    bytes memory pausedSig = _signPermit2Order(paused);
 
     vm.prank(guardian);
     hub.pause();
@@ -250,7 +247,7 @@ contract GuardsTest is SignerAuthenticatorBase {
     // checkSettlement
     AHV2Order memory stale =
       _permit2Order(102, vm.getBlockTimestamp() - 1, _calls(_calleeCall(0, hex'01')));
-    bytes memory staleSig = _signWitness(stale);
+    bytes memory staleSig = _signPermit2Order(stale);
 
     vm.prank(solver);
     vm.expectRevert(_orderExpired(vm.getBlockTimestamp() - 1));
@@ -262,7 +259,7 @@ contract GuardsTest is SignerAuthenticatorBase {
 
     AHV2Order memory overSpending =
       _permit2Order(104, expiration, _calls(_calleeCall(VALUE + 1, hex'01')));
-    bytes memory overSpendingSig = _signWitness(overSpending);
+    bytes memory overSpendingSig = _signPermit2Order(overSpending);
     AHV2Solution memory greedyRoute = _defaultSolution(overSpending);
 
     vm.prank(solver);
@@ -300,11 +297,7 @@ contract GuardsTest is SignerAuthenticatorBase {
     vm.deal(owner, VALUE);
 
     AHV2Order memory overSpending = _openAhv2Order(
-      new ERC20Allowance[](0),
-      new HookParams[](0),
-      _calls(_calleeCall(VALUE + 1, hex'01')),
-      112,
-      deadline
+      new ERC20Allowance[](0), _noHooks(), _calls(_calleeCall(VALUE + 1, hex'01')), 112, deadline
     );
 
     vm.prank(owner);
@@ -318,13 +311,10 @@ contract GuardsTest is SignerAuthenticatorBase {
 
   /// @dev An order open to any submitter that draws `AMOUNT` of the token and calls nothing
   function _openOrder(uint256 nonce, uint256 expiration) internal view returns (AHV2Order memory) {
-    return _openAhv2Order(
-      _allowances(_tokenAllowance(AMOUNT)),
-      new HookParams[](0),
-      new CallParams[](0),
-      nonce,
-      expiration
-    );
+    return
+      _openAhv2Order(
+        _allowances(_tokenAllowance(AMOUNT)), _noHooks(), _noCalls(), nonce, expiration
+      );
   }
 
   /// @dev As {_openOrder}, authorized through Permit2
@@ -339,7 +329,7 @@ contract GuardsTest is SignerAuthenticatorBase {
   }
 
   function _settleAtExpiration(uint256 expiration, bool shouldSettle) internal {
-    uint256 calleeBefore = IERC20(token18).balanceOf(address(callee));
+    uint256 calleeBefore = _calleeBalance();
 
     AHV2Order memory order = _openOrder(0, expiration);
     AHV2Solution memory solution = _defaultSolution(order);
@@ -351,7 +341,7 @@ contract GuardsTest is SignerAuthenticatorBase {
     hub.settleOrder(order, '', solution, '', false);
 
     assertEq(
-      IERC20(token18).balanceOf(address(callee)) - calleeBefore,
+      _calleeBalance() - calleeBefore,
       shouldSettle ? AMOUNT : 0,
       'the owner-submitted path moved assets only up to the expiration'
     );
@@ -365,7 +355,7 @@ contract GuardsTest is SignerAuthenticatorBase {
 
     AHV2Order memory order = _openAhv2Order(
       new ERC20Allowance[](0),
-      new HookParams[](0),
+      _noHooks(),
       _calls(_calleeCall(spend / 2, hex'01'), _calleeCall(spend - spend / 2, hex'02')),
       0,
       vm.getBlockTimestamp()

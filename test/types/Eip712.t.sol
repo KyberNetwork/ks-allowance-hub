@@ -6,9 +6,8 @@ import {V2TestBase} from 'test/base/V2TestBase.sol';
 
 import {EfficientHashLibExt} from 'src/libraries/EfficientHashLibExt.sol';
 
-import {AHV2Order} from 'src/types/AHV2Order.sol';
+import {AHV2Order, AHV2OrderLib} from 'src/types/AHV2Order.sol';
 import {AHV2Solution} from 'src/types/AHV2Solution.sol';
-import {AHV2Witness, AHV2WitnessLib} from 'src/types/AHV2Witness.sol';
 import {AuthDelegation, AuthDelegationLib} from 'src/types/AuthDelegation.sol';
 import {CallParams} from 'src/types/CallParams.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
@@ -96,15 +95,16 @@ contract Eip712Test is V2TestBase {
    * half is evidence without the other.
    */
   function test_T712_17_permit2TypeStringSortsItsReferencedTypes() public pure {
-    string[] memory names = new string[](5);
-    names[0] = 'AHV2Witness(';
+    string[] memory names = new string[](6);
+    names[0] = 'AHV2Order(';
     names[1] = 'CallParams(';
-    names[2] = 'ERC721Approval(';
-    names[3] = 'HookParams(';
-    names[4] = 'TokenPermissions(';
+    names[2] = 'ERC20Allowance(';
+    names[3] = 'ERC721Approval(';
+    names[4] = 'HookParams(';
+    names[5] = 'TokenPermissions(';
 
     _assertSortedNames(names);
-    _assertNamesAppearInOrder(AHV2WitnessLib.AHV2_WITNESS_PERMIT2_TYPE_STRING, names);
+    _assertNamesAppearInOrder(AHV2OrderLib.PERMIT2_ORDER_TYPE_STRING, names);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -124,55 +124,6 @@ contract Eip712Test is V2TestBase {
       bytes32 expected = SchemaHash.hookParams(hooks[i]);
       assertEq(this.extHashHook(hooks[i]), expected, 'hook hasher');
     }
-  }
-
-  /**
-   * The witness hash matches the independent encoding with empty client data
-   * @dev The hooks and the calls are non-empty here, so those members are encoded
-   */
-  function test_T712_witnessStructHash() public view {
-    CallParams[] memory calls = _sampleCalls();
-    ERC721Approval[] memory approvals = _sampleApprovals();
-    HookParams[] memory hooks = _sampleHooks();
-    address approver = address(0xBEEF);
-    bytes32 expected = SchemaHash.ahv2Witness(
-      AHV2Witness({
-        exclusiveCaller: ANY,
-        erc721Approvals: approvals,
-        hooks: hooks,
-        calls: calls,
-        solutionApprover: approver,
-        clientData: ''
-      })
-    );
-
-    assertEq(this.extHashWitness(approvals, hooks, calls, approver, ''), expected, 'hasher');
-  }
-
-  /**
-   * The witness hash matches the independent encoding, and client data moves the hash
-   * @dev Non-empty client data is encoded by the witness hasher and moves the hash
-   */
-  function test_T712_witnessClientDataStructHash() public view {
-    CallParams[] memory calls = _sampleCalls();
-    ERC721Approval[] memory approvals = _sampleApprovals();
-    HookParams[] memory hooks = _sampleHooks();
-    address approver = address(0xBEEF);
-    AHV2Witness memory witness = AHV2Witness({
-      exclusiveCaller: ANY,
-      erc721Approvals: approvals,
-      hooks: hooks,
-      calls: calls,
-      solutionApprover: approver,
-      clientData: CLIENT_DATA
-    });
-    bytes32 expected = SchemaHash.ahv2Witness(witness);
-
-    assertEq(
-      this.extHashWitness(approvals, hooks, calls, approver, CLIENT_DATA), expected, 'hasher'
-    );
-    witness.clientData = '';
-    assertTrue(expected != SchemaHash.ahv2Witness(witness), 'client data is signed');
   }
 
   /// The order hash matches {SchemaHash}
@@ -195,8 +146,9 @@ contract Eip712Test is V2TestBase {
     assertEq(this.extHashOrder(order), expected, 'with client data');
 
     order.clientData = '';
-    assertEq(this.extHashOrder(order), SchemaHash.ahv2Order(order), 'cleared');
-    assertTrue(SchemaHash.ahv2Order(order) != expected, 'client data is signed');
+    bytes32 cleared = SchemaHash.ahv2Order(order);
+    assertEq(this.extHashOrder(order), cleared, 'cleared');
+    assertTrue(cleared != expected, 'client data is signed');
   }
 
   /**
@@ -419,16 +371,6 @@ contract Eip712Test is V2TestBase {
 
   function extHashOrder(AHV2Order calldata o) external pure returns (bytes32) {
     return o.hash();
-  }
-
-  function extHashWitness(
-    ERC721Approval[] calldata approvals,
-    HookParams[] calldata hooks,
-    CallParams[] calldata calls,
-    address approver,
-    bytes calldata clientData
-  ) external pure returns (bytes32) {
-    return AHV2WitnessLib.hash(ANY, approvals, hooks, calls, approver, clientData);
   }
 
   function extHashSolution(AHV2Solution calldata s) external pure returns (bytes32) {

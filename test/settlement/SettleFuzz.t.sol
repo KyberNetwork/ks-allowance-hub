@@ -19,14 +19,6 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  * @dev Each property draws the order, the solution and the submitter through one struct.
  */
 contract SettleFuzzTest is SettlementBase {
-  address internal approver;
-  uint256 internal approverKey;
-
-  function setUp() public override {
-    super.setUp();
-    (approver, approverKey) = makeAddrAndKey('solution approver');
-  }
-
   // -------------------------------------------------------------------------------------------
   // ORDER-FUZZ — one property per authorization rail
   // -------------------------------------------------------------------------------------------
@@ -76,7 +68,7 @@ contract SettleFuzzTest is SettlementBase {
       _fuzzOrder(f, relayer, orderAuthenticator);
     bytes memory authData = rail == 0
       ? _signOrder(order)
-      : rail == 1 ? _signWitness(order) : _orderAuthData(order, signer, signerPk);
+      : rail == 1 ? _signPermit2Order(order) : _orderAuthData(order, signer, signerPk);
     bytes memory approval =
       f.approveSolution ? _signSolutionApproval(approverKey, order, solution) : bytes('');
 

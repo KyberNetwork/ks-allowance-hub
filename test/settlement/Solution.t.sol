@@ -17,9 +17,7 @@ import {AHV2Solution} from 'src/types/AHV2Solution.sol';
 import {CallParams} from 'src/types/CallParams.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
-import {ERC721Approval} from 'src/types/ERC721Approval.sol';
 import {ERC721Transfer} from 'src/types/ERC721Transfer.sol';
-import {HookParams} from 'src/types/HookParams.sol';
 import {NativeTransfer} from 'src/types/NativeTransfer.sol';
 
 import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
@@ -35,19 +33,14 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  * and `nftRecipient` for the NFT, neither of them a callee.
  */
 contract SolutionTest is SettlementBase {
-  uint160 internal constant AMOUNT = 5 ether;
-
   /// @dev Written out rather than imported: a role read from the hub would agree with a wrong one
   bytes32 internal constant CALLEE_ROLE = keccak256('WHITELISTED_CALLEE_ROLE');
 
-  address internal approver;
-  uint256 internal approverKey;
   address internal solverWallet;
   address internal nftRecipient;
 
   function setUp() public override {
     super.setUp();
-    (approver, approverKey) = makeAddrAndKey('solution approver');
     solverWallet = makeAddr('solver wallet');
     nftRecipient = makeAddr('nft recipient');
   }
@@ -107,7 +100,7 @@ contract SolutionTest is SettlementBase {
   function test_TGT_03_witnessDoesNotBindTheErc20Targets() public {
     AHV2Order memory order = _bothTransfers(ANY, 1);
     order.authenticator = permit2;
-    bytes memory witness = _signWitness(order);
+    bytes memory witness = _signPermit2Order(order);
     uint256 ownerBefore = _balance(owner);
 
     for (uint256 i = 0; i < 4; i++) {
@@ -434,7 +427,7 @@ contract SolutionTest is SettlementBase {
     AHV2Order memory relayed =
       _openAhv2Order(_allowances(_tokenAllowance(AMOUNT)), _noHooks(), calls, 110, expiration);
     relayed.authenticator = permit2;
-    bytes memory witness = _signWitness(relayed);
+    bytes memory witness = _signPermit2Order(relayed);
 
     AHV2Solution memory delegatedSolution = _defaultSolution(delegated);
     AHV2Solution memory relayedSolution = _defaultSolution(relayed);
@@ -520,7 +513,7 @@ contract SolutionTest is SettlementBase {
       vm.getBlockTimestamp() + 1 hours
     );
     order.authenticator = permit2;
-    bytes memory witness = _signWitness(order);
+    bytes memory witness = _signPermit2Order(order);
 
     AHV2Solution memory solutionA = _defaultSolution(order);
     solutionA.solverData[0] = hex'aa';
@@ -560,8 +553,8 @@ contract SolutionTest is SettlementBase {
       ANY,
       _allowances(_tokenAllowance(AMOUNT)),
       _approvals(_nftApproval()),
-      new HookParams[](0),
-      new CallParams[](0),
+      _noHooks(),
+      _noCalls(),
       solutionApprover,
       nonce,
       vm.getBlockTimestamp() + 1 hours
@@ -601,9 +594,9 @@ contract SolutionTest is SettlementBase {
     return _ahv2Order(
       ANY,
       _allowances(_tokenAllowance(allowance)),
-      new ERC721Approval[](0),
-      new HookParams[](0),
-      new CallParams[](0),
+      _noNfts(),
+      _noHooks(),
+      _noCalls(),
       ANY,
       nonce,
       vm.getBlockTimestamp() + 1 hours
@@ -622,9 +615,9 @@ contract SolutionTest is SettlementBase {
     return _ahv2Order(
       ANY,
       allowances,
-      new ERC721Approval[](0),
-      new HookParams[](0),
-      new CallParams[](0),
+      _noNfts(),
+      _noHooks(),
+      _noCalls(),
       ANY,
       nonce,
       vm.getBlockTimestamp() + 1 hours
@@ -666,7 +659,7 @@ contract SolutionTest is SettlementBase {
       }
     } else if (path == PATH_PERMIT2_SIGNATURE) {
       order.authenticator = permit2;
-      permit = _signWitness(order);
+      permit = _signPermit2Order(order);
     }
   }
 

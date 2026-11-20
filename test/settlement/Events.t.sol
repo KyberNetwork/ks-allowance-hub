@@ -13,11 +13,9 @@ import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
 
 import {AHV2Order} from 'src/types/AHV2Order.sol';
 import {AHV2Solution} from 'src/types/AHV2Solution.sol';
-import {CallParams} from 'src/types/CallParams.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
 import {ERC20Transfer} from 'src/types/ERC20Transfer.sol';
 import {ERC721Transfer} from 'src/types/ERC721Transfer.sol';
-import {HookParams} from 'src/types/HookParams.sol';
 import {NativeTransfer} from 'src/types/NativeTransfer.sol';
 
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
@@ -30,8 +28,6 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  * value taken from the contract under test would agree with a wrong one.
  */
 contract EventsTest is SettlementBase {
-  uint160 internal constant AMOUNT = 5 ether;
-
   /// @dev Permit2 does not expose this in the vendored interface, so it is written out here
   bytes4 internal constant PERMIT2_INVALID_SIGNER = bytes4(keccak256('InvalidSigner()'));
 
@@ -71,14 +67,14 @@ contract EventsTest is SettlementBase {
       ANY,
       _allowances(_tokenAllowance(AMOUNT)),
       _approvals(_nftApproval()),
-      new HookParams[](0),
+      _noHooks(),
       _calls(_calleeCall(0, hex'abcd')),
       ANY,
       11,
       expiration
     );
     AHV2Solution memory solution = _defaultSolution(order);
-    bytes memory signature = _signWitness(order);
+    bytes memory signature = _signPermit2Order(order);
 
     vm.recordLogs();
 
@@ -130,11 +126,11 @@ contract EventsTest is SettlementBase {
   function testFuzz_CLIENT_01_clientDataIsEmittedAsGiven(ClientDataFuzz memory p) public {
     uint8 entry = uint8(bound(p.entryPoint, 0, 1));
 
-    uint256 before = IERC20(token18).balanceOf(address(callee));
+    uint256 before = _calleeBalance();
 
     _submitWithClientData(entry, p.clientData, p.clientData, 0);
 
-    assertEq(IERC20(token18).balanceOf(address(callee)) - before, AMOUNT, 'the order settled');
+    assertEq(_calleeBalance() - before, AMOUNT, 'the order settled');
   }
 
   /**
@@ -147,12 +143,12 @@ contract EventsTest is SettlementBase {
     uint8 entry = uint8(bound(p.entryPoint, 0, 1));
     bytes memory submitted = abi.encodePacked(p.clientData, uint8(0x01));
 
-    uint256 before = IERC20(token18).balanceOf(address(callee));
+    uint256 before = _calleeBalance();
     uint256 ownerBefore = IERC20(token18).balanceOf(owner);
 
     _submitWithClientData(entry, p.clientData, submitted, 1);
 
-    assertEq(IERC20(token18).balanceOf(address(callee)), before, 'nothing reached the callee');
+    assertEq(_calleeBalance(), before, 'nothing reached the callee');
     assertEq(IERC20(token18).balanceOf(owner), ownerBefore, 'nothing left the owner');
   }
 
@@ -199,7 +195,7 @@ contract EventsTest is SettlementBase {
       vm.prank(solver);
       hub.settleOrder(order, auth, solution, '', false);
     } else {
-      bytes memory signature = _signWitness(signed);
+      bytes memory signature = _signPermit2Order(signed);
       _expectClientData(matches, PERMIT2_INVALID_SIGNER, order, submittedData);
       vm.prank(solver);
       hub.settleOrder(order, signature, solution, '', false);
@@ -216,7 +212,7 @@ contract EventsTest is SettlementBase {
     order = _openAhv2Order(
       orderAuthenticator,
       _allowances(_tokenAllowance(AMOUNT)),
-      new HookParams[](0),
+      _noHooks(),
       _calls(_calleeCall(0, hex'01')),
       nonce,
       vm.getBlockTimestamp() + 1 hours
@@ -266,8 +262,8 @@ contract EventsTest is SettlementBase {
       ANY,
       allowances,
       _approvals(_nftApproval()),
-      new HookParams[](0),
-      new CallParams[](0),
+      _noHooks(),
+      _noCalls(),
       ANY,
       0,
       vm.getBlockTimestamp() + 1 hours

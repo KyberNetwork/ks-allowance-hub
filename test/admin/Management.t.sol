@@ -103,7 +103,12 @@ contract ManagementTest is SignerAuthenticatorBase {
     // The construction event is only observable on a fresh deployment
     vm.recordLogs();
     new KSAllowanceHubV2(
-      admin, _one(guardian), _one(rescuer), _one(address(callee)), permit2, multicall3
+      admin,
+      _addresses(guardian),
+      _addresses(rescuer),
+      _addresses(address(callee)),
+      permit2,
+      multicall3
     );
     Vm.Log[] memory logs = vm.getRecordedLogs();
 
@@ -408,14 +413,5 @@ contract ManagementTest is SignerAuthenticatorBase {
     assertFalse(hub.hasRole(ADMIN_ROLE, relayer), 'nothing granted');
     assertTrue(hub.hasRole(ADMIN_ROLE, admin), 'nothing revoked');
     assertEq(hub.owner(), admin, 'owner unchanged');
-  }
-
-  // -----------------------------------------------------------------------------------------------
-  // Helpers
-  // -----------------------------------------------------------------------------------------------
-
-  function _one(address a) internal pure returns (address[] memory out) {
-    out = new address[](1);
-    out[0] = a;
   }
 }

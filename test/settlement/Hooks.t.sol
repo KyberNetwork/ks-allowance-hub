@@ -22,8 +22,6 @@ import {HookParams} from 'src/types/HookParams.sol';
  * @dev The hooks bracket the order's calls on both entry points.
  */
 contract HooksTest is SettlementBase {
-  uint160 internal constant AMOUNT = 5 ether;
-
   /// @dev Permit2 does not expose this in the vendored interface, so it is written out here
   bytes4 internal constant PERMIT2_INVALID_SIGNER = bytes4(keccak256('InvalidSigner()'));
 
@@ -130,7 +128,7 @@ contract HooksTest is SettlementBase {
       80,
       deadline
     );
-    bytes memory signature = _signWitness(order);
+    bytes memory signature = _signPermit2Order(order);
 
     vm.prank(solver);
     hub.settleOrder(order, signature, _defaultSolution(order), '', false);
@@ -357,13 +355,13 @@ contract HooksTest is SettlementBase {
 
     vm.prank(solver);
     hub.settleOrder(
-      signedPermit, _signWitness(signedPermit), _defaultSolution(signedPermit), '', false
+      signedPermit, _signPermit2Order(signedPermit), _defaultSolution(signedPermit), '', false
     );
     assertEq(hook.sequenceLength(), 2, 'the order as signed settled');
 
     AHV2Order memory signedFlags =
       _openAhv2Order(permit2, erc20s, _hooks(_hook(hook, HOOK_BOTH)), _noCalls(), 101, expiration);
-    bytes memory signature = _signWitness(signedFlags);
+    bytes memory signature = _signPermit2Order(signedFlags);
     AHV2Order memory changedFlags =
       _openAhv2Order(permit2, erc20s, _hooks(_hook(hook, HOOK_AFTER)), _noCalls(), 101, expiration);
     AHV2Solution memory changedFlagsRoute = _defaultSolution(changedFlags);

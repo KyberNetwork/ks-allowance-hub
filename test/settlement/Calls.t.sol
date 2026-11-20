@@ -32,8 +32,6 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  * rather than imported: a role read from the hub would agree with a wrong one.
  */
 contract CallsTest is SettlementBase {
-  uint160 internal constant AMOUNT = 5 ether;
-
   /// @dev Permit2 does not expose this in the vendored interface, so it is written out here
   bytes4 internal constant PERMIT2_INVALID_SIGNER = bytes4(keccak256('InvalidSigner()'));
 
@@ -97,14 +95,14 @@ contract CallsTest is SettlementBase {
       _ahv2Order(permit2, ANY, erc20s, _noNfts(), _noHooks(), signedCalls, ANY, 70, expiration);
 
     vm.prank(solver);
-    hub.settleOrder(control, _signWitness(control), _defaultSolution(control), '', false);
+    hub.settleOrder(control, _signPermit2Order(control), _defaultSolution(control), '', false);
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the signed call settled');
     assertEq(callee.callCount(), 1, 'the signed call ran once');
 
     AHV2Order memory signed =
       _ahv2Order(permit2, ANY, erc20s, _noNfts(), _noHooks(), signedCalls, ANY, 71, expiration);
-    bytes memory signature = _signWitness(signed);
+    bytes memory signature = _signPermit2Order(signed);
 
     AHV2Order memory tampered =
       _ahv2Order(permit2, ANY, erc20s, _noNfts(), _noHooks(), swappedCalls, ANY, 71, expiration);
@@ -179,9 +177,8 @@ contract CallsTest is SettlementBase {
     uint256 callee2Before = address(callee2).balance;
     vm.deal(owner, 3);
 
-    AHV2Order memory order = _openAhv2Order(
-      new ERC20Allowance[](0), new HookParams[](0), calls, 0, vm.getBlockTimestamp()
-    );
+    AHV2Order memory order =
+      _openAhv2Order(new ERC20Allowance[](0), _noHooks(), calls, 0, vm.getBlockTimestamp());
 
     vm.recordLogs();
 
@@ -216,7 +213,7 @@ contract CallsTest is SettlementBase {
 
     AHV2Order memory order = _openAhv2Order(
       _allowances(_tokenAllowance(AMOUNT)),
-      new HookParams[](0),
+      _noHooks(),
       _calls(
         _calleeCall(0, hex'01'), CallParams({callee: address(stranger), value: 0, data: hex'01'})
       ),

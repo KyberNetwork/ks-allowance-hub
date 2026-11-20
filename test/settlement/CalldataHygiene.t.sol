@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {SignerAuthenticatorBase} from 'test/base/SignerAuthenticatorBase.sol';
+import {SettlementBase} from 'test/settlement/base/SettlementBase.sol';
 
 import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
 
 import {AHV2Order} from 'src/types/AHV2Order.sol';
 import {CallParams} from 'src/types/CallParams.sol';
-import {HookParams} from 'src/types/HookParams.sol';
 
 /**
  * @title CalldataHygieneTest
@@ -17,9 +16,7 @@ import {HookParams} from 'src/types/HookParams.sol';
  * word carrying dirty high bits. These cases hold that: a path that stopped reading the
  * fields, or only needed the digest, would let a dirty payload through and fail here.
  */
-contract CalldataHygieneTest is SignerAuthenticatorBase {
-  uint160 internal constant AMOUNT = 5 ether;
-
+contract CalldataHygieneTest is SettlementBase {
   /// DIRTY-01 — a dirty token address word is refused for the zero authenticator, owner submitted
   function test_DIRTY_01_delegatedOwnerSubmitted() public {
     AHV2Order memory order =
@@ -43,7 +40,7 @@ contract CalldataHygieneTest is SignerAuthenticatorBase {
       relayer,
       abi.encodeCall(
         IKSAllowanceHubV2.settleOrder,
-        (order, _signWitness(order), _defaultSolution(order), '', false)
+        (order, _signPermit2Order(order), _defaultSolution(order), '', false)
       )
     );
   }
@@ -82,24 +79,6 @@ contract CalldataHygieneTest is SignerAuthenticatorBase {
           false
         )
       )
-    );
-  }
-
-  /// @dev The sentinel approver, so no approval signature stands between the settlement and the
-  /// hash
-  function _order(
-    address orderAuthenticator,
-    CallParams[] memory calls,
-    uint256 nonce,
-    uint256 expiration
-  ) internal view returns (AHV2Order memory) {
-    return _openAhv2Order(
-      orderAuthenticator,
-      _allowances(_tokenAllowance(AMOUNT)),
-      new HookParams[](0),
-      calls,
-      nonce,
-      expiration
     );
   }
 }

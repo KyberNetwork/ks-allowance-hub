@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 import {IERC1271} from 'openzeppelin-contracts/contracts/interfaces/IERC1271.sol';
-import {ERC1155} from 'openzeppelin-contracts/contracts/token/ERC1155/ERC1155.sol';
 import {ERC20} from 'openzeppelin-contracts/contracts/token/ERC20/ERC20.sol';
 import {ERC20Permit} from 'openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Permit.sol';
 import {ERC721} from 'openzeppelin-contracts/contracts/token/ERC721/ERC721.sol';
@@ -36,12 +35,6 @@ contract ERC20Mock is ERC20, ERC20Permit {
 contract ERC721Mock is ERC721('Mock NFT', 'MNFT') {
   function mint(address to, uint256 tokenId) external {
     _mint(to, tokenId);
-  }
-}
-
-contract ERC1155Mock is ERC1155('') {
-  function mint(address to, uint256 id, uint256 amount) external {
-    _mint(to, id, amount, '');
   }
 }
 

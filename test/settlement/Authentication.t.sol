@@ -32,21 +32,11 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  * bound everybody else, and `ORD-04` covers the account the order draws on.
  */
 contract AuthenticationTest is SettlementBase {
-  uint160 internal constant AMOUNT = 5 ether;
-
   /// @dev The amount moved by the cases of `ORD-03b` and `ORD-04`
   uint160 internal constant PARTY_AMOUNT = 1 ether;
 
   /// @dev Permit2 does not expose this in the vendored interface, so it is written out here
   bytes4 internal constant PERMIT2_INVALID_SIGNER = bytes4(keccak256('InvalidSigner()'));
-
-  address internal approver;
-  uint256 internal approverKey;
-
-  function setUp() public override {
-    super.setUp();
-    (approver, approverKey) = makeAddrAndKey('solution approver');
-  }
 
   // -------------------------------------------------------------------------------------------
   // AUTH-01b / AUTH-04 / AUTH-07 — the Permit2 signature entry point
@@ -127,7 +117,7 @@ contract AuthenticationTest is SettlementBase {
 
     AHV2Order memory pinned =
       _ahv2Order(permit2, solver, erc20s, _noNfts(), _noHooks(), _noCalls(), ANY, 3, expiration);
-    bytes memory matching = _signWitness(pinned);
+    bytes memory matching = _signPermit2Order(pinned);
 
     uint256 before = _calleeBalance();
 
@@ -137,7 +127,9 @@ contract AuthenticationTest is SettlementBase {
 
     AHV2Order memory openOrder =
       _openAhv2Order(permit2, erc20s, _noHooks(), _noCalls(), 4, expiration);
-    bytes memory forTheSolver = _signWitness(openOrder, solver, openOrder.calls, ANY);
+    bytes memory forTheSolver = _signPermit2Order(
+      _ahv2Order(permit2, solver, erc20s, _noNfts(), _noHooks(), _noCalls(), ANY, 4, expiration)
+    );
     AHV2Solution memory solution = _defaultSolution(openOrder);
 
     vm.prank(solver);
@@ -158,7 +150,7 @@ contract AuthenticationTest is SettlementBase {
     AHV2Order memory order = _ahv2Order(
       permit2, ANY, erc20s, _noNfts(), hooks, _calls(_calleeCall(0, hex'01')), ANY, 30, expiration
     );
-    bytes memory signature = _signWitness(order);
+    bytes memory signature = _signPermit2Order(order);
 
     uint256 before = _calleeBalance();
 
@@ -186,7 +178,7 @@ contract AuthenticationTest is SettlementBase {
       _ahv2Order(permit2, ANY, erc20s, _noNfts(), _noHooks(), calls, approver, 31, deadline);
     AHV2Solution memory solution = _solution(named, deadline);
     bytes memory approval = _signSolutionApproval(approverKey, named, solution);
-    bytes memory matchingWitness = _signWitness(named);
+    bytes memory matchingWitness = _signPermit2Order(named);
 
     uint256 before = _calleeBalance();
 
@@ -200,7 +192,9 @@ contract AuthenticationTest is SettlementBase {
     bytes memory approval2 = _signSolutionApproval(approverKey, swapped, solution2);
     // the owner signed a witness that specifies no approver, so the approver in the order is not
     // the one signed
-    bytes memory openWitness = _signWitness(swapped, swapped.exclusiveCaller, swapped.calls, ANY);
+    bytes memory openWitness = _signPermit2Order(
+      _ahv2Order(permit2, ANY, erc20s, _noNfts(), _noHooks(), calls, ANY, 32, deadline)
+    );
 
     vm.prank(solver);
     vm.expectRevert(PERMIT2_INVALID_SIGNER);
@@ -238,7 +232,7 @@ contract AuthenticationTest is SettlementBase {
       61,
       expiration
     );
-    bytes memory pinnedSig = _signWitness(pinned);
+    bytes memory pinnedSig = _signPermit2Order(pinned);
 
     uint256 before = _calleeBalance();
     vm.prank(solver);
@@ -256,7 +250,7 @@ contract AuthenticationTest is SettlementBase {
       62,
       expiration
     );
-    bytes memory againSig = _signWitness(pinnedAgain);
+    bytes memory againSig = _signPermit2Order(pinnedAgain);
 
     vm.prank(relayer);
     vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.NotExclusiveCaller.selector, relayer));
@@ -270,7 +264,7 @@ contract AuthenticationTest is SettlementBase {
 
     AHV2Order memory openOrder =
       _openAhv2Order(permit2, erc20s, _noHooks(), _calls(_calleeCall(0, hex'01')), 63, expiration);
-    bytes memory openSig = _signWitness(openOrder);
+    bytes memory openSig = _signPermit2Order(openOrder);
 
     before = _calleeBalance();
     vm.prank(relayer);
@@ -430,7 +424,7 @@ contract AuthenticationTest is SettlementBase {
     AHV2Order memory order = _openAhv2Order(
       permit2, _allowances(_tokenAllowance(AMOUNT)), _noHooks(), _noCalls(), 44, expiration
     );
-    bytes memory witness = _signWitness(order);
+    bytes memory witness = _signPermit2Order(order);
 
     uint160 permit2Before = _permit2Allowance(token18);
     uint256 before = _calleeBalance();
@@ -552,8 +546,8 @@ contract AuthenticationTest is SettlementBase {
     AHV2Order memory order = _openAhv2Order(
       address(authenticator),
       _allowances(_tokenAllowance(PARTY_AMOUNT)),
-      new HookParams[](0),
-      new CallParams[](0),
+      _noHooks(),
+      _noCalls(),
       75,
       vm.getBlockTimestamp() + 1 hours
     );
@@ -579,8 +573,8 @@ contract AuthenticationTest is SettlementBase {
   function test_ORD_03b_delegatedEntryPointHonoursTheExclusiveCaller() public {
     _delegateSignerThroughHub(signer);
     ERC20Allowance[] memory allowances = _allowances(_tokenAllowance(PARTY_AMOUNT));
-    ERC721Approval[] memory noNfts = new ERC721Approval[](0);
-    HookParams[] memory noHooks = new HookParams[](0);
+    ERC721Approval[] memory noNfts = _noNfts();
+    HookParams[] memory noHooks = _noHooks();
     CallParams[] memory calls = _calls(_calleeCall(0, hex'01'));
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
 

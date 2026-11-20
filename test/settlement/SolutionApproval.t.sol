@@ -22,18 +22,8 @@ import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
  * call is not subject to it.
  */
 contract SolutionApprovalTest is SettlementBase {
-  uint160 internal constant AMOUNT = 5 ether;
-
   /// @dev A solution nonce away from word 0 and bit 0, so a wrong word or bit is observable
   uint256 internal constant SOLUTION_NONCE = 0x107;
-
-  address internal approver;
-  uint256 internal approverKey;
-
-  function setUp() public override {
-    super.setUp();
-    (approver, approverKey) = makeAddrAndKey('solution approver');
-  }
 
   // -------------------------------------------------------------------------------------------
   // SOL — the solution approval
@@ -124,7 +114,7 @@ contract SolutionApprovalTest is SettlementBase {
       orderExpiration
     );
     forRelay.authenticator = permit2;
-    bytes memory witness = _signWitness(forRelay);
+    bytes memory witness = _signPermit2Order(forRelay);
 
     vm.prank(relayer);
     vm.expectRevert(_solutionExpired(stale));
@@ -153,7 +143,7 @@ contract SolutionApprovalTest is SettlementBase {
     );
     AHV2Solution memory solution = _solution(named, SOLUTION_NONCE, deadline);
     bytes memory approval = _signSolutionApproval(approverKey, named, solution);
-    bytes memory witness = _signWitness(named);
+    bytes memory witness = _signPermit2Order(named);
 
     uint256 before = _calleeBalance();
     vm.prank(relayer);
@@ -381,7 +371,7 @@ contract SolutionApprovalTest is SettlementBase {
     );
     AHV2Solution memory solution = _defaultSolution(order, 6);
     bytes memory approval = _signSolutionApproval(approverKey, order, solution);
-    bytes memory permitSig = _signWitness(order);
+    bytes memory permitSig = _signPermit2Order(order);
 
     assertEq(hub.nonces(lNonceKey(approver), 0), 0, 'nothing is spent before the settlement');
 
@@ -494,7 +484,7 @@ contract SolutionApprovalTest is SettlementBase {
     uint256 before = _calleeBalance();
 
     if (f.viaPermit2) {
-      bytes memory witnessSig = _signWitness(order);
+      bytes memory witnessSig = _signPermit2Order(order);
       vm.prank(solver);
       vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
       hub.settleOrder(order, witnessSig, solution, garbage, false);

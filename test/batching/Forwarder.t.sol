@@ -23,9 +23,7 @@ import {AHV2AuthenticatorBase} from 'src/base/AHV2AuthenticatorBase.sol';
 
 import {AHV2Order} from 'src/types/AHV2Order.sol';
 import {AHV2Solution} from 'src/types/AHV2Solution.sol';
-import {CallParams} from 'src/types/CallParams.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
-import {HookParams} from 'src/types/HookParams.sol';
 
 import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
 
@@ -51,8 +49,6 @@ contract ForwarderTest is SignerAuthenticatorBase {
   // Literal type strings
   // -----------------------------------------------------------------------------------------------
 
-  string internal constant L_EIP2612_PERMIT =
-    'Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)';
   string internal constant L_DAI_PERMIT =
     'Permit(address holder,address spender,uint256 nonce,uint256 expiry,bool allowed)';
   string internal constant L_ERC721_PERMIT =
@@ -86,7 +82,6 @@ contract ForwarderTest is SignerAuthenticatorBase {
 
   ERC20DaiPermitMock internal daiToken;
   ERC20Mock internal permitToken;
-  ERC20Mock internal permitToken2;
   ERC721PermitV3Mock internal nftV3;
   ERC721PermitV4Mock internal nftV4;
 
@@ -100,15 +95,24 @@ contract ForwarderTest is SignerAuthenticatorBase {
   function setUp() public override {
     super.setUp();
 
-    daiToken = new ERC20DaiPermitMock('Dai Flavoured Token');
     permitToken = new ERC20Mock('Permit Token', 'PT', 18);
-    permitToken2 = new ERC20Mock('Permit Token Two', 'PT2', 18);
     permitToken.mint(owner, 1000 ether);
-    permitToken2.mint(owner, 1000 ether);
+  }
 
+  /// @dev Deploys the DAI-style permit token
+  function _deployDai() internal {
+    daiToken = new ERC20DaiPermitMock('Dai Flavoured Token');
+  }
+
+  /// @dev Deploys the Uniswap v3 permit NFT and mints `PERMIT_NFT_ID` to the owner
+  function _deployNftV3() internal {
     nftV3 = new ERC721PermitV3Mock();
-    nftV4 = new ERC721PermitV4Mock();
     nftV3.mint(owner, PERMIT_NFT_ID);
+  }
+
+  /// @dev Deploys the Uniswap v4 permit NFT and mints `PERMIT_NFT_ID` to the owner
+  function _deployNftV4() internal {
+    nftV4 = new ERC721PermitV4Mock();
     nftV4.mint(owner, PERMIT_NFT_ID);
   }
 
@@ -122,13 +126,14 @@ contract ForwarderTest is SignerAuthenticatorBase {
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     bytes[] memory data = new bytes[](1);
-    data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
+    data[0] =
+      _erc2612PermitCall('Permit Token', address(permitToken), address(hub), value, 0, deadline);
 
     // anyone may relay someone else's permit: the signature inside is the authorisation, and
     // Multicall3, not the relayer, is the `msg.sender` the token sees
     vm.prank(relayer);
     IMulticall3.Result[] memory results =
-      hub.forwardCalls(_call3s(_one(address(permitToken)), data, 0));
+      hub.forwardCalls(_call3s(_addresses(address(permitToken)), data, 0));
 
     assertEq(permitToken.allowance(owner, address(hub)), value, 'allowance');
     assertEq(permitToken.nonces(owner), 1, 'nonce consumed');
@@ -141,29 +146,31 @@ contract ForwarderTest is SignerAuthenticatorBase {
    * @dev The `allowed` flag is all-or-nothing, not an amount.
    */
   function test_PF_02_daiStylePermitForwarded() public {
-    uint256 nonce = _daiNonce(owner);
+    _deployDai();
+    uint256 nonce = daiToken.nonces(owner);
     uint256 expiry = vm.getBlockTimestamp() + 1 hours;
 
     bytes32 structHash = keccak256(
       abi.encode(keccak256(bytes(L_DAI_PERMIT)), owner, address(hub), nonce, expiry, true)
     );
     (uint8 v, bytes32 r, bytes32 s) =
-      vm.sign(ownerKey, lTypedDataHash(_daiDomainSeparator(), structHash));
+      vm.sign(ownerKey, lTypedDataHash(daiToken.DOMAIN_SEPARATOR(), structHash));
 
     bytes[] memory data = new bytes[](1);
     data[0] =
       abi.encodeWithSignature(S_DAI_PERMIT, owner, address(hub), nonce, expiry, true, v, r, s);
 
     vm.prank(relayer);
-    hub.forwardCalls(_call3s(_one(address(daiToken)), data, 0));
+    hub.forwardCalls(_call3s(_addresses(address(daiToken)), data, 0));
 
     // DAI reads `allowed` as all-or-nothing rather than as an amount
-    assertEq(_daiAllowance(owner, address(hub)), type(uint256).max, 'allowance');
-    assertEq(_daiNonce(owner), nonce + 1, 'nonce consumed');
+    assertEq(daiToken.allowance(owner, address(hub)), type(uint256).max, 'allowance');
+    assertEq(daiToken.nonces(owner), nonce + 1, 'nonce consumed');
   }
 
   /// PF-03 — a relayed Uniswap v3 ERC-721 permit with a v/r/s signature sets the approval
   function test_PF_03_erc721V3PermitForwarded() public {
+    _deployNftV3();
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     bytes32 structHash = keccak256(
@@ -180,7 +187,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
       abi.encodeWithSignature(S_ERC721_V3_PERMIT, address(hub), PERMIT_NFT_ID, deadline, v, r, s);
 
     vm.prank(relayer);
-    hub.forwardCalls(_call3s(_one(address(nftV3)), data, 0));
+    hub.forwardCalls(_call3s(_addresses(address(nftV3)), data, 0));
 
     assertEq(nftV3.getApproved(PERMIT_NFT_ID), address(hub), 'approval');
     assertEq(nftV3.nonces(PERMIT_NFT_ID), 1, 'nonce consumed');
@@ -188,6 +195,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
 
   /// PF-04 — a relayed Uniswap v4 ERC-721 permit with an unordered nonce sets the approval
   function test_PF_04_erc721V4PermitForwarded() public {
+    _deployNftV4();
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
     uint256 nonce = 99;
 
@@ -195,7 +203,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
     data[0] = _erc721V4Call(address(hub), deadline, nonce);
 
     vm.prank(relayer);
-    hub.forwardCalls(_call3s(_one(address(nftV4)), data, 0));
+    hub.forwardCalls(_call3s(_addresses(address(nftV4)), data, 0));
 
     assertEq(nftV4.getApproved(PERMIT_NFT_ID), address(hub), 'approval');
     assertTrue(nftV4.nonceUsed(owner, nonce), 'nonce consumed');
@@ -218,7 +226,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
     data[0] = abi.encodeWithSignature(S_PERMIT2_BATCH_PERMIT, owner, batch, signature);
 
     vm.prank(relayer);
-    hub.forwardCalls(_call3s(_one(permit2), data, 0));
+    hub.forwardCalls(_call3s(_addresses(permit2), data, 0));
 
     (uint160 allowed, uint48 storedExpiration, uint48 storedNonce) =
       IAllowanceTransfer(permit2).allowance(owner, token18, address(hub));
@@ -250,13 +258,13 @@ contract ForwarderTest is SignerAuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(_callFailed());
-    hub.forwardCalls(_call3s(_one(address(permitToken)), data, 0));
+    hub.forwardCalls(_call3s(_addresses(address(permitToken)), data, 0));
     assertEq(permitToken.balanceOf(relayer), relayerBalance, 'the relayer gained nothing');
 
     // with `allowFailure` true the same refusal is recorded as that entry's result
     vm.prank(relayer);
     IMulticall3.Result[] memory results =
-      hub.forwardCalls(_call3s(_one(address(permitToken)), data, 1));
+      hub.forwardCalls(_call3s(_addresses(address(permitToken)), data, 1));
     assertFalse(results[0].success, 'the entry is recorded as failed');
     assertEq(results[0].returnData, insufficient, 'the result holds the token revert data');
     assertEq(permitToken.balanceOf(relayer), relayerBalance, 'and the relayer still gained nothing');
@@ -275,10 +283,10 @@ contract ForwarderTest is SignerAuthenticatorBase {
 
       vm.prank(relayer);
       vm.expectRevert(_callFailed());
-      hub.forwardCalls(_call3s(_one(address(permitToken)), single, 0));
+      hub.forwardCalls(_call3s(_addresses(address(permitToken)), single, 0));
 
       vm.prank(relayer);
-      results = hub.forwardCalls(_call3s(_one(address(permitToken)), single, 1));
+      results = hub.forwardCalls(_call3s(_addresses(address(permitToken)), single, 1));
       assertEq(results.length, 1, 'the batch carried on');
       assertEq(results[0].returnData.length, 0, 'and the entry returned no data');
     }
@@ -294,7 +302,8 @@ contract ForwarderTest is SignerAuthenticatorBase {
     targets[1] = address(permitToken);
 
     bytes[] memory data = new bytes[](2);
-    data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
+    data[0] =
+      _erc2612PermitCall('Permit Token', address(permitToken), address(hub), value, 0, deadline);
     data[1] = abi.encodeCall(IERC20.transfer, (relayer, 1));
 
     vm.prank(relayer);
@@ -377,14 +386,15 @@ contract ForwarderTest is SignerAuthenticatorBase {
 
       if (valid) {
         uint256 value = (i + 1) * 1 ether;
-        data[i] = _erc2612Call(
+        data[i] = _erc2612PermitCall(
           'Permit Token', address(permitToken), address(hub), value, validCount, deadline
         );
         validCount++;
         lastValidValue = value;
       } else {
-        data[i] =
-          _erc2612Call('Permit Token', address(permitToken), address(hub), 1 ether, 0, expired);
+        data[i] = _erc2612PermitCall(
+          'Permit Token', address(permitToken), address(hub), 1 ether, 0, expired
+        );
         // one failure that is not allowed reverts the whole batch
         if ((f.allowFailure >> i) & 1 == 0) {
           bubbles = true;
@@ -458,7 +468,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
 
     vm.prank(relayer);
     IMulticall3.Result[] memory results =
-      hub.forwardCalls(_call3s(_one(address(authenticator)), data, 0));
+      hub.forwardCalls(_call3s(_addresses(address(authenticator)), data, 0));
 
     assertTrue(authenticator.approvedSigners(owner, signer), 'the signer is approved');
     assertEq(
@@ -493,7 +503,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
       IAHV2Authenticator.updateAuthentication,
       (owner, _approveSigner(recipient), nonce, deadline, noSignature)
     );
-    address[] memory targets = _one(address(authenticator));
+    address[] memory targets = _addresses(address(authenticator));
 
     vm.prank(owner);
     IMulticall3.Result[] memory results = hub.forwardCalls(_call3s(targets, data, 1));
@@ -532,7 +542,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
     );
 
     vm.prank(relayer);
-    hub.forwardCalls(_call3s(_one(address(hub)), data, 0));
+    hub.forwardCalls(_call3s(_addresses(address(hub)), data, 0));
 
     assertTrue(hub.authDelegated(owner, address(authenticator)), 'delegated');
     assertEq(
@@ -553,7 +563,8 @@ contract ForwarderTest is SignerAuthenticatorBase {
       IAuthDelegator.updateDelegation, (owner, address(authenticator), true, '', 0, deadline, '')
     );
     vm.prank(owner);
-    IMulticall3.Result[] memory results = hub.forwardCalls(_call3s(_one(address(hub)), data, 1));
+    IMulticall3.Result[] memory results =
+      hub.forwardCalls(_call3s(_addresses(address(hub)), data, 1));
     assertFalse(results[0].success, 'the relayed call failed');
     assertEq(
       results[0].returnData,
@@ -574,14 +585,13 @@ contract ForwarderTest is SignerAuthenticatorBase {
   function test_FWD_16_authenticatorRefusesMulticall3OnHubOnlyCalls() public {
     bytes memory payload = _encodeSigner(relayer);
 
-    address[] memory targets = _one(address(authenticator));
+    address[] memory targets = _addresses(address(authenticator));
 
     bytes[] memory initData = new bytes[](1);
     initData[0] = abi.encodeCall(IAHV2Authenticator.initAuthentication, (owner, payload));
 
-    AHV2Order memory order = _openAhv2Order(
-      new ERC20Allowance[](0), new HookParams[](0), new CallParams[](0), 0, vm.getBlockTimestamp()
-    );
+    AHV2Order memory order =
+      _openAhv2Order(new ERC20Allowance[](0), _noHooks(), _noCalls(), 0, vm.getBlockTimestamp());
 
     AHV2Solution memory solution;
     bytes[] memory authenticateData = new bytes[](1);
@@ -644,7 +654,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
     data[0] = abi.encodeWithSignature(S_PERMIT2_SINGLE_PERMIT, owner, single, signature);
 
     vm.prank(relayer);
-    hub.forwardCalls(_call3s(_one(permit2), data, 0));
+    hub.forwardCalls(_call3s(_addresses(permit2), data, 0));
 
     (uint160 allowed, uint48 storedExpiration, uint48 storedNonce) =
       IAllowanceTransfer(permit2).allowance(owner, token6, address(hub));
@@ -677,13 +687,14 @@ contract ForwarderTest is SignerAuthenticatorBase {
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     bytes[] memory data = new bytes[](1);
-    data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
+    data[0] =
+      _erc2612PermitCall('Permit Token', address(permitToken), address(hub), value, 0, deadline);
 
     vm.prank(guardian);
     hub.pause();
 
     vm.prank(relayer);
-    hub.forwardCalls(_call3s(_one(address(permitToken)), data, 0));
+    hub.forwardCalls(_call3s(_addresses(address(permitToken)), data, 0));
 
     assertTrue(hub.paused(), 'the hub is still paused');
     assertEq(permitToken.allowance(owner, address(hub)), value, 'and the permit was relayed');
@@ -701,13 +712,14 @@ contract ForwarderTest is SignerAuthenticatorBase {
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     bytes[] memory data = new bytes[](1);
-    data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
+    data[0] =
+      _erc2612PermitCall('Permit Token', address(permitToken), address(hub), value, 0, deadline);
 
     vm.deal(relayer, 1 ether);
     assertEq(address(hub).balance, 0, 'the hub starts empty');
 
     vm.prank(relayer);
-    hub.forwardCalls{value: 1 ether}(_call3s(_one(address(permitToken)), data, 0));
+    hub.forwardCalls{value: 1 ether}(_call3s(_addresses(address(permitToken)), data, 0));
 
     assertEq(address(hub).balance, 1 ether, 'every wei of it stayed behind');
     assertEq(multicall3.balance, 0, 'and none reached Multicall3');
@@ -734,7 +746,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
     AHV2Order memory order = _openAhv2Order(
       permit2,
       _allowances(ERC20Allowance({token: token18, amount: amount})),
-      new HookParams[](0),
+      _noHooks(),
       _calls(_calleeCall(0, hex'01')),
       nonce,
       deadline
@@ -743,7 +755,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
     reentrant.setReentry(
       abi.encodeCall(
         IKSAllowanceHubV2.settleOrder,
-        (order, _signWitness(order), _defaultSolution(order), '', false)
+        (order, _signPermit2Order(order), _defaultSolution(order), '', false)
       )
     );
 
@@ -754,15 +766,13 @@ contract ForwarderTest is SignerAuthenticatorBase {
       S_EIP2612_PERMIT, owner, address(hub), uint256(1), deadline, uint8(27), bytes32(0), bytes32(0)
     );
 
-    uint256 before = IERC20(token18).balanceOf(address(callee));
+    uint256 before = _calleeBalance();
 
     vm.prank(relayer);
-    hub.forwardCalls(_call3s(_one(address(reentrant)), data, 0));
+    hub.forwardCalls(_call3s(_addresses(address(reentrant)), data, 0));
 
     assertEq(reentrant.permitCount(), 1, '`forwardCalls` did relay the permit');
-    assertEq(
-      IERC20(token18).balanceOf(address(callee)) - before, amount, 'the reentrant order settled'
-    );
+    assertEq(_calleeBalance() - before, amount, 'the reentrant order settled');
     assertEq(callee.callCount(), 1, 'and its call ran');
     assertEq(callee.seenMsgSender(), owner, 'with the owner as the sender while it ran');
   }
@@ -773,11 +783,12 @@ contract ForwarderTest is SignerAuthenticatorBase {
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
 
     bytes[] memory data = new bytes[](1);
-    data[0] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 0, deadline);
+    data[0] =
+      _erc2612PermitCall('Permit Token', address(permitToken), address(hub), value, 0, deadline);
 
     vm.prank(relayer);
     IMulticall3.Result[] memory results =
-      IMulticall3(multicall3).aggregate3(_call3s(_one(address(permitToken)), data, 0));
+      IMulticall3(multicall3).aggregate3(_call3s(_addresses(address(permitToken)), data, 0));
 
     assertEq(permitToken.allowance(owner, address(hub)), value, 'allowance');
     assertEq(permitToken.nonces(owner), 1, 'nonce consumed');
@@ -787,7 +798,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
     // own error, whatever ran ahead of it
     bytes[] memory failing = new bytes[](2);
     failing[0] =
-      _erc2612Call('Permit Token', address(permitToken), address(hub), value, 1, deadline);
+      _erc2612PermitCall('Permit Token', address(permitToken), address(hub), value, 1, deadline);
     failing[1] = abi.encodeCall(IERC20.transfer, (relayer, 1));
 
     address[] memory targets = new address[](2);
@@ -817,7 +828,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
     );
 
     vm.prank(relayer);
-    hub.forwardCalls(_call3s(_one(address(recorder)), data, 0));
+    hub.forwardCalls(_call3s(_addresses(address(recorder)), data, 0));
 
     assertEq(recorder.permitCount(), 1, 'the target was called once');
     assertEq(recorder.lastCaller(), multicall3, 'Multicall3 is the caller');
@@ -877,46 +888,16 @@ contract ForwarderTest is SignerAuthenticatorBase {
     targets[1] = address(permitToken);
 
     data = new bytes[](2);
-    data[0] = _erc2612Call(
+    data[0] = _erc2612PermitCall(
       'Permit Token', address(permitToken), address(hub), value, 0, vm.getBlockTimestamp() + 1 hours
     );
-    data[1] = _erc2612Call('Permit Token', address(permitToken), address(hub), value, 1, expired);
+    data[1] =
+      _erc2612PermitCall('Permit Token', address(permitToken), address(hub), value, 1, expired);
   }
 
   /// @dev The revert of Multicall3 when a call whose `allowFailure` is false fails
   function _callFailed() internal pure returns (bytes memory) {
     return abi.encodeWithSignature('Error(string)', 'Multicall3: call failed');
-  }
-
-  function _erc2612Digest(
-    string memory name,
-    address token,
-    address tokenOwner,
-    address spender,
-    uint256 value,
-    uint256 nonce,
-    uint256 deadline
-  ) internal view returns (bytes32) {
-    bytes32 structHash = keccak256(
-      abi.encode(keccak256(bytes(L_EIP2612_PERMIT)), tokenOwner, spender, value, nonce, deadline)
-    );
-    // OpenZeppelin's ERC20Permit takes its domain name from the token and versions it '1'
-    return lTypedDataHash(lDomainSeparator(name, '1', token), structHash);
-  }
-
-  /// @dev A whole EIP-2612 `permit` call, ready for `forwardCalls` to relay
-  function _erc2612Call(
-    string memory name,
-    address token,
-    address spender,
-    uint256 value,
-    uint256 nonce,
-    uint256 deadline
-  ) internal view returns (bytes memory) {
-    (uint8 v, bytes32 r, bytes32 s) = vm.sign(
-      ownerKey, _erc2612Digest(name, token, owner, spender, value, nonce, deadline)
-    );
-    return abi.encodeWithSignature(S_EIP2612_PERMIT, owner, spender, value, deadline, v, r, s);
   }
 
   function _erc721V4Call(address spender, uint256 deadline, uint256 nonce)
@@ -982,31 +963,5 @@ contract ForwarderTest is SignerAuthenticatorBase {
     batch = IAllowanceTransfer.PermitBatch({
       details: details, spender: spender, sigDeadline: sigDeadline
     });
-  }
-
-  function _daiDomainSeparator() internal view returns (bytes32) {
-    (bool ok, bytes memory data) =
-      address(daiToken).staticcall(abi.encodeWithSignature('DOMAIN_SEPARATOR()'));
-    require(ok, 'dai domain');
-    return abi.decode(data, (bytes32));
-  }
-
-  function _daiNonce(address holder) internal view returns (uint256) {
-    (bool ok, bytes memory data) =
-      address(daiToken).staticcall(abi.encodeWithSignature('nonces(address)', holder));
-    require(ok, 'dai nonce');
-    return abi.decode(data, (uint256));
-  }
-
-  function _daiAllowance(address holder, address spender) internal view returns (uint256) {
-    (bool ok, bytes memory data) = address(daiToken)
-      .staticcall(abi.encodeWithSignature('allowance(address,address)', holder, spender));
-    require(ok, 'dai allowance');
-    return abi.decode(data, (uint256));
-  }
-
-  function _one(address a) internal pure returns (address[] memory out) {
-    out = new address[](1);
-    out[0] = a;
   }
 }

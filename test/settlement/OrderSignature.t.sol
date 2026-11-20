@@ -26,8 +26,6 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
  * flow respectively.
  */
 contract OrderSignatureTest is SettlementBase {
-  uint160 internal constant AMOUNT = 5 ether;
-
   /// @dev Permit2 does not expose these in the vendored interface, so they are written out here
   bytes4 internal constant PERMIT2_INVALID_SIGNER = bytes4(keccak256('InvalidSigner()'));
   bytes4 internal constant PERMIT2_INVALID_SIGNATURE_LENGTH =
@@ -55,20 +53,12 @@ contract OrderSignatureTest is SettlementBase {
     )
   );
 
-  address internal approver;
-  uint256 internal approverKey;
-
   /// @dev The parameters of {testFuzz_SIG_FUZZ_relayedSignedOrderSettlesExactly}
   struct SignedOrderFuzz {
     address submitter;
     uint256 nonce;
     uint160 amount;
     uint32 ttl;
-  }
-
-  function setUp() public override {
-    super.setUp();
-    (approver, approverKey) = makeAddrAndKey('solution approver');
   }
 
   // -------------------------------------------------------------------------------------------
@@ -480,7 +470,7 @@ contract OrderSignatureTest is SettlementBase {
       21,
       vm.getBlockTimestamp() + 1 hours
     );
-    bytes memory witness = _signWitness(order);
+    bytes memory witness = _signPermit2Order(order);
     uint256 before = _calleeBalance();
 
     vm.expectCall(permit2, abi.encodeWithSelector(IAHV2Authenticator.authenticate.selector), 0);
@@ -532,7 +522,7 @@ contract OrderSignatureTest is SettlementBase {
       23,
       vm.getBlockTimestamp() + 1 hours
     );
-    bytes memory witness = _signWitness(order);
+    bytes memory witness = _signPermit2Order(order);
     uint256 before = _calleeBalance();
 
     vm.prank(relayer);
@@ -588,7 +578,7 @@ contract OrderSignatureTest is SettlementBase {
 
     uint256 before = _calleeBalance();
     vm.prank(relayer);
-    hub.settleOrder(order, _signWitness(order), solution, '', false);
+    hub.settleOrder(order, _signPermit2Order(order), solution, '', false);
     assertEq(_calleeBalance() - before, AMOUNT, 'the witness signature settles');
   }
 
@@ -625,7 +615,7 @@ contract OrderSignatureTest is SettlementBase {
     if (railAuthenticator == address(0)) {
       credential = _signOrder(order);
     } else if (railAuthenticator == permit2) {
-      credential = _signWitness(order);
+      credential = _signPermit2Order(order);
     } else {
       credential = _authOf(order);
     }

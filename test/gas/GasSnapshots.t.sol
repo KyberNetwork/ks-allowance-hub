@@ -11,18 +11,8 @@ import {AHV2Solution} from 'src/types/AHV2Solution.sol';
  * @notice Gas of each settlement and delegation path, recorded in `snapshots/`
  */
 contract GasSnapshotsTest is SettlementBase {
-  uint160 internal constant AMOUNT = 5 ether;
-
   string internal constant SETTLE_GROUP = 'settleOrder';
   string internal constant DELEGATION_GROUP = 'updateDelegation';
-
-  address internal approver;
-  uint256 internal approverKey;
-
-  function setUp() public override {
-    super.setUp();
-    (approver, approverKey) = makeAddrAndKey('solution approver');
-  }
 
   /// @dev The owner submits an order drawing on the allowance to the hub
   function test_GAS_01_ownerTransfer() public {
@@ -83,7 +73,7 @@ contract GasSnapshotsTest is SettlementBase {
   function test_GAS_05_relayedPermit2Witness() public {
     AHV2Order memory order = _order(permit2, 61);
     AHV2Solution memory solution = _defaultSolution(order);
-    bytes memory witnessSig = _signWitness(order);
+    bytes memory witnessSig = _signPermit2Order(order);
     uint256 before = _calleeBalance();
 
     vm.prank(relayer);
@@ -208,13 +198,6 @@ contract GasSnapshotsTest is SettlementBase {
     view
     returns (AHV2Order memory)
   {
-    return _openAhv2Order(
-      orderAuthenticator,
-      _allowances(_tokenAllowance(AMOUNT)),
-      _noHooks(),
-      _noCalls(),
-      nonce,
-      vm.getBlockTimestamp() + 1 hours
-    );
+    return _order(orderAuthenticator, _noCalls(), nonce, vm.getBlockTimestamp() + 1 hours);
   }
 }

@@ -9,7 +9,6 @@ import {JsonBindings} from 'utils/JsonBindings.sol';
 
 import {AHV2OrderLib} from 'src/types/AHV2Order.sol';
 import {AHV2SolutionLib} from 'src/types/AHV2Solution.sol';
-import {AHV2WitnessLib} from 'src/types/AHV2Witness.sol';
 import {AuthDelegationLib} from 'src/types/AuthDelegation.sol';
 import {CallParamsLib} from 'src/types/CallParams.sol';
 import {ERC20AllowanceLib} from 'src/types/ERC20Allowance.sol';
@@ -66,11 +65,6 @@ contract SchemaAuditTest is Test {
       'SolutionApproval'
     );
     assertEq(
-      AHV2WitnessLib.AHV2_WITNESS_TYPEHASH,
-      keccak256(bytes(JsonBindings.schema_AHV2Witness)),
-      'AHV2Witness'
-    );
-    assertEq(
       AuthDelegationLib.AUTH_DELEGATION_TYPEHASH,
       keccak256(bytes(JsonBindings.schema_AuthDelegation)),
       'AuthDelegation'
@@ -87,18 +81,18 @@ contract SchemaAuditTest is Test {
       string(
         abi.encodePacked(
           PermitHash._PERMIT_BATCH_WITNESS_TRANSFER_FROM_TYPEHASH_STUB,
-          AHV2WitnessLib.AHV2_WITNESS_PERMIT2_TYPE_STRING
+          AHV2OrderLib.PERMIT2_ORDER_TYPE_STRING
         )
       ),
       JsonBindings.schema_PermitBatchWitnessTransferFrom,
-      'AHV2Witness permit'
+      'AHV2Order permit'
     );
   }
 
   /**
-   * T712-SCHEMA — the typehashes of the order, solution, witness and approval match their
+   * T712-SCHEMA — the typehashes of the order, solution and approval match their
    * written-out strings
-   * @dev The four type strings, written out here, against the production typehashes
+   * @dev The three type strings, written out here, against the production typehashes
    */
   function test_T712_SCHEMA_typeStringsWrittenOut() public pure {
     string memory callParams = 'CallParams(address callee,uint256 value,bytes data)';
@@ -117,18 +111,6 @@ contract SchemaAuditTest is Test {
     );
     assertEq(
       AHV2SolutionLib.AHV2_SOLUTION_TYPEHASH, keccak256(abi.encodePacked(solution)), 'AHV2Solution'
-    );
-    assertEq(
-      AHV2WitnessLib.AHV2_WITNESS_TYPEHASH,
-      keccak256(
-        abi.encodePacked(
-          'AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,bytes clientData)',
-          callParams,
-          erc721Approval,
-          hookParams
-        )
-      ),
-      'AHV2Witness'
     );
     assertEq(
       SolutionApprovalLib.SOLUTION_APPROVAL_TYPEHASH,
