@@ -10,33 +10,33 @@ library EfficientHashLibExt {
   using EfficientHashLib for *;
 
   /// @dev EIP-712 hash of the array: the hash of its elements as 32-byte words
-  function hash(address[] calldata addresses) internal pure returns (bytes32) {
-    bytes calldata words;
+  function hash(address[] calldata addresses) internal pure returns (bytes32 result) {
     assembly ('memory-safe') {
-      words.offset := addresses.offset
-      words.length := shl(5, addresses.length)
+      let fmp := mload(0x40)
+      let size := shl(5, addresses.length)
+      calldatacopy(fmp, addresses.offset, size)
+      result := keccak256(fmp, size)
     }
-    return words.hashCalldata();
   }
 
   /// @dev EIP-712 hash of the array: the hash of its elements as 32-byte words
-  function hash(uint160[] calldata values) internal pure returns (bytes32) {
-    bytes calldata words;
+  function hash(uint160[] calldata values) internal pure returns (bytes32 result) {
     assembly ('memory-safe') {
-      words.offset := values.offset
-      words.length := shl(5, values.length)
+      let fmp := mload(0x40)
+      let size := shl(5, values.length)
+      calldatacopy(fmp, values.offset, size)
+      result := keccak256(fmp, size)
     }
-    return words.hashCalldata();
   }
 
   /// @dev EIP-712 hash of the array: the hash of its elements as 32-byte words
-  function hash(uint256[] calldata values) internal pure returns (bytes32) {
-    bytes calldata words;
+  function hash(uint256[] calldata values) internal pure returns (bytes32 result) {
     assembly ('memory-safe') {
-      words.offset := values.offset
-      words.length := shl(5, values.length)
+      let fmp := mload(0x40)
+      let size := shl(5, values.length)
+      calldatacopy(fmp, values.offset, size)
+      result := keccak256(fmp, size)
     }
-    return words.hashCalldata();
   }
 
   /// @dev EIP-712 hash of the array: its elements' hashes, concatenated and hashed
@@ -46,6 +46,6 @@ library EfficientHashLibExt {
       valueHashes[i] = values[i].hashCalldata();
     }
 
-    return EfficientHashLib.hash(valueHashes);
+    return valueHashes.hash();
   }
 }
