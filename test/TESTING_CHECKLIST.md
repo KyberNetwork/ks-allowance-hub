@@ -1779,3 +1779,15 @@ Scope: with the zero authenticator, the owner's call refuses non-empty `authenti
 ### Notes for this run
 
 The suite went from 200 to 209 tests. The requested changes contradict four baselines, each rewritten to the new behaviour: SIG-04 (the owner's nonce 5 was not spent; it is now), DISP-04 (the owner settled with an undelegated authenticator; it now reverts), AUTH-01b and OWNER-APR-01 (the owner skipped the solution approval; it is now required). AUTH-06 lost its step asserting that a delegated authenticator is not called for the owner. Against the start of this run, owner settlements on the zero authenticator cost 359 gas more, `ownerPermit2Signature` 324 more, and the relayed paths 17 to 115 more; the hub's runtime size is 23,100 bytes.
+
+## Run `20261120T095617Z`
+
+Scope: `updateDelegation` is refused while the hub is paused.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261120T095617Z/PAUSE-02` | A pause closes both settlement paths and `updateDelegation`, which reverts `EnforcedPause` with no delegation recorded and the authenticator not called | GUARD-02 (rewritten) in `test/admin/Guards.t.sol` | `FOUNDRY_PROFILE=solar forge test --isolate` and `forge test --isolate`: 209 passed, 0 failed |
+
+### Notes for this run
+
+GUARD-02 asserted that a pause leaves delegation open; the requested change closes it, so GUARD-02 now asserts the refusal.

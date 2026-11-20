@@ -8,6 +8,8 @@ import {EIP712Nonce} from './EIP712Nonce.sol';
 
 import {AuthDelegationLib} from '../types/AuthDelegation.sol';
 
+import {ManagementSimple} from 'ks-common-sc/src/base/ManagementSimple.sol';
+
 import {EIP712} from 'openzeppelin-contracts/contracts/utils/cryptography/EIP712.sol';
 
 /**
@@ -17,7 +19,7 @@ import {EIP712} from 'openzeppelin-contracts/contracts/utils/cryptography/EIP712
  * @dev An authenticator is trusted by the owner who delegates it. This contract checks only that
  * the delegation is in place.
  */
-abstract contract AuthDelegator is IAuthDelegator, EIP712Nonce {
+abstract contract AuthDelegator is IAuthDelegator, EIP712Nonce, ManagementSimple {
   /// @inheritdoc IAuthDelegator
   mapping(address owner => mapping(address authenticator => bool)) public authDelegated;
 
@@ -36,7 +38,7 @@ abstract contract AuthDelegator is IAuthDelegator, EIP712Nonce {
     uint256 nonce,
     uint256 deadline,
     bytes calldata signature
-  ) external payable {
+  ) external payable whenNotPaused {
     if (block.timestamp > deadline) {
       revert DeadlinePassed(deadline, block.timestamp);
     }

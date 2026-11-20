@@ -11,13 +11,13 @@ takes its ID and description from its name.
 | ID | Test | Description |
 | --- | --- | --- |
 | GUARD-01 | [`test_GUARD_01_pauseUnpauseRoundTrip`](admin/Guards.t.sol#L80) | Pause and unpause set `paused()` and emit `Paused` and `Unpaused` |
-| GUARD-02 | [`test_GUARD_02_pauseClosesOrdersNotDelegation`](admin/Guards.t.sol#L99) | A pause closes both settlement paths but leaves delegation open |
-| GUARD-03 | [`test_GUARD_03_pauseRolesAreEnforced`](admin/Guards.t.sol#L129) | Pausing needs the guardian or the admin, unpausing needs the admin alone |
-| GUARD-04 | [`test_GUARD_04_expirationBoundaryOnTheOrderEntryPoints`](admin/Guards.t.sol#L163) | The expiration block itself still settles; the one before it does not |
-| GUARD-05 | [`test_GUARD_05_pauseTakesPrecedenceOverTheExpiration`](admin/Guards.t.sol#L181) | When both guards would fire, the pause wins, because it is the outer modifier |
-| GUARD-06 | [`test_GUARD_06_nativeSpendBoundary`](admin/Guards.t.sol#L206) | The calls may spend up to the value the order was sent with, and not one wei more |
-| GATE-01 | [`test_GATE_01_permit2EntryPointCarriesTheThreeModifiers`](admin/Guards.t.sol#L222) | The Permit2 path is pausable, expiration-checked and native-guarded |
-| GATE-02 | [`test_GATE_02_theUnwatchedGuards`](admin/Guards.t.sol#L280) | An undelegated authenticator and overspent native are refused by `settleOrder` |
+| GUARD-02 | [`test_GUARD_02_pauseClosesOrdersAndDelegation`](admin/Guards.t.sol#L99) | A pause closes both settlement paths and delegation |
+| GUARD-03 | [`test_GUARD_03_pauseRolesAreEnforced`](admin/Guards.t.sol#L127) | Pausing needs the guardian or the admin, unpausing needs the admin alone |
+| GUARD-04 | [`test_GUARD_04_expirationBoundaryOnTheOrderEntryPoints`](admin/Guards.t.sol#L161) | The expiration block itself still settles; the one before it does not |
+| GUARD-05 | [`test_GUARD_05_pauseTakesPrecedenceOverTheExpiration`](admin/Guards.t.sol#L179) | When both guards would fire, the pause wins, because it is the outer modifier |
+| GUARD-06 | [`test_GUARD_06_nativeSpendBoundary`](admin/Guards.t.sol#L204) | The calls may spend up to the value the order was sent with, and not one wei more |
+| GATE-01 | [`test_GATE_01_permit2EntryPointCarriesTheThreeModifiers`](admin/Guards.t.sol#L220) | The Permit2 path is pausable, expiration-checked and native-guarded |
+| GATE-02 | [`test_GATE_02_theUnwatchedGuards`](admin/Guards.t.sol#L278) | An undelegated authenticator and overspent native are refused by `settleOrder` |
 
 ## ManagementTest
 

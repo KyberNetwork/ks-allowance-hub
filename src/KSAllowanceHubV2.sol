@@ -40,13 +40,7 @@ import {IERC721} from 'openzeppelin-contracts/contracts/token/ERC721/IERC721.sol
  * by the owner's Permit2 signature, or by an {IAHV2Authenticator} the owner has delegated through
  * {AuthDelegator}.
  */
-contract KSAllowanceHubV2 is
-  IKSAllowanceHubV2,
-  ManagementSimple,
-  AuthDelegator,
-  Multicall,
-  MsgSender
-{
+contract KSAllowanceHubV2 is IKSAllowanceHubV2, AuthDelegator, Multicall, MsgSender {
   using CallParamsLib for CallParams[];
   using DynamicArrayLibExt for uint256;
   using ERC20AllowanceLib for ERC20Allowance[];

@@ -95,8 +95,8 @@ contract GuardsTest is SignerAuthenticatorBase {
     assertFalse(hub.paused(), 'live again');
   }
 
-  /// GUARD-02 — a pause closes both settlement paths but leaves delegation open
-  function test_GUARD_02_pauseClosesOrdersNotDelegation() public {
+  /// GUARD-02 — a pause closes both settlement paths and delegation
+  function test_GUARD_02_pauseClosesOrdersAndDelegation() public {
     AHV2AuthenticatorStub mock = new AHV2AuthenticatorStub();
 
     AHV2Order memory order = _openOrder(90, vm.getBlockTimestamp() + 1 hours);
@@ -114,14 +114,12 @@ contract GuardsTest is SignerAuthenticatorBase {
     vm.expectRevert(Pausable.EnforcedPause.selector);
     hub.settleOrder(permitOrder, permitSig, _defaultSolution(permitOrder), '', false);
 
-    // Delegation carries no assets, so the pause does not reach it
     vm.prank(owner);
+    vm.expectRevert(Pausable.EnforcedPause.selector);
     hub.updateDelegation(owner, address(mock), true, hex'1234', 0, vm.getBlockTimestamp(), '');
 
-    assertTrue(hub.authDelegated(owner, address(mock)), 'delegation still works');
-    assertEq(mock.initCount(), 1, 'and reached the authenticator');
-    assertEq(mock.lastInitData(), hex'1234', 'carrying the payload the owner gave');
-    assertEq(mock.updateCount(), 0, 'over the init path, not the update one');
+    assertFalse(hub.authDelegated(owner, address(mock)), 'no delegation was recorded');
+    assertEq(mock.initCount(), 0, 'and the authenticator was not called');
     assertTrue(hub.paused(), 'the hub is still paused');
   }
 

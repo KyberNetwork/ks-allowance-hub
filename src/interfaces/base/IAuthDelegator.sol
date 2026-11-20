@@ -29,8 +29,8 @@ interface IAuthDelegator {
 
   /**
    * @notice Delegates `authenticator` to authenticate `owner`'s orders, or withdraws the delegation
-   * @dev The owner's own call needs no signature and spends no nonce. Any other caller needs the
-   * owner's signature over the {AuthDelegation}.
+   * @dev Refused while paused. The owner's own call needs no signature and spends no nonce. Any
+   * other caller needs the owner's signature over the {AuthDelegation}.
    * @param owner Account whose orders the authenticator may authenticate
    * @param authenticator Authenticator contract
    * @param delegated True to delegate, false to withdraw

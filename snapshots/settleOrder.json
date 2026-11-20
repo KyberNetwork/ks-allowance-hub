@@ -3,9 +3,9 @@
   "ownerPermit2Signature": "118117",
   "ownerTransfer": "81558",
   "ownerTransferWithHooks": "335610",
-  "ownerTransferWithNftAndCall": "212260",
+  "ownerTransferWithNftAndCall": "212261",
   "relayedDelegatedAuthenticator": "125200",
-  "relayedOrderSignature": "112041",
-  "relayedOrderSignatureWithSolutionApproval": "144490",
+  "relayedOrderSignature": "112040",
+  "relayedOrderSignatureWithSolutionApproval": "144488",
   "relayedPermit2Witness": "122754"
 }
