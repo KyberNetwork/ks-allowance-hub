@@ -32,12 +32,12 @@ library JsonBindings {
     string constant schema_ERC721Transfer = "ERC721Transfer(address token,uint256 tokenId,address target)";
     string constant schema_NativeTransfer = "NativeTransfer(address target,uint256 amount)";
     string constant schema_CallParams = "CallParams(address callee,uint256 value,bytes data)";
-    string constant schema_ERC20Allowance = "ERC20Allowance(address token,uint160 amount)";
     string constant schema_ERC721Approval = "ERC721Approval(address token,uint256 tokenId)";
     string constant schema_HookParams = "HookParams(address hook,bytes32 flags,bytes data)";
-    string constant schema_AHV2Order = "AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)CallParams(address callee,uint256 value,bytes data)ERC20Allowance(address token,uint160 amount)ERC721Approval(address token,uint256 tokenId)HookParams(address hook,bytes32 flags,bytes data)";
     string constant schema_AHV2Witness = "AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,bytes clientData)CallParams(address callee,uint256 value,bytes data)ERC721Approval(address token,uint256 tokenId)HookParams(address hook,bytes32 flags,bytes data)";
     string constant schema_PermitBatchWitnessTransferFrom = "PermitBatchWitnessTransferFrom(TokenPermissions[] permitted,address spender,uint256 nonce,uint256 deadline,AHV2Witness witness)AHV2Witness(address exclusiveCaller,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,bytes clientData)CallParams(address callee,uint256 value,bytes data)ERC721Approval(address token,uint256 tokenId)HookParams(address hook,bytes32 flags,bytes data)TokenPermissions(address token,uint256 amount)";
+    string constant schema_ERC20Allowance = "ERC20Allowance(address token,uint160 amount)";
+    string constant schema_AHV2Order = "AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)CallParams(address callee,uint256 value,bytes data)ERC20Allowance(address token,uint160 amount)ERC721Approval(address token,uint256 tokenId)HookParams(address hook,bytes32 flags,bytes data)";
     string constant schema_AuthDelegation = "AuthDelegation(address owner,address authenticator,bool delegated,bytes data,uint256 nonce,uint256 deadline)";
     string constant schema_SolutionApproval = "SolutionApproval(AHV2Order order,AHV2Solution solution)AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,bytes[] solverData,uint256 nonce,uint256 expiration)CallParams(address callee,uint256 value,bytes data)ERC20Allowance(address token,uint160 amount)ERC721Approval(address token,uint256 tokenId)HookParams(address hook,bytes32 flags,bytes data)";
 
@@ -141,26 +141,6 @@ library JsonBindings {
         return abi.decode(vm.parseJsonTypeArray(json, path, schema_CallParams), (CallParams[]));
     }
 
-    function serialize(ERC20Allowance memory value) internal pure returns (string memory) {
-        return vm.serializeJsonType(schema_ERC20Allowance, abi.encode(value));
-    }
-
-    function serialize(ERC20Allowance memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
-        return vm.serializeJsonType(objectKey, valueKey, schema_ERC20Allowance, abi.encode(value));
-    }
-
-    function deserializeERC20Allowance(string memory json) public pure returns (ERC20Allowance memory) {
-        return abi.decode(vm.parseJsonType(json, schema_ERC20Allowance), (ERC20Allowance));
-    }
-
-    function deserializeERC20Allowance(string memory json, string memory path) public pure returns (ERC20Allowance memory) {
-        return abi.decode(vm.parseJsonType(json, path, schema_ERC20Allowance), (ERC20Allowance));
-    }
-
-    function deserializeERC20AllowanceArray(string memory json, string memory path) public pure returns (ERC20Allowance[] memory) {
-        return abi.decode(vm.parseJsonTypeArray(json, path, schema_ERC20Allowance), (ERC20Allowance[]));
-    }
-
     function serialize(ERC721Approval memory value) internal pure returns (string memory) {
         return vm.serializeJsonType(schema_ERC721Approval, abi.encode(value));
     }
@@ -201,26 +181,6 @@ library JsonBindings {
         return abi.decode(vm.parseJsonTypeArray(json, path, schema_HookParams), (HookParams[]));
     }
 
-    function serialize(AHV2Order memory value) internal pure returns (string memory) {
-        return vm.serializeJsonType(schema_AHV2Order, abi.encode(value));
-    }
-
-    function serialize(AHV2Order memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
-        return vm.serializeJsonType(objectKey, valueKey, schema_AHV2Order, abi.encode(value));
-    }
-
-    function deserializeAHV2Order(string memory json) public pure returns (AHV2Order memory) {
-        return abi.decode(vm.parseJsonType(json, schema_AHV2Order), (AHV2Order));
-    }
-
-    function deserializeAHV2Order(string memory json, string memory path) public pure returns (AHV2Order memory) {
-        return abi.decode(vm.parseJsonType(json, path, schema_AHV2Order), (AHV2Order));
-    }
-
-    function deserializeAHV2OrderArray(string memory json, string memory path) public pure returns (AHV2Order[] memory) {
-        return abi.decode(vm.parseJsonTypeArray(json, path, schema_AHV2Order), (AHV2Order[]));
-    }
-
     function serialize(AHV2Witness memory value) internal pure returns (string memory) {
         return vm.serializeJsonType(schema_AHV2Witness, abi.encode(value));
     }
@@ -259,6 +219,46 @@ library JsonBindings {
 
     function deserializePermitBatchWitnessTransferFromArray(string memory json, string memory path) public pure returns (PermitBatchWitnessTransferFrom[] memory) {
         return abi.decode(vm.parseJsonTypeArray(json, path, schema_PermitBatchWitnessTransferFrom), (PermitBatchWitnessTransferFrom[]));
+    }
+
+    function serialize(ERC20Allowance memory value) internal pure returns (string memory) {
+        return vm.serializeJsonType(schema_ERC20Allowance, abi.encode(value));
+    }
+
+    function serialize(ERC20Allowance memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
+        return vm.serializeJsonType(objectKey, valueKey, schema_ERC20Allowance, abi.encode(value));
+    }
+
+    function deserializeERC20Allowance(string memory json) public pure returns (ERC20Allowance memory) {
+        return abi.decode(vm.parseJsonType(json, schema_ERC20Allowance), (ERC20Allowance));
+    }
+
+    function deserializeERC20Allowance(string memory json, string memory path) public pure returns (ERC20Allowance memory) {
+        return abi.decode(vm.parseJsonType(json, path, schema_ERC20Allowance), (ERC20Allowance));
+    }
+
+    function deserializeERC20AllowanceArray(string memory json, string memory path) public pure returns (ERC20Allowance[] memory) {
+        return abi.decode(vm.parseJsonTypeArray(json, path, schema_ERC20Allowance), (ERC20Allowance[]));
+    }
+
+    function serialize(AHV2Order memory value) internal pure returns (string memory) {
+        return vm.serializeJsonType(schema_AHV2Order, abi.encode(value));
+    }
+
+    function serialize(AHV2Order memory value, string memory objectKey, string memory valueKey) internal returns (string memory) {
+        return vm.serializeJsonType(objectKey, valueKey, schema_AHV2Order, abi.encode(value));
+    }
+
+    function deserializeAHV2Order(string memory json) public pure returns (AHV2Order memory) {
+        return abi.decode(vm.parseJsonType(json, schema_AHV2Order), (AHV2Order));
+    }
+
+    function deserializeAHV2Order(string memory json, string memory path) public pure returns (AHV2Order memory) {
+        return abi.decode(vm.parseJsonType(json, path, schema_AHV2Order), (AHV2Order));
+    }
+
+    function deserializeAHV2OrderArray(string memory json, string memory path) public pure returns (AHV2Order[] memory) {
+        return abi.decode(vm.parseJsonTypeArray(json, path, schema_AHV2Order), (AHV2Order[]));
     }
 
     function serialize(AuthDelegation memory value) internal pure returns (string memory) {
