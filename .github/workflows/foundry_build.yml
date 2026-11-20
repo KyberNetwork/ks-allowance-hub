@@ -1,0 +1,45 @@
+name: Run Foundry Build
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Run Foundry Build
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: true
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Install Foundry
+        uses: KyberNetwork/foundry-toolchain@master
+        with:
+          version: v1.9.0
+          cache: false
+
+      - name: Run Forge Build with solar
+        id: build-solar
+        run: |
+          forge --version
+          FOUNDRY_PROFILE=solar forge build src --sizes
+
+      # The bound types all live under `src`, which the step above has compiled
+      - name: Check the EIP-712 bindings are current
+        run: |
+          FOUNDRY_PROFILE=solar forge bind-json
+          git diff --exit-code utils/JsonBindings.sol
