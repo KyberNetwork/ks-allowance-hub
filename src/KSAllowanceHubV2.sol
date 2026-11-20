@@ -5,8 +5,8 @@ import {IKSAllowanceHubV2} from './interfaces/IKSAllowanceHubV2.sol';
 import {IAHV2Authenticator} from './interfaces/base/IAHV2Authenticator.sol';
 
 import {AuthDelegator} from './base/AuthDelegator.sol';
-import {MsgSender} from './base/MsgSender.sol';
 import {Multicall} from './base/Multicall.sol';
+import {SettlementContext} from './base/SettlementContext.sol';
 
 import {Constants} from './libraries/Constants.sol';
 import {DynamicArrayLibExt} from './libraries/DynamicArrayLibExt.sol';
@@ -40,7 +40,7 @@ import {IERC721} from 'openzeppelin-contracts/contracts/token/ERC721/IERC721.sol
  * by the owner's Permit2 signature, or by an {IAHV2Authenticator} the owner has delegated through
  * {AuthDelegator}.
  */
-contract KSAllowanceHubV2 is IKSAllowanceHubV2, AuthDelegator, Multicall, MsgSender {
+contract KSAllowanceHubV2 is IKSAllowanceHubV2, AuthDelegator, Multicall, SettlementContext {
   using CallParamsLib for CallParams[];
   using DynamicArrayLibExt for uint256;
   using ERC20AllowanceLib for ERC20Allowance[];
@@ -92,7 +92,7 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, AuthDelegator, Multicall, MsgSen
     external
     payable
     whenNotPaused
-    setMsgSender(order.owner)
+    setSettlementContext(order.owner)
     guardNativeSpend
     returns (bytes[] memory results)
   {

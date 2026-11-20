@@ -352,6 +352,7 @@ contract MulticallTest is SignerAuthenticatorBase {
     );
     assertEq(callee.callCount(), 1, 'the callee call ran once');
     assertEq(callee.seenMsgSender(), owner, 'for the owner, not for the relayer who submitted');
+    assertEq(callee.seenSolver(), relayer, 'the delegatecall keeps the multicall caller as solver');
     assertEq(
       authenticator.nonces(lNonceKey(owner), 0),
       1 << approvalNonce,

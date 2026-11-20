@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IAHV2Callee} from '../../src/interfaces/base/IAHV2Callee.sol';
-import {IMsgSender} from '../../src/interfaces/base/IMsgSender.sol';
+import {ISettlementContext} from '../../src/interfaces/base/ISettlementContext.sol';
 
 import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 import {ERC721Holder} from 'openzeppelin-contracts/contracts/token/ERC721/utils/ERC721Holder.sol';
@@ -11,6 +11,8 @@ import {ERC721Holder} from 'openzeppelin-contracts/contracts/token/ERC721/utils/
 contract CalleeMock is IAHV2Callee, ERC721Holder {
   /// @dev Read inside the call, where {msgSender} still returns the owner of the order settling
   address public seenMsgSender;
+  /// @dev Read inside the call, where {solver} returns the caller of `settleOrder`
+  address public seenSolver;
   /// @dev Counts the calls
   uint256 public callCount;
   uint256 public lastValue;
@@ -43,7 +45,8 @@ contract CalleeMock is IAHV2Callee, ERC721Holder {
   }
 
   function _record(bytes calldata data) private returns (bytes memory) {
-    seenMsgSender = IMsgSender(msg.sender).msgSender();
+    seenMsgSender = ISettlementContext(msg.sender).msgSender();
+    seenSolver = ISettlementContext(msg.sender).solver();
     callCount++;
     lastValue = msg.value;
     lastData = data;
@@ -56,7 +59,7 @@ contract CalleeMock is IAHV2Callee, ERC721Holder {
   }
 }
 
-/// @notice Callee that calls back into the hub, and records {msgSender} on either side of the call.
+/// @notice Callee that calls back into the hub, and records {msgSender} and {solver} on either side of the call.
 contract ReentrantCalleeMock is IAHV2Callee, ERC721Holder {
   address public immutable HUB;
   bytes public reentryCalldata;
@@ -65,6 +68,10 @@ contract ReentrantCalleeMock is IAHV2Callee, ERC721Holder {
   address public seenBefore;
   /// @dev {msgSender} after the reentry call has returned
   address public seenAfter;
+  /// @dev {solver} on entry to a call
+  address public seenSolverBefore;
+  /// @dev {solver} after the reentry call has returned
+  address public seenSolverAfter;
 
   constructor(address hub) {
     HUB = hub;
@@ -81,9 +88,11 @@ contract ReentrantCalleeMock is IAHV2Callee, ERC721Holder {
   }
 
   function _reenter() private returns (bytes memory) {
-    seenBefore = IMsgSender(HUB).msgSender();
+    seenBefore = ISettlementContext(HUB).msgSender();
+    seenSolverBefore = ISettlementContext(HUB).solver();
     (bool ok, bytes memory ret) = HUB.call(reentryCalldata);
-    seenAfter = IMsgSender(HUB).msgSender();
+    seenAfter = ISettlementContext(HUB).msgSender();
+    seenSolverAfter = ISettlementContext(HUB).solver();
     if (!ok) {
       assembly ('memory-safe') {
         revert(add(ret, 0x20), mload(ret))

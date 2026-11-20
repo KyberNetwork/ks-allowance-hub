@@ -11,7 +11,7 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
  * @notice A call the hub makes to a callee for an order
- * @dev The callee may read the order's owner from {IMsgSender-msgSender}.
+ * @dev The callee may read the order's owner from {ISettlementContext-msgSender}.
  * @param callee Contract called; must hold the whitelisted callee role when the call runs
  * @param ownerData Callee-specific payload the owner signs, passed to {IAHV2Callee-execute}
  */

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IAHV2Hook} from '../../src/interfaces/base/IAHV2Hook.sol';
-import {IMsgSender} from '../../src/interfaces/base/IMsgSender.sol';
+import {ISettlementContext} from '../../src/interfaces/base/ISettlementContext.sol';
 
 import {AHV2Order} from '../../src/types/AHV2Order.sol';
 import {AHV2Solution} from '../../src/types/AHV2Solution.sol';
@@ -31,6 +31,8 @@ contract HookMock is IAHV2Hook {
   /// @dev {msgSender} of the hub as read during each call
   address public seenMsgSenderBefore;
   address public seenMsgSenderAfter;
+  address public seenSolverBefore;
+  address public seenSolverAfter;
 
   /// @dev Returned by the before call
   bytes public beforeResult;
@@ -79,7 +81,8 @@ contract HookMock is IAHV2Hook {
     lastOrderHash = orderHash;
     lastBeforeIndex = index;
     beforeData = order.hooks[index].data;
-    seenMsgSenderBefore = IMsgSender(msg.sender).msgSender();
+    seenMsgSenderBefore = ISettlementContext(msg.sender).msgSender();
+    seenSolverBefore = ISettlementContext(msg.sender).solver();
     if (observing) {
       balanceAtBefore = IERC20(observedToken).balanceOf(observedAccount);
     }
@@ -103,7 +106,8 @@ contract HookMock is IAHV2Hook {
     lastOrderHash = orderHash;
     afterData = order.hooks[index].data;
     receivedBeforeResult = beforeSettlementResult;
-    seenMsgSenderAfter = IMsgSender(msg.sender).msgSender();
+    seenMsgSenderAfter = ISettlementContext(msg.sender).msgSender();
+    seenSolverAfter = ISettlementContext(msg.sender).solver();
     if (observing) {
       balanceAtAfter = IERC20(observedToken).balanceOf(observedAccount);
     }

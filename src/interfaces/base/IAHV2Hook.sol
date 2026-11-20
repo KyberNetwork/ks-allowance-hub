@@ -6,8 +6,8 @@ import {AHV2Solution} from '../../types/AHV2Solution.sol';
 
 /// @title IAHV2Hook
 /// @notice Interface a hook in an order's `hooks` must implement
-/// @dev A hook reverts to refuse the order. {IMsgSender-msgSender} returns the order's owner
-/// during both calls.
+/// @dev A hook reverts to refuse the order. {ISettlementContext-msgSender} returns the order's owner
+/// and {ISettlementContext-solver} its solver during both calls.
 interface IAHV2Hook {
   /**
    * @notice Called before any asset moves, and on the Permit2 flow before Permit2 checks the

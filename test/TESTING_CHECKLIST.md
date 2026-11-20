@@ -1791,3 +1791,15 @@ Scope: `updateDelegation` is refused while the hub is paused.
 ### Notes for this run
 
 GUARD-02 asserted that a pause leaves delegation open; the requested change closes it, so GUARD-02 now asserts the refusal.
+
+## Run `20261120T102632Z`
+
+Scope: `MsgSender` renamed `SettlementContext`, which also records the caller of `settleOrder` as `solver()`.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261120T102632Z/CONTEXT-01` | Callees and hooks read `solver()` as the caller of the innermost `settleOrder` while `msgSender()` returns the owner; a nested order sets its own solver and the outer one is restored when it returns; both read the zero address after the call; under `multicall` the solver is the batch's caller, and a contract calling `settleOrder` is its own solver | HOOK-08 in `Hooks.t.sol`; NEST-01 to NEST-04 in `Nesting.t.sol`; OWN-03 in `Calls.t.sol`; the multicall and forwarder settlement cases in `Multicall.t.sol` and `Forwarder.t.sol` | `FOUNDRY_PROFILE=solar forge test --isolate` and `forge test --isolate`: 209 passed, 0 failed |
+
+### Notes for this run
+
+No test was added; the existing `msgSender` assertions gained `solver` beside them. The callee and hook mocks also store what `solver()` returned, so `ownerTransferWithHooks` and `ownerTransferWithNftAndCall` rise by the mocks' extra storage writes (46,327 and 23,354 gas); the hub itself costs about 340 gas more per settlement.

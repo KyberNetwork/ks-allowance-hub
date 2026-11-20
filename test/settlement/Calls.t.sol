@@ -139,6 +139,8 @@ contract CallsTest is SettlementBase {
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the signed call settled');
     assertEq(callee.callCount(), 1, 'the signed call ran once');
+    assertEq(callee.seenMsgSender(), owner, 'for the owner');
+    assertEq(callee.seenSolver(), relayer, 'and the relayer who submitted is the solver');
     assertEq(hook.sequenceLength(), 2, 'the hook still bracketed the order');
 
     AHV2Order memory signed = _ahv2Order(

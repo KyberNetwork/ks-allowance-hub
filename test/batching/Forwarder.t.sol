@@ -775,6 +775,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
     assertEq(_calleeBalance() - before, amount, 'the reentrant order settled');
     assertEq(callee.callCount(), 1, 'and its call ran');
     assertEq(callee.seenMsgSender(), owner, 'with the owner as the sender while it ran');
+    assertEq(callee.seenSolver(), address(reentrant), 'and the permit target as the solver');
   }
 
   /// FWD-23 — Multicall3 relays a permit and a failing call alike when called directly

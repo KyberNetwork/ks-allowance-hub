@@ -312,7 +312,7 @@ contract HooksTest is SettlementBase {
   }
 
   /**
-   * HOOK-08 — the hooks run while `msgSender` returns the owner
+   * HOOK-08 — the hooks run while `msgSender` returns the owner and `solver` the submitter
    * @dev A relayer submits, so the owner is not the caller of the hub.
    */
   function test_HOOK_08_hooksRunWhileMsgSenderIsTheOwner() public {
@@ -331,6 +331,8 @@ contract HooksTest is SettlementBase {
 
     assertEq(hook.seenMsgSenderBefore(), owner, 'the before call saw the owner');
     assertEq(hook.seenMsgSenderAfter(), owner, 'and so did the after call');
+    assertEq(hook.seenSolverBefore(), relayer, 'the before call saw the relayer as the solver');
+    assertEq(hook.seenSolverAfter(), relayer, 'and so did the after call');
   }
 
   /**

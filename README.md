@@ -201,7 +201,8 @@ order. The hub reverts when the order spends more native value than it was sent.
 hub.
 
 While an order settles, `msgSender()` returns its owner, so a callee called by the hub can identify
-the owner. A callee treats `solverData` as untrusted input, because the owner does not sign it.
+the owner. `solver()` returns the caller of `settleOrder`, restored the same way when an
+order nests. A callee treats `solverData` as untrusted input, because the owner does not sign it.
 
 A callee call of an order may settle another order of any authenticator, and `msgSender()` returns
 the outer order's owner again once it returns. The hub refuses no order for settling inside another.
@@ -243,8 +244,8 @@ The domain is published through ERC-5267's `eip712Domain()`.
 ```
 src/
   KSAllowanceHubV2.sol
-  base/            AHV2AuthenticatorBase, AuthDelegator, EIP712Nonce, MsgSender, Multicall,
-                   NativeSpendGuard, UnorderedNonce
+  base/            AHV2AuthenticatorBase, AuthDelegator, EIP712Nonce, Multicall, NativeSpendGuard,
+                   SettlementContext, UnorderedNonce
   interfaces/      IKSAllowanceHubV2; base/ holds the interfaces of the base contracts, IAHV2Hook,
                    IAHV2Authenticator and IAHV2Callee
   libraries/       Constants, DynamicArrayLibExt, EfficientHashLibExt

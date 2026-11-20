@@ -94,12 +94,19 @@ contract NestingTest is SettlementBase {
       address levelOwner = k == 0 ? owner : address(evils[k - 1]);
       assertEq(evils[k].seenBefore(), levelOwner, 'a callee sees its level owner on entry');
       assertEq(evils[k].seenAfter(), levelOwner, 'and again once the nested order returned');
+      address levelSolver = k == 0 ? topSubmitter : address(evils[k - 1]);
+      assertEq(evils[k].seenSolverBefore(), levelSolver, 'and its submitter on entry');
+      assertEq(
+        evils[k].seenSolverAfter(), levelSolver, 'and its submitter once the nested returned'
+      );
     }
 
     assertEq(callee.callCount(), 1, 'the innermost callee ran once');
     assertEq(callee.seenMsgSender(), address(evils[depth - 1]), 'the innermost owner');
+    assertEq(callee.seenSolver(), address(evils[depth - 1]), 'the innermost submitter');
     assertEq(callee2.callCount(), 1, 'the trailing call of level 0 ran once');
     assertEq(callee2.seenMsgSender(), owner, 'level 0 owner was restored after the whole chain');
+    assertEq(callee2.seenSolver(), topSubmitter, 'and its submitter');
 
     Vm.Log[] memory logs = _settleOrderLogs();
     assertEq(logs.length, depth + 1, 'one SettleOrder per level');
@@ -110,6 +117,7 @@ contract NestingTest is SettlementBase {
     }
 
     assertEq(hub.msgSender(), address(0), 'nothing is recorded after the call');
+    assertEq(hub.solver(), address(0), 'and no solver');
   }
 
   /**
@@ -148,6 +156,7 @@ contract NestingTest is SettlementBase {
     assertEq(nft.ownerOf(NFT_ID), address(receiver), 'the NFT moved to the receiver');
     assertEq(callee.callCount(), 1, 'the callee call of the nested order ran');
     assertEq(callee.seenMsgSender(), address(receiver), 'under the nested owner');
+    assertEq(callee.seenSolver(), address(receiver), 'submitted by the nested owner');
 
     // The outer order announces itself before it moves the NFT, and the hook runs during the move
     Vm.Log[] memory logs = _settleOrderLogs();
@@ -161,6 +170,7 @@ contract NestingTest is SettlementBase {
     );
 
     assertEq(hub.msgSender(), address(0), 'nothing is recorded after the call');
+    assertEq(hub.solver(), address(0), 'and no solver');
   }
 
   /**
@@ -220,9 +230,12 @@ contract NestingTest is SettlementBase {
     if (p.wrapped) {
       assertEq(evilOuter.seenBefore(), owner, 'the wrapping call runs under its owner');
       assertEq(evilOuter.seenAfter(), owner, 'and its owner is restored');
+      assertEq(evilOuter.seenSolverBefore(), owner, 'and as the solver the submitter');
+      assertEq(evilOuter.seenSolverAfter(), owner, 'which is restored');
     }
     assertEq(callee.callCount(), 1, 'the nested callee ran once');
     assertEq(callee.seenMsgSender(), nestedOrderOwner, 'under the nested owner');
+    assertEq(callee.seenSolver(), address(evil), 'submitted by the callee that settled it');
 
     Vm.Log[] memory logs = _settleOrderLogs();
     uint256 base = p.wrapped ? 1 : 0;
@@ -234,6 +247,7 @@ contract NestingTest is SettlementBase {
     _assertEmptySettlement(logs[base + 1], address(evil), nestedOrderOwner, nestedHash);
 
     assertEq(hub.msgSender(), address(0), 'nothing is recorded after the call');
+    assertEq(hub.solver(), address(0), 'and no solver');
   }
 
   /**
@@ -259,6 +273,7 @@ contract NestingTest is SettlementBase {
     );
     assertEq(hub.nonces(lNonceKey(owner), 0), 0, "and not against the owner's");
     assertEq(hub.msgSender(), address(0), 'nothing is recorded after the call');
+    assertEq(hub.solver(), address(0), 'and no solver');
   }
 
   /**

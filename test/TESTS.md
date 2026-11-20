@@ -66,8 +66,8 @@ takes its ID and description from its name.
 | FWD-PAUSE-01 | [`test_FWD_PAUSE_01_forwardStillWorksWhilePaused`](batching/Forwarder.t.sol#L685) | A pause does not close `forwardCalls` |
 | FWD-VALUE-01 | [`test_FWD_VALUE_01_valueSentWithForwardIsStranded`](batching/Forwarder.t.sol#L710) | Value sent with `forwardCalls` remains in the hub, not Multicall3 |
 | FWD-REENTRY-01 | [`test_FWD_REENTRY_01_relayedPermitMayReenterTheHub`](batching/Forwarder.t.sol#L739) | A relayed permit may reenter the hub and start an order |
-| FWD-23 | [`test_FWD_23_multicall3RelaysWhenCalledDirectly`](batching/Forwarder.t.sol#L781) | Multicall3 relays a permit and a failing call alike when called directly |
-| FWD-24 | [`test_FWD_24_hubForwardsThroughMulticall3`](batching/Forwarder.t.sol#L815) | `hub.forwardCalls` calls the target with Multicall3 as the caller |
+| FWD-23 | [`test_FWD_23_multicall3RelaysWhenCalledDirectly`](batching/Forwarder.t.sol#L782) | Multicall3 relays a permit and a failing call alike when called directly |
+| FWD-24 | [`test_FWD_24_hubForwardsThroughMulticall3`](batching/Forwarder.t.sol#L816) | `hub.forwardCalls` calls the target with Multicall3 as the caller |
 
 ## MulticallTest
 
@@ -83,7 +83,7 @@ takes its ID and description from its name.
 | MC-05 | [`test_MC_05_plainNativeTransferIsRefused`](batching/Multicall.t.sol#L192) | The hub has no `receive`, so a bare transfer cannot strand native in it |
 | MC-09 | [`test_MC_09_aFrontRunDelegationDoesNotUnwindTheBatch`](batching/Multicall.t.sol#L210) | A delegation relayed through `forwardCalls` with `allowFailure` set survives being front-run, so the order batched after it still settles |
 | MC-06 | [`test_MC_06_approveASignerAndSpendOnItInOneBatch`](batching/Multicall.t.sol#L293) | One batch approves a signer at an authenticator and then spends on it |
-| MC-FUZZ | [`testFuzz_MC_FUZZ_valueNeedsAnAllPayableBatch`](batching/Multicall.t.sol#L379) | Value survives a batch exactly when every selector in it is payable |
+| MC-FUZZ | [`testFuzz_MC_FUZZ_valueNeedsAnAllPayableBatch`](batching/Multicall.t.sol#L380) | Value survives a batch exactly when every selector in it is payable |
 
 ## DelegationTest
 
@@ -180,10 +180,10 @@ takes its ID and description from its name.
 | OWN-01 | [`test_OWN_01_callsRunInOrder`](settlement/Calls.t.sol#L52) | The calls run in the order listed |
 | OWN-02 | [`test_OWN_02_witnessBindsCalls`](settlement/Calls.t.sol#L86) | The Permit2 witness pins the calls the owner signed |
 | OWN-03 | [`test_OWN_03_authenticationBindsCalls`](settlement/Calls.t.sol#L121) | Calls swapped after the authenticator's signature are refused on the delegated entry point |
-| OWN-07 | [`test_OWN_07_eventListsTheValueOfEachCall`](settlement/Calls.t.sol#L165) | The event lists the value of each call with a value, in order |
-| CALLEE-01 | [`test_CALLEE_01_unwhitelistedCalleeIsRejected`](settlement/Calls.t.sol#L215) | A callee without the role is refused, and the order rolls back whole, earlier calls included |
-| CALLEE-02 | [`test_CALLEE_02_guardianRevokeStopsTheNextOrder`](settlement/Calls.t.sol#L263) | A guardian can drop a callee, and the very next order stops working |
-| CALLEE-03 | [`test_CALLEE_03_eachCalleeCalledOnce`](settlement/Calls.t.sol#L289) | Every whitelisted callee in the list is called exactly once, with its own data |
+| OWN-07 | [`test_OWN_07_eventListsTheValueOfEachCall`](settlement/Calls.t.sol#L167) | The event lists the value of each call with a value, in order |
+| CALLEE-01 | [`test_CALLEE_01_unwhitelistedCalleeIsRejected`](settlement/Calls.t.sol#L217) | A callee without the role is refused, and the order rolls back whole, earlier calls included |
+| CALLEE-02 | [`test_CALLEE_02_guardianRevokeStopsTheNextOrder`](settlement/Calls.t.sol#L265) | A guardian can drop a callee, and the very next order stops working |
+| CALLEE-03 | [`test_CALLEE_03_eachCalleeCalledOnce`](settlement/Calls.t.sol#L291) | Every whitelisted callee in the list is called exactly once, with its own data |
 
 ## EventsTest
 
@@ -211,9 +211,9 @@ takes its ID and description from its name.
 | HOOK-05 | [`test_HOOK_05_flagsSelectTheCalls`](settlement/Hooks.t.sol#L211) | The flags select which of the two calls a hook receives |
 | HOOK-06 | [`testFuzz_HOOK_06_flagsSelectTheCalls`](settlement/Hooks.t.sol#L249) | Only the two lowest bits of the flags select calls |
 | HOOK-07 | [`test_HOOK_07_hooksReceiveTheOrderTheSolutionAndTheirIndex`](settlement/Hooks.t.sol#L276) | A hook receives the order, its hash, the solution and the index of its entry |
-| HOOK-08 | [`test_HOOK_08_hooksRunWhileMsgSenderIsTheOwner`](settlement/Hooks.t.sol#L318) | The hooks run while `msgSender` returns the owner |
-| HOOK-09 | [`test_HOOK_09_signaturesBindTheHooks`](settlement/Hooks.t.sol#L342) | Both signatures bind the hooks |
-| HOOK-10 | [`test_HOOK_10_theAfterHookSeesTheCalls`](settlement/Hooks.t.sol#L416) | The after hook observes the effects of the calls |
+| HOOK-08 | [`test_HOOK_08_hooksRunWhileMsgSenderIsTheOwner`](settlement/Hooks.t.sol#L318) | The hooks run while `msgSender` returns the owner and `solver` the submitter |
+| HOOK-09 | [`test_HOOK_09_signaturesBindTheHooks`](settlement/Hooks.t.sol#L344) | Both signatures bind the hooks |
+| HOOK-10 | [`test_HOOK_10_theAfterHookSeesTheCalls`](settlement/Hooks.t.sol#L418) | The after hook observes the effects of the calls |
 
 ## NestingTest
 
@@ -222,10 +222,10 @@ takes its ID and description from its name.
 | ID | Test | Description |
 | --- | --- | --- |
 | NEST-01 | [`testFuzz_NEST_01_nestedOrdersRestoreEachOwner`](settlement/Nesting.t.sol#L69) | Orders nested inside calls settle, and each level sees its owner |
-| NEST-02 | [`test_NEST_02_receiverHookSettlesAnOrderInsideAnOrder`](settlement/Nesting.t.sol#L121) | The ERC721 receiver hook of an order may settle an order |
-| NEST-03 | [`testFuzz_NEST_03_anOrderSettlesInsideAnotherOnEveryEntryPoint`](settlement/Nesting.t.sol#L182) | An order settles inside another on both entry points, as outer and as nested order |
-| NEST-04 | [`test_NEST_04_revokeNonceIsReachableFromInsideAnOrder`](settlement/Nesting.t.sol#L244) | A callee's `revokeNonce` inside an order spends the nonce in the callee's namespace |
-| NEST-05 | [`test_NEST_05_nestedOrderCannotSpendTheOuterValue`](settlement/Nesting.t.sol#L269) | A nested order cannot spend the outer order's value |
+| NEST-02 | [`test_NEST_02_receiverHookSettlesAnOrderInsideAnOrder`](settlement/Nesting.t.sol#L129) | The ERC721 receiver hook of an order may settle an order |
+| NEST-03 | [`testFuzz_NEST_03_anOrderSettlesInsideAnotherOnEveryEntryPoint`](settlement/Nesting.t.sol#L192) | An order settles inside another on both entry points, as outer and as nested order |
+| NEST-04 | [`test_NEST_04_revokeNonceIsReachableFromInsideAnOrder`](settlement/Nesting.t.sol#L258) | A callee's `revokeNonce` inside an order spends the nonce in the callee's namespace |
+| NEST-05 | [`test_NEST_05_nestedOrderCannotSpendTheOuterValue`](settlement/Nesting.t.sol#L284) | A nested order cannot spend the outer order's value |
 
 ## OrderSignatureTest
 

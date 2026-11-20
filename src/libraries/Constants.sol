@@ -10,8 +10,11 @@ library Constants {
   /// @dev The zero address
   address internal constant ADDRESS_ZERO = address(0);
 
-  /// @dev Transient slot of {MsgSender}, holding the account a call is acting for
+  /// @dev Transient slot of {SettlementContext-msgSender}
   bytes32 internal constant MSG_SENDER_SLOT = bytes32(erc7201('ks-allowance-hub.msg-sender'));
+
+  /// @dev Transient slot of {SettlementContext-solver}
+  bytes32 internal constant SOLVER_SLOT = bytes32(erc7201('ks-allowance-hub.solver'));
 
   /// @dev Bit of {HookParams-flags} that selects {IAHV2Hook-beforeSettlement}
   bytes32 internal constant BEFORE_SETTLEMENT_HOOK_FLAG = bytes32(uint256(0x01));

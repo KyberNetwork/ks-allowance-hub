@@ -60,7 +60,7 @@ contract AHV2AuthenticatorStub is IAHV2Authenticator {
  *
  * `settleOrder` carries three modifiers and the inline delegation check. `GUARD-*` takes the
  * owner-submitted path, `GATE-01` takes the Permit2 path and `GATE-02` takes the guards neither of
- * those reaches. `NEST-03` of {NestingTest} observes `setMsgSender`.
+ * those reaches. `NEST-03` of {NestingTest} observes `setSettlementContext`.
  */
 contract GuardsTest is SignerAuthenticatorBase {
   uint160 internal constant AMOUNT = 1 ether;
