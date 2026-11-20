@@ -4,14 +4,11 @@ pragma solidity ^0.8.0;
 import {IAHV2Authenticator} from '../interfaces/base/IAHV2Authenticator.sol';
 import {IAuthDelegator} from '../interfaces/base/IAuthDelegator.sol';
 
-import {UnorderedNonce} from './UnorderedNonce.sol';
+import {EIP712Nonce} from './EIP712Nonce.sol';
 
 import {AuthDelegationLib} from '../types/AuthDelegation.sol';
 
 import {EIP712} from 'openzeppelin-contracts/contracts/utils/cryptography/EIP712.sol';
-import {
-  SignatureChecker
-} from 'openzeppelin-contracts/contracts/utils/cryptography/SignatureChecker.sol';
 
 /**
  * @title AuthDelegator
@@ -20,7 +17,7 @@ import {
  * @dev An authenticator is trusted by the owner who delegates it. This contract checks only that
  * the delegation is in place.
  */
-abstract contract AuthDelegator is IAuthDelegator, UnorderedNonce, EIP712 {
+abstract contract AuthDelegator is IAuthDelegator, EIP712Nonce {
   /// @inheritdoc IAuthDelegator
   mapping(address owner => mapping(address authenticator => bool)) public authDelegated;
 
@@ -67,18 +64,5 @@ abstract contract AuthDelegator is IAuthDelegator, UnorderedNonce, EIP712 {
     authDelegated[owner][authenticator] = delegated;
 
     emit UpdateDelegation(owner, authenticator, delegated);
-  }
-
-  /// @dev Spends `nonce` in the namespace of `signer` and returns whether `signature` by `signer`
-  /// is valid for the EIP-712 digest of `structHash`
-  function _verifySignature(
-    address signer,
-    uint256 nonce,
-    bytes32 structHash,
-    bytes calldata signature
-  ) internal returns (bool) {
-    _useUnorderedNonce(signer, nonce);
-
-    return SignatureChecker.isValidSignatureNow(signer, _hashTypedDataV4(structHash), signature);
   }
 }

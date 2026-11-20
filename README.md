@@ -253,7 +253,7 @@ The domain is published through ERC-5267's `eip712Domain()`.
 ```
 src/
   KSAllowanceHubV2.sol
-  base/            AHV2AuthenticatorBase, AuthDelegator, MsgSender, Multicall,
+  base/            AHV2AuthenticatorBase, AuthDelegator, EIP712Nonce, MsgSender, Multicall,
                    NativeSpendGuard, UnorderedNonce
   interfaces/      IKSAllowanceHubV2; base/ holds the interfaces of the base contracts, IAHV2Hook,
                    IAHV2Authenticator and IAHV2Callee
