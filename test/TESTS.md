@@ -1,6 +1,6 @@
 # Tests
 
-The suite has 200 tests in 19 contracts. Each row links to a test and gives the
+The suite has 209 tests in 19 contracts. Each row links to a test and gives the
 first sentence of its documentation, or of the section heading above it. A test with neither
 takes its ID and description from its name.
 
@@ -142,20 +142,23 @@ takes its ID and description from its name.
 
 | ID | Test | Description |
 | --- | --- | --- |
-| AUTH-01b | [`test_AUTH_01b_permit2SelfSubmittedChecksNoApproval`](settlement/Authentication.t.sol#L53) | The owner submits their own order, so the permit witnesses nothing and no approval is checked |
-| AUTH-04 | [`test_AUTH_04_witnessPinsTheExclusiveCaller`](settlement/Authentication.t.sol#L98) | The exclusive caller the owner specified is part of what the witness binds |
-| AUTH-07 | [`test_AUTH_07_permit2Witness`](settlement/Authentication.t.sol#L128) | A solver settles a witnessed order under the sentinel approver with its own solution |
-| AUTH-07b | [`test_AUTH_07b_solutionApproverIsBoundByTheWitness`](settlement/Authentication.t.sol#L156) | The solver cannot swap in a different approver than the one the owner signed |
-| ORD-03 | [`test_ORD_03_exclusiveCallerPinningAndTheOpenSentinel`](settlement/Authentication.t.sol#L197) | Only the named exclusive caller may submit a Permit2 settlement, the sentinel admits anyone |
-| AUTH-06 | [`test_AUTH_06_ownerCallerNeedsNoAuthentication`](settlement/Authentication.t.sol#L272) | An owner acting for themselves needs no authenticator at all |
-| AUTH-06b | [`test_AUTH_06b_ownerCallerViaPermit2Allowance`](settlement/Authentication.t.sol#L301) | An owner's own call without an authenticator draws on the Permit2 allowance |
-| AUTH-08 | [`test_AUTH_08_undelegatedAuthenticatorRefused`](settlement/Authentication.t.sol#L326) | An authenticator the owner never delegated is refused before it is ever called |
-| ORD-01 | [`test_ORD_01_theAssetSourceIsTheSubmittersArgument`](settlement/Authentication.t.sol#L358) | The asset source is the submitter's parameter, and the same order settles either way |
-| ORD-01b | [`test_ORD_01b_thePermit2SignatureEntryPointConsultsNoAllowance`](settlement/Authentication.t.sol#L401) | The Permit2 signature entry point takes no source argument and claims neither allowance |
-| AUTH-13 | [`test_AUTH_13_malformedAuthenticationDataRejected`](settlement/Authentication.t.sol#L433) | Authentication data too short to settle is rejected, on whichever gate it reaches |
-| AUTH-18 | [`test_AUTH_18_authenticatorReceivesTheOrderAndTheSolution`](settlement/Authentication.t.sol#L474) | The authenticator receives the order, its hash, the solution and the data, unaltered |
-| ORD-04 | [`test_ORD_04_delegatedEntryPointDrawsOnTheNamedOwner`](settlement/Authentication.t.sol#L515) | An order repointed to another owner who approved the same signer reverts |
-| ORD-03b | [`test_ORD_03b_delegatedEntryPointHonoursTheExclusiveCaller`](settlement/Authentication.t.sol#L559) | The delegated entry point refuses a submitter the order did not specify |
+| AUTH-01b | [`test_AUTH_01b_permit2SelfSubmittedChecksTheApproval`](settlement/Authentication.t.sol#L54) | The owner submits their own order, so the permit witnesses nothing and the approval is still checked |
+| AUTH-04 | [`test_AUTH_04_witnessPinsTheExclusiveCaller`](settlement/Authentication.t.sol#L100) | The exclusive caller the owner specified is part of what the witness binds |
+| AUTH-07 | [`test_AUTH_07_permit2Witness`](settlement/Authentication.t.sol#L130) | A solver settles a witnessed order under the sentinel approver with its own solution |
+| AUTH-07b | [`test_AUTH_07b_solutionApproverIsBoundByTheWitness`](settlement/Authentication.t.sol#L158) | The solver cannot swap in a different approver than the one the owner signed |
+| ORD-03 | [`test_ORD_03_exclusiveCallerPinningAndTheOpenSentinel`](settlement/Authentication.t.sol#L199) | Only the named exclusive caller may submit a Permit2 settlement, the sentinel admits anyone |
+| AUTH-06 | [`test_AUTH_06_ownerCallerNeedsNoAuthentication`](settlement/Authentication.t.sol#L271) | An owner acting for themselves with no authenticator needs no authentication |
+| AUTH-06b | [`test_AUTH_06b_ownerCallerViaPermit2Allowance`](settlement/Authentication.t.sol#L289) | An owner's own call without an authenticator draws on the Permit2 allowance |
+| AUTH-08 | [`test_AUTH_08_undelegatedAuthenticatorRefused`](settlement/Authentication.t.sol#L314) | An authenticator the owner never delegated is refused before it is ever called |
+| ORD-01 | [`test_ORD_01_theAssetSourceIsTheSubmittersArgument`](settlement/Authentication.t.sol#L346) | The asset source is the submitter's parameter, and the same order settles either way |
+| ORD-01b | [`test_ORD_01b_thePermit2SignatureEntryPointConsultsNoAllowance`](settlement/Authentication.t.sol#L389) | The Permit2 signature entry point takes no source argument and claims neither allowance |
+| AUTH-13 | [`test_AUTH_13_malformedAuthenticationDataRejected`](settlement/Authentication.t.sol#L421) | Authentication data too short to settle is rejected, on whichever gate it reaches |
+| AUTH-18 | [`test_AUTH_18_authenticatorReceivesTheOrderAndTheSolution`](settlement/Authentication.t.sol#L462) | The authenticator receives the order, its hash, the solution and the data, unaltered |
+| AUTH-19 | [`test_AUTH_19_ownerWithDelegatedAuthenticatorIsAuthenticated`](settlement/Authentication.t.sol#L497) | An owner submitting an order with a delegated authenticator is authenticated |
+| AUTH-20 | [`test_AUTH_20_ownerWithRejectedAuthenticationDataIsRefused`](settlement/Authentication.t.sol#L526) | An owner is refused when the delegated authenticator rejects the data |
+| AUTH-21 | [`test_AUTH_21_ownerWithDelegatedAuthenticatorSkipsTheExclusiveCaller`](settlement/Authentication.t.sol#L549) | An owner with a delegated authenticator is exempt from the exclusive caller |
+| ORD-04 | [`test_ORD_04_delegatedEntryPointDrawsOnTheNamedOwner`](settlement/Authentication.t.sol#L582) | An order repointed to another owner who approved the same signer reverts |
+| ORD-03b | [`test_ORD_03b_delegatedEntryPointHonoursTheExclusiveCaller`](settlement/Authentication.t.sol#L626) | The delegated entry point refuses a submitter the order did not specify |
 
 ## CalldataHygieneTest
 
@@ -230,22 +233,27 @@ takes its ID and description from its name.
 
 | ID | Test | Description |
 | --- | --- | --- |
-| SIG-01 | [`test_SIG_01_relayedSignedOrderSettlesAndSpendsItsNonce`](settlement/OrderSignature.t.sol#L73) | A relayer settles an order signed by the owner, which spends its nonce once |
-| SIG-02 | [`test_SIG_02_erc1271OwnerAuthenticatesThroughItsWallet`](settlement/OrderSignature.t.sol#L107) | An ERC-1271 owner is authenticated through its wallet |
-| SIG-03 | [`test_SIG_03_signatureNotCoveringTheOrderIsRefused`](settlement/OrderSignature.t.sol#L145) | A signature that does not cover the order as submitted is refused |
-| SIG-04 | [`test_SIG_04_ownerSubmitsWithoutSignatureAndSpendsNoNonce`](settlement/OrderSignature.t.sol#L206) | The owner submits an order with the zero authenticator without a signature |
-| SIG-05 | [`test_SIG_05_solutionIsFreeWithSentinelApproverAndBoundByANamedOne`](settlement/OrderSignature.t.sol#L247) | The order signature does not bind the solution, and a non-zero approver does |
-| SIG-06 | [`test_SIG_06_nonceSpentByRevocationOrDelegationRefusesTheOrder`](settlement/OrderSignature.t.sol#L295) | A nonce already spent in the owner's namespace refuses the order |
-| SIG-07 | [`test_SIG_07_exclusiveCallerIsCheckedBeforeTheSignature`](settlement/OrderSignature.t.sol#L331) | Only the exclusive caller may submit, and that is checked before the signature |
-| SIG-08 | [`test_SIG_08_spentNonceIsRefusedBeforeTheSignature`](settlement/OrderSignature.t.sol#L364) | A spent nonce is refused before the signature is verified |
-| SIG-09 | [`test_SIG_09_exclusiveCallerIsCheckedBeforeTheNonce`](settlement/OrderSignature.t.sol#L392) | The exclusive caller is checked before the nonce |
-| SIG-FUZZ | [`testFuzz_SIG_FUZZ_relayedSignedOrderSettlesExactly`](settlement/OrderSignature.t.sol#L420) | Any submitter settles a signed order for any nonce, amount and lifetime |
-| DISP-01 | [`test_DISP_01_delegatedPermit2IsNotCalledAsAnAuthenticator`](settlement/OrderSignature.t.sol#L460) | The Permit2 address as authenticator is never called, even when delegated |
-| DISP-02 | [`test_DISP_02_delegatedAuthenticatorCallsNoPermit2SignatureTransfer`](settlement/OrderSignature.t.sol#L487) | A delegated authenticator never reaches the signature transfers of Permit2 |
-| DISP-03 | [`test_DISP_03_permit2FlowIgnoresUsePermit2Allowances`](settlement/OrderSignature.t.sol#L514) | The Permit2 authenticator pulls with the signature, not the owner's allowance |
-| DISP-04 | [`test_DISP_04_ownerSettlesWithAnUndelegatedAuthenticator`](settlement/OrderSignature.t.sol#L539) | The owner settles with an authenticator that was never delegated |
-| DISP-05 | [`test_DISP_05_permit2FlowRefusesPlainPermitAndEmptySignature`](settlement/OrderSignature.t.sol#L564) | A relayer on the Permit2 flow needs the witness signature |
-| DISP-06 | [`test_DISP_06_exclusiveCallerIsCheckedBeforeApprovalAndHooks`](settlement/OrderSignature.t.sol#L592) | The exclusive caller is checked before the approval and the hooks, on every rail |
+| SIG-01 | [`test_SIG_01_relayedSignedOrderSettlesAndSpendsItsNonce`](settlement/OrderSignature.t.sol#L91) | A relayer settles an order signed by the owner, which spends its nonce once |
+| SIG-02 | [`test_SIG_02_erc1271OwnerAuthenticatesThroughItsWallet`](settlement/OrderSignature.t.sol#L125) | An ERC-1271 owner is authenticated through its wallet |
+| SIG-03 | [`test_SIG_03_signatureNotCoveringTheOrderIsRefused`](settlement/OrderSignature.t.sol#L163) | A signature that does not cover the order as submitted is refused |
+| SIG-04 | [`test_SIG_04_ownerSubmitsWithZeroNonceAndSpendsNothing`](settlement/OrderSignature.t.sol#L224) | The owner submits an order with the zero authenticator and nonce 0 |
+| SIG-05 | [`test_SIG_05_solutionIsFreeWithSentinelApproverAndBoundByANamedOne`](settlement/OrderSignature.t.sol#L248) | The order signature does not bind the solution, and a non-zero approver does |
+| SIG-06 | [`test_SIG_06_nonceSpentByRevocationOrDelegationRefusesTheOrder`](settlement/OrderSignature.t.sol#L296) | A nonce already spent in the owner's namespace refuses the order |
+| SIG-07 | [`test_SIG_07_exclusiveCallerIsCheckedBeforeTheSignature`](settlement/OrderSignature.t.sol#L332) | Only the exclusive caller may submit, and that is checked before the signature |
+| SIG-08 | [`test_SIG_08_spentNonceIsRefusedBeforeTheSignature`](settlement/OrderSignature.t.sol#L369) | A spent nonce is refused before the signature is verified |
+| SIG-09 | [`test_SIG_09_exclusiveCallerIsCheckedBeforeTheNonce`](settlement/OrderSignature.t.sol#L397) | The exclusive caller is checked before the nonce |
+| SIG-10 | [`test_SIG_10_ownerNonZeroNonceIsSpentOnce`](settlement/OrderSignature.t.sol#L426) | The owner settles an order with a non-zero nonce once, which spends that nonce |
+| SIG-11 | [`test_SIG_11_ownerRevokedNonceRefusesTheOwner`](settlement/OrderSignature.t.sol#L449) | A nonce the owner revoked refuses the order of the owner |
+| SIG-12 | [`test_SIG_12_ownerWithAuthenticationDataIsRefused`](settlement/OrderSignature.t.sol#L470) | The owner passing authentication data with the zero authenticator is refused |
+| SIG-13 | [`test_SIG_13_ownerUnexpectedSignatureIsCheckedBeforeTheNonce`](settlement/OrderSignature.t.sol#L490) | For the owner, authentication data is refused before the nonce is spent |
+| SIG-FUZZ | [`testFuzz_SIG_FUZZ_relayedSignedOrderSettlesExactly`](settlement/OrderSignature.t.sol#L508) | Any submitter settles a signed order for any nonce, amount and lifetime |
+| SIG-FUZZ | [`testFuzz_SIG_FUZZ_ownerNonce`](settlement/OrderSignature.t.sol#L544) | The owner spends a non-zero nonce and not a zero one, and data is refused |
+| DISP-01 | [`test_DISP_01_delegatedPermit2IsNotCalledAsAnAuthenticator`](settlement/OrderSignature.t.sol#L575) | The Permit2 address as authenticator is never called, even when delegated |
+| DISP-02 | [`test_DISP_02_delegatedAuthenticatorCallsNoPermit2SignatureTransfer`](settlement/OrderSignature.t.sol#L602) | A delegated authenticator never reaches the signature transfers of Permit2 |
+| DISP-03 | [`test_DISP_03_permit2FlowIgnoresUsePermit2Allowances`](settlement/OrderSignature.t.sol#L629) | The Permit2 authenticator pulls with the signature, not the owner's allowance |
+| DISP-04 | [`test_DISP_04_ownerWithAnUndelegatedAuthenticatorIsRefused`](settlement/OrderSignature.t.sol#L654) | The owner is refused with an authenticator that was never delegated |
+| DISP-05 | [`test_DISP_05_permit2FlowRefusesPlainPermitAndEmptySignature`](settlement/OrderSignature.t.sol#L684) | A relayer on the Permit2 flow needs the witness signature |
+| DISP-06 | [`test_DISP_06_exclusiveCallerIsCheckedBeforeApprovalAndHooks`](settlement/OrderSignature.t.sol#L712) | The exclusive caller is checked before the approval and the hooks, on every rail |
 
 ## SettleFuzzTest
 
@@ -298,8 +306,9 @@ takes its ID and description from its name.
 | SOL-10 | [`test_SOL_10_thePermit2EntryPointSpendsTheApprovalNonce`](settlement/SolutionApproval.t.sol#L359) | The Permit2 entry point spends the approval nonce as the delegated one does |
 | SOL-11 | [`testFuzz_SOL_11_exactlyTheSolutionNonceIsSpent`](settlement/SolutionApproval.t.sol#L389) | Exactly the solution nonce is spent, and a replay reports it |
 | SOL-12 | [`test_SOL_12_theApproverNamespaceIsSharedWithDelegationNonces`](settlement/SolutionApproval.t.sol#L423) | The approver's namespace is shared with its `updateDelegation` nonces |
-| OWNER-APR-01 | [`testFuzz_OWNER_APR_01_ownerSettlesWithoutAnApproval`](settlement/SolutionApproval.t.sol#L451) | The owner settles under a named approver with a garbage approval |
-| OWNER-APR-02 | [`testFuzz_OWNER_APR_02_solverIsRefusedWithoutAnApproval`](settlement/SolutionApproval.t.sol#L478) | The solver submitting the same order and approval is refused |
+| OWNER-APR-01 | [`test_OWNER_APR_01_ownerSettlesWithAValidApproval`](settlement/SolutionApproval.t.sol#L452) | The owner under a named approver settles with a valid approval |
+| OWNER-APR-03 | [`test_OWNER_APR_03_ownerIsRefusedWithoutAnApproval`](settlement/SolutionApproval.t.sol#L462) | The owner under a named approver is refused without an approval |
+| OWNER-APR-02 | [`testFuzz_OWNER_APR_02_solverIsRefusedWithoutAnApproval`](settlement/SolutionApproval.t.sol#L472) | The solver submitting the same order and approval is refused |
 
 ## Eip712Test
 

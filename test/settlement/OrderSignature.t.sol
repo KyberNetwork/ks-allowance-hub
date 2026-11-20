@@ -8,6 +8,7 @@ import {ERC1271WalletMock} from 'test/mocks/TokenMocks.sol';
 import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
 import {IAHV2Authenticator} from 'src/interfaces/base/IAHV2Authenticator.sol';
 import {IAHV2Hook} from 'src/interfaces/base/IAHV2Hook.sol';
+import {IAuthDelegator} from 'src/interfaces/base/IAuthDelegator.sol';
 import {IUnorderedNonce} from 'src/interfaces/base/IUnorderedNonce.sol';
 
 import {AHV2Order} from 'src/types/AHV2Order.sol';
@@ -18,7 +19,7 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 /**
  * @title OrderSignatureTest
- * @notice `SIG-01..09`, `SIG-FUZZ` and `DISP-01..06` — the owner's signature over an order with
+ * @notice `SIG-01..13`, `SIG-FUZZ` and `DISP-01..06` — the owner's signature over an order with
  * the zero authenticator, and the dispatch on `order.authenticator`
  * @dev A non-owner submitter of an order with the zero authenticator carries the owner's EIP-712
  * signature over the order, which spends `order.nonce` in the owner's namespace of the hub. The
@@ -53,6 +54,12 @@ contract OrderSignatureTest is SettlementBase {
     )
   );
 
+  /// @dev The parameters of {testFuzz_SIG_FUZZ_ownerNonce}
+  struct OwnerNonceFuzz {
+    uint256 nonce;
+    bool withData;
+  }
+
   /// @dev The parameters of {testFuzz_SIG_FUZZ_relayedSignedOrderSettlesExactly}
   struct SignedOrderFuzz {
     address submitter;
@@ -61,8 +68,19 @@ contract OrderSignatureTest is SettlementBase {
     uint32 ttl;
   }
 
+  /// @dev An order of the owner with the zero authenticator and the given nonce
+  function _ownerOrder(uint256 nonce) internal view returns (AHV2Order memory) {
+    return _openAhv2Order(
+      _allowances(_tokenAllowance(AMOUNT)),
+      _noHooks(),
+      _noCalls(),
+      nonce,
+      vm.getBlockTimestamp() + 1 hours
+    );
+  }
+
   // -------------------------------------------------------------------------------------------
-  // SIG-01..09 / SIG-FUZZ — the owner's signature over the order
+  // SIG-01..13 / SIG-FUZZ — the owner's signature over the order
   // -------------------------------------------------------------------------------------------
 
   /**
@@ -199,18 +217,12 @@ contract OrderSignatureTest is SettlementBase {
   }
 
   /**
-   * SIG-04 — the owner submits an order with the zero authenticator without a signature
-   * @dev No nonce is spent, so the same call settles again. After the owner revokes the nonce of
-   * the order, the owner still settles it, and the nonce word of the owner is unchanged by it.
+   * SIG-04 — the owner submits an order with the zero authenticator and nonce 0
+   * @dev Nonce 0 is not spent, so the same call settles again, and the nonce word of the owner
+   * is unchanged.
    */
-  function test_SIG_04_ownerSubmitsWithoutSignatureAndSpendsNoNonce() public {
-    AHV2Order memory order = _openAhv2Order(
-      _allowances(_tokenAllowance(AMOUNT)),
-      _noHooks(),
-      _noCalls(),
-      5,
-      vm.getBlockTimestamp() + 1 hours
-    );
+  function test_SIG_04_ownerSubmitsWithZeroNonceAndSpendsNothing() public {
+    AHV2Order memory order = _ownerOrder(0);
     AHV2Solution memory solution = _defaultSolution(order);
     uint256 before = _calleeBalance();
 
@@ -225,17 +237,6 @@ contract OrderSignatureTest is SettlementBase {
 
     assertEq(_calleeBalance() - before, 2 * AMOUNT, 'the identical second call settled');
     assertEq(hub.nonces(lNonceKey(owner), 0), 0, 'still no nonce is spent');
-
-    vm.prank(owner);
-    hub.revokeNonce(5);
-    uint256 wordAfterRevoke = hub.nonces(lNonceKey(owner), 0);
-    assertEq(wordAfterRevoke, 1 << 5, 'the revocation set exactly bit 5');
-
-    vm.prank(owner);
-    hub.settleOrder(order, '', solution, '', false);
-
-    assertEq(_calleeBalance() - before, 3 * AMOUNT, 'the order with a revoked nonce settled');
-    assertEq(hub.nonces(lNonceKey(owner), 0), wordAfterRevoke, 'the nonce word is unchanged');
   }
 
   /**
@@ -343,11 +344,15 @@ contract OrderSignatureTest is SettlementBase {
     bytes memory signature = _signOrder(order);
 
     vm.prank(relayer);
-    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.NotExclusiveCaller.selector, relayer));
+    vm.expectRevert(
+      abi.encodeWithSelector(IKSAllowanceHubV2.NotExclusiveCallerOrOwner.selector, relayer)
+    );
     hub.settleOrder(order, signature, solution, '', false);
 
     vm.prank(relayer);
-    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.NotExclusiveCaller.selector, relayer));
+    vm.expectRevert(
+      abi.encodeWithSelector(IKSAllowanceHubV2.NotExclusiveCallerOrOwner.selector, relayer)
+    );
     hub.settleOrder(order, '', solution, '', false);
 
     uint256 before = _calleeBalance();
@@ -387,7 +392,7 @@ contract OrderSignatureTest is SettlementBase {
   /**
    * SIG-09 — the exclusive caller is checked before the nonce
    * @dev The order is pinned to the relayer and its nonce 9 is revoked. A stranger submitting it
-   * with an empty signature is refused with `NotExclusiveCaller`.
+   * with an empty signature is refused with `NotExclusiveCallerOrOwner`.
    */
   function test_SIG_09_exclusiveCallerIsCheckedBeforeTheNonce() public {
     AHV2Order memory order = _ahv2Order(
@@ -406,8 +411,91 @@ contract OrderSignatureTest is SettlementBase {
     hub.revokeNonce(9);
 
     vm.prank(solver);
-    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.NotExclusiveCaller.selector, solver));
+    vm.expectRevert(
+      abi.encodeWithSelector(IKSAllowanceHubV2.NotExclusiveCallerOrOwner.selector, solver)
+    );
     hub.settleOrder(order, '', solution, '', false);
+
+    assertEq(_calleeBalance(), 0, 'nothing moved');
+  }
+
+  /**
+   * SIG-10 — the owner settles an order with a non-zero nonce once, which spends that nonce
+   * @dev The bit is set in the namespace of the owner, and the second call reverts with it.
+   */
+  function test_SIG_10_ownerNonZeroNonceIsSpentOnce() public {
+    AHV2Order memory order = _ownerOrder(5);
+    AHV2Solution memory solution = _defaultSolution(order);
+
+    vm.prank(owner);
+    hub.settleOrder(order, '', solution, '', false);
+
+    assertEq(_calleeBalance(), AMOUNT, 'the order settled');
+    assertEq(hub.nonces(lNonceKey(owner), 0), 1 << 5, 'exactly bit 5 is spent');
+
+    vm.prank(owner);
+    vm.expectRevert(
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(owner), 5)
+    );
+    hub.settleOrder(order, '', solution, '', false);
+
+    assertEq(_calleeBalance(), AMOUNT, 'the second call moved nothing');
+  }
+
+  /**
+   * SIG-11 — a nonce the owner revoked refuses the order of the owner
+   * @dev The revocation sets bit 5, and the owner call reverts with `NonceAlreadyUsed`.
+   */
+  function test_SIG_11_ownerRevokedNonceRefusesTheOwner() public {
+    AHV2Order memory order = _ownerOrder(5);
+
+    vm.prank(owner);
+    hub.revokeNonce(5);
+
+    vm.prank(owner);
+    vm.expectRevert(
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(owner), 5)
+    );
+    hub.settleOrder(order, '', _defaultSolution(order), '', false);
+
+    assertEq(_calleeBalance(), 0, 'nothing moved');
+    assertEq(hub.nonces(lNonceKey(owner), 0), 1 << 5, 'only the revocation is set');
+  }
+
+  /**
+   * SIG-12 — the owner passing authentication data with the zero authenticator is refused
+   * @dev A valid signature of the owner and a single byte both revert with `UnexpectedSignature`.
+   * Nothing moves and the nonce stays unspent.
+   */
+  function test_SIG_12_ownerWithAuthenticationDataIsRefused() public {
+    AHV2Order memory order = _ownerOrder(5);
+    AHV2Solution memory solution = _defaultSolution(order);
+    bytes[2] memory datas = [_signOrder(order), hex'01'];
+
+    for (uint256 i = 0; i < datas.length; i++) {
+      vm.prank(owner);
+      vm.expectRevert(IAuthDelegator.UnexpectedSignature.selector);
+      hub.settleOrder(order, datas[i], solution, '', false);
+    }
+
+    assertEq(_calleeBalance(), 0, 'nothing moved');
+    assertEq(hub.nonces(lNonceKey(owner), 0), 0, 'the nonce is unspent');
+  }
+
+  /**
+   * SIG-13 — for the owner, authentication data is refused before the nonce is spent
+   * @dev With nonce 5 revoked and one byte of data, the error is `UnexpectedSignature` and not
+   * `NonceAlreadyUsed`.
+   */
+  function test_SIG_13_ownerUnexpectedSignatureIsCheckedBeforeTheNonce() public {
+    AHV2Order memory order = _ownerOrder(5);
+
+    vm.prank(owner);
+    hub.revokeNonce(5);
+
+    vm.prank(owner);
+    vm.expectRevert(IAuthDelegator.UnexpectedSignature.selector);
+    hub.settleOrder(order, hex'01', _defaultSolution(order), '', false);
 
     assertEq(_calleeBalance(), 0, 'nothing moved');
   }
@@ -445,6 +533,33 @@ contract OrderSignatureTest is SettlementBase {
       hub.nonces(lNonceKey(owner), f.nonce >> 8),
       1 << (f.nonce & 0xff),
       'exactly the order nonce bit is set'
+    );
+  }
+
+  /**
+   * SIG-FUZZ — the owner spends a non-zero nonce and not a zero one, and data is refused
+   * @dev With empty data the nonce bit is set exactly for a non-zero nonce. With data the call
+   * reverts with `UnexpectedSignature` and the nonce stays unspent.
+   */
+  function testFuzz_SIG_FUZZ_ownerNonce(OwnerNonceFuzz memory f) public {
+    AHV2Order memory order = _ownerOrder(f.nonce);
+    AHV2Solution memory solution = _defaultSolution(order);
+    uint256 word = f.nonce >> 8;
+
+    vm.prank(owner);
+    if (f.withData) {
+      vm.expectRevert(IAuthDelegator.UnexpectedSignature.selector);
+      hub.settleOrder(order, hex'01', solution, '', false);
+      assertEq(hub.nonces(lNonceKey(owner), word), 0, 'the nonce is unspent');
+      return;
+    }
+
+    hub.settleOrder(order, '', solution, '', false);
+    assertEq(_calleeBalance(), AMOUNT, 'the order settled');
+    assertEq(
+      hub.nonces(lNonceKey(owner), word),
+      f.nonce == 0 ? 0 : 1 << (f.nonce & 0xff),
+      'a non-zero nonce is spent and a zero one is not'
     );
   }
 
@@ -533,10 +648,10 @@ contract OrderSignatureTest is SettlementBase {
   }
 
   /**
-   * DISP-04 — the owner settles with an authenticator that was never delegated
-   * @dev The owner submits without a signature, and `authenticate` is not called.
+   * DISP-04 — the owner is refused with an authenticator that was never delegated
+   * @dev `authenticate` is not called and nothing moves.
    */
-  function test_DISP_04_ownerSettlesWithAnUndelegatedAuthenticator() public {
+  function test_DISP_04_ownerWithAnUndelegatedAuthenticatorIsRefused() public {
     AHV2Order memory order = _openAhv2Order(
       address(authenticator),
       _allowances(_tokenAllowance(AMOUNT)),
@@ -551,9 +666,14 @@ contract OrderSignatureTest is SettlementBase {
       address(authenticator), abi.encodeWithSelector(IAHV2Authenticator.authenticate.selector), 0
     );
     vm.prank(owner);
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IAuthDelegator.AuthenticatorNotDelegated.selector, address(authenticator)
+      )
+    );
     hub.settleOrder(order, '', _defaultSolution(order), '', false);
 
-    assertEq(_calleeBalance() - before, AMOUNT, 'the owner settled');
+    assertEq(_calleeBalance(), before, 'nothing moved');
   }
 
   /**
@@ -586,7 +706,7 @@ contract OrderSignatureTest is SettlementBase {
    * DISP-06 — the exclusive caller is checked before the approval and the hooks, on every rail
    * @dev Each order is pinned to the relayer, names an approver and carries a hook with the
    * before flag. A stranger submits it with the credential valid for its rail and an empty
-   * approval, which is refused with `NotExclusiveCaller`. The hook is not called and no nonce is
+   * approval, which is refused with `NotExclusiveCallerOrOwner`. The hook is not called and no nonce is
    * spent in the namespace of the approver.
    */
   function test_DISP_06_exclusiveCallerIsCheckedBeforeApprovalAndHooks() public {
@@ -622,7 +742,9 @@ contract OrderSignatureTest is SettlementBase {
     uint256 approverWord = hub.nonces(lNonceKey(approver), 0);
 
     vm.prank(solver);
-    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.NotExclusiveCaller.selector, solver));
+    vm.expectRevert(
+      abi.encodeWithSelector(IKSAllowanceHubV2.NotExclusiveCallerOrOwner.selector, solver)
+    );
     hub.settleOrder(order, credential, solution, '', false);
 
     assertEq(hub.nonces(lNonceKey(approver), 0), approverWord, 'the approver namespace is intact');

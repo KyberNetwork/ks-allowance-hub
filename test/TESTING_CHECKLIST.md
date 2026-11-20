@@ -1763,3 +1763,19 @@ Scope: `CallParams.data` renamed `ownerData`, and the native value of each call 
 ### Notes for this run
 
 The suite went from 197 to 200 tests. No existing test asserted that the owner's signature binds a call's value, so no baseline was weakened; SD-06 and SD-07 pin the new split. Each settlement snapshot rises by 829 to 1,173 gas for the added array, and the hub's runtime size from 22,578 to 22,953 bytes.
+
+## Run `20261120T090736Z`
+
+Scope: with the zero authenticator, the owner's call refuses non-empty `authenticationData` with `UnexpectedSignature` and spends a non-zero `order.nonce`; the other flows are unchanged.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261120T090736Z/OWNER-NONCE-01` | The owner's zero-authenticator call spends a non-zero nonce once, is refused on replay and after `revokeNonce`, and spends nothing with nonce 0; non-empty data reverts `UnexpectedSignature` before the nonce is read; fuzzed over the nonce and the presence of data | SIG-04 (rewritten), SIG-10 to SIG-13, `testFuzz_SIG_FUZZ_ownerNonce` in `test/settlement/OrderSignature.t.sol` | `FOUNDRY_PROFILE=solar forge test --isolate` and `forge test --isolate`: 205 passed, 0 failed |
+| - [x] | - [ ] | `20261120T090736Z/MIGRATE-04` | Owner-submitted zero-authenticator orders that settle more than once use nonce 0 | AMT-01, AMT-02 in `test/settlement/Solution.t.sol` | `FOUNDRY_PROFILE=solar forge test --isolate` and `forge test --isolate`: 205 passed, 0 failed |
+| - [x] | - [ ] | `20261120T090736Z/OWNER-AUTH-01` | A delegated authenticator authenticates the owner's call too: an undelegated one reverts `AuthenticatorNotDelegated` without being called, a delegated one is called once with the exact arguments, and rejected data reverts with the authenticator's error | DISP-04 (rewritten) in `test/settlement/OrderSignature.t.sol`; AUTH-06 (narrowed), AUTH-19, AUTH-20, AUTH-21 in `test/settlement/Authentication.t.sol` | `FOUNDRY_PROFILE=solar forge test --isolate` and `forge test --isolate`: 209 passed, 0 failed |
+| - [x] | - [ ] | `20261120T090736Z/OWNER-APR-04` | A non-zero `solutionApprover` must approve the owner's solution on all three flows: a valid approval settles and spends its nonce, an empty or mismatched one reverts `InvalidSolutionSignature` with nothing moved | AUTH-01b (rewritten) in `Authentication.t.sol`; OWNER-APR-01 (rewritten), OWNER-APR-03 in `test/settlement/SolutionApproval.t.sol` | `FOUNDRY_PROFILE=solar forge test --isolate` and `forge test --isolate`: 209 passed, 0 failed |
+| - [x] | - [ ] | `20261120T090736Z/EXCLUSIVE-01` | The exclusive-caller check runs first on every flow and reverts `NotExclusiveCallerOrOwner`; the owner is exempt | ORD-03, ORD-03b and every other `NotExclusiveCallerOrOwner` case in `Authentication.t.sol` and `OrderSignature.t.sol` | `FOUNDRY_PROFILE=solar forge test --isolate` and `forge test --isolate`: 209 passed, 0 failed |
+
+### Notes for this run
+
+The suite went from 200 to 209 tests. The requested changes contradict four baselines, each rewritten to the new behaviour: SIG-04 (the owner's nonce 5 was not spent; it is now), DISP-04 (the owner settled with an undelegated authenticator; it now reverts), AUTH-01b and OWNER-APR-01 (the owner skipped the solution approval; it is now required). AUTH-06 lost its step asserting that a delegated authenticator is not called for the owner. Against the start of this run, owner settlements on the zero authenticator cost 359 gas more, `ownerPermit2Signature` 324 more, and the relayed paths 17 to 115 more; the hub's runtime size is 23,100 bytes.

@@ -197,7 +197,7 @@ contract SolutionTest is SettlementBase {
     uint160 chosen = 2 ether;
 
     for (uint8 path = 0; path < 3; path++) {
-      AHV2Order memory order = _amountOrder(AMOUNT, 1);
+      AHV2Order memory order = _amountOrder(AMOUNT, 0);
       AHV2Solution memory solution = _amountSolution(chosen);
       bytes memory permit = _preparePath(path, order);
       uint256 ownerBefore = _balance(owner);
@@ -235,7 +235,7 @@ contract SolutionTest is SettlementBase {
     uint160 sixAllowance = 7e6;
 
     for (uint8 path = 0; path < 3; path++) {
-      AHV2Order memory order = _twoTransferOrder(AMOUNT, sixAllowance, 1);
+      AHV2Order memory order = _twoTransferOrder(AMOUNT, sixAllowance, 0);
       bytes memory permit = _preparePath(path, order);
 
       vm.expectRevert(_exceeds(1, uint256(sixAllowance) + 1, sixAllowance));

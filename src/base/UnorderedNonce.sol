@@ -7,8 +7,7 @@ import {IUnorderedNonce} from '../interfaces/base/IUnorderedNonce.sol';
  * @title UnorderedNonce
  * @notice Bitmap of spent nonces in the manner of Permit2; nonces may be spent in any order
  * @dev Nonces are grouped by namespace, which identifies the signer of the data a nonce protects:
- * an account's address as a 32-byte word, or a key's credential hash. Each contract that inherits
- * this keeps its own bitmap.
+ * an account's address as a 32-byte word, or a key's credential hash.
  */
 abstract contract UnorderedNonce is IUnorderedNonce {
   /// @inheritdoc IUnorderedNonce

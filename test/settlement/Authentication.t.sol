@@ -22,9 +22,10 @@ import {IERC20} from 'openzeppelin-contracts/contracts/token/ERC20/IERC20.sol';
 
 /**
  * @title AuthenticationTest
- * @notice `AUTH-01b`, `AUTH-04`, `AUTH-06..08`, `AUTH-13`, `AUTH-18` and `ORD-01..04` — how a settlement is
+ * @notice `AUTH-01b`, `AUTH-04`, `AUTH-06..08`, `AUTH-13`, `AUTH-18..21` and `ORD-01..04` — how a settlement is
  * authenticated on each entry point, and the parties an order names
- * @dev An owner submitting their own order needs no authentication. Any other submitter carries the
+ * @dev An owner submitting their own order needs no Permit2 witness and no solution approval, and a
+ * delegated authenticator still authenticates it. Any other submitter carries the
  * owner's Permit2 witness signature or the data of a delegated authenticator. The exclusive caller
  * says who may submit an order on every entry point. An approved signer authenticates the owner; it
  * does not say who may submit the order, so an authenticator that checked nothing of the sort would
@@ -43,14 +44,14 @@ contract AuthenticationTest is SettlementBase {
   // -------------------------------------------------------------------------------------------
 
   /**
-   * AUTH-01b — the owner submits their own order, so the permit witnesses nothing and no approval
-   * is checked
+   * AUTH-01b — the owner submits their own order, so the permit witnesses nothing and the approval
+   * is still checked
    * @dev An owner submitting for themselves skips the witness entirely, so the hooks and the
-   * approver the order specifies are bound by no signature. The approval is not checked either:
-   * the second step presents an approval of a solution other than the one submitted and settles,
-   * and neither step spends the approver's nonce.
+   * approver the order specifies are bound by no signature. The approval is checked: the first
+   * step settles with a valid approval and spends its nonce, and the second presents an approval
+   * of a solution other than the one submitted and is refused.
    */
-  function test_AUTH_01b_permit2SelfSubmittedChecksNoApproval() public {
+  function test_AUTH_01b_permit2SelfSubmittedChecksTheApproval() public {
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
     HookParams[] memory hooks = _hooks(_hook(hook, HOOK_BOTH));
     uint256 deadline = vm.getBlockTimestamp() + 1 hours;
@@ -71,19 +72,20 @@ contract AuthenticationTest is SettlementBase {
     assertEq(_calleeBalance() - before, AMOUNT, 'erc20 transfer');
     assertEq(results.length, 1, 'one callee result');
     assertEq(hook.sequenceLength(), 2, 'the hook bracketed the order');
+    assertEq(hub.nonces(lNonceKey(approver), 0), 1, 'the approval nonce is spent');
 
     AHV2Order memory again = _ahv2Order(
       permit2, ANY, erc20s, _noNfts(), hooks, _calls(_calleeCall(hex'02')), approver, 62, deadline
     );
-    // a fresh solution nonce, so the approval would not fit the solution if it were checked
+    // a fresh solution nonce, so the approval does not fit the solution
     AHV2Solution memory otherRoute = _solution(again, 1, deadline);
     bytes memory permitSig2 = _signPlainPermit(erc20s, 62, deadline);
 
     vm.prank(owner);
+    vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
     hub.settleOrder(again, permitSig2, otherRoute, approval, false);
 
-    assertEq(_calleeBalance() - before, 2 * AMOUNT, 'the mismatched approval');
-    assertEq(hub.nonces(lNonceKey(approver), 0), 0, 'no approval nonce is spent');
+    assertEq(_calleeBalance() - before, AMOUNT, 'nothing moved by the second step');
   }
 
   /**
@@ -238,7 +240,9 @@ contract AuthenticationTest is SettlementBase {
     bytes memory againSig = _signPermit2Order(pinnedAgain);
 
     vm.prank(relayer);
-    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.NotExclusiveCaller.selector, relayer));
+    vm.expectRevert(
+      abi.encodeWithSelector(IKSAllowanceHubV2.NotExclusiveCallerOrOwner.selector, relayer)
+    );
     hub.settleOrder(pinnedAgain, againSig, solution, '', false);
 
     assertEq(
@@ -260,15 +264,10 @@ contract AuthenticationTest is SettlementBase {
   }
 
   // -------------------------------------------------------------------------------------------
-  // AUTH-06 / AUTH-08 / AUTH-13 / AUTH-18 / ORD-01 — the delegated authentication entry point
+  // AUTH-06 / AUTH-08 / AUTH-13 / AUTH-18..21 / ORD-01 — the delegated authentication entry point
   // -------------------------------------------------------------------------------------------
 
-  /**
-   * AUTH-06 — an owner acting for themselves needs no authenticator at all
-   * @dev The first step passes no authenticator. The second delegates one and passes it with
-   * data it would refuse, and the settlement still succeeds without the authenticator being
-   * called.
-   */
+  /// AUTH-06 — an owner acting for themselves with no authenticator needs no authentication
   function test_AUTH_06_ownerCallerNeedsNoAuthentication() public {
     AHV2Order memory order = _openAhv2Order(
       _allowances(_tokenAllowance(AMOUNT)),
@@ -284,17 +283,6 @@ contract AuthenticationTest is SettlementBase {
     hub.settleOrder(order, '', solution, '', false);
 
     assertEq(_calleeBalance() - before, AMOUNT, 'no authenticator at all');
-
-    _delegateSignerThroughHub(signer);
-    order.authenticator = address(authenticator);
-
-    vm.expectCall(
-      address(authenticator), abi.encodeWithSelector(IAHV2Authenticator.authenticate.selector), 0
-    );
-    vm.prank(owner);
-    hub.settleOrder(order, hex'00', solution, '', false);
-
-    assertEq(_calleeBalance() - before, 2 * AMOUNT, 'a delegated authenticator is not consulted');
   }
 
   /// AUTH-06b — an owner's own call without an authenticator draws on the Permit2 allowance
@@ -502,6 +490,85 @@ contract AuthenticationTest is SettlementBase {
     assertEq(_calleeBalance() - before, paid, 'and the order settled by the solution');
   }
 
+  /**
+   * AUTH-19 — an owner submitting an order with a delegated authenticator is authenticated
+   * @dev `authenticate` is called once with the order, its hash, the solution and the data.
+   */
+  function test_AUTH_19_ownerWithDelegatedAuthenticatorIsAuthenticated() public {
+    _delegateSignerThroughHub(signer);
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
+    AHV2Order memory order = _openAhv2Order(
+      address(authenticator),
+      _allowances(_tokenAllowance(AMOUNT)),
+      _noHooks(),
+      _noCalls(),
+      38,
+      deadline
+    );
+    AHV2Solution memory solution = _defaultSolution(order);
+    bytes memory authData = _orderAuthData(order, signer, signerPk);
+    uint256 before = _calleeBalance();
+
+    vm.expectCall(
+      address(authenticator),
+      abi.encodeCall(
+        IAHV2Authenticator.authenticate, (order, SchemaHash.ahv2Order(order), solution, authData)
+      ),
+      1
+    );
+    vm.prank(owner);
+    hub.settleOrder(order, authData, solution, '', false);
+
+    assertEq(_calleeBalance() - before, AMOUNT, 'the owner settled');
+  }
+
+  /// AUTH-20 — an owner is refused when the delegated authenticator rejects the data
+  function test_AUTH_20_ownerWithRejectedAuthenticationDataIsRefused() public {
+    _delegateSignerThroughHub(signer);
+    AHV2Order memory order = _openAhv2Order(
+      address(authenticator),
+      _allowances(_tokenAllowance(AMOUNT)),
+      _noHooks(),
+      _noCalls(),
+      39,
+      vm.getBlockTimestamp() + 1 hours
+    );
+    uint256 before = _calleeBalance();
+
+    vm.prank(owner);
+    vm.expectRevert(SignerAuthenticatorMock.InvalidOrderSignature.selector);
+    hub.settleOrder(order, _authData(signer, hex'00'), _defaultSolution(order), '', false);
+
+    assertEq(_calleeBalance(), before, 'nothing moved');
+  }
+
+  /**
+   * AUTH-21 — an owner with a delegated authenticator is exempt from the exclusive caller
+   * @dev The order names another exclusive caller.
+   */
+  function test_AUTH_21_ownerWithDelegatedAuthenticatorSkipsTheExclusiveCaller() public {
+    _delegateSignerThroughHub(signer);
+    uint256 deadline = vm.getBlockTimestamp() + 1 hours;
+    AHV2Order memory order = _ahv2Order(
+      address(authenticator),
+      solver,
+      _allowances(_tokenAllowance(AMOUNT)),
+      _noNfts(),
+      _noHooks(),
+      _noCalls(),
+      ANY,
+      40,
+      deadline
+    );
+    bytes memory authData = _orderAuthData(order, signer, signerPk);
+    uint256 before = _calleeBalance();
+
+    vm.prank(owner);
+    hub.settleOrder(order, authData, _defaultSolution(order), '', false);
+
+    assertEq(_calleeBalance() - before, AMOUNT, 'the owner settled');
+  }
+
   // -------------------------------------------------------------------------------------------
   // ORD-03b / ORD-04 — the parties the order names, on the delegated entry point
   // -------------------------------------------------------------------------------------------
@@ -578,7 +645,9 @@ contract AuthenticationTest is SettlementBase {
       address(authenticator), solver, allowances, noNfts, noHooks, calls, ANY, 81, expiration
     );
     vm.prank(relayer);
-    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.NotExclusiveCaller.selector, relayer));
+    vm.expectRevert(
+      abi.encodeWithSelector(IKSAllowanceHubV2.NotExclusiveCallerOrOwner.selector, relayer)
+    );
     hub.settleOrder(
       again, _orderAuthData(again, signer, signerPk), _defaultSolution(again), '', false
     );
@@ -589,7 +658,9 @@ contract AuthenticationTest is SettlementBase {
       address(authenticator), solver, allowances, noNfts, noHooks, calls, ANY, 82, expiration
     );
     vm.prank(relayer);
-    vm.expectRevert(abi.encodeWithSelector(IKSAllowanceHubV2.NotExclusiveCaller.selector, relayer));
+    vm.expectRevert(
+      abi.encodeWithSelector(IKSAllowanceHubV2.NotExclusiveCallerOrOwner.selector, relayer)
+    );
     hub.settleOrder(third, _authData(signer, hex'00'), _defaultSolution(third), '', false);
 
     // The same stranger settles an order that specifies no exclusive caller, so the refusals were

@@ -106,22 +106,35 @@ contract KSAllowanceHubV2 is
 
     bytes32 orderHash = order.hash();
 
-    // The owner's call is its own authorization and approves its own solution: no signature is
-    // checked, no delegation is required, no authenticator is called, `order.exclusiveCaller` is
-    // ignored and no nonce is spent, so the owner may settle the same order more than once. On the
-    // Permit2 flow, the owner's Permit2 signature still authorizes the ERC20 transfers below.
-    if (msg.sender != order.owner) {
-      if (msg.sender != order.exclusiveCaller && order.exclusiveCaller != Constants.ADDRESS_ZERO) {
-        revert NotExclusiveCaller(msg.sender);
-      }
+    // The owner bypasses `order.exclusiveCaller`, and the zero address allows any caller
+    if (
+      msg.sender != order.owner && msg.sender != order.exclusiveCaller
+        && order.exclusiveCaller != Constants.ADDRESS_ZERO
+    ) {
+      revert NotExclusiveCallerOrOwner(msg.sender);
+    }
 
-      if (order.authenticator == Constants.ADDRESS_ZERO) {
+    // The zero address requires the owner's EIP-712 signature over the order, the Permit2 address
+    // the owner's Permit2 signature, and any other address a delegated {IAHV2Authenticator}
+    if (order.authenticator == Constants.ADDRESS_ZERO) {
+      if (msg.sender == order.owner) {
+        // The owner's own call needs no signature. A zero nonce is not spent, so the order may
+        // settle more than once.
+        if (authenticationData.length != 0) {
+          revert UnexpectedSignature();
+        }
+        if (order.nonce != 0) {
+          _useUnorderedNonce(order.owner, order.nonce);
+        }
+      } else {
         // The owner's signature over the order spends `order.nonce` in the owner's namespace, so
         // each signed order settles at most once
         if (!_verifySignature(order.owner, order.nonce, orderHash, authenticationData)) {
           revert InvalidOrderSignature();
         }
-      } else if (order.authenticator != PERMIT2) {
+      }
+    } else {
+      if (order.authenticator != PERMIT2) {
         // The owner must have delegated the authenticator. The hub spends no `order.nonce`, so the
         // authenticator determines whether an order may be settled more than once. The owner has
         // not signed `solution`, so the authenticator reads it here when it needs to.
@@ -132,16 +145,16 @@ contract KSAllowanceHubV2 is
           .authenticate(order, orderHash, solution, authenticationData);
       }
       // On the Permit2 flow, Permit2 checks the owner's signature when the ERC20 tokens move
+    }
 
-      // The approval spends `solution.nonce` in the approver's namespace, so each approval settles
-      // at most once
-      if (order.solutionApprover != Constants.ADDRESS_ZERO) {
-        bytes32 approvalHash = SolutionApprovalLib.hash(orderHash, solution);
-        if (!_verifySignature(
-            order.solutionApprover, solution.nonce, approvalHash, solutionSignature
-          )) {
-          revert InvalidSolutionSignature();
-        }
+    // Required from every caller when `order.solutionApprover` is set. The approval spends
+    // `solution.nonce` in the approver's namespace.
+    if (order.solutionApprover != Constants.ADDRESS_ZERO) {
+      bytes32 approvalHash = SolutionApprovalLib.hash(orderHash, solution);
+      if (!_verifySignature(
+          order.solutionApprover, solution.nonce, approvalHash, solutionSignature
+        )) {
+        revert InvalidSolutionSignature();
       }
     }
 

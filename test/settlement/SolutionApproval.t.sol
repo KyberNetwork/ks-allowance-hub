@@ -15,7 +15,7 @@ import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
 
 /**
  * @title SolutionApprovalTest
- * @notice `SOL-01..12` and `OWNER-APR-01..02` — the approval of a solution by the approver the order
+ * @notice `SOL-01..12` and `OWNER-APR-01..03` — the approval of a solution by the approver the order
  * names
  * @dev The `solutionApprover` the order specifies is who may approve the solution a solver submits.
  * An approval is bound to one order and spends a nonce of the approver's namespace. The owner's own
@@ -441,34 +441,28 @@ contract SolutionApprovalTest is SettlementBase {
   }
 
   // -------------------------------------------------------------------------------------------
-  // OWNER-APR — the owner's call is not subject to the solution approval
+  // OWNER-APR — the owner's call is subject to the solution approval
   // -------------------------------------------------------------------------------------------
 
   /**
-   * OWNER-APR-01 — the owner settles under a named approver with a garbage approval
-   * @dev The signature is not read and the solution nonce is not spent, on both entry points.
+   * OWNER-APR-01 — the owner under a named approver settles with a valid approval
+   * @dev On each of the three flows the approval is checked and the solution nonce is spent in the
+   * approver's namespace.
    */
-  function testFuzz_OWNER_APR_01_ownerSettlesWithoutAnApproval(OwnerApprovalFuzz memory f) public {
-    (AHV2Order memory order, AHV2Solution memory solution, ERC20Allowance[] memory erc20s) =
-      _namedApproverSettlement(f.viaPermit2 ? permit2 : address(0), 98);
-    bytes memory garbage = f.emptySignature ? bytes('') : bytes(hex'dead');
-    uint256 before = _calleeBalance();
-
-    if (f.viaPermit2) {
-      bytes memory permitSig = _signPlainPermit(erc20s, 98, order.expiration);
-      vm.prank(owner);
-      hub.settleOrder(order, permitSig, solution, garbage, false);
-    } else {
-      vm.prank(owner);
-      hub.settleOrder(order, '', solution, garbage, false);
+  function test_OWNER_APR_01_ownerSettlesWithAValidApproval() public {
+    for (uint256 flow = 0; flow < 3; flow++) {
+      _ownerSettlesUnderApprover(flow, true);
     }
+  }
 
-    assertEq(_calleeBalance() - before, AMOUNT, 'the owner settled');
-    assertEq(
-      hub.nonces(lNonceKey(approver), solution.nonce >> 8),
-      0,
-      "the approver's namespace is untouched"
-    );
+  /**
+   * OWNER-APR-03 — the owner under a named approver is refused without an approval
+   * @dev On each of the three flows an empty signature reverts and nothing moves.
+   */
+  function test_OWNER_APR_03_ownerIsRefusedWithoutAnApproval() public {
+    for (uint256 flow = 0; flow < 3; flow++) {
+      _ownerSettlesUnderApprover(flow, false);
+    }
   }
 
   /**
@@ -511,6 +505,44 @@ contract SolutionApprovalTest is SettlementBase {
   /// @dev Parameters of the SOL-11 fuzz
   struct SolutionNonceFuzz {
     uint256 nonce;
+  }
+
+  /// @dev The owner submits an order under the named approver on a flow (0 no authenticator, 1
+  /// Permit2, 2 delegated authenticator), with a valid approval or an empty signature
+  function _ownerSettlesUnderApprover(uint256 flow, bool approved) private {
+    address flowAuthenticator =
+      flow == 0 ? address(0) : flow == 1 ? permit2 : address(authenticator);
+    (AHV2Order memory order, AHV2Solution memory solution, ERC20Allowance[] memory erc20s) =
+      _namedApproverSettlement(flowAuthenticator, 90 + flow);
+    solution.nonce = SOLUTION_NONCE + flow;
+
+    bytes memory authData = '';
+    if (flow == 1) {
+      authData = _signPlainPermit(erc20s, 90 + flow, order.expiration);
+    } else if (flow == 2) {
+      _delegateSignerThroughHub(signer);
+      authData = _orderAuthData(order, signer, signerPk);
+    }
+    bytes memory approval =
+      approved ? _signSolutionApproval(approverKey, order, solution) : bytes('');
+    uint256 before = _calleeBalance();
+
+    if (!approved) {
+      vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
+    }
+    vm.prank(owner);
+    hub.settleOrder(order, authData, solution, approval, false);
+
+    if (approved) {
+      assertEq(_calleeBalance() - before, AMOUNT, 'the owner settled');
+      assertEq(
+        hub.nonces(lNonceKey(approver), solution.nonce >> 8) & (1 << (solution.nonce & 0xff)),
+        1 << (solution.nonce & 0xff),
+        'the approval nonce is spent'
+      );
+    } else {
+      assertEq(_calleeBalance(), before, 'nothing moved');
+    }
   }
 
   /// @dev An order with one call moving `AMOUNT` to the callee under the named `approver`, and a
