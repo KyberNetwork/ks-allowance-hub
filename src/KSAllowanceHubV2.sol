@@ -205,15 +205,17 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, AuthDelegator, Multicall, Settle
 
   /// @inheritdoc IKSAllowanceHubV2
   function rescueTokens(
-    ERC20Transfer[] calldata erc20Transfers,
+    ERC20Transfer[] memory erc20Transfers,
     ERC721Transfer[] calldata erc721Transfers
   ) external onlyRoleOrDefaultAdmin(KSRoles.RESCUER_ROLE) {
     for (uint256 i = 0; i < erc20Transfers.length; i++) {
-      ERC20Transfer calldata transfer = erc20Transfers[i];
+      ERC20Transfer memory transfer = erc20Transfers[i];
       // A token that is the native-token address or the zero address transfers native value, and
       // a zero `amount` transfers the whole balance. A zero `target` is not refused.
-      uint256 amount = transfer.amount == 0 ? transfer.token.selfBalance() : transfer.amount;
-      transfer.token.safeTransfer(transfer.target, amount);
+      if (transfer.amount == 0) {
+        transfer.amount = transfer.token.selfBalance();
+      }
+      transfer.token.safeTransfer(transfer.target, transfer.amount);
     }
 
     for (uint256 i = 0; i < erc721Transfers.length; i++) {

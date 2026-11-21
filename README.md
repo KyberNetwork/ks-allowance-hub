@@ -228,8 +228,9 @@ The hub inherits `ManagementSimple` from `ks-common-sc`. The owner holds the def
 transferable in one step with `transferOwnership`. Guardians pause the hub, which stops
 `settleOrder` and `updateDelegation`, and revoke callees.
 Rescuers, or the default admin, call `rescueTokens(erc20Transfers, erc721Transfers)` to transfer
-assets held by the hub. An ERC20 entry with a zero amount transfers the hub's entire balance, and a
-token of `0xEeee…EEeE` or the zero address transfers native value.
+assets held by the hub. An ERC20 entry with a zero amount transfers the hub's entire balance, which
+the `RescueTokens` event reports, and a token of `0xEeee…EEeE` or the zero address transfers native
+value.
 
 ### Signing domains
 

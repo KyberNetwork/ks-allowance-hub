@@ -85,7 +85,7 @@ library ERC20AllowanceLib {
     assembly ('memory-safe') {
       details := buffer
     }
-    
+
     for (uint256 i = 0; i < allowances.length; i++) {
       ERC20Allowance calldata allowance = allowances[i];
       _checkAmount(i, amounts[i], allowance.amount);

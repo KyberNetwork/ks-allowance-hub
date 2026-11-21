@@ -62,14 +62,6 @@ abstract contract HubBase is V2TestBase {
   /// @dev The canonical Multicall3 address, written out rather than imported
   address internal multicall3 = 0xcA11bde05977b3631167028862bE2a173976CA11;
 
-  /**
-   * @dev Transcribed from {IKSAllowanceHubV2-SettleOrder}, never imported: an expected topic
-   * taken from the contract under test would agree with a wrong one.
-   */
-  bytes32 internal constant SETTLE_ORDER_TOPIC = keccak256(
-    'SettleOrder(address,address,bytes32,(address,address,uint160)[],(address,uint256,address)[],(address,uint256)[],bytes)'
-  );
-
   function setUp() public virtual {
     permit2 = _deployPermit2();
     token18 = address(new ERC20Mock('Token Eighteen', 'T18', 18));
@@ -200,7 +192,7 @@ abstract contract HubBase is V2TestBase {
       if (entries[i].topics.length == 0) {
         continue;
       }
-      if (entries[i].topics[0] != SETTLE_ORDER_TOPIC) {
+      if (entries[i].topics[0] != IKSAllowanceHubV2.SettleOrder.selector) {
         continue;
       }
 

@@ -1803,3 +1803,16 @@ Scope: `MsgSender` renamed `SettlementContext`, which also records the caller of
 ### Notes for this run
 
 No test was added; the existing `msgSender` assertions gained `solver` beside them. The callee and hook mocks also store what `solver()` returned, so `ownerTransferWithHooks` and `ownerTransferWithNftAndCall` rise by the mocks' extra storage writes (46,327 and 23,354 gas); the hub itself costs about 340 gas more per settlement.
+
+## Run `20261121T195630Z`
+
+Scope: `rescueTokens` reports the amount each ERC20 entry transferred, and `ERC20Transfer.amount` is a `uint256`.
+
+| Implemented and verified | Developer reviewed | Review ID | Contract / flow and coverage summary | Case IDs and test files / functions | Passing command or blocker |
+|---|---|---|---|---|---|
+| - [x] | - [ ] | `20261121T195630Z/RESCUE-01` | A zero-amount ERC20 or native entry transfers the hub's whole balance, and `RescueTokens` reports that balance as the entry's amount; an explicit amount is reported as given | MGMT-08a, MGMT-08b in `test/admin/Management.t.sol` | `FOUNDRY_PROFILE=solar forge test --isolate` and `forge test --isolate`: 209 passed, 0 failed |
+| - [x] | - [ ] | `20261121T195630Z/EVENT-01` | `SettleOrder` logs are matched by `IKSAllowanceHubV2.SettleOrder.selector`, whose signature now encodes the ERC20 transfer amount as `uint256` | the log filters in `test/base/HubBase.sol` and `test/settlement/Nesting.t.sol` | `FOUNDRY_PROFILE=solar forge test --isolate` and `forge test --isolate`: 209 passed, 0 failed |
+
+### Notes for this run
+
+MGMT-08a expected the zero amount in the event; the requested change reports the transferred balance, so MGMT-08a now expects it. MGMT-08b gained the event assertion for the native entry. Settlement costs 26 to 70 gas more; the widened amount costs nothing, and the difference follows the change of `rescueTokens` to a memory array. The hub's runtime size is 23,253 bytes.

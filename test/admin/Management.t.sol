@@ -277,7 +277,8 @@ contract ManagementTest is SignerAuthenticatorBase {
   // MGMT-08..09 — the rescue path
   // -----------------------------------------------------------------------------------------------
 
-  /// MGMT-08a — each ERC20 transfer goes to its target; a zero amount sends the whole balance
+  /// MGMT-08a — each ERC20 transfer goes to its target; a zero amount sends the whole balance, and
+  /// the event reports the amount sent
   function test_MGMT_08a_rescueErc20s() public {
     deal(token18, address(hub), 3 ether);
     deal(token6, address(hub), 500e6);
@@ -286,8 +287,11 @@ contract ManagementTest is SignerAuthenticatorBase {
     erc20s[0] = ERC20Transfer({token: token18, target: recipient, amount: 0});
     erc20s[1] = ERC20Transfer({token: token6, target: solver, amount: 100e6});
 
+    ERC20Transfer[] memory sent = new ERC20Transfer[](2);
+    sent[0] = ERC20Transfer({token: token18, target: recipient, amount: 3 ether});
+    sent[1] = erc20s[1];
     vm.expectEmit(address(hub));
-    emit IKSAllowanceHubV2.RescueTokens(erc20s, new ERC721Transfer[](0));
+    emit IKSAllowanceHubV2.RescueTokens(sent, new ERC721Transfer[](0));
 
     vm.prank(rescuer);
     hub.rescueTokens(erc20s, new ERC721Transfer[](0));
@@ -309,6 +313,12 @@ contract ManagementTest is SignerAuthenticatorBase {
     ERC20Transfer[] memory erc20s = new ERC20Transfer[](2);
     erc20s[0] = ERC20Transfer({token: NATIVE, target: recipient, amount: 2 ether});
     erc20s[1] = ERC20Transfer({token: address(0), target: solver, amount: 0});
+
+    ERC20Transfer[] memory sent = new ERC20Transfer[](2);
+    sent[0] = erc20s[0];
+    sent[1] = ERC20Transfer({token: address(0), target: solver, amount: 1 ether});
+    vm.expectEmit(address(hub));
+    emit IKSAllowanceHubV2.RescueTokens(sent, new ERC721Transfer[](0));
 
     vm.prank(rescuer);
     hub.rescueTokens(erc20s, new ERC721Transfer[](0));

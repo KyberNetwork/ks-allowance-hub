@@ -9,10 +9,10 @@ pragma solidity ^0.8.0;
  * address transfers native value.
  * @param token The ERC20 token
  * @param target Account the amount is transferred to
- * @param amount Amount transferred, with the width of a Permit2 allowance
+ * @param amount Amount transferred
  */
 struct ERC20Transfer {
   address token;
   address target;
-  uint160 amount;
+  uint256 amount;
 }

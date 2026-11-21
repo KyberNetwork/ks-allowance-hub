@@ -435,7 +435,7 @@ contract NestingTest is SettlementBase {
       if (entries[i].topics.length == 0) {
         continue;
       }
-      if (entries[i].topics[0] != SETTLE_ORDER_TOPIC) {
+      if (entries[i].topics[0] != IKSAllowanceHubV2.SettleOrder.selector) {
         continue;
       }
 

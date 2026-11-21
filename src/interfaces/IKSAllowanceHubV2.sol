@@ -50,7 +50,8 @@ interface IKSAllowanceHubV2 {
     bytes clientData
   );
 
-  /// @notice Emitted when assets held by the hub are transferred out, with the entries as given
+  /// @notice Emitted when assets held by the hub are transferred out, with the amount each ERC20
+  /// entry transferred
   event RescueTokens(ERC20Transfer[] erc20Transfers, ERC721Transfer[] erc721Transfers);
 
   /**

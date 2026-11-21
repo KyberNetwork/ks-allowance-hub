@@ -33,12 +33,12 @@ takes its ID and description from its name.
 | MGMT-06 | [`test_MGMT_06_revokeRoleNeedsRevokerOrAdmin`](admin/Management.t.sol#L215) | `revokeRole` by a stranger reverts with both accepted roles, the admin may revoke |
 | MGMT-07 | [`test_MGMT_07_transferOwnership`](admin/Management.t.sol#L236) | The default admin role follows ownership, which moves in one step |
 | MGMT-07b | [`test_MGMT_07b_renounceOwnership`](admin/Management.t.sol#L259) | Renouncing ownership leaves no default admin |
-| MGMT-08a | [`test_MGMT_08a_rescueErc20s`](admin/Management.t.sol#L281) | Each ERC20 transfer goes to its target; a zero amount sends the whole balance |
-| MGMT-08b | [`test_MGMT_08b_rescueStrandedNative`](admin/Management.t.sol#L302) | `rescueTokens` sends native balance under both native sentinels |
-| MGMT-08c | [`test_MGMT_08c_rescueGuards`](admin/Management.t.sol#L322) | Only a rescuer or the default admin may rescue |
-| MGMT-09 | [`test_MGMT_09_rescueErc721s`](admin/Management.t.sol#L363) | An NFT sent to the hub by `transferFrom` is recovered by `rescueTokens` |
-| MGMT-11 | [`test_MGMT_11_grantRole`](admin/Management.t.sol#L389) | An ordinary role is granted by its admin |
-| MGMT-11b | [`test_MGMT_11b_defaultAdminRoleFollowsOwnershipOnly`](admin/Management.t.sol#L401) | The default admin role cannot be granted, revoked or renounced |
+| MGMT-08a | [`test_MGMT_08a_rescueErc20s`](admin/Management.t.sol#L282) | Each ERC20 transfer goes to its target; a zero amount sends the whole balance, and the event reports the amount sent |
+| MGMT-08b | [`test_MGMT_08b_rescueStrandedNative`](admin/Management.t.sol#L306) | `rescueTokens` sends native balance under both native sentinels |
+| MGMT-08c | [`test_MGMT_08c_rescueGuards`](admin/Management.t.sol#L332) | Only a rescuer or the default admin may rescue |
+| MGMT-09 | [`test_MGMT_09_rescueErc721s`](admin/Management.t.sol#L373) | An NFT sent to the hub by `transferFrom` is recovered by `rescueTokens` |
+| MGMT-11 | [`test_MGMT_11_grantRole`](admin/Management.t.sol#L399) | An ordinary role is granted by its admin |
+| MGMT-11b | [`test_MGMT_11b_defaultAdminRoleFollowsOwnershipOnly`](admin/Management.t.sol#L411) | The default admin role cannot be granted, revoked or renounced |
 
 ## ForwarderTest
 

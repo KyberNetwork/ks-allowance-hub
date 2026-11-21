@@ -68,7 +68,7 @@ library ERC721ApprovalLib {
     assembly ('memory-safe') {
       transfers := buffer
     }
-    
+
     for (uint256 i = 0; i < approvals.length; i++) {
       ERC721Approval calldata approval = approvals[i];
       transfers[i] =
