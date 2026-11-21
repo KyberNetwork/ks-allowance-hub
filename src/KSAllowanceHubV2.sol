@@ -9,7 +9,7 @@ import {Multicall} from './base/Multicall.sol';
 import {SettlementContext} from './base/SettlementContext.sol';
 
 import {Constants} from './libraries/Constants.sol';
-import {DynamicArrayLibExt} from './libraries/DynamicArrayLibExt.sol';
+import {EfficientHashLibExt} from './libraries/EfficientHashLibExt.sol';
 
 import {AHV2Order} from './types/AHV2Order.sol';
 import {AHV2Solution} from './types/AHV2Solution.sol';
@@ -42,7 +42,7 @@ import {IERC721} from 'openzeppelin-contracts/contracts/token/ERC721/IERC721.sol
  */
 contract KSAllowanceHubV2 is IKSAllowanceHubV2, AuthDelegator, Multicall, SettlementContext {
   using CallParamsLib for CallParams[];
-  using DynamicArrayLibExt for uint256;
+  using EfficientHashLibExt for uint256;
   using ERC20AllowanceLib for ERC20Allowance[];
   using ERC721ApprovalLib for ERC721Approval[];
   using HookParamsLib for HookParams[];

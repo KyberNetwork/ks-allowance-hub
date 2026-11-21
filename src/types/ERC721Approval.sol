@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {DynamicArrayLibExt} from '../libraries/DynamicArrayLibExt.sol';
-
 import {ERC721Transfer} from './ERC721Transfer.sol';
 
 import {IERC721} from 'openzeppelin-contracts/contracts/token/ERC721/IERC721.sol';
@@ -24,7 +22,6 @@ struct ERC721Approval {
 using ERC721ApprovalLib for ERC721Approval global;
 
 library ERC721ApprovalLib {
-  using DynamicArrayLibExt for uint256;
   using EfficientHashLib for *;
 
   bytes32 internal constant ERC721_APPROVAL_TYPEHASH =
@@ -67,7 +64,11 @@ library ERC721ApprovalLib {
     pure
     returns (ERC721Transfer[] memory transfers)
   {
-    transfers = approvals.length.mallocERC721Transfers();
+    bytes32[] memory buffer = approvals.length.malloc();
+    assembly ('memory-safe') {
+      transfers := buffer
+    }
+    
     for (uint256 i = 0; i < approvals.length; i++) {
       ERC721Approval calldata approval = approvals[i];
       transfers[i] =

@@ -248,7 +248,7 @@ src/
                    SettlementContext, UnorderedNonce
   interfaces/      IKSAllowanceHubV2; base/ holds the interfaces of the base contracts, IAHV2Hook,
                    IAHV2Authenticator and IAHV2Callee
-  libraries/       Constants, DynamicArrayLibExt, EfficientHashLibExt
+  libraries/       Constants, EfficientHashLibExt
   types/           AHV2Order, AHV2Solution, AuthDelegation, CallParams, HookParams,
                    SolutionApproval, ERC20Allowance, ERC20Transfer, ERC721Approval, ERC721Transfer,
                    NativeTransfer

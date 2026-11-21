@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import {IAHV2Hook} from '../interfaces/base/IAHV2Hook.sol';
 
 import {Constants} from '../libraries/Constants.sol';
-import {DynamicArrayLibExt} from '../libraries/DynamicArrayLibExt.sol';
+import {EfficientHashLibExt} from '../libraries/EfficientHashLibExt.sol';
 
 import {AHV2Order} from './AHV2Order.sol';
 import {AHV2Solution} from './AHV2Solution.sol';
@@ -31,8 +31,8 @@ struct HookParams {
 using HookParamsLib for HookParams global;
 
 library HookParamsLib {
-  using DynamicArrayLibExt for uint256;
   using EfficientHashLib for *;
+  using EfficientHashLibExt for uint256;
 
   bytes32 internal constant HOOK_PARAMS_TYPEHASH =
     keccak256('HookParams(address hook,bytes32 flags,bytes data)');

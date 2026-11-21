@@ -3,8 +3,6 @@ pragma solidity ^0.8.0;
 
 import {IAHV2Callee} from '../interfaces/base/IAHV2Callee.sol';
 
-import {DynamicArrayLibExt} from '../libraries/DynamicArrayLibExt.sol';
-
 import {NativeTransfer} from './NativeTransfer.sol';
 
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
@@ -23,7 +21,6 @@ struct CallParams {
 using CallParamsLib for CallParams global;
 
 library CallParamsLib {
-  using DynamicArrayLibExt for uint256;
   using EfficientHashLib for *;
 
   bytes32 internal constant CALL_PARAMS_TYPEHASH =
@@ -58,9 +55,12 @@ library CallParamsLib {
     pure
     returns (NativeTransfer[] memory transfers)
   {
-    uint256 index = 0;
-    transfers = calls.length.mallocNativeTransfers();
+    bytes32[] memory buffer = calls.length.malloc();
+    assembly ('memory-safe') {
+      transfers := buffer
+    }
 
+    uint256 index = 0;
     for (uint256 i = 0; i < calls.length; i++) {
       CallParams calldata call = calls[i];
       if (values[i] > 0) {

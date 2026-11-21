@@ -3,8 +3,6 @@ pragma solidity ^0.8.0;
 
 import {IKSAllowanceHubV2} from '../interfaces/IKSAllowanceHubV2.sol';
 
-import {DynamicArrayLibExt} from '../libraries/DynamicArrayLibExt.sol';
-
 import {ERC20Transfer} from './ERC20Transfer.sol';
 
 import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
@@ -31,7 +29,6 @@ struct ERC20Allowance {
 using ERC20AllowanceLib for ERC20Allowance global;
 
 library ERC20AllowanceLib {
-  using DynamicArrayLibExt for uint256;
   using EfficientHashLib for *;
   using TokenHelper for address;
 
@@ -83,8 +80,12 @@ library ERC20AllowanceLib {
     uint160[] calldata amounts,
     address permit2
   ) internal {
-    IAllowanceTransfer.AllowanceTransferDetails[] memory details =
-      allowances.length.mallocAllowanceTransferDetails();
+    IAllowanceTransfer.AllowanceTransferDetails[] memory details;
+    bytes32[] memory buffer = allowances.length.malloc();
+    assembly ('memory-safe') {
+      details := buffer
+    }
+    
     for (uint256 i = 0; i < allowances.length; i++) {
       ERC20Allowance calldata allowance = allowances[i];
       _checkAmount(i, amounts[i], allowance.amount);
@@ -103,7 +104,10 @@ library ERC20AllowanceLib {
     address[] calldata targets,
     uint160[] calldata amounts
   ) internal pure returns (ERC20Transfer[] memory transfers) {
-    transfers = allowances.length.mallocERC20Transfers();
+    bytes32[] memory buffer = allowances.length.malloc();
+    assembly ('memory-safe') {
+      transfers := buffer
+    }
     for (uint256 i = 0; i < allowances.length; i++) {
       transfers[i] =
         ERC20Transfer({token: allowances[i].token, target: targets[i], amount: amounts[i]});
@@ -116,7 +120,12 @@ library ERC20AllowanceLib {
     uint256 nonce,
     uint256 deadline
   ) internal pure returns (ISignatureTransfer.PermitBatchTransferFrom memory permit) {
-    permit.permitted = allowances.length.mallocTokenPermissions();
+    ISignatureTransfer.TokenPermissions[] memory permitted;
+    bytes32[] memory buffer = allowances.length.malloc();
+    assembly ('memory-safe') {
+      permitted := buffer
+    }
+    permit.permitted = permitted;
     permit.nonce = nonce;
     permit.deadline = deadline;
 
@@ -134,7 +143,10 @@ library ERC20AllowanceLib {
     address[] calldata targets,
     uint160[] calldata amounts
   ) internal pure returns (ISignatureTransfer.SignatureTransferDetails[] memory details) {
-    details = allowances.length.mallocSignatureTransferDetails();
+    bytes32[] memory buffer = allowances.length.malloc();
+    assembly ('memory-safe') {
+      details := buffer
+    }
     for (uint256 i = 0; i < allowances.length; i++) {
       _checkAmount(i, amounts[i], allowances[i].amount);
       details[i] =
