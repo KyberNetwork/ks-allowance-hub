@@ -3,10 +3,10 @@ pragma solidity ^0.8.0;
 
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
-/// @title EfficientHashLibExt
-/// @notice EIP-712 hashing of an `address[]`, `uint160[]`, `uint256[]` or `bytes[]` member, and
-/// allocation of a `bytes[]`, which {EfficientHashLib} does not provide
-library EfficientHashLibExt {
+/// @title CalldataHashLib
+/// @notice EIP-712 hashing of an `address[]`, `uint160[]`, `uint256[]` or `bytes[]` member, which
+/// {EfficientHashLib} does not provide
+library CalldataHashLib {
   using EfficientHashLib for *;
 
   /// @dev EIP-712 hash of the array: the hash of its elements as 32-byte words
@@ -47,13 +47,5 @@ library EfficientHashLibExt {
     }
 
     return valueHashes.hash();
-  }
-
-  /// @dev A `bytes[]` of `length` unwritten elements; the caller writes each before reading it
-  function mallocBytes(uint256 length) internal pure returns (bytes[] memory array) {
-    bytes32[] memory buffer = length.malloc();
-    assembly ('memory-safe') {
-      array := buffer
-    }
   }
 }

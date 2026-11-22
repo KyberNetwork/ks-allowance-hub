@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {EfficientHashLibExt} from '../libraries/EfficientHashLibExt.sol';
+import {CalldataHashLib} from '../libraries/CalldataHashLib.sol';
 
 /**
  * @notice The target of each transfer, the amount of each ERC20 transfer, and the native value and
@@ -38,10 +38,10 @@ struct AHV2Solution {
 using AHV2SolutionLib for AHV2Solution global;
 
 library AHV2SolutionLib {
-  using EfficientHashLibExt for address[];
-  using EfficientHashLibExt for bytes[];
-  using EfficientHashLibExt for uint160[];
-  using EfficientHashLibExt for uint256[];
+  using CalldataHashLib for address[];
+  using CalldataHashLib for bytes[];
+  using CalldataHashLib for uint160[];
+  using CalldataHashLib for uint256[];
 
   bytes32 internal constant AHV2_SOLUTION_TYPEHASH = keccak256(
     'AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,uint256[] callValues,bytes[] solverData,uint256 nonce,uint256 expiration)'

@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import {SchemaHash} from 'test/base/SchemaHash.sol';
 import {V2TestBase} from 'test/base/V2TestBase.sol';
 
-import {EfficientHashLibExt} from 'src/libraries/EfficientHashLibExt.sol';
+import {CalldataHashLib} from 'src/libraries/CalldataHashLib.sol';
 
 import {AHV2Order, AHV2OrderLib} from 'src/types/AHV2Order.sol';
 import {AHV2Solution} from 'src/types/AHV2Solution.sol';
@@ -303,7 +303,7 @@ contract Eip712Test is V2TestBase {
 
   /**
    * T712-ARRAY — the address array hash equals the hash of the words encoded one by one
-   * @dev {EfficientHashLibExt} against the words of the array, written one by one
+   * @dev {CalldataHashLib} against the words of the array, written one by one
    */
   function testFuzz_T712_ARRAY_efficientHashLibExt(address[] memory arr) public view {
     bytes memory words;
@@ -317,7 +317,7 @@ contract Eip712Test is V2TestBase {
 
   /**
    * T712-ARRAY — the `bytes[]` hash equals the hash of the element hashes concatenated
-   * @dev {EfficientHashLibExt} against the concatenation of the hash of each element,
+   * @dev {CalldataHashLib} against the concatenation of the hash of each element,
    * written one by one
    */
   function testFuzz_T712_ARRAY_bytesArrayHash(bytes[] memory arr) public view {
@@ -382,11 +382,11 @@ contract Eip712Test is V2TestBase {
   }
 
   function extHashAddresses(address[] calldata a) external pure returns (bytes32) {
-    return EfficientHashLibExt.hash(a);
+    return CalldataHashLib.hash(a);
   }
 
   function extHashBytesArray(bytes[] calldata a) external pure returns (bytes32) {
-    return EfficientHashLibExt.hash(a);
+    return CalldataHashLib.hash(a);
   }
 
   function extHashOrder(AHV2Order calldata o) external pure returns (bytes32) {

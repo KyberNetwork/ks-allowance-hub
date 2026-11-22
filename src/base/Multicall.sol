@@ -5,7 +5,7 @@ import {IMulticall} from '../interfaces/base/IMulticall.sol';
 
 import {NativeSpendGuard} from './NativeSpendGuard.sol';
 
-import {EfficientHashLibExt} from '../libraries/EfficientHashLibExt.sol';
+import {MallocBytesLib} from '../libraries/MallocBytesLib.sol';
 
 import {LowLevelCall} from 'openzeppelin-contracts/contracts/utils/LowLevelCall.sol';
 
@@ -15,7 +15,7 @@ import {DynamicArrayLib} from 'solady/utils/DynamicArrayLib.sol';
 /// @notice Runs several calls to this contract in one transaction
 abstract contract Multicall is IMulticall, NativeSpendGuard {
   using DynamicArrayLib for uint256;
-  using EfficientHashLibExt for uint256;
+  using MallocBytesLib for uint256;
 
   /// @inheritdoc IMulticall
   function multicall(bytes[] calldata data)
