@@ -294,8 +294,10 @@ the regenerated file differs.
 ### Known tooling issues
 
 - **Coverage requires `--ir-minimum`.** Plain `forge coverage` compiles without `via_ir` and fails
-  with stack-too-deep. `--ir-minimum` compiles differently from the build the tests run against, so
-  some covered branches are reported as missed.
+  with stack-too-deep. `--ir-minimum` compiles differently from the build the tests run against,
+  and reports the statements inside `assembly` blocks as missed although they run.
+  `--keep-optimizer` keeps the optimizer, which merges code, and reports less coverage than
+  `--ir-minimum`.
 - **Cheatcodes apply to the next external call, including one made while building an argument.**
   Read such values into a local before `vm.prank` or `vm.expectRevert`.
 

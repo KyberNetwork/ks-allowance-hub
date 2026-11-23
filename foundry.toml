@@ -11,7 +11,7 @@ bytecode_hash = "none"
 
 # Solar build of the same sources. Run with `FOUNDRY_PROFILE=solar`.
 [profile.solar]
-solc = "solar"
+solc = "solar:0.3.0"
 gas_snapshot_emit = false
 
 [fuzz]

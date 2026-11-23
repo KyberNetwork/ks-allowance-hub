@@ -44,7 +44,7 @@ jobs:
       - name: Install Foundry
         uses: KyberNetwork/foundry-toolchain@master
         with:
-          version: v1.9.0
+          version: v1.10.0
 
       - name: Run Forge Test with solar
         id: test-solar
