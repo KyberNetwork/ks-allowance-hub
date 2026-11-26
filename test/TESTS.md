@@ -1,6 +1,6 @@
 # Tests
 
-The suite has 209 tests in 19 contracts. Each row links to a test and gives the
+The suite has 221 tests in 20 contracts. Each row links to a test and gives the
 first sentence of its documentation, or of the section heading above it. A test with neither
 takes its ID and description from its name.
 
@@ -46,28 +46,28 @@ takes its ID and description from its name.
 
 | ID | Test | Description |
 | --- | --- | --- |
-| PF-01 | [`test_PF_01_eip2612PermitForwarded`](batching/Forwarder.t.sol#L124) | A relayed EIP-2612 permit sets the token allowance and spends the permit nonce |
-| PF-02 | [`test_PF_02_daiStylePermitForwarded`](batching/Forwarder.t.sol#L148) | A relayed DAI-style permit sets the maximum allowance and spends the permit nonce |
-| PF-03 | [`test_PF_03_erc721V3PermitForwarded`](batching/Forwarder.t.sol#L172) | A relayed Uniswap v3 ERC-721 permit with a v/r/s signature sets the approval |
-| PF-04 | [`test_PF_04_erc721V4PermitForwarded`](batching/Forwarder.t.sol#L197) | A relayed Uniswap v4 ERC-721 permit with an unordered nonce sets the approval |
-| PF-05 | [`test_PF_05_permit2BatchPermitForwarded`](batching/Forwarder.t.sol#L216) | A relayed Permit2 batch `permit` sets the allowance, expiration and nonce |
-| PF-06 | [`test_PF_06_relayedCallWithoutAuthorityIsRefusedByItsTarget`](batching/Forwarder.t.sol#L251) | A relayed call that proves no authority is refused by its target |
-| PF-06b | [`test_PF_06b_failingTransferUnwindsTheBatch`](batching/Forwarder.t.sol#L296) | A relayed call that fails on its target unwinds the entries that already ran |
-| PF-08 | [`test_PF_08_failingCallRevertsWithMulticall3ErrorWhenNotAllowed`](batching/Forwarder.t.sol#L322) | With `allowFailure` false, a failing call reverts the batch with Multicall3's error |
-| PF-09 | [`test_PF_09_failingCallIsCarriedPastWhenAllowed`](batching/Forwarder.t.sol#L337) | With `allowFailure` true, a failing call is recorded and the batch continues |
-| PF-FUZZ | [`testFuzz_PF_FUZZ_allowFailureBits`](batching/Forwarder.t.sol#L371) | A batch settles exactly when every entry that fails has `allowFailure` true |
-| FWD-13 | [`test_FWD_13_updateAuthenticationIsRelayedAndApprovesTheSigner`](batching/Forwarder.t.sol#L455) | A relayed `updateAuthentication` approves a signer, on the authenticator's nonce |
-| FWD-14 | [`test_FWD_14_emptySignatureIsRefusedEvenFromTheOwner`](batching/Forwarder.t.sol#L495) | A relayed `updateAuthentication` with an empty signature is refused for an owner |
-| FWD-21 | [`test_FWD_21_updateDelegationIsRelayed`](batching/Forwarder.t.sol#L532) | A relayed `updateDelegation` delegates on the owner's signature and the hub's nonce |
-| FWD-22 | [`test_FWD_22_relayedDelegationNeedsTheOwnersSignature`](batching/Forwarder.t.sol#L558) | A relayed `updateDelegation` needs the owner's signature even when the owner relays it |
-| FWD-16 | [`test_FWD_16_authenticatorRefusesMulticall3OnHubOnlyCalls`](batching/Forwarder.t.sol#L585) | Multicall3 relays `initAuthentication` and `authenticate`, and the authenticator refuses it as the caller because it is not the hub |
-| FWD-17 | [`test_FWD_17_permit2SinglePermitForwarded`](batching/Forwarder.t.sol#L638) | A relayed Permit2 single `permit` sets the allowance |
-| FWD-18 | [`test_FWD_18_emptyBatchIsANoOp`](batching/Forwarder.t.sol#L668) | An empty batch is a legal no-op rather than an error |
-| FWD-PAUSE-01 | [`test_FWD_PAUSE_01_forwardStillWorksWhilePaused`](batching/Forwarder.t.sol#L685) | A pause does not close `forwardCalls` |
-| FWD-VALUE-01 | [`test_FWD_VALUE_01_valueSentWithForwardIsStranded`](batching/Forwarder.t.sol#L710) | Value sent with `forwardCalls` remains in the hub, not Multicall3 |
-| FWD-REENTRY-01 | [`test_FWD_REENTRY_01_relayedPermitMayReenterTheHub`](batching/Forwarder.t.sol#L739) | A relayed permit may reenter the hub and start an order |
-| FWD-23 | [`test_FWD_23_multicall3RelaysWhenCalledDirectly`](batching/Forwarder.t.sol#L782) | Multicall3 relays a permit and a failing call alike when called directly |
-| FWD-24 | [`test_FWD_24_hubForwardsThroughMulticall3`](batching/Forwarder.t.sol#L816) | `hub.forwardCalls` calls the target with Multicall3 as the caller |
+| PF-01 | [`test_PF_01_eip2612PermitForwarded`](batching/Forwarder.t.sol#L122) | A relayed EIP-2612 permit sets the token allowance and spends the permit nonce |
+| PF-02 | [`test_PF_02_daiStylePermitForwarded`](batching/Forwarder.t.sol#L146) | A relayed DAI-style permit sets the maximum allowance and spends the permit nonce |
+| PF-03 | [`test_PF_03_erc721V3PermitForwarded`](batching/Forwarder.t.sol#L170) | A relayed Uniswap v3 ERC-721 permit with a v/r/s signature sets the approval |
+| PF-04 | [`test_PF_04_erc721V4PermitForwarded`](batching/Forwarder.t.sol#L195) | A relayed Uniswap v4 ERC-721 permit with an unordered nonce sets the approval |
+| PF-05 | [`test_PF_05_permit2BatchPermitForwarded`](batching/Forwarder.t.sol#L214) | A relayed Permit2 batch `permit` sets the allowance, expiration and nonce |
+| PF-06 | [`test_PF_06_relayedCallWithoutAuthorityIsRefusedByItsTarget`](batching/Forwarder.t.sol#L249) | A relayed call that proves no authority is refused by its target |
+| PF-06b | [`test_PF_06b_failingTransferUnwindsTheBatch`](batching/Forwarder.t.sol#L294) | A relayed call that fails on its target unwinds the entries that already ran |
+| PF-08 | [`test_PF_08_failingCallRevertsWithMulticall3ErrorWhenNotAllowed`](batching/Forwarder.t.sol#L320) | With `allowFailure` false, a failing call reverts the batch with Multicall3's error |
+| PF-09 | [`test_PF_09_failingCallIsCarriedPastWhenAllowed`](batching/Forwarder.t.sol#L335) | With `allowFailure` true, a failing call is recorded and the batch continues |
+| PF-FUZZ | [`testFuzz_PF_FUZZ_allowFailureBits`](batching/Forwarder.t.sol#L369) | A batch settles exactly when every entry that fails has `allowFailure` true |
+| FWD-13 | [`test_FWD_13_updateAuthenticationIsRelayedAndApprovesTheSigner`](batching/Forwarder.t.sol#L453) | A relayed `updateAuthentication` approves a signer, on the authenticator's nonce |
+| FWD-14 | [`test_FWD_14_emptySignatureIsRefusedEvenFromTheOwner`](batching/Forwarder.t.sol#L493) | A relayed `updateAuthentication` with an empty signature is refused for an owner |
+| FWD-21 | [`test_FWD_21_updateDelegationIsRelayed`](batching/Forwarder.t.sol#L530) | A relayed `updateDelegation` delegates on the owner's signature and the hub's nonce |
+| FWD-22 | [`test_FWD_22_relayedDelegationNeedsTheOwnersSignature`](batching/Forwarder.t.sol#L556) | A relayed `updateDelegation` needs the owner's signature even when the owner relays it |
+| FWD-16 | [`test_FWD_16_authenticatorRefusesMulticall3OnHubOnlyCalls`](batching/Forwarder.t.sol#L583) | Multicall3 relays `initAuthentication` and `authenticate`, and the authenticator refuses it as the caller because it is not the hub |
+| FWD-17 | [`test_FWD_17_permit2SinglePermitForwarded`](batching/Forwarder.t.sol#L636) | A relayed Permit2 single `permit` sets the allowance |
+| FWD-18 | [`test_FWD_18_emptyBatchIsANoOp`](batching/Forwarder.t.sol#L666) | An empty batch is a legal no-op rather than an error |
+| FWD-PAUSE-01 | [`test_FWD_PAUSE_01_forwardStillWorksWhilePaused`](batching/Forwarder.t.sol#L683) | A pause does not close `forwardCalls` |
+| FWD-VALUE-01 | [`test_FWD_VALUE_01_valueSentWithForwardIsStranded`](batching/Forwarder.t.sol#L708) | Value sent with `forwardCalls` remains in the hub, not Multicall3 |
+| FWD-REENTRY-01 | [`test_FWD_REENTRY_01_relayedPermitMayReenterTheHub`](batching/Forwarder.t.sol#L737) | A relayed permit may reenter the hub and start an order |
+| FWD-23 | [`test_FWD_23_multicall3RelaysWhenCalledDirectly`](batching/Forwarder.t.sol#L780) | Multicall3 relays a permit and a failing call alike when called directly |
+| FWD-24 | [`test_FWD_24_hubForwardsThroughMulticall3`](batching/Forwarder.t.sol#L814) | `hub.forwardCalls` calls the target with Multicall3 as the caller |
 
 ## MulticallTest
 
@@ -82,8 +82,8 @@ takes its ID and description from its name.
 | MC-07 | [`test_MC_07_gasIsMeasuredPerEntry`](batching/Multicall.t.sol#L161) | Each entry is measured on its own, not given a running total of the batch |
 | MC-05 | [`test_MC_05_plainNativeTransferIsRefused`](batching/Multicall.t.sol#L192) | The hub has no `receive`, so a bare transfer cannot strand native in it |
 | MC-09 | [`test_MC_09_aFrontRunDelegationDoesNotUnwindTheBatch`](batching/Multicall.t.sol#L210) | A delegation relayed through `forwardCalls` with `allowFailure` set survives being front-run, so the order batched after it still settles |
-| MC-06 | [`test_MC_06_approveASignerAndSpendOnItInOneBatch`](batching/Multicall.t.sol#L293) | One batch approves a signer at an authenticator and then spends on it |
-| MC-FUZZ | [`testFuzz_MC_FUZZ_valueNeedsAnAllPayableBatch`](batching/Multicall.t.sol#L380) | Value survives a batch exactly when every selector in it is payable |
+| MC-06 | [`test_MC_06_approveASignerAndSpendOnItInOneBatch`](batching/Multicall.t.sol#L292) | One batch approves a signer at an authenticator and then spends on it |
+| MC-FUZZ | [`testFuzz_MC_FUZZ_valueNeedsAnAllPayableBatch`](batching/Multicall.t.sol#L378) | Value survives a batch exactly when every selector in it is payable |
 
 ## DelegationTest
 
@@ -91,21 +91,21 @@ takes its ID and description from its name.
 
 | ID | Test | Description |
 | --- | --- | --- |
-| DEL-01 | [`test_DEL_01_selfDelegationSpendsNoNonce`](delegation/Delegation.t.sol#L76) | The owner delegates for themselves: no nonce is spent and the authenticator is trusted |
-| DEL-02 | [`test_DEL_02_relayedDelegationConsumesNonce`](delegation/Delegation.t.sol#L100) | A third party may submit the delegation when it carries the owner's signature |
-| DEL-03 | [`test_DEL_03_tamperedDelegationRejected`](delegation/Delegation.t.sol#L129) | Changing any signed field invalidates the delegation |
-| DEL-04 | [`test_DEL_04_erc1271Owner`](delegation/Delegation.t.sol#L143) | An ERC-1271 owner's signature delegates, and a wrong magic value reverts |
-| DEL-05 | [`test_DEL_05_expiredDelegation`](delegation/Delegation.t.sol#L184) | A relayed delegation past its deadline reverts with `DeadlinePassed` |
-| DEL-06 | [`test_DEL_06_withdrawDelegation`](delegation/Delegation.t.sol#L202) | Withdrawing stops the hub accepting that authenticator, while the signer stays approved |
-| DEL-08 | [`test_DEL_08_withdrawalDoesNotCallTheAuthenticator`](delegation/Delegation.t.sol#L227) | A withdrawal never reaches the authenticator, so one that reverts cannot trap the owner |
-| DEL-09 | [`test_DEL_09_relayedWithdrawal`](delegation/Delegation.t.sol#L251) | A relayed withdrawal needs the owner's signature over the same direction |
-| DEL-12 | [`test_DEL_12_initAuthenticationIsHubOnly`](delegation/Delegation.t.sol#L289) | `initAuthentication` answers the hub alone, and being the owner is not a way in |
-| DEL-13 | [`test_DEL_13_emptyPayloadNeverCallsInitAuthentication`](delegation/Delegation.t.sol#L318) | An empty payload skips the authenticator, even on the delegate direction |
-| DEL-14 | [`test_DEL_14_nonEmptyPayloadDoesCallInitAuthentication`](delegation/Delegation.t.sol#L345) | The guard reads the payload's length, not the direction alone |
-| DEL-15 | [`test_DEL_15_withdrawalSkipsTheAuthenticatorWhateverThePayload`](delegation/Delegation.t.sol#L384) | A withdrawal skips the authenticator whatever the payload says |
-| DEL-16 | [`test_DEL_16_delegationIsBoundToItsOwner`](delegation/Delegation.t.sol#L408) | A delegation signed for one account is refused for another account of one signer |
-| DEL-17 | [`test_DEL_17_ownerCallTakesNoSignature`](delegation/Delegation.t.sol#L437) | A signature on the owner's own delegation call reverts with `UnexpectedSignature` |
-| DEL-FUZZ | [`testFuzz_DEL_FUZZ_relayedDelegation`](delegation/Delegation.t.sol#L453) | A relayed delegation sets the delegation and exactly its nonce bit |
+| DEL-01 | [`test_DEL_01_selfDelegationSpendsNoNonce`](delegation/Delegation.t.sol#L74) | The owner delegates for themselves: no nonce is spent and the authenticator is trusted |
+| DEL-02 | [`test_DEL_02_relayedDelegationConsumesNonce`](delegation/Delegation.t.sol#L98) | A third party may submit the delegation when it carries the owner's signature |
+| DEL-03 | [`test_DEL_03_tamperedDelegationRejected`](delegation/Delegation.t.sol#L127) | Changing any signed field invalidates the delegation |
+| DEL-04 | [`test_DEL_04_erc1271Owner`](delegation/Delegation.t.sol#L141) | An ERC-1271 owner's signature delegates, and a wrong magic value reverts |
+| DEL-05 | [`test_DEL_05_expiredDelegation`](delegation/Delegation.t.sol#L182) | A relayed delegation past its deadline reverts with `DeadlinePassed` |
+| DEL-06 | [`test_DEL_06_withdrawDelegation`](delegation/Delegation.t.sol#L200) | Withdrawing stops the hub accepting that authenticator, while the signer stays approved |
+| DEL-08 | [`test_DEL_08_withdrawalDoesNotCallTheAuthenticator`](delegation/Delegation.t.sol#L225) | A withdrawal never reaches the authenticator, so one that reverts cannot trap the owner |
+| DEL-09 | [`test_DEL_09_relayedWithdrawal`](delegation/Delegation.t.sol#L249) | A relayed withdrawal needs the owner's signature over the same direction |
+| DEL-12 | [`test_DEL_12_initAuthenticationIsHubOnly`](delegation/Delegation.t.sol#L287) | `initAuthentication` answers the hub alone, and being the owner is not a way in |
+| DEL-13 | [`test_DEL_13_emptyPayloadNeverCallsInitAuthentication`](delegation/Delegation.t.sol#L316) | An empty payload skips the authenticator, even on the delegate direction |
+| DEL-14 | [`test_DEL_14_nonEmptyPayloadDoesCallInitAuthentication`](delegation/Delegation.t.sol#L343) | The guard reads the payload's length, not the direction alone |
+| DEL-15 | [`test_DEL_15_withdrawalSkipsTheAuthenticatorWhateverThePayload`](delegation/Delegation.t.sol#L382) | A withdrawal skips the authenticator whatever the payload says |
+| DEL-16 | [`test_DEL_16_delegationIsBoundToItsOwner`](delegation/Delegation.t.sol#L406) | A delegation signed for one account is refused for another account of one signer |
+| DEL-17 | [`test_DEL_17_ownerCallTakesNoSignature`](delegation/Delegation.t.sol#L435) | A signature on the owner's own delegation call reverts with `UnexpectedSignature` |
+| DEL-FUZZ | [`testFuzz_DEL_FUZZ_relayedDelegation`](delegation/Delegation.t.sol#L451) | A relayed delegation sets the delegation and exactly its nonce bit |
 
 ## NoncesTest
 
@@ -126,15 +126,15 @@ takes its ID and description from its name.
 | --- | --- | --- |
 | GAS-01 | [`test_GAS_01_ownerTransfer`](gas/GasSnapshots.t.sol#L18) | The owner submits an order drawing on the allowance to the hub |
 | GAS-02 | [`test_GAS_02_ownerPermit2Allowance`](gas/GasSnapshots.t.sol#L31) | The owner submits an order drawing on the Permit2 allowance |
-| GAS-03 | [`test_GAS_03_ownerPermit2Signature`](gas/GasSnapshots.t.sol#L45) | The owner submits an order on the Permit2 flow with a plain permit signature |
-| GAS-04 | [`test_GAS_04_relayedOrderSignature`](gas/GasSnapshots.t.sol#L59) | A relayer submits an order with the owner's EIP-712 order signature |
-| GAS-05 | [`test_GAS_05_relayedPermit2Witness`](gas/GasSnapshots.t.sol#L73) | A relayer submits an order on the Permit2 flow with the witness signature |
-| GAS-06 | [`test_GAS_06_relayedDelegatedAuthenticator`](gas/GasSnapshots.t.sol#L87) | A relayer submits an order authenticated by the delegated signer authenticator |
-| GAS-07 | [`test_GAS_07_relayedOrderSignatureWithSolutionApproval`](gas/GasSnapshots.t.sol#L101) | As the relayed order signature, with a solution approval from the order's approver |
-| GAS-08 | [`test_GAS_08_ownerTransferWithNftAndCall`](gas/GasSnapshots.t.sol#L126) | The owner submits an order with one ERC721 approval and one callee call |
-| GAS-09 | [`test_GAS_09_ownerTransferWithHooks`](gas/GasSnapshots.t.sol#L149) | The owner submits an order with one hook run before and after settlement |
-| GAS-10 | [`test_GAS_10_ownerDelegates`](gas/GasSnapshots.t.sol#L169) | The owner delegates the signer authenticator in a call of their own |
-| GAS-11 | [`test_GAS_11_relayedDelegation`](gas/GasSnapshots.t.sol#L181) | A relayer submits the owner's signed delegation of the signer authenticator |
+| GAS-03 | [`test_GAS_03_ownerPermit2Signature`](gas/GasSnapshots.t.sol#L46) | The owner submits an order on the Permit2 signature transfer flow with a plain permit signature |
+| GAS-04 | [`test_GAS_04_relayedOrderSignature`](gas/GasSnapshots.t.sol#L60) | A relayer submits an order with the owner's EIP-712 order signature |
+| GAS-05 | [`test_GAS_05_relayedPermit2Witness`](gas/GasSnapshots.t.sol#L75) | A relayer submits an order on the Permit2 signature transfer flow with the witness signature |
+| GAS-06 | [`test_GAS_06_relayedDelegatedAuthenticator`](gas/GasSnapshots.t.sol#L89) | A relayer submits an order authenticated by the delegated signer authenticator |
+| GAS-07 | [`test_GAS_07_relayedOrderSignatureWithSolutionApproval`](gas/GasSnapshots.t.sol#L103) | As the relayed order signature, with a solution approval from the order's approver |
+| GAS-08 | [`test_GAS_08_ownerTransferWithNftAndCall`](gas/GasSnapshots.t.sol#L128) | The owner submits an order with one ERC721 approval and one callee call |
+| GAS-09 | [`test_GAS_09_ownerTransferWithHooks`](gas/GasSnapshots.t.sol#L151) | The owner submits an order with one hook run before and after settlement |
+| GAS-10 | [`test_GAS_10_ownerDelegates`](gas/GasSnapshots.t.sol#L171) | The owner delegates the signer authenticator in a call of their own |
+| GAS-11 | [`test_GAS_11_relayedDelegation`](gas/GasSnapshots.t.sol#L183) | A relayer submits the owner's signed delegation of the signer authenticator |
 
 ## AuthenticationTest
 
@@ -149,16 +149,16 @@ takes its ID and description from its name.
 | ORD-03 | [`test_ORD_03_exclusiveCallerPinningAndTheOpenSentinel`](settlement/Authentication.t.sol#L199) | Only the named exclusive caller may submit a Permit2 settlement, the sentinel admits anyone |
 | AUTH-06 | [`test_AUTH_06_ownerCallerNeedsNoAuthentication`](settlement/Authentication.t.sol#L271) | An owner acting for themselves with no authenticator needs no authentication |
 | AUTH-06b | [`test_AUTH_06b_ownerCallerViaPermit2Allowance`](settlement/Authentication.t.sol#L289) | An owner's own call without an authenticator draws on the Permit2 allowance |
-| AUTH-08 | [`test_AUTH_08_undelegatedAuthenticatorRefused`](settlement/Authentication.t.sol#L314) | An authenticator the owner never delegated is refused before it is ever called |
-| ORD-01 | [`test_ORD_01_theAssetSourceIsTheSubmittersArgument`](settlement/Authentication.t.sol#L346) | The asset source is the submitter's parameter, and the same order settles either way |
-| ORD-01b | [`test_ORD_01b_thePermit2SignatureEntryPointConsultsNoAllowance`](settlement/Authentication.t.sol#L389) | The Permit2 signature entry point takes no source argument and claims neither allowance |
-| AUTH-13 | [`test_AUTH_13_malformedAuthenticationDataRejected`](settlement/Authentication.t.sol#L421) | Authentication data too short to settle is rejected, on whichever gate it reaches |
-| AUTH-18 | [`test_AUTH_18_authenticatorReceivesTheOrderAndTheSolution`](settlement/Authentication.t.sol#L462) | The authenticator receives the order, its hash, the solution and the data, unaltered |
-| AUTH-19 | [`test_AUTH_19_ownerWithDelegatedAuthenticatorIsAuthenticated`](settlement/Authentication.t.sol#L497) | An owner submitting an order with a delegated authenticator is authenticated |
-| AUTH-20 | [`test_AUTH_20_ownerWithRejectedAuthenticationDataIsRefused`](settlement/Authentication.t.sol#L526) | An owner is refused when the delegated authenticator rejects the data |
-| AUTH-21 | [`test_AUTH_21_ownerWithDelegatedAuthenticatorSkipsTheExclusiveCaller`](settlement/Authentication.t.sol#L549) | An owner with a delegated authenticator is exempt from the exclusive caller |
-| ORD-04 | [`test_ORD_04_delegatedEntryPointDrawsOnTheNamedOwner`](settlement/Authentication.t.sol#L582) | An order repointed to another owner who approved the same signer reverts |
-| ORD-03b | [`test_ORD_03b_delegatedEntryPointHonoursTheExclusiveCaller`](settlement/Authentication.t.sol#L626) | The delegated entry point refuses a submitter the order did not specify |
+| AUTH-08 | [`test_AUTH_08_undelegatedAuthenticatorRefused`](settlement/Authentication.t.sol#L315) | An authenticator the owner never delegated is refused before it is ever called |
+| ORD-01 | [`test_ORD_01_theAssetSourceIsSelectedByTheOrderFlags`](settlement/Authentication.t.sol#L346) | The asset source is selected by the order flags, and the same order shape settles either way |
+| ORD-01b | [`test_ORD_01b_thePermit2SignatureEntryPointConsultsNoAllowance`](settlement/Authentication.t.sol#L390) | The Permit2 signature entry point takes no source argument and claims neither allowance |
+| AUTH-13 | [`test_AUTH_13_malformedAuthenticationDataRejected`](settlement/Authentication.t.sol#L422) | Authentication data too short to settle is rejected, on whichever gate it reaches |
+| AUTH-18 | [`test_AUTH_18_authenticatorReceivesTheOrderAndTheSolution`](settlement/Authentication.t.sol#L463) | The authenticator receives the order, its hash, the solution and the data, unaltered |
+| AUTH-19 | [`test_AUTH_19_ownerWithDelegatedAuthenticatorIsAuthenticated`](settlement/Authentication.t.sol#L498) | An owner submitting an order with a delegated authenticator is authenticated |
+| AUTH-20 | [`test_AUTH_20_ownerWithRejectedAuthenticationDataIsRefused`](settlement/Authentication.t.sol#L527) | An owner is refused when the delegated authenticator rejects the data |
+| AUTH-21 | [`test_AUTH_21_ownerWithDelegatedAuthenticatorSkipsTheExclusiveCaller`](settlement/Authentication.t.sol#L550) | An owner with a delegated authenticator is exempt from the exclusive caller |
+| ORD-04 | [`test_ORD_04_delegatedEntryPointDrawsOnTheNamedOwner`](settlement/Authentication.t.sol#L583) | An order repointed to another owner who approved the same signer reverts |
+| ORD-03b | [`test_ORD_03b_delegatedEntryPointHonoursTheExclusiveCaller`](settlement/Authentication.t.sol#L627) | The delegated entry point refuses a submitter the order did not specify |
 
 ## CalldataHygieneTest
 
@@ -167,9 +167,9 @@ takes its ID and description from its name.
 | ID | Test | Description |
 | --- | --- | --- |
 | DIRTY-01 | [`test_DIRTY_01_delegatedOwnerSubmitted`](settlement/CalldataHygiene.t.sol#L21) | A dirty token address word is refused for the zero authenticator, owner submitted |
-| DIRTY-02 | [`test_DIRTY_02_permit2Witnessed`](settlement/CalldataHygiene.t.sol#L35) | A dirty token address word is refused for the Permit2 authenticator, witnessed |
-| DIRTY-03 | [`test_DIRTY_03_delegatedAuthenticated`](settlement/CalldataHygiene.t.sol#L49) | A dirty token address word is refused for a delegated authenticator |
-| DIRTY-04 | [`test_DIRTY_04_permit2OwnerSubmitted`](settlement/CalldataHygiene.t.sol#L66) | A dirty token address word is refused for the Permit2 authenticator, owner submitted |
+| DIRTY-02 | [`test_DIRTY_02_permit2Witnessed`](settlement/CalldataHygiene.t.sol#L34) | A dirty token address word is refused for the Permit2 authenticator, witnessed |
+| DIRTY-03 | [`test_DIRTY_03_delegatedAuthenticated`](settlement/CalldataHygiene.t.sol#L48) | A dirty token address word is refused for a delegated authenticator |
+| DIRTY-04 | [`test_DIRTY_04_permit2OwnerSubmitted`](settlement/CalldataHygiene.t.sol#L65) | A dirty token address word is refused for the Permit2 authenticator, owner submitted |
 
 ## CallsTest
 
@@ -198,6 +198,23 @@ takes its ID and description from its name.
 | CLIENT-02b | [`test_CLIENT_02b_emptyClientDataIsCoveredByTheSignature`](settlement/Events.t.sol#L160) | Client data submitted against empty signed client data reverts on every entry |
 | EVT-01 | [`test_EVT_01_eventPairsTransfersWithTargets`](settlement/Events.t.sol#L256) | `SettleOrder` lists the transfers that happened, each with the solution's target |
 
+## FlagsTest
+
+[`settlement/Flags.t.sol`](settlement/Flags.t.sol)
+
+| ID | Test | Description |
+| --- | --- | --- |
+| FLG-01 | [`test_FLG_01_mixedSplit`](settlement/Flags.t.sol#L63) | The first entries are pulled through Permit2 in one batch, the rest from the hub allowance |
+| FLG-02a | [`test_FLG_02a_countZeroMakesNoPermit2Call`](settlement/Flags.t.sol#L90) | A count of 0 makes no Permit2 call |
+| FLG-02b | [`test_FLG_02b_countOfAllEntriesLeavesTheHubAllowanceUntouched`](settlement/Flags.t.sol#L110) | A count equal to the number of entries pulls all of them in one Permit2 batch |
+| FLG-03 | [`test_FLG_03_permit2SignatureFlowIgnoresTheCount`](settlement/Flags.t.sol#L136) | The Permit2 signature transfer flow ignores the count |
+| FLG-03b | [`test_FLG_03b_countAboveTheEntriesIsRefusedWhereUsed`](settlement/Flags.t.sol#L161) | A count above the number of entries is refused where the count is used |
+| FLG-04 | [`test_FLG_04_erc20EntryLimit`](settlement/Flags.t.sol#L197) | At most 255 ERC20 entries |
+| FLG-05 | [`test_FLG_05_hookLimit`](settlement/Flags.t.sol#L224) | At most 64 hooks, and the bits of the last hook select its calls |
+| FLG-06 | [`test_FLG_06_ignoredBits`](settlement/Flags.t.sol#L255) | The bits of an absent hook and bits 128..247 are ignored |
+| FLG-07 | [`test_FLG_07_orderHashCoversTheFlags`](settlement/Flags.t.sol#L278) | The order hash covers the flags |
+| FLG-FUZZ | [`testFuzz_FLG_FUZZ_flagsSelectPathsAndCalls`](settlement/Flags.t.sol#L324) | The flags select the pull path of every entry and the calls of every hook |
+
 ## HooksTest
 
 [`settlement/Hooks.t.sol`](settlement/Hooks.t.sol)
@@ -208,12 +225,12 @@ takes its ID and description from its name.
 | HOOK-02 | [`test_HOOK_02_hooksRunAroundThePermit2EntryPoint`](settlement/Hooks.t.sol#L110) | The hooks bracket the Permit2 entry point, the after hook following the calls |
 | HOOK-03 | [`test_HOOK_03_aRevertingHookRevertsTheOrder`](settlement/Hooks.t.sol#L157) | A reverting hook reverts the order |
 | HOOK-04 | [`test_HOOK_04_noHooks`](settlement/Hooks.t.sol#L194) | An order with no hooks settles and runs its callee call |
-| HOOK-05 | [`test_HOOK_05_flagsSelectTheCalls`](settlement/Hooks.t.sol#L211) | The flags select which of the two calls a hook receives |
-| HOOK-06 | [`testFuzz_HOOK_06_flagsSelectTheCalls`](settlement/Hooks.t.sol#L249) | Only the two lowest bits of the flags select calls |
-| HOOK-07 | [`test_HOOK_07_hooksReceiveTheOrderTheSolutionAndTheirIndex`](settlement/Hooks.t.sol#L276) | A hook receives the order, its hash, the solution and the index of its entry |
-| HOOK-08 | [`test_HOOK_08_hooksRunWhileMsgSenderIsTheOwner`](settlement/Hooks.t.sol#L318) | The hooks run while `msgSender` returns the owner and `solver` the submitter |
-| HOOK-09 | [`test_HOOK_09_signaturesBindTheHooks`](settlement/Hooks.t.sol#L344) | Both signatures bind the hooks |
-| HOOK-10 | [`test_HOOK_10_theAfterHookSeesTheCalls`](settlement/Hooks.t.sol#L418) | The after hook observes the effects of the calls |
+| HOOK-05 | [`test_HOOK_05_flagsSelectTheCalls`](settlement/Hooks.t.sol#L211) | The flags of the order select which of the two calls each hook receives |
+| HOOK-06 | [`testFuzz_HOOK_06_flagsSelectTheCalls`](settlement/Hooks.t.sol#L252) | Only bits 0 and 64 of the flags select the calls of the one hook |
+| HOOK-07 | [`test_HOOK_07_hooksReceiveTheOrderTheSolutionAndTheirIndex`](settlement/Hooks.t.sol#L280) | A hook receives the order, its hash, the solution and the index of its entry |
+| HOOK-08 | [`test_HOOK_08_hooksRunWhileMsgSenderIsTheOwner`](settlement/Hooks.t.sol#L322) | The hooks run while `msgSender` returns the owner and `solver` the submitter |
+| HOOK-09 | [`test_HOOK_09_signaturesBindTheHooks`](settlement/Hooks.t.sol#L348) | Both signatures bind the hooks |
+| HOOK-10 | [`test_HOOK_10_theAfterHookSeesTheCalls`](settlement/Hooks.t.sol#L406) | The after hook observes the effects of the calls |
 
 ## NestingTest
 
@@ -250,10 +267,10 @@ takes its ID and description from its name.
 | SIG-FUZZ | [`testFuzz_SIG_FUZZ_ownerNonce`](settlement/OrderSignature.t.sol#L544) | The owner spends a non-zero nonce and not a zero one, and data is refused |
 | DISP-01 | [`test_DISP_01_delegatedPermit2IsNotCalledAsAnAuthenticator`](settlement/OrderSignature.t.sol#L575) | The Permit2 address as authenticator is never called, even when delegated |
 | DISP-02 | [`test_DISP_02_delegatedAuthenticatorCallsNoPermit2SignatureTransfer`](settlement/OrderSignature.t.sol#L602) | A delegated authenticator never reaches the signature transfers of Permit2 |
-| DISP-03 | [`test_DISP_03_permit2FlowIgnoresUsePermit2Allowances`](settlement/OrderSignature.t.sol#L629) | The Permit2 authenticator pulls with the signature, not the owner's allowance |
-| DISP-04 | [`test_DISP_04_ownerWithAnUndelegatedAuthenticatorIsRefused`](settlement/OrderSignature.t.sol#L654) | The owner is refused with an authenticator that was never delegated |
-| DISP-05 | [`test_DISP_05_permit2FlowRefusesPlainPermitAndEmptySignature`](settlement/OrderSignature.t.sol#L684) | A relayer on the Permit2 flow needs the witness signature |
-| DISP-06 | [`test_DISP_06_exclusiveCallerIsCheckedBeforeApprovalAndHooks`](settlement/OrderSignature.t.sol#L712) | The exclusive caller is checked before the approval and the hooks, on every rail |
+| DISP-03 | [`test_DISP_03_permit2FlowIgnoresPermit2Transfers`](settlement/OrderSignature.t.sol#L629) | The Permit2 authenticator pulls with the signature, not the owner's allowance |
+| DISP-04 | [`test_DISP_04_ownerWithAnUndelegatedAuthenticatorIsRefused`](settlement/OrderSignature.t.sol#L655) | The owner is refused with an authenticator that was never delegated |
+| DISP-05 | [`test_DISP_05_permit2FlowRefusesPlainPermitAndEmptySignature`](settlement/OrderSignature.t.sol#L685) | A relayer on the Permit2 signature transfer flow needs the witness signature |
+| DISP-06 | [`test_DISP_06_exclusiveCallerIsCheckedBeforeApprovalAndHooks`](settlement/OrderSignature.t.sol#L713) | The exclusive caller is checked before the approval and the hooks, on every rail |
 
 ## SettleFuzzTest
 
@@ -261,7 +278,7 @@ takes its ID and description from its name.
 
 | ID | Test | Description |
 | --- | --- | --- |
-| ORDER-FUZZ | [`testFuzz_ORDER_FUZZ_settleOrder`](settlement/SettleFuzz.t.sol#L55) | A relayed order settles for any drawn order on each of the three authenticator flows |
+| ORDER-FUZZ | [`testFuzz_ORDER_FUZZ_settleOrder`](settlement/SettleFuzz.t.sol#L56) | A relayed order settles for any drawn order on each of the three authenticator flows |
 
 ## SolutionTest
 
@@ -271,7 +288,7 @@ takes its ID and description from its name.
 | --- | --- | --- |
 | TGT-01 / LEN-01 | [`test_TGT_01_solverChoosesTheTargetsOnTheDelegatedEntryPoint`](settlement/Solution.t.sol#L59) | Delegated entry point: mismatched target counts revert, matching counts settle |
 | TGT-02 | [`test_TGT_02_solverTargetsOnThePermit2AllowancePull`](settlement/Solution.t.sol#L81) | On the delegated entry point, a Permit2 allowance pull pays the targets the solution names |
-| TGT-03 / LEN-02 | [`test_TGT_03_witnessDoesNotBindTheErc20Targets`](settlement/Solution.t.sol#L100) | Over Permit2, one witness accepts any ERC20 targets; wrong counts revert |
+| TGT-03 / LEN-02 | [`test_TGT_03_witnessDoesNotBindTheErc20Targets`](settlement/Solution.t.sol#L101) | Over Permit2, one witness accepts any ERC20 targets; wrong counts revert |
 | TGT-04 | [`test_TGT_04_ownerSubmitsWithTargetsOfTheirChoice`](settlement/Solution.t.sol#L140) | The owner submits over Permit2 with a plain permit, and still picks the targets |
 | APR-01 | [`test_APR_01_theApprovalBindsTheTargets`](settlement/Solution.t.sol#L161) | An approval of one set of targets does not approve another |
 | AMT-01 | [`test_AMT_01_amountBelowTheAllowanceMovesExactlyThatAmount`](settlement/Solution.t.sol#L196) | An amount below the allowance moves exactly that amount, on each pull branch |
@@ -322,19 +339,21 @@ takes its ID and description from its name.
 | T712 | [`test_T712_orderStructHash`](types/Eip712.t.sol#L130) | The order hash matches {SchemaHash} |
 | T712 | [`test_T712_orderClientDataStructHash`](types/Eip712.t.sol#L141) | The order hash matches {SchemaHash} with client data, and clearing it moves the hash |
 | T712-DIFF | [`test_T712_DIFF_authenticatorMovesOrderAndApprovalHash`](types/Eip712.t.sol#L159) | The authenticator alone moves the order hash and the approval hash |
-| T712 | [`test_T712_solutionStructHash`](types/Eip712.t.sol#L184) | The solution hash matches {SchemaHash}, and the nonce, `callValues` and `solverData` move the hash |
-| T712 | [`test_T712_solutionApprovalStructHash`](types/Eip712.t.sol#L230) | The approval hash matches the independent encoding, and the order, targets, callValues, solverData and nonce move it |
-| T712 | [`test_T712_erc20AllowanceStructHash`](types/Eip712.t.sol#L269) | The hash of each sample {ERC20Allowance} matches {SchemaHash} |
-| T712 | [`test_T712_erc721ApprovalStructHash`](types/Eip712.t.sol#L278) | The hash of a sample {ERC721Approval} matches {SchemaHash} |
-| T712-ARRAY | [`test_T712_ARRAY_addressArrayEncoding`](types/Eip712.t.sol#L290) | The packed encoding of an address array equals the per-element encoding |
-| T712-ARRAY | [`testFuzz_T712_ARRAY_efficientHashLibExt`](types/Eip712.t.sol#L308) | The address array hash equals the hash of the words encoded one by one |
-| T712-ARRAY | [`testFuzz_T712_ARRAY_bytesArrayHash`](types/Eip712.t.sol#L323) | The `bytes[]` hash equals the hash of the element hashes concatenated |
-| T712-FUZZ | [`testFuzz_T712_FUZZ_callParamsStructHash`](types/Eip712.t.sol#L338) | The {CallParams} hash equals its EIP-712 struct hash |
-| T712-FUZZ | [`testFuzz_T712_FUZZ_erc20AllowanceStructHash`](types/Eip712.t.sol#L343) | The {ERC20Allowance} hash equals its EIP-712 struct hash |
-| T712-FUZZ | [`testFuzz_T712_FUZZ_erc721ApprovalStructHash`](types/Eip712.t.sol#L348) | The {ERC721Approval} hash equals its EIP-712 struct hash |
-| T712-FUZZ | [`testFuzz_T712_FUZZ_hookParamsStructHash`](types/Eip712.t.sol#L353) | The {HookParams} hash equals its EIP-712 struct hash |
-| T712-FUZZ | [`testFuzz_T712_FUZZ_orderStructHash`](types/Eip712.t.sol#L358) | The {AHV2Order} hash equals its EIP-712 struct hash |
-| T712-FUZZ | [`testFuzz_T712_FUZZ_solutionStructHash`](types/Eip712.t.sol#L363) | The {AHV2Solution} hash equals its EIP-712 struct hash |
+| T712-DIFF | [`test_T712_DIFF_flagsMoveOrderAndApprovalHash`](types/Eip712.t.sol#L183) | The flags alone move the order hash and the approval hash |
+| T712-DIFF | [`testFuzz_T712_DIFF_flagsMoveOrderHash`](types/Eip712.t.sol#L203) | Any other value of the flags moves the order hash |
+| T712 | [`test_T712_solutionStructHash`](types/Eip712.t.sol#L220) | The solution hash matches {SchemaHash}, and the nonce, `callValues` and `solverData` move the hash |
+| T712 | [`test_T712_solutionApprovalStructHash`](types/Eip712.t.sol#L266) | The approval hash matches the independent encoding, and the order, targets, callValues, solverData and nonce move it |
+| T712 | [`test_T712_erc20AllowanceStructHash`](types/Eip712.t.sol#L305) | The hash of each sample {ERC20Allowance} matches {SchemaHash} |
+| T712 | [`test_T712_erc721ApprovalStructHash`](types/Eip712.t.sol#L314) | The hash of a sample {ERC721Approval} matches {SchemaHash} |
+| T712-ARRAY | [`test_T712_ARRAY_addressArrayEncoding`](types/Eip712.t.sol#L326) | The packed encoding of an address array equals the per-element encoding |
+| T712-ARRAY | [`testFuzz_T712_ARRAY_efficientHashLibExt`](types/Eip712.t.sol#L344) | The address array hash equals the hash of the words encoded one by one |
+| T712-ARRAY | [`testFuzz_T712_ARRAY_bytesArrayHash`](types/Eip712.t.sol#L359) | The `bytes[]` hash equals the hash of the element hashes concatenated |
+| T712-FUZZ | [`testFuzz_T712_FUZZ_callParamsStructHash`](types/Eip712.t.sol#L374) | The {CallParams} hash equals its EIP-712 struct hash |
+| T712-FUZZ | [`testFuzz_T712_FUZZ_erc20AllowanceStructHash`](types/Eip712.t.sol#L379) | The {ERC20Allowance} hash equals its EIP-712 struct hash |
+| T712-FUZZ | [`testFuzz_T712_FUZZ_erc721ApprovalStructHash`](types/Eip712.t.sol#L384) | The {ERC721Approval} hash equals its EIP-712 struct hash |
+| T712-FUZZ | [`testFuzz_T712_FUZZ_hookParamsStructHash`](types/Eip712.t.sol#L389) | The {HookParams} hash equals its EIP-712 struct hash |
+| T712-FUZZ | [`testFuzz_T712_FUZZ_orderStructHash`](types/Eip712.t.sol#L394) | The {AHV2Order} hash equals its EIP-712 struct hash |
+| T712-FUZZ | [`testFuzz_T712_FUZZ_solutionStructHash`](types/Eip712.t.sol#L399) | The {AHV2Solution} hash equals its EIP-712 struct hash |
 
 ## SchemaAuditTest
 
@@ -344,4 +363,4 @@ takes its ID and description from its name.
 | --- | --- | --- |
 | T712-SCHEMA | [`test_T712_SCHEMA_typehashesMatchTheirStructs`](types/SchemaAudit.t.sol#L33) | Each typehash equals the hash of the schema derived from its struct |
 | T712-SCHEMA-PERMIT2 | [`test_T712_SCHEMA_PERMIT2_witnessTypeStringMatchesItsStruct`](types/SchemaAudit.t.sol#L79) | The Permit2 stub plus the witness type string equals its struct schema |
-| T712-SCHEMA | [`test_T712_SCHEMA_typeStringsWrittenOut`](types/SchemaAudit.t.sol#L97) | The typehashes of the order, solution and approval match their written-out strings |
+| T712-SCHEMA | [`test_T712_SCHEMA_typeStringsWrittenOut`](types/SchemaAudit.t.sol#L98) | Type strings written out |

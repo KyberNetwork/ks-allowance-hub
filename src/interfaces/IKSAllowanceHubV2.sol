@@ -28,6 +28,16 @@ interface IKSAllowanceHubV2 {
   /// @notice The solution signature is not valid for the `solutionApprover` the order specifies
   error InvalidSolutionSignature();
 
+  /// @notice The order has more ERC20 transfers than the hub accepts
+  error TooManyERC20s(uint256 numERC20s);
+
+  /// @notice The number of ERC20 transfers the order's flags draw through Permit2 exceeds the
+  /// number of its ERC20 transfers
+  error TooManyPermit2Transfers(uint256 numPermit2Transfers, uint256 numERC20s);
+
+  /// @notice The order has more hooks than the hub accepts
+  error TooManyHooks(uint256 numHooks);
+
   /// @notice The amount the solution specifies for an ERC20 transfer exceeds its allowance
   error ERC20AllowanceExceeded(uint256 index, uint256 amount, uint256 allowance);
 
@@ -65,16 +75,13 @@ interface IKSAllowanceHubV2 {
    * @param solution The target of each transfer, the amount of each ERC20 transfer and the data of
    * each call the solver chose
    * @param solutionSignature The `solutionApprover`'s signature over the {SolutionApproval}
-   * @param usePermit2Allowances Whether the ERC20 transfers are drawn from the owner's Permit2
-   * allowances instead of the owner's allowances to this hub
    * @return results Return data of each call, in order
    */
   function settleOrder(
     AHV2Order calldata order,
     bytes calldata authenticationData,
     AHV2Solution calldata solution,
-    bytes calldata solutionSignature,
-    bool usePermit2Allowances
+    bytes calldata solutionSignature
   ) external payable returns (bytes[] memory results);
 
   /**

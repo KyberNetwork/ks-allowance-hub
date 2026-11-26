@@ -10,8 +10,8 @@ import {AHV2Solution} from '../../types/AHV2Solution.sol';
 /// and {ISettlementContext-solver} its solver during both calls.
 interface IAHV2Hook {
   /**
-   * @notice Called before any asset moves, and on the Permit2 flow before Permit2 checks the
-   * owner's signature
+   * @notice Called before any asset moves, and on the Permit2 signature transfer flow before
+   * Permit2 checks the owner's signature
    * @param order The order being settled
    * @param orderHash EIP-712 struct hash of `order`
    * @param solution The solution the order settles with
@@ -31,8 +31,8 @@ interface IAHV2Hook {
    * @param orderHash EIP-712 struct hash of `order`
    * @param solution The solution the order settles with
    * @param index Index of the hook's entry in `order.hooks`
-   * @param beforeSettlementResult What {beforeSettlement} returned; empty when the entry's flags do
-   * not select {beforeSettlement}
+   * @param beforeSettlementResult What {beforeSettlement} returned; empty when {AHV2Order-flags}
+   * does not select {beforeSettlement} for the hook
    */
   function afterSettlement(
     AHV2Order calldata order,

@@ -18,10 +18,10 @@ which the owner does not sign: the target and the amount of each ERC20 transfer,
 each ERC721 transfer and the solver data of each call.
 
 ```
-AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)
+AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,uint256 flags,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)
 AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,uint256[] callValues,bytes[] solverData,uint256 nonce,uint256 expiration)
 CallParams(address callee,bytes ownerData)
-HookParams(address hook,bytes32 flags,bytes data)
+HookParams(address hook,bytes data)
 SolutionApproval(AHV2Order order,AHV2Solution solution)
 ```
 
@@ -34,20 +34,37 @@ The hub reverts when either `expiration` has passed, or when the solution does n
 ERC721 transfer and one `callValues` entry and one `solverData` entry per call. An ERC20 transfer
 sends `solution.erc20Amounts[i]`, at most its allowance.
 
+`flags` is a bit field the owner signs with the order:
+
+| Bits | Meaning |
+|---|---|
+| 248 to 255, the high byte | the number of leading `erc20Allowances` drawn from the owner's Permit2 allowance, in one Permit2 call; the rest are drawn from the owner's allowance to the hub |
+| `j` | hook `j` runs `beforeSettlement` |
+| `64 + j` | hook `j` runs `afterSettlement` |
+
+A zero count draws every transfer from the allowance to the hub, a count equal to
+`erc20Allowances.length` draws every transfer through Permit2, and a larger count reverts with
+`TooManyPermit2Transfers`. Other bits are ignored. When `order.authenticator` is the Permit2
+address, the count is neither used nor checked. An order has at most 64 hooks, and outside the
+Permit2 signature transfer flow at most 255 ERC20 transfers; the hub reverts with `TooManyHooks` or
+`TooManyERC20s` otherwise.
+
 A settlement runs in this order:
 
-1. the expirations and the lengths of the solution's arrays are checked;
+1. the expirations are checked;
 2. the caller is checked against `exclusiveCaller` and authenticated, as `order.authenticator`
    requires;
 3. the solution approval is checked, unless `solutionApprover` is the zero address;
-4. each hook's `beforeSettlement` runs when its flags select it;
-5. the `SettleOrder` event is emitted;
-6. the ERC20 tokens are pulled to the targets of the solution;
+4. the number of hooks is checked, and each hook's `beforeSettlement` runs when `flags` selects it;
+5. the lengths of the solution's ERC20, ERC721 and `callValues` arrays are checked, and the
+   `SettleOrder` event is emitted;
+6. the ERC20 tokens are pulled to the targets of the solution; outside the Permit2 signature
+   transfer flow, the number of ERC20 transfers and the Permit2 count are checked first;
 7. the ERC721 tokens are transferred to the targets of the solution;
-8. `order.calls` run in order through `IAHV2Callee.execute(ownerData, solverData)`, with the
-   `ownerData` of the call, `solution.callValues[i]` as native value and `solution.solverData[i]`
-   as `solverData`;
-9. each hook's `afterSettlement` runs when its flags select it.
+8. the length of `solution.solverData` is checked, and `order.calls` run in order through
+   `IAHV2Callee.execute(ownerData, solverData)`, with the `ownerData` of the call,
+   `solution.callValues[i]` as native value and `solution.solverData[i]` as `solverData`;
+9. each hook's `afterSettlement` runs when `flags` selects it.
 
 The results list the return data of each call, in order.
 
@@ -61,16 +78,16 @@ solver: the solver chooses every target and every ERC20 amount up to the allowan
 ### Hooks
 
 ```
-HookParams(address hook,bytes32 flags,bytes data)
+HookParams(address hook,bytes data)
 ```
 
-Flag `0x01` selects `beforeSettlement` and flag `0x02` selects `afterSettlement`. Other bits are
-ignored. Any address may be a hook, and no role is required.
+`order.flags` selects the calls the hub makes to each hook. Any address may be a hook, and no role
+is required.
 
 The hub calls `IAHV2Hook` with the order, its hash, the solution and the index of the hook's entry
 in `order.hooks`. The hook reads its own `data` from the order at that index. The result of
 `beforeSettlement` is passed to `afterSettlement` as `beforeSettlementResult`, which is empty when
-the entry's flags do not select `beforeSettlement`. A hook reverts to refuse the order.
+`flags` does not select `beforeSettlement` for the hook. A hook reverts to refuse the order.
 
 When `order.authenticator` is the Permit2 address, the before hooks run before the permit signature
 is checked.
@@ -83,8 +100,8 @@ solution approval covers it, when one is required. The owner's signature does no
 
 ### Authorisation
 
-`settleOrder(order, authenticationData, solution, solutionSignature, usePermit2Allowances)` is the
-only entry point. `order.authenticator` selects how an order is authorised:
+`settleOrder(order, authenticationData, solution, solutionSignature)` is the only entry point.
+`order.authenticator` selects how an order is authorised:
 
 | `order.authenticator` | Authorisation |
 |---|---|
@@ -98,26 +115,26 @@ the owner, whoever submits, and the hub reverts with `AuthenticatorNotDelegated`
 When `order.authenticator` is the zero address, the signature is an EIP-712 signature over the
 `AHV2Order` under the hub's domain, made by the owner or validated through ERC-1271 when the owner
 is a contract. The hub spends `order.nonce` in the owner's namespace, so a signed order settles at
-most once, and reverts with `InvalidOrderSignature` when the signature is not valid. The ERC20
-transfers are drawn from the owner's allowances to the hub, or from the owner's Permit2 allowances
-when `usePermit2Allowances` is set.
+most once, and reverts with `InvalidOrderSignature` when the signature is not valid. The high byte
+of `flags` divides the ERC20 transfers between the owner's Permit2 allowances and the owner's
+allowances to the hub.
 
 When `order.authenticator` is the Permit2 address, the ERC20 transfers are executed through a
 Permit2 batch permit whose nonce is `order.nonce` and whose deadline is `order.expiration`. The
 permitted amounts are the order's allowances, and the requested amounts are
-`solution.erc20Amounts`. `usePermit2Allowances` is ignored. When another account submits, the
+`solution.erc20Amounts`. The high byte of `flags` is not used. When another account submits, the
 permit also covers the order, so the owner's signature covers the `AHV2Order` as well. The type
 string the hub passes to Permit2 is:
 
 ```
-AHV2Order order)AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)CallParams(address callee,bytes ownerData)ERC20Allowance(address token,uint160 amount)ERC721Approval(address token,uint256 tokenId)HookParams(address hook,bytes32 flags,bytes data)TokenPermissions(address token,uint256 amount)
+AHV2Order order)AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,uint256 flags,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)CallParams(address callee,bytes ownerData)ERC20Allowance(address token,uint160 amount)ERC721Approval(address token,uint256 tokenId)HookParams(address hook,bytes data)TokenPermissions(address token,uint256 amount)
 ```
 
 When `order.authenticator` is a delegated authenticator, the authenticator must accept
 `authenticationData` for the order, also when the owner submits. The hub does not spend
 `order.nonce` and keeps no record of settled orders, so whether an order may be settled more than
-once is the authenticator's decision. The ERC20 transfers are drawn from the owner's allowances to
-the hub, or from the owner's Permit2 allowances when `usePermit2Allowances` is set.
+once is the authenticator's decision. The high byte of `flags` divides the ERC20 transfers as on
+the zero-address flow.
 
 ### Orders submitted by the owner
 
@@ -178,7 +195,7 @@ with `forwardCalls` is not forwarded and remains in the hub.
 hub.multicall([
   abi.encodeCall(hub.forwardCalls, (permitCalls)),
   abi.encodeCall(
-    hub.settleOrder, (order, authData, solution, solutionSignature, false)
+    hub.settleOrder, (order, authData, solution, solutionSignature)
   )
 ]);
 ```
@@ -245,8 +262,8 @@ The domain is published through ERC-5267's `eip712Domain()`.
 ```
 src/
   KSAllowanceHubV2.sol
-  base/            AHV2AuthenticatorBase, AuthDelegator, EIP712Nonce, Multicall, NativeSpendGuard,
-                   SettlementContext, UnorderedNonce
+  base/            AuthDelegator, EIP712Nonce, Multicall, NativeSpendGuard, SettlementContext,
+                   UnorderedNonce
   interfaces/      IKSAllowanceHubV2; base/ holds the interfaces of the base contracts, IAHV2Hook,
                    IAHV2Authenticator and IAHV2Callee
   libraries/       CalldataHashLib, Constants, MallocBytesLib

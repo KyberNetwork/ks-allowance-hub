@@ -79,7 +79,7 @@ contract EventsTest is SettlementBase {
     vm.recordLogs();
 
     vm.prank(relayer);
-    hub.settleOrder(order, signature, solution, '', false);
+    hub.settleOrder(order, signature, solution, '');
 
     Vm.Log memory entry = _settlementLog();
 
@@ -101,7 +101,7 @@ contract EventsTest is SettlementBase {
     vm.recordLogs();
 
     vm.prank(owner);
-    bytes[] memory results = hub.settleOrder(order, '', _defaultSolution(order), '', false);
+    bytes[] memory results = hub.settleOrder(order, '', _defaultSolution(order), '');
 
     assertEq(results.length, 0, 'no calls, no results');
     assertEq(callee.callCount(), 0, 'no callee was called');
@@ -193,12 +193,12 @@ contract EventsTest is SettlementBase {
         matches, SignerAuthenticatorMock.InvalidOrderSignature.selector, order, submittedData
       );
       vm.prank(solver);
-      hub.settleOrder(order, auth, solution, '', false);
+      hub.settleOrder(order, auth, solution, '');
     } else {
       bytes memory signature = _signPermit2Order(signed);
       _expectClientData(matches, PERMIT2_INVALID_SIGNER, order, submittedData);
       vm.prank(solver);
-      hub.settleOrder(order, signature, solution, '', false);
+      hub.settleOrder(order, signature, solution, '');
     }
   }
 
@@ -286,7 +286,7 @@ contract EventsTest is SettlementBase {
 
     vm.recordLogs();
     vm.prank(owner);
-    hub.settleOrder(order, '', solution, '', false);
+    hub.settleOrder(order, '', solution, '');
     Vm.Log memory entry = _settlementLog();
 
     assertEq(_topicAddress(entry.topics[1]), owner, 'the caller');

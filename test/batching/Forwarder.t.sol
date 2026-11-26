@@ -19,8 +19,6 @@ import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
 import {IAHV2Authenticator} from 'src/interfaces/base/IAHV2Authenticator.sol';
 import {IAuthDelegator} from 'src/interfaces/base/IAuthDelegator.sol';
 
-import {AHV2AuthenticatorBase} from 'src/base/AHV2AuthenticatorBase.sol';
-
 import {AHV2Order} from 'src/types/AHV2Order.sol';
 import {AHV2Solution} from 'src/types/AHV2Solution.sol';
 import {ERC20Allowance} from 'src/types/ERC20Allowance.sol';
@@ -577,10 +575,10 @@ contract ForwarderTest is SignerAuthenticatorBase {
   /**
    * FWD-16 — Multicall3 relays `initAuthentication` and `authenticate`, and the
    * authenticator refuses it as the caller because it is not the hub
-   * @dev `initAuthentication` and `authenticate` trust only the hub. A relay makes Multicall3 their caller, so each is refused with
-   * {AHV2AuthenticatorBase-CallerNotAuthorized} reporting Multicall3 and the authenticator's state
-   * is unchanged. With `allowFailure` true the refusal is recorded as that entry's result; with it
-   * false the batch reverts with Multicall3's own error.
+   * @dev `initAuthentication` and `authenticate` trust only the hub. A relay makes Multicall3 their
+   * caller, so each is refused with {SignerAuthenticatorMock-CallerNotAuthorized} reporting
+   * Multicall3 and the authenticator's state is unchanged. With `allowFailure` true the refusal is
+   * recorded as that entry's result; with it false the batch reverts with Multicall3's own error.
    */
   function test_FWD_16_authenticatorRefusesMulticall3OnHubOnlyCalls() public {
     bytes memory payload = _encodeSigner(relayer);
@@ -604,7 +602,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
     _assertReachesTheHubOnlyGate(authenticateData[0], 'authenticate');
 
     bytes memory refusal =
-      abi.encodeWithSelector(AHV2AuthenticatorBase.CallerNotAuthorized.selector, multicall3);
+      abi.encodeWithSelector(SignerAuthenticatorMock.CallerNotAuthorized.selector, multicall3);
 
     vm.prank(relayer);
     vm.expectRevert(_callFailed());
@@ -755,7 +753,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
     reentrant.setReentry(
       abi.encodeCall(
         IKSAllowanceHubV2.settleOrder,
-        (order, _signPermit2Order(order), _defaultSolution(order), '', false)
+        (order, _signPermit2Order(order), _defaultSolution(order), '')
       )
     );
 
@@ -845,7 +843,7 @@ contract ForwarderTest is SignerAuthenticatorBase {
     assertFalse(ok, string.concat(what, ' refused the call'));
     assertEq(
       ret,
-      abi.encodeWithSelector(AHV2AuthenticatorBase.CallerNotAuthorized.selector, address(this)),
+      abi.encodeWithSelector(SignerAuthenticatorMock.CallerNotAuthorized.selector, address(this)),
       string.concat('and refused it at the hub-only gate, so the payload reached the real ', what)
     );
   }

@@ -5,6 +5,8 @@ import {IAHV2Callee} from '../interfaces/base/IAHV2Callee.sol';
 
 import {NativeTransfer} from './NativeTransfer.sol';
 
+import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
+
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 
 /**
@@ -49,12 +51,17 @@ library CallParamsLib {
     return IAHV2Callee(self.callee).execute{value: value}(self.ownerData, solverData);
   }
 
-  /// @dev The calls given native value by `values`, as native transfers to their callees, in order
+  /// @dev The calls given native value by `values`, as native transfers to their callees, in order;
+  /// reverts unless there is one value for each call
   function toNativeTransfers(CallParams[] calldata calls, uint256[] calldata values)
     internal
     pure
     returns (NativeTransfer[] memory transfers)
   {
+    if (values.length != calls.length) {
+      revert ICommon.MismatchedArrayLengths();
+    }
+
     bytes32[] memory buffer = calls.length.malloc();
     assembly ('memory-safe') {
       transfers := buffer

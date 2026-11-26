@@ -17,13 +17,19 @@ struct SolutionApproval {
 }
 
 library SolutionApprovalLib {
+  // forgefmt: disable-next-item
   bytes32 internal constant SOLUTION_APPROVAL_TYPEHASH = keccak256(
     'SolutionApproval(AHV2Order order,AHV2Solution solution)'
-    'AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)'
-    'AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,uint256[] callValues,bytes[] solverData,uint256 nonce,uint256 expiration)'
-    'CallParams(address callee,bytes ownerData)' 'ERC20Allowance(address token,uint160 amount)'
+    'AHV2Order(address owner,address authenticator,address exclusiveCaller'
+    ',ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks'
+    ',CallParams[] calls,uint256 flags,address solutionApprover,uint256 nonce,uint256 expiration'
+    ',bytes clientData)'
+    'AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets'
+    ',uint256[] callValues,bytes[] solverData,uint256 nonce,uint256 expiration)'
+    'CallParams(address callee,bytes ownerData)'
+    'ERC20Allowance(address token,uint160 amount)'
     'ERC721Approval(address token,uint256 tokenId)'
-    'HookParams(address hook,bytes32 flags,bytes data)'
+    'HookParams(address hook,bytes data)'
   );
 
   /// @dev EIP-712 hash of the approval, taking the order by its struct hash

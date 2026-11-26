@@ -108,11 +108,11 @@ contract GuardsTest is SignerAuthenticatorBase {
 
     vm.prank(owner);
     vm.expectRevert(Pausable.EnforcedPause.selector);
-    hub.settleOrder(order, '', _defaultSolution(order), '', false);
+    hub.settleOrder(order, '', _defaultSolution(order), '');
 
     vm.prank(relayer);
     vm.expectRevert(Pausable.EnforcedPause.selector);
-    hub.settleOrder(permitOrder, permitSig, _defaultSolution(permitOrder), '', false);
+    hub.settleOrder(permitOrder, permitSig, _defaultSolution(permitOrder), '');
 
     vm.prank(owner);
     vm.expectRevert(Pausable.EnforcedPause.selector);
@@ -172,7 +172,7 @@ contract GuardsTest is SignerAuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(_orderExpired(t - 1));
-    hub.settleOrder(stale, staleSig, _defaultSolution(stale), '', false);
+    hub.settleOrder(stale, staleSig, _defaultSolution(stale), '');
   }
 
   /// GUARD-05 — when both guards would fire, the pause wins, because it is the outer modifier
@@ -186,11 +186,11 @@ contract GuardsTest is SignerAuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(Pausable.EnforcedPause.selector);
-    hub.settleOrder(stale, staleSig, _defaultSolution(stale), '', false);
+    hub.settleOrder(stale, staleSig, _defaultSolution(stale), '');
 
     vm.prank(owner);
     vm.expectRevert(Pausable.EnforcedPause.selector);
-    hub.settleOrder(ownerStale, '', _defaultSolution(ownerStale), '', false);
+    hub.settleOrder(ownerStale, '', _defaultSolution(ownerStale), '');
   }
 
   // -----------------------------------------------------------------------------------------
@@ -225,7 +225,7 @@ contract GuardsTest is SignerAuthenticatorBase {
     AHV2Order memory control = _permit2Order(100, expiration, _calls(_calleeCall(hex'01')));
 
     vm.prank(solver);
-    hub.settleOrder(control, _signPermit2Order(control), _defaultSolution(control), '', false);
+    hub.settleOrder(control, _signPermit2Order(control), _defaultSolution(control), '');
     assertEq(_calleeBalance() - before, AMOUNT, 'the control settled');
 
     // whenNotPaused
@@ -237,19 +237,19 @@ contract GuardsTest is SignerAuthenticatorBase {
 
     vm.prank(solver);
     vm.expectRevert(Pausable.EnforcedPause.selector);
-    hub.settleOrder(paused, pausedSig, _defaultSolution(paused), '', false);
+    hub.settleOrder(paused, pausedSig, _defaultSolution(paused), '');
 
     vm.prank(admin);
     hub.unpause();
 
-    // checkSettlement
+    // _checkExpiration
     AHV2Order memory stale =
       _permit2Order(102, vm.getBlockTimestamp() - 1, _calls(_calleeCall(hex'01')));
     bytes memory staleSig = _signPermit2Order(stale);
 
     vm.prank(solver);
     vm.expectRevert(_orderExpired(vm.getBlockTimestamp() - 1));
-    hub.settleOrder(stale, staleSig, _defaultSolution(stale), '', false);
+    hub.settleOrder(stale, staleSig, _defaultSolution(stale), '');
 
     // guardNativeSpend
     vm.deal(address(hub), PREFUND);
@@ -264,7 +264,7 @@ contract GuardsTest is SignerAuthenticatorBase {
     vm.expectRevert(
       abi.encodeWithSelector(NativeSpendGuard.NativeOverspent.selector, VALUE + 1, VALUE)
     );
-    hub.settleOrder{value: VALUE}(overSpending, overSpendingSig, greedyRoute, '', false);
+    hub.settleOrder{value: VALUE}(overSpending, overSpendingSig, greedyRoute, '');
 
     assertEq(address(hub).balance, PREFUND, "the hub's own native balance is intact");
   }
@@ -288,7 +288,7 @@ contract GuardsTest is SignerAuthenticatorBase {
         IAuthDelegator.AuthenticatorNotDelegated.selector, address(authenticator)
       )
     );
-    hub.settleOrder(undelegated, '', _defaultSolution(undelegated), '', false);
+    hub.settleOrder(undelegated, '', _defaultSolution(undelegated), '');
 
     // guardNativeSpend
     vm.deal(address(hub), PREFUND);
@@ -304,7 +304,7 @@ contract GuardsTest is SignerAuthenticatorBase {
     vm.expectRevert(
       abi.encodeWithSelector(NativeSpendGuard.NativeOverspent.selector, VALUE + 1, VALUE)
     );
-    hub.settleOrder{value: VALUE}(overSpending, '', greedySolution, '', false);
+    hub.settleOrder{value: VALUE}(overSpending, '', greedySolution, '');
 
     assertEq(address(hub).balance, PREFUND, 'the hub kept its native balance');
   }
@@ -338,7 +338,7 @@ contract GuardsTest is SignerAuthenticatorBase {
     if (!shouldSettle) {
       vm.expectRevert(_orderExpired(expiration));
     }
-    hub.settleOrder(order, '', solution, '', false);
+    hub.settleOrder(order, '', solution, '');
 
     assertEq(
       _calleeBalance() - calleeBefore,
@@ -369,7 +369,7 @@ contract GuardsTest is SignerAuthenticatorBase {
         abi.encodeWithSelector(NativeSpendGuard.NativeOverspent.selector, spend, VALUE)
       );
     }
-    hub.settleOrder{value: VALUE}(order, '', solution, '', false);
+    hub.settleOrder{value: VALUE}(order, '', solution, '');
 
     if (shouldSettle) {
       assertEq(address(callee).balance - calleeBefore, spend, 'the callee was paid exactly');

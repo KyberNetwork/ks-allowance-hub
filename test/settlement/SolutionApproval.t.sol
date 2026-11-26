@@ -49,7 +49,7 @@ contract SolutionApprovalTest is SettlementBase {
 
     bytes memory authA = _authOf(withCallsA);
     vm.prank(relayer);
-    bytes[] memory results = hub.settleOrder(withCallsA, authA, solution, approvalA, false);
+    bytes[] memory results = hub.settleOrder(withCallsA, authA, solution, approvalA);
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the approved order settled');
     assertEq(results.length, 1, 'the call ran');
@@ -64,7 +64,7 @@ contract SolutionApprovalTest is SettlementBase {
     bytes memory authB = _authOf(withCallsB);
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.settleOrder(withCallsB, authB, solutionB, approvalOfAForB, false);
+    hub.settleOrder(withCallsB, authB, solutionB, approvalOfAForB);
 
     assertEq(callee.callCount(), 1, 'the refused order ran nothing');
 
@@ -72,7 +72,7 @@ contract SolutionApprovalTest is SettlementBase {
     bytes memory approvalB = _signSolutionApproval(approverKey, withCallsB, solutionB);
 
     vm.prank(relayer);
-    hub.settleOrder(withCallsB, authB, solutionB, approvalB, false);
+    hub.settleOrder(withCallsB, authB, solutionB, approvalB);
     assertEq(callee.callCount(), 2, 'the call of the second order ran too');
   }
 
@@ -95,7 +95,7 @@ contract SolutionApprovalTest is SettlementBase {
 
     uint256 before = _calleeBalance();
     vm.prank(owner);
-    hub.settleOrder(open, '', _solution(open, vm.getBlockTimestamp()), '', false);
+    hub.settleOrder(open, '', _solution(open, vm.getBlockTimestamp()), '');
     assertEq(_calleeBalance() - before, AMOUNT, 'the expiration second itself still settles');
 
     vm.warp(vm.getBlockTimestamp() + 1);
@@ -103,7 +103,7 @@ contract SolutionApprovalTest is SettlementBase {
 
     vm.prank(owner);
     vm.expectRevert(_solutionExpired(stale));
-    hub.settleOrder(open, '', _solution(open, stale), '', false);
+    hub.settleOrder(open, '', _solution(open, stale), '');
 
     // and the same on the Permit2 entry point, whose modifier stack is written out separately
     AHV2Order memory forRelay = _openAhv2Order(
@@ -118,7 +118,7 @@ contract SolutionApprovalTest is SettlementBase {
 
     vm.prank(relayer);
     vm.expectRevert(_solutionExpired(stale));
-    hub.settleOrder(forRelay, witness, _solution(forRelay, stale), '', false);
+    hub.settleOrder(forRelay, witness, _solution(forRelay, stale), '');
   }
 
   /**
@@ -147,7 +147,7 @@ contract SolutionApprovalTest is SettlementBase {
 
     uint256 before = _calleeBalance();
     vm.prank(relayer);
-    hub.settleOrder(named, witness, solution, approval, false);
+    hub.settleOrder(named, witness, solution, approval);
     assertEq(_calleeBalance() - before, AMOUNT, 'the order settled');
     assertEq(
       hub.nonces(lNonceKey(approver), SOLUTION_NONCE >> 8),
@@ -161,7 +161,7 @@ contract SolutionApprovalTest is SettlementBase {
         IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(approver), SOLUTION_NONCE
       )
     );
-    hub.settleOrder(named, witness, solution, approval, false);
+    hub.settleOrder(named, witness, solution, approval);
   }
 
   /**
@@ -181,7 +181,7 @@ contract SolutionApprovalTest is SettlementBase {
     first.solverData[0] = hex'01';
 
     vm.prank(owner);
-    bytes[] memory results = hub.settleOrder(open, '', first, '', false);
+    bytes[] memory results = hub.settleOrder(open, '', first, '');
 
     assertEq(results.length, 1, 'the solution ran');
     assertEq(callee.callCount(), 1, 'once');
@@ -191,7 +191,7 @@ contract SolutionApprovalTest is SettlementBase {
     second.solverData[0] = hex'02';
 
     vm.prank(owner);
-    hub.settleOrder(open, '', second, '', false);
+    hub.settleOrder(open, '', second, '');
 
     assertEq(callee.callCount(), 2, 'and a different solution under the same order ran as well');
     assertEq(callee.lastSolverData(), hex'02', 'the second solution is the one that ran last');
@@ -211,7 +211,7 @@ contract SolutionApprovalTest is SettlementBase {
     bytes memory auth = _authOf(withApprover);
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.settleOrder(withApprover, auth, _defaultSolution(withApprover), '', false);
+    hub.settleOrder(withApprover, auth, _defaultSolution(withApprover), '');
   }
 
   /**
@@ -237,7 +237,7 @@ contract SolutionApprovalTest is SettlementBase {
     bytes memory auth = _authOf(order);
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.settleOrder(order, auth, _defaultSolution(order), hex'1234', false);
+    hub.settleOrder(order, auth, _defaultSolution(order), hex'1234');
 
     assertEq(callee.callCount(), 0, 'and nothing ran');
   }
@@ -267,7 +267,7 @@ contract SolutionApprovalTest is SettlementBase {
     AHV2Solution memory solution = _defaultSolution(order);
 
     vm.prank(relayer);
-    hub.settleOrder(order, authData, solution, '', false);
+    hub.settleOrder(order, authData, solution, '');
 
     assertEq(authenticator.nonces(lNonceKey(signer), 0), 1 << 21, 'the order nonce burned');
     assertEq(callee.callCount(), 1, 'the solution ran once');
@@ -276,7 +276,7 @@ contract SolutionApprovalTest is SettlementBase {
     vm.expectRevert(
       abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(signer), 21)
     );
-    hub.settleOrder(order, authData, solution, '', false);
+    hub.settleOrder(order, authData, solution, '');
 
     assertEq(callee.callCount(), 1, 'and not a second time');
   }
@@ -293,7 +293,7 @@ contract SolutionApprovalTest is SettlementBase {
     bytes memory firstAuth = _authOf(first);
 
     vm.prank(relayer);
-    hub.settleOrder(first, firstAuth, solution, approval, false);
+    hub.settleOrder(first, firstAuth, solution, approval);
     assertEq(callee.callCount(), 1, 'the first settlement ran');
 
     AHV2Order memory second = _approverOrder(96);
@@ -304,13 +304,13 @@ contract SolutionApprovalTest is SettlementBase {
     vm.expectRevert(
       abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(approver), 4)
     );
-    hub.settleOrder(second, secondAuth, reused, reusedApproval, false);
+    hub.settleOrder(second, secondAuth, reused, reusedApproval);
     assertEq(callee.callCount(), 1, 'the reuse ran nothing');
 
     AHV2Solution memory fresh = _defaultSolution(second, 5);
     bytes memory freshApproval = _signSolutionApproval(approverKey, second, fresh);
     vm.prank(relayer);
-    hub.settleOrder(second, secondAuth, fresh, freshApproval, false);
+    hub.settleOrder(second, secondAuth, fresh, freshApproval);
     assertEq(callee.callCount(), 2, 'an approval with a fresh nonce settles');
     assertEq(hub.nonces(lNonceKey(approver), 0), (1 << 4) | (1 << 5), 'both nonces are spent');
   }
@@ -331,7 +331,7 @@ contract SolutionApprovalTest is SettlementBase {
     vm.expectRevert(
       abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(approver), 9)
     );
-    hub.settleOrder(order, auth, solution, approval, false);
+    hub.settleOrder(order, auth, solution, approval);
     assertEq(callee.callCount(), 0, 'the revoked approval ran nothing');
   }
 
@@ -347,8 +347,8 @@ contract SolutionApprovalTest is SettlementBase {
     AHV2Solution memory solution = _defaultSolution(open, 7);
 
     vm.startPrank(owner);
-    hub.settleOrder(open, '', solution, '', false);
-    hub.settleOrder(open, '', solution, '', false);
+    hub.settleOrder(open, '', solution, '');
+    hub.settleOrder(open, '', solution, '');
     vm.stopPrank();
 
     assertEq(callee.callCount(), 2, 'both settlements ran with the same nonce');
@@ -376,7 +376,7 @@ contract SolutionApprovalTest is SettlementBase {
     assertEq(hub.nonces(lNonceKey(approver), 0), 0, 'nothing is spent before the settlement');
 
     vm.prank(solver);
-    hub.settleOrder(order, permitSig, solution, approval, false);
+    hub.settleOrder(order, permitSig, solution, approval);
 
     assertEq(hub.nonces(lNonceKey(approver), 0), 1 << 6, "the approver's bit is set");
   }
@@ -393,7 +393,7 @@ contract SolutionApprovalTest is SettlementBase {
     bytes memory auth = _authOf(order);
 
     vm.prank(relayer);
-    hub.settleOrder(order, auth, solution, approval, false);
+    hub.settleOrder(order, auth, solution, approval);
 
     assertEq(
       hub.nonces(lNonceKey(approver), f.nonce >> 8),
@@ -412,7 +412,7 @@ contract SolutionApprovalTest is SettlementBase {
         IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(approver), f.nonce
       )
     );
-    hub.settleOrder(other, otherAuth, replay, replayApproval, false);
+    hub.settleOrder(other, otherAuth, replay, replayApproval);
   }
 
   /**
@@ -437,7 +437,7 @@ contract SolutionApprovalTest is SettlementBase {
     vm.expectRevert(
       abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(approver), 11)
     );
-    hub.settleOrder(order, auth, solution, approval, false);
+    hub.settleOrder(order, auth, solution, approval);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -481,12 +481,12 @@ contract SolutionApprovalTest is SettlementBase {
       bytes memory witnessSig = _signPermit2Order(order);
       vm.prank(solver);
       vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-      hub.settleOrder(order, witnessSig, solution, garbage, false);
+      hub.settleOrder(order, witnessSig, solution, garbage);
     } else {
       bytes memory auth = _authOf(order);
       vm.prank(solver);
       vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-      hub.settleOrder(order, auth, solution, garbage, false);
+      hub.settleOrder(order, auth, solution, garbage);
     }
 
     assertEq(_calleeBalance(), before, 'nothing moved');
@@ -531,7 +531,7 @@ contract SolutionApprovalTest is SettlementBase {
       vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
     }
     vm.prank(owner);
-    hub.settleOrder(order, authData, solution, approval, false);
+    hub.settleOrder(order, authData, solution, approval);
 
     if (approved) {
       assertEq(_calleeBalance() - before, AMOUNT, 'the owner settled');

@@ -94,15 +94,22 @@ contract SchemaAuditTest is Test {
    * written-out strings
    * @dev The three type strings, written out here, against the production typehashes
    */
+  // forgefmt: disable-next-item
   function test_T712_SCHEMA_typeStringsWrittenOut() public pure {
     string memory callParams = 'CallParams(address callee,bytes ownerData)';
-    string memory hookParams = 'HookParams(address hook,bytes32 flags,bytes data)';
+    string memory hookParams = 'HookParams(address hook,bytes data)';
     string memory erc20Allowance = 'ERC20Allowance(address token,uint160 amount)';
     string memory erc721Approval = 'ERC721Approval(address token,uint256 tokenId)';
-    string memory order =
-      'AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)';
-    string memory solution =
-      'AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,uint256[] callValues,bytes[] solverData,uint256 nonce,uint256 expiration)';
+    string memory order = string.concat(
+      'AHV2Order(address owner,address authenticator,address exclusiveCaller',
+      ',ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks',
+      ',CallParams[] calls,uint256 flags,address solutionApprover,uint256 nonce,uint256 expiration',
+      ',bytes clientData)'
+    );
+    string memory solution = string.concat(
+      'AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets',
+      ',uint256[] callValues,bytes[] solverData,uint256 nonce,uint256 expiration)'
+    );
 
     assertEq(
       AHV2OrderLib.AHV2_ORDER_TYPEHASH,

@@ -18,7 +18,6 @@ import {ERC20Allowance, ERC20AllowanceLib} from './types/ERC20Allowance.sol';
 import {ERC20Transfer} from './types/ERC20Transfer.sol';
 import {ERC721Approval, ERC721ApprovalLib} from './types/ERC721Approval.sol';
 import {ERC721Transfer} from './types/ERC721Transfer.sol';
-import {HookParams, HookParamsLib} from './types/HookParams.sol';
 import {SolutionApprovalLib} from './types/SolutionApproval.sol';
 
 import {IMulticall3} from 'forge-std/interfaces/IMulticall3.sol';
@@ -44,7 +43,6 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, AuthDelegator, Multicall, Settle
   using CallParamsLib for CallParams[];
   using ERC20AllowanceLib for ERC20Allowance[];
   using ERC721ApprovalLib for ERC721Approval[];
-  using HookParamsLib for HookParams[];
   using MallocBytesLib for uint256;
   using TokenHelper for address;
 
@@ -86,8 +84,7 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, AuthDelegator, Multicall, Settle
     AHV2Order calldata order,
     bytes calldata authenticationData,
     AHV2Solution calldata solution,
-    bytes calldata solutionSignature,
-    bool usePermit2Allowances
+    bytes calldata solutionSignature
   )
     external
     payable
@@ -96,7 +93,7 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, AuthDelegator, Multicall, Settle
     guardNativeSpend
     returns (bytes[] memory results)
   {
-    order.checkSettlement(solution);
+    _checkExpiration(order, solution);
 
     bytes32 orderHash = order.hash();
 
@@ -138,7 +135,8 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, AuthDelegator, Multicall, Settle
         IAHV2Authenticator(order.authenticator)
           .authenticate(order, orderHash, solution, authenticationData);
       }
-      // On the Permit2 flow, Permit2 checks the owner's signature when the ERC20 tokens move
+      // On the Permit2 signature transfer flow, Permit2 checks the owner's signature when the ERC20
+      // tokens move
     }
 
     // Required from every caller when `order.solutionApprover` is set. The approval spends
@@ -152,9 +150,9 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, AuthDelegator, Multicall, Settle
       }
     }
 
-    // On the Permit2 flow the hooks run before Permit2 checks the owner's signature
-    bytes[] memory beforeSettlementResults =
-      order.hooks.beforeSettlement(order, orderHash, solution);
+    // On the Permit2 signature transfer flow the hooks run before Permit2 checks the owner's
+    // signature
+    bytes[] memory beforeSettlementResults = order.beforeSettlement(orderHash, solution);
 
     emit SettleOrder(
       msg.sender,
@@ -166,22 +164,30 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, AuthDelegator, Multicall, Settle
       order.clientData
     );
 
-    // On the Permit2 flow, the permit's nonce is `order.nonce` and its deadline is
-    // `order.expiration`, so Permit2 provides the replay protection. When another account calls,
+    // On the Permit2 signature transfer flow, the permit's nonce is `order.nonce` and its deadline
+    // is `order.expiration`, so Permit2 provides the replay protection. When another account calls,
     // the owner's signature also covers the order.
     if (order.authenticator == PERMIT2) {
       order.executeSignatureTransfer(orderHash, solution, authenticationData, PERMIT2);
-    } else if (usePermit2Allowances) {
-      order.erc20Allowances
-        .executeAllowanceTransfer(
-          order.owner, solution.erc20Targets, solution.erc20Amounts, PERMIT2
-        );
     } else {
+      // The high byte of `order.flags` divides the ERC20 transfers between the owner's Permit2
+      // allowance and the owner's allowance to the hub
       order.erc20Allowances
-        .executeERC20Transfer(order.owner, solution.erc20Targets, solution.erc20Amounts);
+        .execute(
+          order.owner,
+          solution.erc20Targets,
+          solution.erc20Amounts,
+          order.flags >> Constants.PERMIT2_TRANSFERS_OFFSET,
+          PERMIT2
+        );
     }
 
     order.erc721Approvals.execute(order.owner, solution.erc721Targets);
+
+    // One `solverData` entry for each call.
+    if (solution.solverData.length != order.calls.length) {
+      revert MismatchedArrayLengths();
+    }
 
     results = order.calls.length.mallocBytes();
     for (uint256 i = 0; i < order.calls.length; i++) {
@@ -189,7 +195,7 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, AuthDelegator, Multicall, Settle
       results[i] = order.calls[i].execute(solution.callValues[i], solution.solverData[i]);
     }
 
-    order.hooks.afterSettlement(order, orderHash, solution, beforeSettlementResults);
+    order.afterSettlement(orderHash, solution, beforeSettlementResults);
   }
 
   /// @inheritdoc IKSAllowanceHubV2
@@ -224,5 +230,19 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, AuthDelegator, Multicall, Settle
     }
 
     emit RescueTokens(erc20Transfers, erc721Transfers);
+  }
+
+  /// @dev Reverts when the expiration of `order` or of `solution` has passed
+  function _checkExpiration(AHV2Order calldata order, AHV2Solution calldata solution)
+    internal
+    view
+  {
+    // A call at the expiration is accepted
+    if (block.timestamp > order.expiration) {
+      revert OrderExpired(order.expiration, block.timestamp);
+    }
+    if (block.timestamp > solution.expiration) {
+      revert SolutionExpired(solution.expiration, block.timestamp);
+    }
   }
 }

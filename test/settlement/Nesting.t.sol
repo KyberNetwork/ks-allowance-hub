@@ -85,9 +85,9 @@ contract NestingTest is SettlementBase {
 
     vm.prank(topSubmitter);
     if (p.topViaPermit2) {
-      hub.settleOrder(top, signature, topSolution, '', false);
+      hub.settleOrder(top, signature, topSolution, '');
     } else {
-      hub.settleOrder(top, '', topSolution, '', false);
+      hub.settleOrder(top, '', topSolution, '');
     }
 
     for (uint256 k = 0; k < depth; k++) {
@@ -151,7 +151,7 @@ contract NestingTest is SettlementBase {
     vm.recordLogs();
 
     vm.prank(owner);
-    hub.settleOrder(order, '', solution, '', false);
+    hub.settleOrder(order, '', solution, '');
 
     assertEq(nft.ownerOf(NFT_ID), address(receiver), 'the NFT moved to the receiver');
     assertEq(callee.callCount(), 1, 'the callee call of the nested order ran');
@@ -264,7 +264,7 @@ contract NestingTest is SettlementBase {
     order.calls = _calls(_callTo(address(evil)));
 
     vm.prank(owner);
-    bytes[] memory results = hub.settleOrder(order, '', _defaultSolution(order), '', false);
+    bytes[] memory results = hub.settleOrder(order, '', _defaultSolution(order), '');
 
     assertEq(results.length, 1, 'the order settled');
     assertEq(results[0].length, 0, 'revokeNonce returns nothing');
@@ -295,7 +295,7 @@ contract NestingTest is SettlementBase {
     vm.deal(owner, VALUE);
 
     vm.prank(owner);
-    hub.settleOrder{value: VALUE}(outer, '', outerSolution, '', false);
+    hub.settleOrder{value: VALUE}(outer, '', outerSolution, '');
 
     assertEq(callee.callCount(), 1, 'the outer callee call ran');
     assertEq(callee.lastValue(), VALUE, 'with the outer value');
@@ -312,7 +312,7 @@ contract NestingTest is SettlementBase {
 
     vm.prank(owner);
     vm.expectRevert(abi.encodeWithSelector(NativeSpendGuard.NativeOverspent.selector, VALUE, 0));
-    hub.settleOrder{value: VALUE}(outerB, '', _defaultSolution(outerB), '', false);
+    hub.settleOrder{value: VALUE}(outerB, '', _defaultSolution(outerB), '');
 
     assertEq(callee.callCount(), 1, 'the nested callee call rolled back');
     assertEq(address(hub).balance, PREFUND, "the hub's native balance is intact");
@@ -353,7 +353,7 @@ contract NestingTest is SettlementBase {
     order.calls = calls;
     AHV2Solution memory solution = _defaultSolution(order);
     solution.callValues = callValues;
-    return abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', solution, '', false));
+    return abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', solution, ''));
   }
 
   /**
@@ -379,7 +379,7 @@ contract NestingTest is SettlementBase {
     if (viaPermit2) {
       data = abi.encodeCall(
         IKSAllowanceHubV2.settleOrder,
-        (order, _signPermit2Order(order, signerKey), _defaultSolution(order), '', false)
+        (order, _signPermit2Order(order, signerKey), _defaultSolution(order), '')
       );
     } else {
       data = _settleCall(order, calls);

@@ -3,6 +3,8 @@ pragma solidity ^0.8.0;
 
 import {ERC721Transfer} from './ERC721Transfer.sol';
 
+import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
+
 import {IERC721} from 'openzeppelin-contracts/contracts/token/ERC721/IERC721.sol';
 
 import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
@@ -58,12 +60,17 @@ library ERC721ApprovalLib {
     }
   }
 
-  /// @dev The approvals as transfers, each paired with the target at the same index
+  /// @dev The approvals as transfers, each paired with the target at the same index; reverts
+  /// unless there is one target for each approval
   function toTransfers(ERC721Approval[] calldata approvals, address[] calldata targets)
     internal
     pure
     returns (ERC721Transfer[] memory transfers)
   {
+    if (targets.length != approvals.length) {
+      revert ICommon.MismatchedArrayLengths();
+    }
+
     bytes32[] memory buffer = approvals.length.malloc();
     assembly ('memory-safe') {
       transfers := buffer

@@ -43,8 +43,10 @@ library AHV2SolutionLib {
   using CalldataHashLib for uint160[];
   using CalldataHashLib for uint256[];
 
+  // forgefmt: disable-next-item
   bytes32 internal constant AHV2_SOLUTION_TYPEHASH = keccak256(
-    'AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets,uint256[] callValues,bytes[] solverData,uint256 nonce,uint256 expiration)'
+    'AHV2Solution(address[] erc20Targets,uint160[] erc20Amounts,address[] erc721Targets'
+    ',uint256[] callValues,bytes[] solverData,uint256 nonce,uint256 expiration)'
   );
 
   /// @dev EIP-712 hash of the solution

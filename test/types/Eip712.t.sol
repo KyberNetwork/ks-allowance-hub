@@ -176,6 +176,42 @@ contract Eip712Test is V2TestBase {
   }
 
   /**
+   * T712-DIFF — the flags alone move the order hash and the approval hash
+   * @dev The two orders differ only in `flags`, and the production hashers agree with
+   * {SchemaHash} on both.
+   */
+  function test_T712_DIFF_flagsMoveOrderAndApprovalHash() public view {
+    AHV2Order memory order = _sampleOrder();
+    AHV2Solution memory solution = _sampleSolution();
+    AHV2Order memory other = _sampleOrder();
+    other.flags ^= 1 << 64;
+
+    bytes32 orderHash = SchemaHash.ahv2Order(order);
+    bytes32 otherHash = SchemaHash.ahv2Order(other);
+    assertTrue(orderHash != otherHash, 'the flags are in the order hash');
+    assertEq(this.extHashOrder(order), orderHash, 'order hasher');
+    assertEq(this.extHashOrder(other), otherHash, 'other order hasher');
+
+    bytes32 approval = _approvalHash(order, solution);
+    bytes32 otherApproval = _approvalHash(other, solution);
+    assertTrue(approval != otherApproval, 'the flags are in the approval hash');
+    assertEq(this.extHashSolutionApproval(orderHash, solution), approval, 'approval hasher');
+    assertEq(this.extHashSolutionApproval(otherHash, solution), otherApproval, 'other hasher');
+  }
+
+  /// T712-DIFF — any other value of the flags moves the order hash
+  function testFuzz_T712_DIFF_flagsMoveOrderHash(uint256 flags) public view {
+    AHV2Order memory order = _sampleOrder();
+    vm.assume(flags != order.flags);
+    AHV2Order memory other = _sampleOrder();
+    other.flags = flags;
+
+    bytes32 otherHash = SchemaHash.ahv2Order(other);
+    assertTrue(SchemaHash.ahv2Order(order) != otherHash, 'the flags are in the order hash');
+    assertEq(this.extHashOrder(other), otherHash, 'other order hasher');
+  }
+
+  /**
    * The solution hash matches {SchemaHash}, and the nonce, `callValues` and `solverData` move the
    * hash
    * @dev The `solverData` is changed in one entry, then in length, so both its elements and its
@@ -425,8 +461,8 @@ contract Eip712Test is V2TestBase {
 
   function _sampleHooks() private pure returns (HookParams[] memory hooks) {
     hooks = new HookParams[](2);
-    hooks[0] = HookParams({hook: address(0xDDD1), flags: bytes32(uint256(3)), data: hex'01'});
-    hooks[1] = HookParams({hook: address(0xDDD2), flags: bytes32(0), data: ''});
+    hooks[0] = HookParams({hook: address(0xDDD1), data: hex'01'});
+    hooks[1] = HookParams({hook: address(0xDDD2), data: ''});
   }
 
   function _sampleAllowances() private pure returns (ERC20Allowance[] memory allowances) {
@@ -449,6 +485,7 @@ contract Eip712Test is V2TestBase {
       erc721Approvals: _sampleApprovals(),
       hooks: _sampleHooks(),
       calls: _sampleCalls(),
+      flags: (uint256(1) << 248) | 1 | (1 << 65),
       solutionApprover: address(0xBEEF),
       nonce: 12,
       expiration: 5678,

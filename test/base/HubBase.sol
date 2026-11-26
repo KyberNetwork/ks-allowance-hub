@@ -54,11 +54,6 @@ abstract contract HubBase is V2TestBase {
 
   uint256 internal constant NFT_ID = 1;
 
-  /// @dev Hook flags, written out rather than imported
-  bytes32 internal constant HOOK_BEFORE = bytes32(uint256(1));
-  bytes32 internal constant HOOK_AFTER = bytes32(uint256(2));
-  bytes32 internal constant HOOK_BOTH = bytes32(uint256(3));
-
   /// @dev The canonical Multicall3 address, written out rather than imported
   address internal multicall3 = 0xcA11bde05977b3631167028862bE2a173976CA11;
 
@@ -129,8 +124,8 @@ abstract contract HubBase is V2TestBase {
   }
 
   /**
-   * @dev The owner's Permit2 allowance to the hub, which `usePermit2Allowances` draws on. The
-   * amount is finite because Permit2 does not decrement `type(uint160).max`, so an unlimited
+   * @dev The owner's Permit2 allowance to the hub, which the Permit2 transfers of an order draw on.
+   * The amount is finite because Permit2 does not decrement `type(uint160).max`, so an unlimited
    * allowance could not distinguish the two pull rails.
    */
   function _grantPermit2Allowance(address token, uint160 amount) internal {
@@ -240,16 +235,41 @@ abstract contract HubBase is V2TestBase {
   }
 
   /// @dev A hook entry with data `hex'11'`
-  function _hook(HookMock h, bytes32 flags) internal pure returns (HookParams memory) {
-    return _hook(h, flags, hex'11');
+  function _hook(HookMock h) internal pure returns (HookParams memory) {
+    return _hook(h, hex'11');
   }
 
-  function _hook(HookMock h, bytes32 flags, bytes memory data)
+  function _hook(HookMock h, bytes memory data) internal pure returns (HookParams memory) {
+    return HookParams({hook: address(h), data: data});
+  }
+
+  /// @dev The `flags` bits that select the calls of the hook at `index`: bit `index` for
+  /// `beforeSettlement` and bit `64 + index` for `afterSettlement`
+  function _hookFlags(uint256 index, bool runBefore, bool runAfter)
     internal
     pure
-    returns (HookParams memory)
+    returns (uint256)
   {
-    return HookParams({hook: address(h), flags: flags, data: data});
+    return (runBefore ? uint256(1) << index : 0) | (runAfter ? uint256(1) << (64 + index) : 0);
+  }
+
+  /// @dev The `flags` bits that select both calls of each of the first `hookCount` hooks
+  function _allHookFlags(uint256 hookCount) internal pure returns (uint256 flags) {
+    for (uint256 i = 0; i < hookCount; i++) {
+      flags |= _hookFlags(i, true, true);
+    }
+  }
+
+  /// @dev `order` with `count` as the number of ERC20 entries pulled through the owner's Permit2
+  /// allowance (the high byte of `flags`), the other bits unchanged. It is set before the order is
+  /// signed or hashed.
+  function _withPermit2Transfers(AHV2Order memory order, uint256 count)
+    internal
+    pure
+    returns (AHV2Order memory)
+  {
+    order.flags = (order.flags & type(uint248).max) | (count << 248);
+    return order;
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -300,6 +320,7 @@ abstract contract HubBase is V2TestBase {
       erc721Approvals: erc721Approvals,
       hooks: hooks,
       calls: orderCalls,
+      flags: _allHookFlags(hooks.length),
       solutionApprover: solutionApprover,
       nonce: nonce,
       expiration: expiration,

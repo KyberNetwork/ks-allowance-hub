@@ -3,7 +3,6 @@ pragma solidity ^0.8.0;
 
 import {IAHV2Authenticator} from '../../src/interfaces/base/IAHV2Authenticator.sol';
 
-import {AHV2AuthenticatorBase} from '../../src/base/AHV2AuthenticatorBase.sol';
 import {EIP712Nonce} from '../../src/base/EIP712Nonce.sol';
 
 import {AHV2Order} from '../../src/types/AHV2Order.sol';
@@ -22,9 +21,12 @@ import {
  * `order.nonce` in the signer's address namespace, and a signed update spends `nonce` in the
  * owner's address namespace.
  */
-contract SignerAuthenticatorMock is AHV2AuthenticatorBase, EIP712Nonce {
+contract SignerAuthenticatorMock is IAHV2Authenticator, EIP712Nonce {
   bytes32 internal constant SIGNER_UPDATE_TYPEHASH =
     keccak256('SignerUpdate(address owner,bytes data,uint256 nonce,uint256 deadline)');
+
+  /// @notice The caller is not the hub set at construction
+  error CallerNotAuthorized(address caller);
 
   /// @notice The update's deadline has passed
   error DeadlinePassed(uint256 deadline, uint256 currentTime);
@@ -44,17 +46,26 @@ contract SignerAuthenticatorMock is AHV2AuthenticatorBase, EIP712Nonce {
   /// @notice Whether `owner` has approved `signer` to sign its orders
   mapping(address owner => mapping(address signer => bool)) public approvedSigners;
 
+  address internal immutable HUB;
+
   /// @param hub The only address whose authentication requests this one answers
-  constructor(address hub)
-    AHV2AuthenticatorBase(hub)
-    EIP712('AHV2 Signer Authenticator Mock', '1')
-  {}
+  constructor(address hub) EIP712('AHV2 Signer Authenticator Mock', '1') {
+    HUB = hub;
+  }
+
+  /// @dev Restricts the function to the hub
+  modifier onlyHub() {
+    if (msg.sender != HUB) {
+      revert CallerNotAuthorized(msg.sender);
+    }
+    _;
+  }
 
   /**
    * @inheritdoc IAHV2Authenticator
    * @dev `data` is `abi.encode(address signer)`, which is approved
    */
-  function initAuthentication(address owner, bytes calldata data) external onlyAuthorizedCaller {
+  function initAuthentication(address owner, bytes calldata data) external onlyHub {
     _updateSigner(owner, abi.decode(data, (address)), true);
   }
 
@@ -96,7 +107,7 @@ contract SignerAuthenticatorMock is AHV2AuthenticatorBase, EIP712Nonce {
     bytes32 orderHash,
     AHV2Solution calldata,
     bytes calldata data
-  ) external onlyAuthorizedCaller {
+  ) external onlyHub {
     _authenticate(order.owner, order.nonce, orderHash, data);
   }
 

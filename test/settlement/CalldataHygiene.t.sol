@@ -23,8 +23,7 @@ contract CalldataHygieneTest is SettlementBase {
       _order(address(0), _calls(_calleeCall(hex'01')), 90, vm.getBlockTimestamp() + 1 hours);
 
     _assertDirtyTokenWordIsRefused(
-      owner,
-      abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', _defaultSolution(order), '', false))
+      owner, abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', _defaultSolution(order), ''))
     );
   }
 
@@ -40,7 +39,7 @@ contract CalldataHygieneTest is SettlementBase {
       relayer,
       abi.encodeCall(
         IKSAllowanceHubV2.settleOrder,
-        (order, _signPermit2Order(order), _defaultSolution(order), '', false)
+        (order, _signPermit2Order(order), _defaultSolution(order), '')
       )
     );
   }
@@ -56,7 +55,7 @@ contract CalldataHygieneTest is SettlementBase {
       relayer,
       abi.encodeCall(
         IKSAllowanceHubV2.settleOrder,
-        (order, _orderAuthData(order, signer, signerPk), _defaultSolution(order), '', false)
+        (order, _orderAuthData(order, signer, signerPk), _defaultSolution(order), '')
       )
     );
   }
@@ -75,8 +74,7 @@ contract CalldataHygieneTest is SettlementBase {
           order,
           _signPlainPermit(order.erc20Allowances, order.nonce, order.expiration),
           _defaultSolution(order),
-          '',
-          false
+          ''
         )
       )
     );

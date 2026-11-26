@@ -64,13 +64,13 @@ contract SolutionTest is SettlementBase {
     for (uint256 i = 0; i < 4; i++) {
       vm.prank(owner);
       vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-      hub.settleOrder(order, '', _mismatched(i), '', false);
+      hub.settleOrder(order, '', _mismatched(i), '');
     }
     assertEq(_balance(owner), ownerBefore, 'no refused solution moved the ERC20');
     assertEq(nft.ownerOf(NFT_ID), owner, 'or the NFT');
 
     vm.prank(owner);
-    hub.settleOrder(order, '', _toSolverAndRecipient(), '', false);
+    hub.settleOrder(order, '', _toSolverAndRecipient(), '');
 
     _assertLanded(ownerBefore);
     assertEq(_balance(address(callee)), calleeBefore, 'no callee received the transfer');
@@ -81,10 +81,11 @@ contract SolutionTest is SettlementBase {
   function test_TGT_02_solverTargetsOnThePermit2AllowancePull() public {
     _grantPermit2Allowance(token18, AMOUNT);
     AHV2Order memory order = _bothTransfers(ANY, 0);
+    _withPermit2Transfers(order, order.erc20Allowances.length);
     uint256 ownerBefore = _balance(owner);
 
     vm.prank(owner);
-    hub.settleOrder(order, '', _toSolverAndRecipient(), '', true);
+    hub.settleOrder(order, '', _toSolverAndRecipient(), '');
 
     _assertLanded(ownerBefore);
     assertEq(_permit2Allowance(token18), 0, 'the Permit2 allowance paid for the transfer');
@@ -106,7 +107,7 @@ contract SolutionTest is SettlementBase {
     for (uint256 i = 0; i < 4; i++) {
       vm.prank(solver);
       vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-      hub.settleOrder(order, witness, _mismatched(i), '', false);
+      hub.settleOrder(order, witness, _mismatched(i), '');
     }
     assertEq(_balance(owner), ownerBefore, 'no refused solution moved the ERC20');
     assertEq(nft.ownerOf(NFT_ID), owner, 'or the NFT');
@@ -114,7 +115,7 @@ contract SolutionTest is SettlementBase {
     uint256 snapshot = vm.snapshotState();
 
     vm.prank(solver);
-    hub.settleOrder(order, witness, _toSolverAndRecipient(), '', false);
+    hub.settleOrder(order, witness, _toSolverAndRecipient(), '');
     _assertLanded(ownerBefore);
 
     vm.revertToState(snapshot);
@@ -129,8 +130,7 @@ contract SolutionTest is SettlementBase {
         _addresses(solverWallet),
         vm.getBlockTimestamp() + 1 hours
       ),
-      '',
-      false
+      ''
     );
     assertEq(_balance(address(callee2)), AMOUNT, 'the same witness, another ERC20 target');
     assertEq(nft.ownerOf(NFT_ID), solverWallet, 'and another NFT target');
@@ -144,7 +144,7 @@ contract SolutionTest is SettlementBase {
     uint256 ownerBefore = _balance(owner);
 
     vm.prank(owner);
-    hub.settleOrder(order, permit, _toSolverAndRecipient(), '', false);
+    hub.settleOrder(order, permit, _toSolverAndRecipient(), '');
 
     _assertLanded(ownerBefore);
   }
@@ -175,11 +175,11 @@ contract SolutionTest is SettlementBase {
     bytes memory auth = _authOf(order);
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.settleOrder(order, auth, toSolver, calleesApproval, false);
+    hub.settleOrder(order, auth, toSolver, calleesApproval);
 
     bytes memory solverApproval = _signSolutionApproval(approverKey, order, toSolver);
     vm.prank(relayer);
-    hub.settleOrder(order, auth, toSolver, solverApproval, false);
+    hub.settleOrder(order, auth, toSolver, solverApproval);
     _assertLanded(ownerBefore);
   }
 
@@ -295,11 +295,11 @@ contract SolutionTest is SettlementBase {
 
       vm.prank(owner);
       vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-      hub.settleOrder(order, '', solution, '', false);
+      hub.settleOrder(order, '', solution, '');
 
       vm.prank(solver);
       vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-      hub.settleOrder(permitOrder, permit, solution, '', false);
+      hub.settleOrder(permitOrder, permit, solution, '');
     }
 
     uint256 ownerBefore = _balance(owner);
@@ -324,11 +324,11 @@ contract SolutionTest is SettlementBase {
     bytes memory auth = _authOf(order);
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.settleOrder(order, auth, lower, approval, false);
+    hub.settleOrder(order, auth, lower, approval);
 
     uint256 ownerBefore = _balance(owner);
     vm.prank(relayer);
-    hub.settleOrder(order, auth, approved, approval, false);
+    hub.settleOrder(order, auth, approved, approval);
     assertEq(ownerBefore - _balance(owner), AMOUNT, 'the approved amounts settle');
   }
 
@@ -400,7 +400,7 @@ contract SolutionTest is SettlementBase {
     }
 
     vm.prank(owner);
-    bytes[] memory results = hub.settleOrder(order, '', solution, '', false);
+    bytes[] memory results = hub.settleOrder(order, '', solution, '');
 
     assertEq(results.length, 3, 'one result per call');
     for (uint256 i = 0; i < 3; i++) {
@@ -439,11 +439,11 @@ contract SolutionTest is SettlementBase {
 
       vm.prank(owner);
       vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-      hub.settleOrder(delegated, '', delegatedSolution, '', false);
+      hub.settleOrder(delegated, '', delegatedSolution, '');
 
       vm.prank(relayer);
       vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-      hub.settleOrder(relayed, witness, relayedSolution, '', false);
+      hub.settleOrder(relayed, witness, relayedSolution, '');
 
       assertEq(_calleeBalance(), before, 'a refused order moved nothing');
       assertEq(callee.callCount(), 0, 'and ran no call');
@@ -453,9 +453,9 @@ contract SolutionTest is SettlementBase {
     relayedSolution.solverData = _solverData(2);
 
     vm.prank(owner);
-    hub.settleOrder(delegated, '', delegatedSolution, '', false);
+    hub.settleOrder(delegated, '', delegatedSolution, '');
     vm.prank(relayer);
-    hub.settleOrder(relayed, witness, relayedSolution, '', false);
+    hub.settleOrder(relayed, witness, relayedSolution, '');
 
     assertEq(_calleeBalance() - before, 2 * AMOUNT, 'a list of the right length settles');
     assertEq(callee.callCount(), 4, 'and runs both calls of both orders');
@@ -490,11 +490,11 @@ contract SolutionTest is SettlementBase {
 
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.settleOrder(order, auth, presented, approval, false);
+    hub.settleOrder(order, auth, presented, approval);
     assertEq(callee.callCount(), 0, 'the refused order ran nothing');
 
     vm.prank(relayer);
-    hub.settleOrder(order, auth, approved, approval, false);
+    hub.settleOrder(order, auth, approved, approval);
     assertEq(callee.lastSolverData(), hex'aa', 'the control settled with the approved entry');
   }
 
@@ -522,13 +522,13 @@ contract SolutionTest is SettlementBase {
     uint256 snapshot = vm.snapshotState();
 
     vm.prank(solver);
-    hub.settleOrder(order, witness, solutionA, '', false);
+    hub.settleOrder(order, witness, solutionA, '');
     assertEq(callee.lastSolverData(), hex'aa', 'the witness settled with the first list');
 
     vm.revertToState(snapshot);
 
     vm.prank(solver);
-    hub.settleOrder(order, witness, solutionB, '', false);
+    hub.settleOrder(order, witness, solutionB, '');
     assertEq(callee.lastSolverData(), hex'bb', 'and with the second');
   }
 
@@ -558,11 +558,11 @@ contract SolutionTest is SettlementBase {
 
       vm.prank(owner);
       vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-      hub.settleOrder(delegated, '', delegatedSolution, '', false);
+      hub.settleOrder(delegated, '', delegatedSolution, '');
 
       vm.prank(relayer);
       vm.expectRevert(ICommon.MismatchedArrayLengths.selector);
-      hub.settleOrder(relayed, witness, relayedSolution, '', false);
+      hub.settleOrder(relayed, witness, relayedSolution, '');
 
       assertEq(_calleeBalance(), before, 'a refused order moved nothing');
       assertEq(callee.callCount(), 0, 'and ran no call');
@@ -599,11 +599,11 @@ contract SolutionTest is SettlementBase {
 
     vm.prank(relayer);
     vm.expectRevert(IKSAllowanceHubV2.InvalidSolutionSignature.selector);
-    hub.settleOrder{value: 2}(order, auth, presented, approval, false);
+    hub.settleOrder{value: 2}(order, auth, presented, approval);
     assertEq(callee.callCount(), 0, 'the refused order ran nothing');
 
     vm.prank(relayer);
-    hub.settleOrder{value: 1}(order, auth, approved, approval, false);
+    hub.settleOrder{value: 1}(order, auth, approved, approval);
     assertEq(callee.lastValue(), 1, 'the control settled with the approved value');
   }
 
@@ -632,13 +632,13 @@ contract SolutionTest is SettlementBase {
     uint256 snapshot = vm.snapshotState();
 
     vm.prank(solver);
-    hub.settleOrder{value: 1}(order, witness, solutionA, '', false);
+    hub.settleOrder{value: 1}(order, witness, solutionA, '');
     assertEq(callee.lastValue(), 1, 'the witness settled with the first value');
 
     vm.revertToState(snapshot);
 
     vm.prank(solver);
-    hub.settleOrder{value: 2}(order, witness, solutionB, '', false);
+    hub.settleOrder{value: 2}(order, witness, solutionB, '');
     assertEq(callee.lastValue(), 2, 'and with the second');
   }
 
@@ -763,6 +763,7 @@ contract SolutionTest is SettlementBase {
    */
   function _preparePath(uint8 path, AHV2Order memory order) private returns (bytes memory permit) {
     if (path == PATH_PERMIT2_ALLOWANCE) {
+      _withPermit2Transfers(order, order.erc20Allowances.length);
       for (uint256 i = 0; i < order.erc20Allowances.length; i++) {
         _grantPermit2Allowance(order.erc20Allowances[i].token, 2 * order.erc20Allowances[i].amount);
       }
@@ -781,10 +782,10 @@ contract SolutionTest is SettlementBase {
   ) private {
     if (path == PATH_PERMIT2_SIGNATURE) {
       vm.prank(solver);
-      hub.settleOrder(order, permit, solution, '', false);
+      hub.settleOrder(order, permit, solution, '');
     } else {
       vm.prank(owner);
-      hub.settleOrder(order, '', solution, '', path == PATH_PERMIT2_ALLOWANCE);
+      hub.settleOrder(order, '', solution, '');
     }
   }
 

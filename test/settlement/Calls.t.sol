@@ -68,7 +68,7 @@ contract CallsTest is SettlementBase {
       _openAhv2Order(new ERC20Allowance[](0), _noHooks(), calls, 0, vm.getBlockTimestamp());
 
     vm.prank(owner);
-    bytes[] memory results = hub.settleOrder(order, '', _defaultSolution(order), '', false);
+    bytes[] memory results = hub.settleOrder(order, '', _defaultSolution(order), '');
 
     assertEq(ledger.observationCount(), 2, 'both observers ran');
     assertEq(ledger.observations(0), nothing, 'the first observer ran before either producer');
@@ -95,7 +95,7 @@ contract CallsTest is SettlementBase {
       _ahv2Order(permit2, ANY, erc20s, _noNfts(), _noHooks(), signedCalls, ANY, 70, expiration);
 
     vm.prank(solver);
-    hub.settleOrder(control, _signPermit2Order(control), _defaultSolution(control), '', false);
+    hub.settleOrder(control, _signPermit2Order(control), _defaultSolution(control), '');
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the signed call settled');
     assertEq(callee.callCount(), 1, 'the signed call ran once');
@@ -109,7 +109,7 @@ contract CallsTest is SettlementBase {
 
     vm.prank(solver);
     vm.expectRevert(PERMIT2_INVALID_SIGNER);
-    hub.settleOrder(tampered, signature, _defaultSolution(tampered), '', false);
+    hub.settleOrder(tampered, signature, _defaultSolution(tampered), '');
   }
 
   /**
@@ -122,7 +122,7 @@ contract CallsTest is SettlementBase {
     _delegateSignerThroughHub(signer);
 
     ERC20Allowance[] memory erc20s = _allowances(_tokenAllowance(AMOUNT));
-    HookParams[] memory hooks = _hooks(_hook(hook, HOOK_BOTH));
+    HookParams[] memory hooks = _hooks(_hook(hook));
     CallParams[] memory signedCalls = _calls(_calleeCall(hex'aa'));
     CallParams[] memory swappedCalls = _calls(_calleeCall(hex'bb'));
     uint256 expiration = vm.getBlockTimestamp() + 1 hours;
@@ -135,7 +135,7 @@ contract CallsTest is SettlementBase {
     bytes memory controlAuth = _orderAuthData(control, signer, signerPk);
 
     vm.prank(relayer);
-    hub.settleOrder(control, controlAuth, _defaultSolution(control), '', false);
+    hub.settleOrder(control, controlAuth, _defaultSolution(control), '');
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the signed call settled');
     assertEq(callee.callCount(), 1, 'the signed call ran once');
@@ -154,7 +154,7 @@ contract CallsTest is SettlementBase {
 
     vm.prank(relayer);
     vm.expectRevert(SignerAuthenticatorMock.InvalidOrderSignature.selector);
-    hub.settleOrder(tampered, signedAuth, _defaultSolution(tampered), '', false);
+    hub.settleOrder(tampered, signedAuth, _defaultSolution(tampered), '');
   }
 
   /**
@@ -189,7 +189,7 @@ contract CallsTest is SettlementBase {
     solution.callValues[2] = 2;
 
     vm.prank(owner);
-    hub.settleOrder{value: 3}(order, '', solution, '', false);
+    hub.settleOrder{value: 3}(order, '', solution, '');
 
     Vm.Log memory entry = _settlementLog();
 
@@ -241,7 +241,7 @@ contract CallsTest is SettlementBase {
         IAccessControl.AccessControlUnauthorizedAccount.selector, address(stranger), CALLEE_ROLE
       )
     );
-    hub.settleOrder(order, '', solution, '', false);
+    hub.settleOrder(order, '', solution, '');
 
     assertEq(callee.callCount(), 0, 'the earlier call rolled back');
     assertEq(stranger.callCount(), 0, 'never called');
@@ -254,7 +254,7 @@ contract CallsTest is SettlementBase {
     hub.grantRole(CALLEE_ROLE, address(stranger));
 
     vm.prank(owner);
-    hub.settleOrder(order, '', solution, '', false);
+    hub.settleOrder(order, '', solution, '');
 
     assertEq(callee.callCount(), 1, 'the earlier call ran once the role was granted');
     assertEq(stranger.callCount(), 1, 'the call reached it once whitelisted');
@@ -269,7 +269,7 @@ contract CallsTest is SettlementBase {
     assertTrue(hub.hasRole(CALLEE_ROLE, address(callee)), 'whitelisted at deploy');
 
     vm.prank(owner);
-    hub.settleOrder(order, '', _defaultSolution(order), '', false);
+    hub.settleOrder(order, '', _defaultSolution(order), '');
     assertEq(callee.callCount(), 1, 'the first order went through');
 
     vm.prank(guardian);
@@ -282,7 +282,7 @@ contract CallsTest is SettlementBase {
         IAccessControl.AccessControlUnauthorizedAccount.selector, address(callee), CALLEE_ROLE
       )
     );
-    hub.settleOrder(order, '', _defaultSolution(order), '', false);
+    hub.settleOrder(order, '', _defaultSolution(order), '');
 
     assertEq(callee.callCount(), 1, 'and no second call happened');
   }
@@ -303,7 +303,7 @@ contract CallsTest is SettlementBase {
     order.calls = calls;
 
     vm.prank(owner);
-    hub.settleOrder(order, '', _defaultSolution(order), '', false);
+    hub.settleOrder(order, '', _defaultSolution(order), '');
 
     assertEq(callee.callCount(), 1, 'callee once');
     assertEq(callee2.callCount(), 1, 'callee2 once');

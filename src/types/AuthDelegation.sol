@@ -23,8 +23,10 @@ struct AuthDelegation {
 using AuthDelegationLib for AuthDelegation global;
 
 library AuthDelegationLib {
+  // forgefmt: disable-next-item
   bytes32 internal constant AUTH_DELEGATION_TYPEHASH = keccak256(
-    'AuthDelegation(address owner,address authenticator,bool delegated,bytes data,uint256 nonce,uint256 deadline)'
+    'AuthDelegation(address owner,address authenticator,bool delegated,bytes data,uint256 nonce'
+    ',uint256 deadline)'
   );
 
   /// @dev EIP-712 hash of a delegation the owner signs

@@ -248,8 +248,7 @@ contract MulticallTest is SignerAuthenticatorBase {
     targets[0] = address(hub);
 
     bytes[] memory batch = new bytes[](2);
-    batch[1] =
-      abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, orderAuth, solution, '', false));
+    batch[1] = abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, orderAuth, solution, ''));
 
     // the front-runner lands the same signed delegation first
     vm.prank(recipient);
@@ -324,8 +323,7 @@ contract MulticallTest is SignerAuthenticatorBase {
 
     bytes[] memory batch = new bytes[](2);
     batch[0] = abi.encodeCall(IKSAllowanceHubV2.forwardCalls, (_call3s(targets, relayed, 0)));
-    batch[1] =
-      abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, orderAuth, solution, '', false));
+    batch[1] = abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, orderAuth, solution, ''));
 
     // the second half on its own is refused, so the batch below is evidence that the first half
     // did the approving rather than that the order never needed one
@@ -474,6 +472,6 @@ contract MulticallTest is SignerAuthenticatorBase {
     order.calls = calls;
     AHV2Solution memory solution = _defaultSolution(order);
     solution.callValues = callValues;
-    return abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', solution, '', false));
+    return abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', solution, ''));
   }
 }

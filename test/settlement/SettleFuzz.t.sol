@@ -30,7 +30,7 @@ contract SettleFuzzTest is SettlementBase {
     uint256 expirationOffset;
     uint96 msgValue;
     bool moveNft;
-    bool usePermit2Allowances;
+    uint8 numPermit2Transfers;
     bool pinSubmitter;
     bool approveSolution;
     uint8 rail;
@@ -47,10 +47,11 @@ contract SettleFuzzTest is SettlementBase {
    * address, with a witness signature spending the Permit2 nonce; or an approved signer through the
    * delegated authenticator, which spends the order nonce in its own bitmap. The call list ranges
    * over empty and non-empty. `approveSolution` switches between a specified approver with a real
-   * approval and the sentinel; `usePermit2Allowances` picks the pull path of the zero and the
-   * delegated rail, and the Permit2 rail ignores it; `pinSubmitter` and the nonce are covered by
-   * the order hash the event reports and by the signature of the rail. The solution's targets are
-   * drawn and receive the transfers, and the drawn native value is placed on the first call.
+   * approval and the sentinel; `numPermit2Transfers` is 0 or 1 and picks the pull path of the
+   * zero and the delegated rail, and the Permit2 signature transfer flow ignores it; `pinSubmitter`
+   * and the nonce are covered by the order hash the event reports and by the signature of the rail.
+   * The solution's targets are drawn and receive the transfers, and the drawn native value is
+   * placed on the first call.
    */
   function testFuzz_ORDER_FUZZ_settleOrder(OrderFuzz memory f) public {
     uint8 rail = f.rail % 3;
@@ -58,7 +59,7 @@ contract SettleFuzzTest is SettlementBase {
     _delegateSignerThroughHub(signer);
 
     _boundFuzz(f);
-    if (f.usePermit2Allowances) {
+    if (f.numPermit2Transfers > 0) {
       _grantPermit2Allowance(token18, uint160(100 ether));
     }
 
@@ -73,6 +74,7 @@ contract SettleFuzzTest is SettlementBase {
       f.approveSolution ? _signSolutionApproval(approverKey, order, solution) : bytes('');
 
     uint256 before = IERC20(token18).balanceOf(f.erc20Target);
+    uint160 permit2AllowanceBefore = _permit2Allowance(token18);
     uint256 nativeBefore = address(callee).balance;
     uint256 permit2BitmapBefore = _permit2NonceBitmap(owner, f.nonce >> 8);
     vm.deal(relayer, value);
@@ -80,8 +82,13 @@ contract SettleFuzzTest is SettlementBase {
     vm.recordLogs();
 
     vm.prank(relayer);
-    bytes[] memory results =
-      hub.settleOrder{value: value}(order, authData, solution, approval, f.usePermit2Allowances);
+    bytes[] memory results = hub.settleOrder{value: value}(order, authData, solution, approval);
+
+    assertEq(
+      _permit2Allowance(token18),
+      permit2AllowanceBefore - (rail != 1 && f.numPermit2Transfers > 0 ? f.amount : 0),
+      'the Permit2 allowance paid only when a transfer is selected on a flow that uses it'
+    );
 
     _assertFuzzSettled(f, order, results, before, nativeBefore, value);
     assertEq(
@@ -123,6 +130,7 @@ contract SettleFuzzTest is SettlementBase {
     f.callCount = uint8(bound(f.callCount, 0, 6));
     f.expirationOffset = bound(f.expirationOffset, 0, 30 days);
     f.msgValue = uint96(bound(f.msgValue, 0, 5 ether));
+    f.numPermit2Transfers = uint8(bound(f.numPermit2Transfers, 0, 1));
 
     vm.assume(f.erc20Target != address(0) && f.erc20Target.code.length == 0);
     vm.assume(f.erc20Target != owner);
@@ -150,12 +158,13 @@ contract SettleFuzzTest is SettlementBase {
       f.pinSubmitter ? submitter : ANY,
       _allowances(_tokenAllowance(f.amount)),
       f.moveNft ? _approvals(_nftApproval()) : _noNfts(),
-      _hooks(_hook(hook, HOOK_BOTH)),
+      _hooks(_hook(hook)),
       calls,
       f.approveSolution ? approver : ANY,
       f.nonce,
       vm.getBlockTimestamp() + f.expirationOffset
     );
+    _withPermit2Transfers(order, f.numPermit2Transfers);
     solution = _solution(
       _addresses(f.erc20Target),
       _amounts(f.amount),

@@ -21,7 +21,7 @@ contract GasSnapshotsTest is SettlementBase {
     uint256 before = _calleeBalance();
 
     vm.prank(owner);
-    hub.settleOrder(order, '', solution, '', false);
+    hub.settleOrder(order, '', solution, '');
     vm.snapshotGasLastFrame(SETTLE_GROUP, 'ownerTransfer');
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the callee received the allowance');
@@ -29,19 +29,20 @@ contract GasSnapshotsTest is SettlementBase {
 
   /// @dev The owner submits an order drawing on the Permit2 allowance
   function test_GAS_02_ownerPermit2Allowance() public {
-    AHV2Order memory order = _order(address(0), 0);
+    AHV2Order memory order = _withPermit2Transfers(_order(address(0), 0), 1);
     AHV2Solution memory solution = _defaultSolution(order);
     _grantPermit2Allowance(token18, AMOUNT);
     uint256 before = _calleeBalance();
 
     vm.prank(owner);
-    hub.settleOrder(order, '', solution, '', true);
+    hub.settleOrder(order, '', solution, '');
     vm.snapshotGasLastFrame(SETTLE_GROUP, 'ownerPermit2Allowance');
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the callee received the allowance');
   }
 
-  /// @dev The owner submits an order on the Permit2 flow with a plain permit signature
+  /// @dev The owner submits an order on the Permit2 signature transfer flow with a plain permit
+  /// signature
   function test_GAS_03_ownerPermit2Signature() public {
     AHV2Order memory order = _order(permit2, 61);
     AHV2Solution memory solution = _defaultSolution(order);
@@ -49,7 +50,7 @@ contract GasSnapshotsTest is SettlementBase {
     uint256 before = _calleeBalance();
 
     vm.prank(owner);
-    hub.settleOrder(order, permitSig, solution, '', false);
+    hub.settleOrder(order, permitSig, solution, '');
     vm.snapshotGasLastFrame(SETTLE_GROUP, 'ownerPermit2Signature');
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the callee received the allowance');
@@ -63,13 +64,14 @@ contract GasSnapshotsTest is SettlementBase {
     uint256 before = _calleeBalance();
 
     vm.prank(relayer);
-    hub.settleOrder(order, signature, solution, '', false);
+    hub.settleOrder(order, signature, solution, '');
     vm.snapshotGasLastFrame(SETTLE_GROUP, 'relayedOrderSignature');
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the callee received the allowance');
   }
 
-  /// @dev A relayer submits an order on the Permit2 flow with the witness signature
+  /// @dev A relayer submits an order on the Permit2 signature transfer flow with the witness
+  /// signature
   function test_GAS_05_relayedPermit2Witness() public {
     AHV2Order memory order = _order(permit2, 61);
     AHV2Solution memory solution = _defaultSolution(order);
@@ -77,7 +79,7 @@ contract GasSnapshotsTest is SettlementBase {
     uint256 before = _calleeBalance();
 
     vm.prank(relayer);
-    hub.settleOrder(order, witnessSig, solution, '', false);
+    hub.settleOrder(order, witnessSig, solution, '');
     vm.snapshotGasLastFrame(SETTLE_GROUP, 'relayedPermit2Witness');
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the callee received the allowance');
@@ -91,7 +93,7 @@ contract GasSnapshotsTest is SettlementBase {
     uint256 before = _calleeBalance();
 
     vm.prank(relayer);
-    hub.settleOrder(order, authData, solution, '', false);
+    hub.settleOrder(order, authData, solution, '');
     vm.snapshotGasLastFrame(SETTLE_GROUP, 'relayedDelegatedAuthenticator');
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the callee received the allowance');
@@ -116,7 +118,7 @@ contract GasSnapshotsTest is SettlementBase {
     uint256 before = _calleeBalance();
 
     vm.prank(relayer);
-    hub.settleOrder(order, signature, solution, approval, false);
+    hub.settleOrder(order, signature, solution, approval);
     vm.snapshotGasLastFrame(SETTLE_GROUP, 'relayedOrderSignatureWithSolutionApproval');
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the callee received the allowance');
@@ -138,7 +140,7 @@ contract GasSnapshotsTest is SettlementBase {
     uint256 before = _calleeBalance();
 
     vm.prank(owner);
-    hub.settleOrder(order, '', solution, '', false);
+    hub.settleOrder(order, '', solution, '');
     vm.snapshotGasLastFrame(SETTLE_GROUP, 'ownerTransferWithNftAndCall');
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the callee received the allowance');
@@ -149,7 +151,7 @@ contract GasSnapshotsTest is SettlementBase {
   function test_GAS_09_ownerTransferWithHooks() public {
     AHV2Order memory order = _openAhv2Order(
       _allowances(_tokenAllowance(AMOUNT)),
-      _hooks(_hook(hook, HOOK_BOTH)),
+      _hooks(_hook(hook)),
       _noCalls(),
       0,
       vm.getBlockTimestamp() + 1 hours
@@ -158,7 +160,7 @@ contract GasSnapshotsTest is SettlementBase {
     uint256 before = _calleeBalance();
 
     vm.prank(owner);
-    hub.settleOrder(order, '', solution, '', false);
+    hub.settleOrder(order, '', solution, '');
     vm.snapshotGasLastFrame(SETTLE_GROUP, 'ownerTransferWithHooks');
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the callee received the allowance');

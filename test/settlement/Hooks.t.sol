@@ -57,14 +57,14 @@ contract HooksTest is SettlementBase {
 
     AHV2Order memory order = _openAhv2Order(
       _allowances(_tokenAllowance(amount)),
-      _hooks(_hook(hook, HOOK_BOTH, hex'11'), _hook(hook2, HOOK_BOTH, hex'22')),
+      _hooks(_hook(hook, hex'11'), _hook(hook2, hex'22')),
       _calls(_calleeCall(hex'01')),
       0,
       vm.getBlockTimestamp()
     );
 
     vm.prank(owner);
-    hub.settleOrder(order, '', _defaultSolution(order), '', false);
+    hub.settleOrder(order, '', _defaultSolution(order), '');
 
     assertEq(hook.sequenceLength(), 2, 'both hook calls ran');
     assertEq(hook.sequence(0), 'before');
@@ -122,7 +122,7 @@ contract HooksTest is SettlementBase {
       ANY,
       _allowances(_tokenAllowance(amount)),
       _noNfts(),
-      _hooks(_hook(hook, HOOK_BOTH)),
+      _hooks(_hook(hook)),
       _calls(_calleeCall(hex'99'), _calleeCall(hex'01')),
       ANY,
       80,
@@ -131,7 +131,7 @@ contract HooksTest is SettlementBase {
     bytes memory signature = _signPermit2Order(order);
 
     vm.prank(solver);
-    hub.settleOrder(order, signature, _defaultSolution(order), '', false);
+    hub.settleOrder(order, signature, _defaultSolution(order), '');
 
     assertEq(hook.sequenceLength(), 2, 'both hook calls ran');
     assertEq(
@@ -157,7 +157,7 @@ contract HooksTest is SettlementBase {
   function test_HOOK_03_aRevertingHookRevertsTheOrder() public {
     AHV2Order memory order = _openAhv2Order(
       _allowances(_tokenAllowance(AMOUNT)),
-      _hooks(_hook(hook, HOOK_BOTH)),
+      _hooks(_hook(hook)),
       _calls(_calleeCall(hex'01')),
       0,
       vm.getBlockTimestamp()
@@ -168,7 +168,7 @@ contract HooksTest is SettlementBase {
     hook.setReverts(true, false);
     vm.prank(owner);
     vm.expectRevert(bytes('before'));
-    hub.settleOrder(order, '', solution, '', false);
+    hub.settleOrder(order, '', solution, '');
 
     assertEq(_calleeBalance(), before, 'the refused order moved nothing');
     assertEq(callee.callCount(), 0, 'and ran no callee call');
@@ -176,7 +176,7 @@ contract HooksTest is SettlementBase {
     hook.setReverts(false, true);
     vm.prank(owner);
     vm.expectRevert(bytes('after'));
-    hub.settleOrder(order, '', solution, '', false);
+    hub.settleOrder(order, '', solution, '');
 
     assertEq(_calleeBalance(), before, 'the transfer rolled back');
     assertEq(callee.callCount(), 0, 'callee call rolled back');
@@ -184,7 +184,7 @@ contract HooksTest is SettlementBase {
 
     hook.setReverts(false, false);
     vm.prank(owner);
-    hub.settleOrder(order, '', solution, '', false);
+    hub.settleOrder(order, '', solution, '');
 
     assertEq(_calleeBalance() - before, AMOUNT, 'the same order settles once the hook accepts');
     assertEq(callee.callCount(), 1);
@@ -197,16 +197,16 @@ contract HooksTest is SettlementBase {
     );
 
     vm.prank(owner);
-    hub.settleOrder(order, '', _defaultSolution(order), '', false);
+    hub.settleOrder(order, '', _defaultSolution(order), '');
 
     assertEq(callee.callCount(), 1);
   }
 
   /**
-   * HOOK-05 — the flags select which of the two calls a hook receives
-   * @dev Four hooks, one per flag value. The hook selected for `afterSettlement` alone receives an
-   * empty result although it is configured to return one, and the hook selected for both receives
-   * what its own before call returned.
+   * HOOK-05 — the flags of the order select which of the two calls each hook receives
+   * @dev Four hooks: before only, after only, both and neither. The hook selected for
+   * `afterSettlement` alone receives an empty result although it is configured to return one, and
+   * the hook selected for both receives what its own before call returned.
    */
   function test_HOOK_05_flagsSelectTheCalls() public {
     HookMock beforeOnly = new HookMock();
@@ -219,45 +219,49 @@ contract HooksTest is SettlementBase {
     neither.setBeforeResult(hex'ff');
 
     HookParams[] memory hooks = new HookParams[](4);
-    hooks[0] = _hook(beforeOnly, bytes32(uint256(1)));
-    hooks[1] = _hook(afterOnly, bytes32(uint256(2)));
-    hooks[2] = _hook(both, bytes32(uint256(3)));
-    hooks[3] = _hook(neither, bytes32(0));
+    hooks[0] = _hook(beforeOnly);
+    hooks[1] = _hook(afterOnly);
+    hooks[2] = _hook(both);
+    hooks[3] = _hook(neither);
 
-    _settleWithHooks(hooks);
+    uint256 flags = _hookFlags(0, true, false) | _hookFlags(1, false, true)
+      | _hookFlags(2, true, true) | _hookFlags(3, false, false);
+    _settleWithHooks(hooks, flags);
 
-    assertEq(beforeOnly.beforeCount(), 1, 'flag 1 selects the before call');
+    assertEq(beforeOnly.beforeCount(), 1, 'bit 0 selects the before call');
     assertEq(beforeOnly.afterCount(), 0, 'and not the after call');
 
-    assertEq(afterOnly.beforeCount(), 0, 'flag 2 does not select the before call');
-    assertEq(afterOnly.afterCount(), 1, 'and selects the after call');
+    assertEq(afterOnly.beforeCount(), 0, 'bit 1 does not select the before call');
+    assertEq(afterOnly.afterCount(), 1, 'and bit 65 selects the after call');
     assertEq(afterOnly.receivedBeforeResult(), '', 'which receives an empty before result');
 
-    assertEq(both.beforeCount(), 1, 'flag 3 selects the before call');
+    assertEq(both.beforeCount(), 1, 'bits 2 and 66 select the before call');
     assertEq(both.afterCount(), 1, 'and the after call');
     assertEq(both.receivedBeforeResult(), hex'ff', 'which receives the before result');
 
-    assertEq(neither.beforeCount(), 0, 'flag 0 selects no call');
+    assertEq(neither.beforeCount(), 0, 'bits 3 and 67 select no call');
     assertEq(neither.afterCount(), 0, 'of either kind');
   }
 
   /**
-   * HOOK-06 — only the two lowest bits of the flags select calls
-   * @dev The counts equal bit 0 and bit 1 of the drawn flags, and the after call receives the
-   * before result exactly when the before call ran.
+   * HOOK-06 — only bits 0 and 64 of the flags select the calls of the one hook
+   * @dev The high byte is cleared so that no Permit2 transfer is requested. The counts equal bit 0
+   * and bit 64 of the drawn flags, and the after call receives the before result exactly when the
+   * before call ran.
    */
-  function testFuzz_HOOK_06_flagsSelectTheCalls(bytes32 flags) public {
+  function testFuzz_HOOK_06_flagsSelectTheCalls(uint256 flags) public {
+    flags &= type(uint248).max;
     HookMock spy = new HookMock();
     spy.setBeforeResult(hex'ff');
 
-    HookParams[] memory hooks = _hooks(_hook(spy, flags));
-    _settleWithHooks(hooks);
+    HookParams[] memory hooks = _hooks(_hook(spy));
+    _settleWithHooks(hooks, flags);
 
-    bool runsBefore = uint256(flags) & 1 == 1;
-    bool runsAfter = (uint256(flags) >> 1) & 1 == 1;
+    bool runsBefore = flags & 1 == 1;
+    bool runsAfter = (flags >> 64) & 1 == 1;
 
     assertEq(spy.beforeCount(), runsBefore ? 1 : 0, 'bit 0 selects the before call');
-    assertEq(spy.afterCount(), runsAfter ? 1 : 0, 'bit 1 selects the after call');
+    assertEq(spy.afterCount(), runsAfter ? 1 : 0, 'bit 64 selects the after call');
     if (runsAfter) {
       assertEq(
         spy.receivedBeforeResult(),
@@ -279,7 +283,7 @@ contract HooksTest is SettlementBase {
 
     AHV2Order memory order = _openAhv2Order(
       new ERC20Allowance[](0),
-      _hooks(_hook(hook, HOOK_BOTH, hex'11'), _hook(hook2, HOOK_BOTH, hex'22')),
+      _hooks(_hook(hook, hex'11'), _hook(hook2, hex'22')),
       _calls(_calleeCall(hex'01')),
       0,
       vm.getBlockTimestamp()
@@ -305,7 +309,7 @@ contract HooksTest is SettlementBase {
     );
 
     vm.prank(owner);
-    hub.settleOrder(order, '', solution, '', false);
+    hub.settleOrder(order, '', solution, '');
 
     assertEq(hook.sequenceLength(), 2, 'both calls reached the first hook');
     assertEq(hook2.sequenceLength(), 2, 'and the second');
@@ -319,7 +323,7 @@ contract HooksTest is SettlementBase {
     AHV2Order memory order = _openAhv2Order(
       address(authenticator),
       new ERC20Allowance[](0),
-      _hooks(_hook(hook, HOOK_BOTH)),
+      _hooks(_hook(hook)),
       _noCalls(),
       0,
       vm.getBlockTimestamp() + 1 hours
@@ -327,7 +331,7 @@ contract HooksTest is SettlementBase {
     bytes memory auth = _authOf(order);
 
     vm.prank(relayer);
-    hub.settleOrder(order, auth, _defaultSolution(order), '', false);
+    hub.settleOrder(order, auth, _defaultSolution(order), '');
 
     assertEq(hook.seenMsgSenderBefore(), owner, 'the before call saw the owner');
     assertEq(hook.seenMsgSenderAfter(), owner, 'and so did the after call');
@@ -337,7 +341,7 @@ contract HooksTest is SettlementBase {
 
   /**
    * HOOK-09 — both signatures bind the hooks
-   * @dev On the Permit2 entry point the flags of an entry changed after signing give Permit2's
+   * @dev On the Permit2 entry point the flags of the order changed after signing give Permit2's
    * refusal, and on the delegated entry point the data of an entry changed after signing gives the
    * authenticator's. Each step is preceded by its control: the order as signed settles.
    */
@@ -349,64 +353,48 @@ contract HooksTest is SettlementBase {
 
     // Permit2 entry point, flags
     AHV2Order memory signedPermit =
-      _openAhv2Order(permit2, erc20s, _hooks(_hook(hook, HOOK_BOTH)), _noCalls(), 100, expiration);
+      _openAhv2Order(permit2, erc20s, _hooks(_hook(hook)), _noCalls(), 100, expiration);
 
     vm.prank(solver);
     hub.settleOrder(
-      signedPermit, _signPermit2Order(signedPermit), _defaultSolution(signedPermit), '', false
+      signedPermit, _signPermit2Order(signedPermit), _defaultSolution(signedPermit), ''
     );
     assertEq(hook.sequenceLength(), 2, 'the order as signed settled');
 
     AHV2Order memory signedFlags =
-      _openAhv2Order(permit2, erc20s, _hooks(_hook(hook, HOOK_BOTH)), _noCalls(), 101, expiration);
+      _openAhv2Order(permit2, erc20s, _hooks(_hook(hook)), _noCalls(), 101, expiration);
     bytes memory signature = _signPermit2Order(signedFlags);
     AHV2Order memory changedFlags =
-      _openAhv2Order(permit2, erc20s, _hooks(_hook(hook, HOOK_AFTER)), _noCalls(), 101, expiration);
+      _openAhv2Order(permit2, erc20s, _hooks(_hook(hook)), _noCalls(), 101, expiration);
+    changedFlags.flags = _hookFlags(0, false, true);
     AHV2Solution memory changedFlagsRoute = _defaultSolution(changedFlags);
 
     vm.prank(solver);
     vm.expectRevert(PERMIT2_INVALID_SIGNER);
-    hub.settleOrder(changedFlags, signature, changedFlagsRoute, '', false);
+    hub.settleOrder(changedFlags, signature, changedFlagsRoute, '');
 
     // delegated entry point, data
     AHV2Order memory signedAuthenticated = _openAhv2Order(
-      address(authenticator),
-      erc20s,
-      _hooks(_hook(hook, HOOK_BOTH, hex'11')),
-      _noCalls(),
-      102,
-      expiration
+      address(authenticator), erc20s, _hooks(_hook(hook, hex'11')), _noCalls(), 102, expiration
     );
     bytes memory controlAuth = _orderAuthData(signedAuthenticated, signer, signerPk);
 
     vm.prank(relayer);
-    hub.settleOrder(
-      signedAuthenticated, controlAuth, _defaultSolution(signedAuthenticated), '', false
-    );
+    hub.settleOrder(signedAuthenticated, controlAuth, _defaultSolution(signedAuthenticated), '');
     assertEq(hook.sequenceLength(), 4, 'the authenticated order as signed settled');
 
     AHV2Order memory signedData = _openAhv2Order(
-      address(authenticator),
-      erc20s,
-      _hooks(_hook(hook, HOOK_BOTH, hex'11')),
-      _noCalls(),
-      103,
-      expiration
+      address(authenticator), erc20s, _hooks(_hook(hook, hex'11')), _noCalls(), 103, expiration
     );
     bytes memory dataAuth = _orderAuthData(signedData, signer, signerPk);
     AHV2Order memory changedData = _openAhv2Order(
-      address(authenticator),
-      erc20s,
-      _hooks(_hook(hook, HOOK_BOTH, hex'22')),
-      _noCalls(),
-      103,
-      expiration
+      address(authenticator), erc20s, _hooks(_hook(hook, hex'22')), _noCalls(), 103, expiration
     );
     AHV2Solution memory changedDataRoute = _defaultSolution(changedData);
 
     vm.prank(relayer);
     vm.expectRevert(SignerAuthenticatorMock.InvalidOrderSignature.selector);
-    hub.settleOrder(changedData, dataAuth, changedDataRoute, '', false);
+    hub.settleOrder(changedData, dataAuth, changedDataRoute, '');
   }
 
   /**
@@ -426,14 +414,14 @@ contract HooksTest is SettlementBase {
 
     AHV2Order memory order = _openAhv2Order(
       _allowances(_tokenAllowance(amount)),
-      _hooks(_hook(hook, HOOK_BOTH)),
+      _hooks(_hook(hook)),
       _calls(_calleeCall(hex'99')),
       0,
       vm.getBlockTimestamp()
     );
 
     vm.prank(owner);
-    hub.settleOrder(order, '', _defaultSolution(order), '', false);
+    hub.settleOrder(order, '', _defaultSolution(order), '');
 
     assertEq(callee.callCount(), 1, 'the call ran');
     assertEq(hook.balanceAtBefore(), calleeBefore, 'the before call saw no transfer');
@@ -453,10 +441,16 @@ contract HooksTest is SettlementBase {
 
   /// @dev An owner-submitted order with `hooks` and nothing else
   function _settleWithHooks(HookParams[] memory hooks) private {
+    _settleWithHooks(hooks, _allHookFlags(hooks.length));
+  }
+
+  /// @dev As above, with the order flags `flags`
+  function _settleWithHooks(HookParams[] memory hooks, uint256 flags) private {
     AHV2Order memory order =
       _openAhv2Order(new ERC20Allowance[](0), hooks, _noCalls(), 0, vm.getBlockTimestamp());
+    order.flags = flags;
 
     vm.prank(owner);
-    hub.settleOrder(order, '', _defaultSolution(order), '', false);
+    hub.settleOrder(order, '', _defaultSolution(order), '');
   }
 }

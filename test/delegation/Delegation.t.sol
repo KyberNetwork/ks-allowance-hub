@@ -10,8 +10,6 @@ import {IAHV2Authenticator} from 'src/interfaces/base/IAHV2Authenticator.sol';
 import {IAuthDelegator} from 'src/interfaces/base/IAuthDelegator.sol';
 import {IUnorderedNonce} from 'src/interfaces/base/IUnorderedNonce.sol';
 
-import {AHV2AuthenticatorBase} from 'src/base/AHV2AuthenticatorBase.sol';
-
 import {AHV2Order} from 'src/types/AHV2Order.sol';
 import {AHV2Solution} from 'src/types/AHV2Solution.sol';
 
@@ -291,13 +289,13 @@ contract DelegationTest is SignerAuthenticatorBase {
 
     vm.prank(relayer);
     vm.expectRevert(
-      abi.encodeWithSelector(AHV2AuthenticatorBase.CallerNotAuthorized.selector, relayer)
+      abi.encodeWithSelector(SignerAuthenticatorMock.CallerNotAuthorized.selector, relayer)
     );
     authenticator.initAuthentication(owner, payload);
 
     vm.prank(owner);
     vm.expectRevert(
-      abi.encodeWithSelector(AHV2AuthenticatorBase.CallerNotAuthorized.selector, owner)
+      abi.encodeWithSelector(SignerAuthenticatorMock.CallerNotAuthorized.selector, owner)
     );
     authenticator.initAuthentication(owner, payload);
 

@@ -3,9 +3,12 @@ pragma solidity ^0.8.0;
 
 import {IKSAllowanceHubV2} from '../interfaces/IKSAllowanceHubV2.sol';
 
+import {Constants} from '../libraries/Constants.sol';
+
 import {ERC20Transfer} from './ERC20Transfer.sol';
 
 import {IAllowanceTransfer} from 'ks-common-sc/src/interfaces/IAllowanceTransfer.sol';
+import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
 import {ISignatureTransfer} from 'ks-common-sc/src/interfaces/ISignatureTransfer.sol';
 
 import {TokenHelper} from 'ks-common-sc/src/libraries/token/TokenHelper.sol';
@@ -56,15 +59,47 @@ library ERC20AllowanceLib {
     return allowanceHashes.hash();
   }
 
-  /// @dev Transfers `amounts[i]` of each allowance from `owner` to `targets[i]`; reverts when an
-  /// amount exceeds its allowance
-  function executeERC20Transfer(
+  /// @dev Transfers `amounts[i]` of each allowance from `owner` to `targets[i]`, the first
+  /// `numPermit2Transfers`, at most the number of allowances, through the owner's Permit2
+  /// allowances at `permit2` and the rest from the owner's allowances to this contract; reverts
+  /// above 255 allowances, above a count of the number of allowances, or when an amount exceeds
+  /// its allowance
+  function execute(
     ERC20Allowance[] calldata allowances,
     address owner,
     address[] calldata targets,
-    uint160[] calldata amounts
+    uint160[] calldata amounts,
+    uint256 numPermit2Transfers,
+    address permit2
   ) internal {
-    for (uint256 i = 0; i < allowances.length; i++) {
+    if (allowances.length > Constants.MAX_ERC20S) {
+      revert IKSAllowanceHubV2.TooManyERC20s(allowances.length);
+    }
+    if (numPermit2Transfers > allowances.length) {
+      revert IKSAllowanceHubV2.TooManyPermit2Transfers(numPermit2Transfers, allowances.length);
+    }
+
+    // The leading allowances move in one Permit2 call, which is not made when there are none
+    if (numPermit2Transfers > 0) {
+      IAllowanceTransfer.AllowanceTransferDetails[] memory details;
+      bytes32[] memory buffer = numPermit2Transfers.malloc();
+      assembly ('memory-safe') {
+        details := buffer
+      }
+
+      for (uint256 i = 0; i < numPermit2Transfers; i++) {
+        ERC20Allowance calldata allowance = allowances[i];
+        _checkAmount(i, amounts[i], allowance.amount);
+
+        details[i] = IAllowanceTransfer.AllowanceTransferDetails({
+          from: owner, to: targets[i], token: allowance.token, amount: amounts[i]
+        });
+      }
+
+      IAllowanceTransfer(permit2).transferFrom(details);
+    }
+
+    for (uint256 i = numPermit2Transfers; i < allowances.length; i++) {
       ERC20Allowance calldata allowance = allowances[i];
       _checkAmount(i, amounts[i], allowance.amount);
 
@@ -72,38 +107,17 @@ library ERC20AllowanceLib {
     }
   }
 
-  /// @dev As {executeERC20Transfer}, through the Permit2 allowances of `owner` at `permit2`
-  function executeAllowanceTransfer(
-    ERC20Allowance[] calldata allowances,
-    address owner,
-    address[] calldata targets,
-    uint160[] calldata amounts,
-    address permit2
-  ) internal {
-    IAllowanceTransfer.AllowanceTransferDetails[] memory details;
-    bytes32[] memory buffer = allowances.length.malloc();
-    assembly ('memory-safe') {
-      details := buffer
-    }
-
-    for (uint256 i = 0; i < allowances.length; i++) {
-      ERC20Allowance calldata allowance = allowances[i];
-      _checkAmount(i, amounts[i], allowance.amount);
-
-      details[i] = IAllowanceTransfer.AllowanceTransferDetails({
-        from: owner, to: targets[i], token: allowance.token, amount: amounts[i]
-      });
-    }
-
-    IAllowanceTransfer(permit2).transferFrom(details);
-  }
-
-  /// @dev The allowances as transfers, each paired with `targets[i]` and `amounts[i]`
+  /// @dev The allowances as transfers, each paired with `targets[i]` and `amounts[i]`; reverts
+  /// unless there is one target and one amount for each allowance
   function toTransfers(
     ERC20Allowance[] calldata allowances,
     address[] calldata targets,
     uint160[] calldata amounts
   ) internal pure returns (ERC20Transfer[] memory transfers) {
+    if (targets.length != allowances.length || amounts.length != allowances.length) {
+      revert ICommon.MismatchedArrayLengths();
+    }
+
     bytes32[] memory buffer = allowances.length.malloc();
     assembly ('memory-safe') {
       transfers := buffer
