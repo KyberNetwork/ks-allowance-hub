@@ -1,0 +1,82 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import {IAHV2Callee} from '../interfaces/base/IAHV2Callee.sol';
+
+import {NativeTransfer} from './NativeTransfer.sol';
+
+import {ICommon} from 'ks-common-sc/src/interfaces/ICommon.sol';
+
+import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
+
+/**
+ * @notice A call the hub makes to a callee for an order
+ * @dev The callee may read the order's owner from {ISettlementContext-msgSender}.
+ * @param callee Contract called; must hold the whitelisted callee role when the call runs
+ * @param ownerData Callee-specific payload the owner signs, passed to {IAHV2Callee-execute}
+ */
+struct CallParams {
+  address callee;
+  bytes ownerData;
+}
+
+using CallParamsLib for CallParams global;
+
+library CallParamsLib {
+  using EfficientHashLib for *;
+
+  bytes32 internal constant CALL_PARAMS_TYPEHASH =
+    keccak256('CallParams(address callee,bytes ownerData)');
+
+  /// @dev EIP-712 hash of one call
+  function hash(CallParams calldata self) internal pure returns (bytes32) {
+    return keccak256(abi.encode(CALL_PARAMS_TYPEHASH, self.callee, self.ownerData.hashCalldata()));
+  }
+
+  /// @dev EIP-712 hash of the array: its member hashes, concatenated and hashed
+  function hash(CallParams[] calldata calls) internal pure returns (bytes32) {
+    bytes32[] memory callHashes = calls.length.malloc();
+    for (uint256 i = 0; i < calls.length; i++) {
+      callHashes[i] = hash(calls[i]);
+    }
+
+    return callHashes.hash();
+  }
+
+  /// @dev Calls `execute` on the callee with `value`, the call's `ownerData` and `solverData`
+  function execute(CallParams calldata self, uint256 value, bytes calldata solverData)
+    internal
+    returns (bytes memory)
+  {
+    return IAHV2Callee(self.callee).execute{value: value}(self.ownerData, solverData);
+  }
+
+  /// @dev A native transfer, in order, to the callee of each call to which `values` gives native
+  /// value. Reverts unless there is one value for each call.
+  function toNativeTransfers(CallParams[] calldata calls, uint256[] calldata values)
+    internal
+    pure
+    returns (NativeTransfer[] memory transfers)
+  {
+    if (values.length != calls.length) {
+      revert ICommon.MismatchedArrayLengths();
+    }
+
+    bytes32[] memory buffer = calls.length.malloc();
+    assembly ('memory-safe') {
+      transfers := buffer
+    }
+
+    uint256 index = 0;
+    for (uint256 i = 0; i < calls.length; i++) {
+      CallParams calldata call = calls[i];
+      if (values[i] > 0) {
+        transfers[index++] = NativeTransfer({target: call.callee, amount: values[i]});
+      }
+    }
+
+    assembly ('memory-safe') {
+      mstore(transfers, index)
+    }
+  }
+}

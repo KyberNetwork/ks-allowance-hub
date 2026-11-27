@@ -1,0 +1,82 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import {SettlementBase} from 'test/settlement/base/SettlementBase.sol';
+
+import {IKSAllowanceHubV2} from 'src/interfaces/IKSAllowanceHubV2.sol';
+
+import {AHV2Order} from 'src/types/AHV2Order.sol';
+import {CallParams} from 'src/types/CallParams.sol';
+
+/**
+ * @title CalldataHygieneTest
+ * @notice DIRTY-01..04 — an order hash is taken from unmasked calldata on every settlement path
+ * @dev The leaf hashes copy their struct's calldata words without masking them, which is only
+ * sound because settling the order reads the same fields through Solidity, and that read rejects a
+ * word carrying dirty high bits. These cases hold that: a path that stopped reading the
+ * fields, or only needed the digest, would let a dirty payload through and fail here.
+ */
+contract CalldataHygieneTest is SettlementBase {
+  /// DIRTY-01 — a dirty token address word is refused for the zero authenticator, owner submitted
+  function test_DIRTY_01_delegatedOwnerSubmitted() public {
+    AHV2Order memory order =
+      _order(address(0), _calls(_calleeCall(hex'01')), 90, vm.getBlockTimestamp() + 1 hours);
+
+    _assertDirtyTokenWordIsRefused(
+      owner, abi.encodeCall(IKSAllowanceHubV2.settleOrder, (order, '', _defaultSolution(order), ''))
+    );
+  }
+
+  /**
+   * DIRTY-02 — a dirty token address word is refused for the Permit2 authenticator, witnessed
+   * @dev The witness binds the same order members.
+   */
+  function test_DIRTY_02_permit2Witnessed() public {
+    AHV2Order memory order =
+      _order(permit2, _calls(_calleeCall(hex'01')), 91, vm.getBlockTimestamp() + 1 hours);
+
+    _assertDirtyTokenWordIsRefused(
+      relayer,
+      abi.encodeCall(
+        IKSAllowanceHubV2.settleOrder,
+        (order, _signPermit2Order(order), _defaultSolution(order), '')
+      )
+    );
+  }
+
+  /// DIRTY-03 — a dirty token address word is refused for a delegated authenticator
+  function test_DIRTY_03_delegatedAuthenticated() public {
+    _delegateSignerThroughHub(signer);
+    AHV2Order memory order = _order(
+      address(authenticator), _calls(_calleeCall(hex'01')), 92, vm.getBlockTimestamp() + 1 hours
+    );
+
+    _assertDirtyTokenWordIsRefused(
+      relayer,
+      abi.encodeCall(
+        IKSAllowanceHubV2.settleOrder,
+        (order, _orderAuthData(order, signer, signerPk), _defaultSolution(order), '')
+      )
+    );
+  }
+
+  /// DIRTY-04 — a dirty token address word is refused for the Permit2 authenticator, owner
+  /// submitted
+  function test_DIRTY_04_permit2OwnerSubmitted() public {
+    AHV2Order memory order =
+      _order(permit2, _calls(_calleeCall(hex'02')), 93, vm.getBlockTimestamp() + 1 hours);
+
+    _assertDirtyTokenWordIsRefused(
+      owner,
+      abi.encodeCall(
+        IKSAllowanceHubV2.settleOrder,
+        (
+          order,
+          _signPlainPermit(order.erc20Allowances, order.nonce, order.expiration),
+          _defaultSolution(order),
+          ''
+        )
+      )
+    );
+  }
+}

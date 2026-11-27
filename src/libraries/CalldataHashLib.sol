@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
+
+/// @title CalldataHashLib
+/// @notice EIP-712 hashing of an `address[]`, `uint160[]`, `uint256[]` or `bytes[]` member, which
+/// {EfficientHashLib} does not provide
+library CalldataHashLib {
+  using EfficientHashLib for *;
+
+  /// @dev EIP-712 hash of the array: the hash of its elements as 32-byte words
+  function hash(address[] calldata addresses) internal pure returns (bytes32 result) {
+    assembly ('memory-safe') {
+      let fmp := mload(0x40)
+      let size := shl(5, addresses.length)
+      calldatacopy(fmp, addresses.offset, size)
+      result := keccak256(fmp, size)
+    }
+  }
+
+  /// @dev EIP-712 hash of the array: the hash of its elements as 32-byte words
+  function hash(uint160[] calldata values) internal pure returns (bytes32 result) {
+    assembly ('memory-safe') {
+      let fmp := mload(0x40)
+      let size := shl(5, values.length)
+      calldatacopy(fmp, values.offset, size)
+      result := keccak256(fmp, size)
+    }
+  }
+
+  /// @dev EIP-712 hash of the array: the hash of its elements as 32-byte words
+  function hash(uint256[] calldata values) internal pure returns (bytes32 result) {
+    assembly ('memory-safe') {
+      let fmp := mload(0x40)
+      let size := shl(5, values.length)
+      calldatacopy(fmp, values.offset, size)
+      result := keccak256(fmp, size)
+    }
+  }
+
+  /// @dev EIP-712 hash of the array: its elements' hashes, concatenated and hashed
+  function hash(bytes[] calldata values) internal pure returns (bytes32) {
+    bytes32[] memory valueHashes = EfficientHashLib.malloc(values.length);
+    for (uint256 i = 0; i < values.length; i++) {
+      valueHashes[i] = values[i].hashCalldata();
+    }
+
+    return valueHashes.hash();
+  }
+}

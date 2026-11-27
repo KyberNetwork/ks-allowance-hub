@@ -1,0 +1,11 @@
+{
+  "ownerPermit2Allowance": "90729",
+  "ownerPermit2Signature": "117192",
+  "ownerTransfer": "80769",
+  "ownerTransferWithHooks": "380599",
+  "ownerTransferWithNftAndCall": "234523",
+  "relayedDelegatedAuthenticator": "124342",
+  "relayedOrderSignature": "111247",
+  "relayedOrderSignatureWithSolutionApproval": "143674",
+  "relayedPermit2Witness": "121817"
+}
