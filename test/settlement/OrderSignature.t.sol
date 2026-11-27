@@ -463,38 +463,52 @@ contract OrderSignatureTest is SettlementBase {
   }
 
   /**
-   * SIG-12 — the owner passing authentication data with the zero authenticator is refused
-   * @dev A valid signature of the owner and a single byte both revert with `UnexpectedSignature`.
-   * Nothing moves and the nonce stays unspent.
+   * SIG-12 — authentication data on the owner's own call is checked as the owner's signature
+   * @dev A single byte and a signature by another key revert with `InvalidOrderSignature` and leave
+   * the nonce unspent. The owner's signature settles the order and spends nonce 5, and a replay
+   * reverts with `NonceAlreadyUsed`.
    */
-  function test_SIG_12_ownerWithAuthenticationDataIsRefused() public {
+  function test_SIG_12_ownerAuthenticationDataIsChecked() public {
     AHV2Order memory order = _ownerOrder(5);
     AHV2Solution memory solution = _defaultSolution(order);
-    bytes[2] memory datas = [_signOrder(order), hex'01'];
+    bytes[2] memory invalid = [bytes(hex'01'), _signOrder(order, signerPk)];
 
-    for (uint256 i = 0; i < datas.length; i++) {
+    for (uint256 i = 0; i < invalid.length; i++) {
       vm.prank(owner);
-      vm.expectRevert(IAuthDelegator.UnexpectedSignature.selector);
-      hub.settleOrder(order, datas[i], solution, '');
+      vm.expectRevert(IKSAllowanceHubV2.InvalidOrderSignature.selector);
+      hub.settleOrder(order, invalid[i], solution, '');
     }
-
     assertEq(_calleeBalance(), 0, 'nothing moved');
     assertEq(hub.nonces(lNonceKey(owner), 0), 0, 'the nonce is unspent');
+
+    bytes memory signature = _signOrder(order);
+    vm.prank(owner);
+    hub.settleOrder(order, signature, solution, '');
+    assertEq(_calleeBalance(), AMOUNT, 'the order settled');
+    assertEq(hub.nonces(lNonceKey(owner), 0), 1 << 5, 'nonce 5 is spent');
+
+    vm.prank(owner);
+    vm.expectRevert(
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(owner), 5)
+    );
+    hub.settleOrder(order, signature, solution, '');
   }
 
   /**
-   * SIG-13 — for the owner, authentication data is refused before the nonce is spent
-   * @dev With nonce 5 revoked and one byte of data, the error is `UnexpectedSignature` and not
-   * `NonceAlreadyUsed`.
+   * SIG-13 — authentication data on the owner's own call spends the nonce before it is checked
+   * @dev With nonce 5 revoked and one byte of data, the error is `NonceAlreadyUsed` and not
+   * `InvalidOrderSignature`.
    */
-  function test_SIG_13_ownerUnexpectedSignatureIsCheckedBeforeTheNonce() public {
+  function test_SIG_13_ownerAuthenticationDataSpendsTheNonceFirst() public {
     AHV2Order memory order = _ownerOrder(5);
 
     vm.prank(owner);
     hub.revokeNonce(5);
 
     vm.prank(owner);
-    vm.expectRevert(IAuthDelegator.UnexpectedSignature.selector);
+    vm.expectRevert(
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(owner), 5)
+    );
     hub.settleOrder(order, hex'01', _defaultSolution(order), '');
 
     assertEq(_calleeBalance(), 0, 'nothing moved');
@@ -537,29 +551,22 @@ contract OrderSignatureTest is SettlementBase {
   }
 
   /**
-   * SIG-FUZZ — the owner spends a non-zero nonce and not a zero one, and data is refused
-   * @dev With empty data the nonce bit is set exactly for a non-zero nonce. With data the call
-   * reverts with `UnexpectedSignature` and the nonce stays unspent.
+   * SIG-FUZZ — the owner's own call spends a signed nonce, and an unsigned one unless zero
+   * @dev With the owner's signature the nonce bit is set for every nonce. With empty data it is set
+   * exactly for a non-zero nonce.
    */
   function testFuzz_SIG_FUZZ_ownerNonce(OwnerNonceFuzz memory f) public {
     AHV2Order memory order = _ownerOrder(f.nonce);
     AHV2Solution memory solution = _defaultSolution(order);
-    uint256 word = f.nonce >> 8;
+    bytes memory data = f.withData ? _signOrder(order) : bytes('');
 
     vm.prank(owner);
-    if (f.withData) {
-      vm.expectRevert(IAuthDelegator.UnexpectedSignature.selector);
-      hub.settleOrder(order, hex'01', solution, '');
-      assertEq(hub.nonces(lNonceKey(owner), word), 0, 'the nonce is unspent');
-      return;
-    }
-
-    hub.settleOrder(order, '', solution, '');
+    hub.settleOrder(order, data, solution, '');
     assertEq(_calleeBalance(), AMOUNT, 'the order settled');
     assertEq(
-      hub.nonces(lNonceKey(owner), word),
-      f.nonce == 0 ? 0 : 1 << (f.nonce & 0xff),
-      'a non-zero nonce is spent and a zero one is not'
+      hub.nonces(lNonceKey(owner), f.nonce >> 8),
+      f.withData || f.nonce != 0 ? 1 << (f.nonce & 0xff) : 0,
+      'a signed or non-zero nonce is spent, and an unsigned zero one is not'
     );
   }
 

@@ -43,23 +43,22 @@ abstract contract AuthDelegator is IAuthDelegator, EIP712Nonce, ManagementSimple
       revert DeadlinePassed(deadline, block.timestamp);
     }
 
-    // The owner's call is its own authorization: `signature` must be empty and no nonce is spent.
-    // Any other caller, including Multicall3 relaying the call through `forwardCalls`, needs the
-    // owner's signature over the {AuthDelegation}, which spends `nonce` in the owner's namespace.
-    if (owner != msg.sender) {
+    // The owner may pass an empty signature, which spends no nonce. Every other caller, including
+    // Multicall3 relaying the call through `forwardCalls`, must give the owner's signature over
+    // the {AuthDelegation}. Any non-empty signature, also one given by the owner, is checked as
+    // that signature and spends `nonce` in the owner's namespace.
+    if (signature.length != 0 || owner != msg.sender) {
       bytes32 delegationHash =
         AuthDelegationLib.hash(owner, authenticator, delegated, data, nonce, deadline);
       if (!_verifySignature(owner, nonce, delegationHash, signature)) {
         revert InvalidDelegationSignature();
       }
-    } else if (signature.length != 0) {
-      revert UnexpectedSignature();
     }
 
-    // Delegating with non-empty `data` passes it to `initAuthentication`, which takes no signature
-    // and relies on the owner having been authenticated above. Withdrawing calls no authenticator,
-    // so an authenticator that reverts cannot prevent it, and leaves the authenticator's own state
-    // unchanged.
+    // Delegating with non-empty `data` passes it to `initAuthentication`, which takes no
+    // signature because the owner was authenticated above. Withdrawing calls no authenticator.
+    // An authenticator that reverts therefore cannot prevent a withdrawal, and a withdrawal
+    // leaves the authenticator's own state unchanged.
     if (delegated && data.length > 0) {
       IAHV2Authenticator(authenticator).initAuthentication(owner, data);
     }

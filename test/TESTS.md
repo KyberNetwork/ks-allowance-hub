@@ -104,8 +104,8 @@ takes its ID and description from its name.
 | DEL-14 | [`test_DEL_14_nonEmptyPayloadDoesCallInitAuthentication`](delegation/Delegation.t.sol#L343) | The guard reads the payload's length, not the direction alone |
 | DEL-15 | [`test_DEL_15_withdrawalSkipsTheAuthenticatorWhateverThePayload`](delegation/Delegation.t.sol#L382) | A withdrawal skips the authenticator whatever the payload says |
 | DEL-16 | [`test_DEL_16_delegationIsBoundToItsOwner`](delegation/Delegation.t.sol#L406) | A delegation signed for one account is refused for another account of one signer |
-| DEL-17 | [`test_DEL_17_ownerCallTakesNoSignature`](delegation/Delegation.t.sol#L435) | A signature on the owner's own delegation call reverts with `UnexpectedSignature` |
-| DEL-FUZZ | [`testFuzz_DEL_FUZZ_relayedDelegation`](delegation/Delegation.t.sol#L451) | A relayed delegation sets the delegation and exactly its nonce bit |
+| DEL-17 | [`test_DEL_17_ownerSignatureIsChecked`](delegation/Delegation.t.sol#L437) | A signature on the owner's own delegation call is checked and spends its nonce |
+| DEL-FUZZ | [`testFuzz_DEL_FUZZ_relayedDelegation`](delegation/Delegation.t.sol#L469) | A relayed delegation sets the delegation and exactly its nonce bit |
 
 ## NoncesTest
 
@@ -261,16 +261,16 @@ takes its ID and description from its name.
 | SIG-09 | [`test_SIG_09_exclusiveCallerIsCheckedBeforeTheNonce`](settlement/OrderSignature.t.sol#L397) | The exclusive caller is checked before the nonce |
 | SIG-10 | [`test_SIG_10_ownerNonZeroNonceIsSpentOnce`](settlement/OrderSignature.t.sol#L426) | The owner settles an order with a non-zero nonce once, which spends that nonce |
 | SIG-11 | [`test_SIG_11_ownerRevokedNonceRefusesTheOwner`](settlement/OrderSignature.t.sol#L449) | A nonce the owner revoked refuses the order of the owner |
-| SIG-12 | [`test_SIG_12_ownerWithAuthenticationDataIsRefused`](settlement/OrderSignature.t.sol#L470) | The owner passing authentication data with the zero authenticator is refused |
-| SIG-13 | [`test_SIG_13_ownerUnexpectedSignatureIsCheckedBeforeTheNonce`](settlement/OrderSignature.t.sol#L490) | For the owner, authentication data is refused before the nonce is spent |
-| SIG-FUZZ | [`testFuzz_SIG_FUZZ_relayedSignedOrderSettlesExactly`](settlement/OrderSignature.t.sol#L508) | Any submitter settles a signed order for any nonce, amount and lifetime |
-| SIG-FUZZ | [`testFuzz_SIG_FUZZ_ownerNonce`](settlement/OrderSignature.t.sol#L544) | The owner spends a non-zero nonce and not a zero one, and data is refused |
-| DISP-01 | [`test_DISP_01_delegatedPermit2IsNotCalledAsAnAuthenticator`](settlement/OrderSignature.t.sol#L575) | The Permit2 address as authenticator is never called, even when delegated |
-| DISP-02 | [`test_DISP_02_delegatedAuthenticatorCallsNoPermit2SignatureTransfer`](settlement/OrderSignature.t.sol#L602) | A delegated authenticator never reaches the signature transfers of Permit2 |
-| DISP-03 | [`test_DISP_03_permit2FlowIgnoresPermit2Transfers`](settlement/OrderSignature.t.sol#L629) | The Permit2 authenticator pulls with the signature, not the owner's allowance |
-| DISP-04 | [`test_DISP_04_ownerWithAnUndelegatedAuthenticatorIsRefused`](settlement/OrderSignature.t.sol#L655) | The owner is refused with an authenticator that was never delegated |
-| DISP-05 | [`test_DISP_05_permit2FlowRefusesPlainPermitAndEmptySignature`](settlement/OrderSignature.t.sol#L685) | A relayer on the Permit2 signature transfer flow needs the witness signature |
-| DISP-06 | [`test_DISP_06_exclusiveCallerIsCheckedBeforeApprovalAndHooks`](settlement/OrderSignature.t.sol#L713) | The exclusive caller is checked before the approval and the hooks, on every rail |
+| SIG-12 | [`test_SIG_12_ownerAuthenticationDataIsChecked`](settlement/OrderSignature.t.sol#L471) | Authentication data on the owner's own call is checked as the owner's signature |
+| SIG-13 | [`test_SIG_13_ownerAuthenticationDataSpendsTheNonceFirst`](settlement/OrderSignature.t.sol#L502) | Authentication data on the owner's own call spends the nonce before it is checked |
+| SIG-FUZZ | [`testFuzz_SIG_FUZZ_relayedSignedOrderSettlesExactly`](settlement/OrderSignature.t.sol#L522) | Any submitter settles a signed order for any nonce, amount and lifetime |
+| SIG-FUZZ | [`testFuzz_SIG_FUZZ_ownerNonce`](settlement/OrderSignature.t.sol#L558) | The owner's own call spends a signed nonce, and an unsigned one unless zero |
+| DISP-01 | [`test_DISP_01_delegatedPermit2IsNotCalledAsAnAuthenticator`](settlement/OrderSignature.t.sol#L582) | The Permit2 address as authenticator is never called, even when delegated |
+| DISP-02 | [`test_DISP_02_delegatedAuthenticatorCallsNoPermit2SignatureTransfer`](settlement/OrderSignature.t.sol#L609) | A delegated authenticator never reaches the signature transfers of Permit2 |
+| DISP-03 | [`test_DISP_03_permit2FlowIgnoresPermit2Transfers`](settlement/OrderSignature.t.sol#L636) | The Permit2 authenticator pulls with the signature, not the owner's allowance |
+| DISP-04 | [`test_DISP_04_ownerWithAnUndelegatedAuthenticatorIsRefused`](settlement/OrderSignature.t.sol#L662) | The owner is refused with an authenticator that was never delegated |
+| DISP-05 | [`test_DISP_05_permit2FlowRefusesPlainPermitAndEmptySignature`](settlement/OrderSignature.t.sol#L692) | A relayer on the Permit2 signature transfer flow needs the witness signature |
+| DISP-06 | [`test_DISP_06_exclusiveCallerIsCheckedBeforeApprovalAndHooks`](settlement/OrderSignature.t.sol#L720) | The exclusive caller is checked before the approval and the hooks, on every rail |
 
 ## SettleFuzzTest
 

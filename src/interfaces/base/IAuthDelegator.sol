@@ -7,9 +7,6 @@ interface IAuthDelegator {
   /// @notice The signature is not the owner's signature over the delegation
   error InvalidDelegationSignature();
 
-  /// @notice The owner called directly, which takes an empty signature, and gave a signature
-  error UnexpectedSignature();
-
   /// @notice The delegation's deadline has passed
   error DeadlinePassed(uint256 deadline, uint256 currentTime);
 
@@ -29,16 +26,17 @@ interface IAuthDelegator {
 
   /**
    * @notice Delegates `authenticator` to authenticate `owner`'s orders, or withdraws the delegation
-   * @dev Refused while paused. The owner's own call needs no signature and spends no nonce. Any
-   * other caller needs the owner's signature over the {AuthDelegation}.
+   * @dev Refused while paused. The owner may pass an empty signature, which spends no nonce.
+   * Every other caller must give the owner's signature over the {AuthDelegation}. Any non-empty
+   * signature, also one given by the owner, is checked.
    * @param owner Account whose orders the authenticator may authenticate
    * @param authenticator Authenticator contract
    * @param delegated True to delegate, false to withdraw
    * @param data Initial authentication material for the authenticator; ignored when withdrawing
-   * @param nonce Nonce of the signature; unused when the caller is `owner`
+   * @param nonce Nonce of the signature; unused when the caller is `owner` and `signature` is empty
    * @param deadline Last timestamp at which the call is accepted
-   * @param signature The owner's signature over the {AuthDelegation}, or empty when the caller is
-   * `owner`
+   * @param signature The owner's signature over the {AuthDelegation}, which may be empty when the
+   * caller is `owner`
    */
   function updateDelegation(
     address owner,

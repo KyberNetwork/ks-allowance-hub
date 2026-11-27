@@ -429,22 +429,40 @@ contract DelegationTest is SignerAuthenticatorBase {
   }
 
   /**
-   * DEL-17 — a signature on the owner's own delegation call reverts with `UnexpectedSignature`
-   * @dev A signed delegation the owner submits never leaves its nonce unspent for a later replay.
+   * DEL-17 — a signature on the owner's own delegation call is checked and spends its nonce
+   * @dev A signature by another key reverts with `InvalidDelegationSignature`. The owner's
+   * signature delegates and spends nonce 9, so the signed delegation cannot be replayed. An empty
+   * signature withdraws without spending a nonce.
    */
-  function test_DEL_17_ownerCallTakesNoSignature() public {
+  function test_DEL_17_ownerSignatureIsChecked() public {
     uint256 deadline = vm.getBlockTimestamp() + 1 days;
+    bytes memory wrongKeySig =
+      _signAuthDelegation(signerPk, owner, address(authenticator), true, '', 9, deadline);
     bytes memory sig =
       _signAuthDelegation(ownerKey, owner, address(authenticator), true, '', 9, deadline);
 
     vm.prank(owner);
-    vm.expectRevert(IAuthDelegator.UnexpectedSignature.selector);
+    vm.expectRevert(IAuthDelegator.InvalidDelegationSignature.selector);
+    hub.updateDelegation(owner, address(authenticator), true, '', 9, deadline, wrongKeySig);
+    assertEq(hub.nonces(lNonceKey(owner), 0), 0, 'wrong key: nonce unspent');
+
+    vm.prank(owner);
+    hub.updateDelegation(owner, address(authenticator), true, '', 9, deadline, sig);
+    assertTrue(hub.authDelegated(owner, address(authenticator)), 'delegated on the signature');
+    assertEq(hub.nonces(lNonceKey(owner), 0), 1 << 9, 'nonce 9 is spent');
+
+    vm.prank(owner);
+    vm.expectRevert(
+      abi.encodeWithSelector(IUnorderedNonce.NonceAlreadyUsed.selector, lNonceKey(owner), 9)
+    );
     hub.updateDelegation(owner, address(authenticator), true, '', 9, deadline, sig);
 
     vm.prank(owner);
-    hub.updateDelegation(owner, address(authenticator), true, '', 9, deadline, '');
-    assertTrue(hub.authDelegated(owner, address(authenticator)), 'delegated on the empty signature');
-    assertEq(hub.nonces(lNonceKey(owner), 0), 0, 'no nonce spent');
+    hub.updateDelegation(owner, address(authenticator), false, '', 9, deadline, '');
+    assertFalse(
+      hub.authDelegated(owner, address(authenticator)), 'withdrawn on the empty signature'
+    );
+    assertEq(hub.nonces(lNonceKey(owner), 0), 1 << 9, 'no further nonce spent');
   }
 
   /// DEL-FUZZ — a relayed delegation sets the delegation and exactly its nonce bit

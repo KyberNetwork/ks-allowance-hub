@@ -19,10 +19,10 @@ interface IAHV2Authenticator {
 
   /**
    * @notice Records, replaces or withdraws the owner's authentication material
-   * @dev Any account may call this. An implementation must accept only `msg.sender == owner`
-   * without a signature, and must verify `signature` for every other caller, including Multicall3
-   * and the hub. It determines which signer may authorize an update and provides replay
-   * protection.
+   * @dev Any account may call this. An implementation must accept a call without a signature
+   * only when `msg.sender == owner`, and must verify `signature` for every other caller,
+   * including Multicall3 and the hub. The implementation determines which signer may authorize
+   * an update and provides replay protection.
    * @param owner Account the material belongs to
    * @param data Implementation-specific payload
    * @param nonce Nonce of the signature, for the implementation to spend
@@ -39,9 +39,9 @@ interface IAHV2Authenticator {
 
   /**
    * @notice Checks that `data` authenticates `order` on behalf of its owner
-   * @dev Must revert when it does not; a normal return is treated as success. The hub calls this
-   * only when the caller is not the owner. Replay protection is the implementation's
-   * responsibility, and `solution` is not signed by the owner.
+   * @dev Must revert when `data` does not authenticate `order`. A normal return is treated as
+   * success. The hub calls this for every caller, including the owner. Replay protection is the
+   * implementation's responsibility. The owner does not sign `solution`.
    * @param order The order to authenticate
    * @param orderHash EIP-712 struct hash of `order`
    * @param solution The solution submitted with the order

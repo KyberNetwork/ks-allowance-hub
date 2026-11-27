@@ -11,11 +11,11 @@ owners' allowances to the hub. Guardians can revoke that role without the admin.
 
 ### Orders
 
-The owner authorises an `AHV2Order`, which names the assets that may leave the owner, how another
-account's submission is authenticated, the account that may submit the order, the hooks that
-constrain the result and the callee calls the order makes. A solver supplies an `AHV2Solution`,
-which the owner does not sign: the target and the amount of each ERC20 transfer, the target of
-each ERC721 transfer and the solver data of each call.
+The owner authorises an `AHV2Order`. The order names the assets that may leave the owner, how the
+order is authenticated, the account that may submit it, the hooks that constrain the result and
+the callee calls it makes. A solver supplies an `AHV2Solution`, which the owner does not sign. The
+solution holds the target and the amount of each ERC20 transfer, the target of each ERC721
+transfer and the solver data of each call.
 
 ```
 AHV2Order(address owner,address authenticator,address exclusiveCaller,ERC20Allowance[] erc20Allowances,ERC721Approval[] erc721Approvals,HookParams[] hooks,CallParams[] calls,uint256 flags,address solutionApprover,uint256 nonce,uint256 expiration,bytes clientData)
@@ -25,14 +25,16 @@ HookParams(address hook,bytes data)
 SolutionApproval(AHV2Order order,AHV2Solution solution)
 ```
 
-`exclusiveCaller` is the account that may submit the order besides the owner; any other caller
-reverts with `NotExclusiveCallerOrOwner`. The zero address allows any account to submit, and as
-`solutionApprover` it accepts any solution without an approval.
+`exclusiveCaller` is the only account other than the owner that may submit the order. Any other
+caller reverts with `NotExclusiveCallerOrOwner`. When `exclusiveCaller` is the zero address, any
+account may submit. When `solutionApprover` is the zero address, any solution is accepted without
+an approval.
 
-The hub reverts when either `expiration` has passed, or when the solution does not have one
-`erc20Targets` entry and one `erc20Amounts` entry per ERC20 transfer, one `erc721Targets` entry per
-ERC721 transfer and one `callValues` entry and one `solverData` entry per call. An ERC20 transfer
-sends `solution.erc20Amounts[i]`, at most its allowance.
+The hub reverts when `order.expiration` or `solution.expiration` has passed. The solution must
+have one `erc20Targets` entry and one `erc20Amounts` entry per ERC20 transfer, one `erc721Targets`
+entry per ERC721 transfer, and one `callValues` entry and one `solverData` entry per call; the hub
+reverts otherwise. An ERC20 transfer sends `solution.erc20Amounts[i]`, which must not exceed the
+allowance of that transfer.
 
 `flags` is a bit field the owner signs with the order:
 
@@ -42,29 +44,33 @@ sends `solution.erc20Amounts[i]`, at most its allowance.
 | `j` | hook `j` runs `beforeSettlement` |
 | `64 + j` | hook `j` runs `afterSettlement` |
 
-A zero count draws every transfer from the allowance to the hub, a count equal to
-`erc20Allowances.length` draws every transfer through Permit2, and a larger count reverts with
+A zero count draws every transfer from the allowance to the hub. A count equal to
+`erc20Allowances.length` draws every transfer through Permit2. A larger count reverts with
 `TooManyPermit2Transfers`. Other bits are ignored. When `order.authenticator` is the Permit2
-address, the count is neither used nor checked. An order has at most 64 hooks, and outside the
-Permit2 signature transfer flow at most 255 ERC20 transfers; the hub reverts with `TooManyHooks` or
-`TooManyERC20s` otherwise.
+address, the count is not used and not checked.
+
+An order has at most 64 hooks, or the hub reverts with `TooManyHooks`. Outside the Permit2
+signature transfer flow, an order has at most 255 ERC20 transfers, or the hub reverts with
+`TooManyERC20s`.
 
 A settlement runs in this order:
 
-1. the expirations are checked;
-2. the caller is checked against `exclusiveCaller` and authenticated, as `order.authenticator`
-   requires;
-3. the solution approval is checked, unless `solutionApprover` is the zero address;
-4. the number of hooks is checked, and each hook's `beforeSettlement` runs when `flags` selects it;
-5. the lengths of the solution's ERC20, ERC721 and `callValues` arrays are checked, and the
-   `SettleOrder` event is emitted;
-6. the ERC20 tokens are pulled to the targets of the solution; outside the Permit2 signature
-   transfer flow, the number of ERC20 transfers and the Permit2 count are checked first;
-7. the ERC721 tokens are transferred to the targets of the solution;
-8. the length of `solution.solverData` is checked, and `order.calls` run in order through
-   `IAHV2Callee.execute(ownerData, solverData)`, with the `ownerData` of the call,
-   `solution.callValues[i]` as native value and `solution.solverData[i]` as `solverData`;
-9. each hook's `afterSettlement` runs when `flags` selects it.
+1. The hub checks the expirations.
+2. The hub checks the caller against `exclusiveCaller` and authenticates the order, as
+   `order.authenticator` requires. On the Permit2 signature transfer flow, Permit2 checks the
+   owner's signature in step 6.
+3. The hub checks the solution approval, unless `solutionApprover` is the zero address.
+4. The hub checks the number of hooks, then calls `beforeSettlement` on each hook that `flags`
+   selects.
+5. The hub checks the lengths of the solution's ERC20, ERC721 and `callValues` arrays, then emits
+   the `SettleOrder` event.
+6. The hub transfers the ERC20 tokens to the targets of the solution. Outside the Permit2 signature
+   transfer flow, it first checks the number of ERC20 transfers and the Permit2 count.
+7. The hub transfers the ERC721 tokens to the targets of the solution.
+8. The hub checks the length of `solution.solverData`, then makes `order.calls` in order through
+   `IAHV2Callee.execute(ownerData, solverData)`. Call `i` passes its own `ownerData`, with
+   `solution.callValues[i]` as native value and `solution.solverData[i]` as `solverData`.
+9. The hub calls `afterSettlement` on each hook that `flags` selects.
 
 The results list the return data of each call, in order.
 
@@ -84,19 +90,21 @@ HookParams(address hook,bytes data)
 `order.flags` selects the calls the hub makes to each hook. Any address may be a hook, and no role
 is required.
 
-The hub calls `IAHV2Hook` with the order, its hash, the solution and the index of the hook's entry
-in `order.hooks`. The hook reads its own `data` from the order at that index. The result of
-`beforeSettlement` is passed to `afterSettlement` as `beforeSettlementResult`, which is empty when
-`flags` does not select `beforeSettlement` for the hook. A hook reverts to refuse the order.
+The hub calls `IAHV2Hook` with the order, the order hash, the solution and the index of the hook's
+entry in `order.hooks`. The hook reads its own `data` from the order at that index. The hub passes
+the result of `beforeSettlement` to `afterSettlement` as `beforeSettlementResult`. The result is
+empty when `flags` does not select `beforeSettlement` for the hook. A hook reverts to refuse the
+order.
 
 When `order.authenticator` is the Permit2 address, the before hooks run before the permit signature
 is checked.
 
 ### `solverData`
 
-`solution.solverData` has one entry per call, and the hub reverts when the lengths differ. The
-solution approval covers it, when one is required. The owner's signature does not, so a call treats
-`solverData` as untrusted input within the limits that `ownerData` sets.
+`solution.solverData` has one entry per call, and the hub reverts when the lengths differ. When a
+solution approval is required, the approval covers `solverData`. The owner's signature does not
+cover it, so a callee treats `solverData` as untrusted input, within the limits that `ownerData`
+sets.
 
 ### Authorisation
 
@@ -109,15 +117,15 @@ solution approval covers it, when one is required. The owner's signature does no
 | the Permit2 address | the owner's Permit2 signature, passed as `authenticationData` |
 | any other address | an authenticator the owner delegated, which accepts `authenticationData` |
 
-An authenticator other than the zero address and the Permit2 address must have been delegated by
-the owner, whoever submits, and the hub reverts with `AuthenticatorNotDelegated` otherwise.
+Any other authenticator must have been delegated by the owner, whoever submits the order. The hub
+reverts with `AuthenticatorNotDelegated` otherwise.
 
-When `order.authenticator` is the zero address, the signature is an EIP-712 signature over the
-`AHV2Order` under the hub's domain, made by the owner or validated through ERC-1271 when the owner
-is a contract. The hub spends `order.nonce` in the owner's namespace, so a signed order settles at
-most once, and reverts with `InvalidOrderSignature` when the signature is not valid. The high byte
-of `flags` divides the ERC20 transfers between the owner's Permit2 allowances and the owner's
-allowances to the hub.
+When `order.authenticator` is the zero address, the signature is the owner's EIP-712 signature
+over the `AHV2Order` under the hub's domain. When the owner is a contract, the hub validates the
+signature through ERC-1271. The hub reverts with `InvalidOrderSignature` when the signature is not
+valid. The signature spends `order.nonce` in the owner's namespace, so a signed order settles at
+most once. The high byte of `flags` divides the ERC20 transfers between the owner's Permit2
+allowances and the owner's allowances to the hub.
 
 When `order.authenticator` is the Permit2 address, the ERC20 transfers are executed through a
 Permit2 batch permit whose nonce is `order.nonce` and whose deadline is `order.expiration`. The
@@ -131,19 +139,23 @@ AHV2Order order)AHV2Order(address owner,address authenticator,address exclusiveC
 ```
 
 When `order.authenticator` is a delegated authenticator, the authenticator must accept
-`authenticationData` for the order, also when the owner submits. The hub does not spend
-`order.nonce` and keeps no record of settled orders, so whether an order may be settled more than
-once is the authenticator's decision. The high byte of `flags` divides the ERC20 transfers as on
-the zero-address flow.
+`authenticationData` for the order, including when the owner submits. The hub does not spend
+`order.nonce` and keeps no record of settled orders. The authenticator therefore decides whether
+an order may settle more than once. The high byte of `flags` divides the ERC20 transfers as on the
+zero-address flow.
 
 ### Orders submitted by the owner
 
-When the caller is `order.owner`, `exclusiveCaller` does not apply. With the zero address as
-`order.authenticator`, no signature is checked and `authenticationData` must be empty, or the hub
-reverts with `UnexpectedSignature`. A non-zero `order.nonce` is spent in the owner's namespace; a
-zero nonce is not, so the order may settle more than once. With Permit2, the owner signs a permit
-that does not cover the order. A delegated authenticator and the solution approval apply as for
-any caller.
+When the caller is `order.owner`, `exclusiveCaller` does not apply. The solution approval applies
+as for any caller. The other rules depend on `order.authenticator`:
+
+- Zero address: the owner may pass empty `authenticationData`, and the hub then checks no
+  signature. The hub spends a non-zero `order.nonce` in the owner's namespace and does not spend a
+  zero nonce, so an order with a zero nonce may settle more than once. Non-empty
+  `authenticationData` is always checked as the owner's signature over the order, and spends
+  `order.nonce` as for any other caller.
+- Permit2 address: the owner signs a permit that does not cover the order.
+- Delegated authenticator: the authenticator must accept `authenticationData`, as for any caller.
 
 ### Delegation
 
@@ -151,23 +163,25 @@ any caller.
 AuthDelegation(address owner,address authenticator,bool delegated,bytes data,uint256 nonce,uint256 deadline)
 ```
 
-`updateDelegation` delegates an `IAHV2Authenticator` or withdraws it. When the owner calls it, the
-signature must be empty and no nonce is spent. Any other caller must present the owner's signature
-over the `AuthDelegation`, which spends `nonce` in the owner's namespace. When delegating with
-non-empty `data`, the hub passes `data` to the authenticator's `initAuthentication`. Withdrawing
-calls no authenticator and leaves the authenticator's own state unchanged.
+`updateDelegation` delegates an `IAHV2Authenticator` or withdraws it. A caller other than the owner
+must present the owner's signature over the `AuthDelegation`. The owner may pass an empty signature
+instead. The hub always checks a non-empty signature, including when the owner calls. A checked
+signature spends `nonce` in the owner's namespace, and an empty signature spends no nonce. When
+delegating with non-empty `data`, the hub passes `data` to the authenticator's
+`initAuthentication`. Withdrawing calls no authenticator and leaves the authenticator's own state
+unchanged.
 
 An authenticator has two update functions:
 
-- `initAuthentication(owner, data)` takes no signature. Only the hub may call it, and the hub
-  calls it only from `updateDelegation`.
+- `initAuthentication(owner, data)` takes no signature. An authenticator must accept it only from
+  the hub, and the hub calls it only from `updateDelegation`.
 - `updateAuthentication(owner, data, nonce, deadline, signature)` can be called by any account,
   including Multicall3 relaying it through the hub's `forwardCalls`. An authenticator must
-  therefore accept only `msg.sender == owner` without a signature.
+  therefore accept an update without a signature only when `msg.sender == owner`.
 
-The hub spends a solution approval's `solution.nonce` in the `solutionApprover`'s address namespace
-in the hub, shared with that address's `updateDelegation` nonces. The approver revokes an unused
-approval with the hub's `revokeNonce(nonce)`.
+A solution approval spends `solution.nonce` in the namespace of the `solutionApprover` address.
+The `updateDelegation` nonces of that address use the same namespace. The approver revokes an
+unused approval with the hub's `revokeNonce(nonce)`.
 
 ### Authenticators
 
@@ -179,17 +193,17 @@ both kinds of key sign orders without the owner's wallet.
 ### Relayed approvals
 
 The hub's `forwardCalls(calls)` passes `calls` unchanged to `aggregate3` of the Multicall3
-deployment set at deployment, `0xcA11bde05977b3631167028862bE2a173976CA11` on most chains.
-Multicall3 holds no allowance, role or asset of the hub, so a relayed call carries no authority
-beyond what its own payload proves: a token permit, a signed delegation, a signed authenticator
-update.
+deployment set when the hub is deployed. On most chains this is
+`0xcA11bde05977b3631167028862bE2a173976CA11`. Multicall3 holds no allowance, role or asset of the
+hub. A relayed call therefore carries no authority beyond what its own payload proves, such as a
+token permit, a signed delegation or a signed authenticator update.
 
-The relayed calls run in a hub `multicall` beside the order that uses them, with the relayer still
-the order's `msg.sender`. A failing call whose `allowFailure` is false reverts the batch with
-Multicall3's error `Multicall3: call failed`, not with the call's own revert data. A relayer that
-batches a signed permit or delegation with the order using it should set `allowFailure`, so that
-another account submitting the same signature first does not revert the batch. Native value sent
-with `forwardCalls` is not forwarded and remains in the hub.
+The relayed calls run in a hub `multicall` together with the order that uses them, and the relayer
+remains the order's `msg.sender`. When a call whose `allowFailure` is false fails, the batch
+reverts with Multicall3's error `Multicall3: call failed`, not with the call's own revert data. A
+relayer that batches a signed permit or delegation with the order that uses it should set
+`allowFailure`. Otherwise, another account that submits the same signature first makes the batch
+revert. Native value sent with `forwardCalls` is not forwarded and remains in the hub.
 
 ```solidity
 hub.multicall([
@@ -211,15 +225,16 @@ interface IAHV2Callee {
 }
 ```
 
-Each callee must hold `WHITELISTED_CALLEE_ROLE` when its call runs. `AHV2Solution.callValues` holds
-the native value of each call, chosen by the solver and paid from the `msg.value` sent with the
-order. The hub reverts when the order spends more native value than it was sent. The hub has no
-`receive` function, so a callee cannot refund native value to it; unspent `msg.value` remains in the
-hub.
+Each callee must hold `WHITELISTED_CALLEE_ROLE` when its call runs. The solver chooses
+`AHV2Solution.callValues`, the native value of each call. The hub pays these values from the
+`msg.value` sent with the order, and reverts when the order spends more native value than it was
+sent. The hub has no `receive` function, so a callee cannot refund native value to the hub.
+Unspent `msg.value` remains in the hub.
 
-While an order settles, `msgSender()` returns its owner, so a callee called by the hub can identify
-the owner. `solver()` returns the caller of `settleOrder`, restored the same way when an
-order nests. A callee treats `solverData` as untrusted input, because the owner does not sign it.
+While an order settles, `msgSender()` returns the owner of the order, so a callee can identify the
+owner. `solver()` returns the caller of `settleOrder`. When an order settles inside another order,
+both values return to those of the outer order once the inner order returns. A callee treats
+`solverData` as untrusted input, because the owner does not sign it.
 
 A callee call of an order may settle another order of any authenticator, and `msgSender()` returns
 the outer order's owner again once it returns. The hub refuses no order for settling inside another.
@@ -233,21 +248,22 @@ recipient can each pass a hook that checks the recipient's balance increase, whi
 receives the output of only one of them.
 
 An order therefore protects the owner's intent by combining hooks with its calls, not by hooks
-alone. In a swap, a call executes the route in its `solverData` and delivers the output to an
-account the order specifies, and the last call in `calls` transfers the output from that account
-to the recipient. The owner signs that transfer and its amount, so the funds the recipient
-receives are moved by this order's own call. Each such transfer removes its amount from the
-account, so the output of another order with the same recipient cannot satisfy it.
+alone. In a swap, one call executes the route in its `solverData` and delivers the output to an
+account that the order specifies. The last call in `calls` transfers the output from that account
+to the recipient. The owner signs that transfer and its amount, so this order's own call moves the
+funds that the recipient receives. Each such transfer removes its amount from the account, so the
+output of another order with the same recipient cannot satisfy that transfer.
 
 ### Management
 
 The hub inherits `ManagementSimple` from `ks-common-sc`. The owner holds the default admin role,
-transferable in one step with `transferOwnership`. Guardians pause the hub, which stops
-`settleOrder` and `updateDelegation`, and revoke callees.
-Rescuers, or the default admin, call `rescueTokens(erc20Transfers, erc721Transfers)` to transfer
-assets held by the hub. An ERC20 entry with a zero amount transfers the hub's entire balance, which
-the `RescueTokens` event reports, and a token of `0xEeee…EEeE` or the zero address transfers native
-value.
+and `transferOwnership` transfers it in one step. Guardians pause the hub and revoke callees.
+Pausing stops `settleOrder` and `updateDelegation`.
+
+Rescuers and the default admin call `rescueTokens(erc20Transfers, erc721Transfers)` to transfer
+assets held by the hub. An ERC20 entry with a zero amount transfers the hub's entire balance of
+the token, and the `RescueTokens` event reports the amount transferred. An entry whose token is
+`0xEeee…EEeE` or the zero address transfers native value.
 
 ### Signing domains
 
@@ -301,8 +317,8 @@ a repository holding this one as a submodule can inherit them. Such a repository
 `V2TestBase._artifactsDir()` with the path of `test/artifacts/` inside the submodule.
 
 CI runs `forge test -vvv --isolate`, which executes each top-level call as its own transaction.
-Transient state such as the account `msgSender()` returns is cleared between calls, so it can only
-be observed from inside a callee call.
+Transient state, such as the value `msgSender()` returns, is cleared between calls. A test can
+therefore observe it only from inside a callee call.
 
 The EIP-712 type strings are checked against the struct declarations through `forge bind-json`,
 which generates `utils/JsonBindings.sol`. Run it twice after changing a bound struct; CI fails when
@@ -311,12 +327,13 @@ the regenerated file differs.
 ### Known tooling issues
 
 - **Coverage requires `--ir-minimum`.** Plain `forge coverage` compiles without `via_ir` and fails
-  with stack-too-deep. `--ir-minimum` compiles differently from the build the tests run against,
-  and reports the statements inside `assembly` blocks as missed although they run.
-  `--keep-optimizer` keeps the optimizer, which merges code, and reports less coverage than
+  with stack-too-deep. `--ir-minimum` compiles differently from the build that the tests run
+  against. It reports the statements inside `assembly` blocks as missed, although they run.
+  `--keep-optimizer` keeps the optimizer, which merges code, so it reports less coverage than
   `--ir-minimum`.
-- **Cheatcodes apply to the next external call, including one made while building an argument.**
-  Read such values into a local before `vm.prank` or `vm.expectRevert`.
+- **Cheatcodes apply to the next external call, including an external call made while building an
+  argument.** Read the result of such a call into a local variable before `vm.prank` or
+  `vm.expectRevert`.
 
 ## Documentation
 
@@ -347,10 +364,10 @@ forge script script/DeployKSAllowanceHubV2.s.sol           --sig 'run(string[])'
 forge script script/AddWhitelistedCalleesV2.s.sol          --sig 'run(string[])' '[1,56]' --broadcast
 ```
 
-`DeployKSAllowanceHubV2` reads the Multicall3 address from `multicall3.json`, which holds the
-canonical address by default; a chain where Multicall3 is deployed elsewhere needs its own entry. It
-passes the addresses in `whitelisted-callees.json` to the constructor as
-`initialWhitelistedCallees`, and writes the hub's address to `allowance-hub-v2.json`, which
+`DeployKSAllowanceHubV2` reads the Multicall3 address from `multicall3.json`. The file holds the
+canonical address by default, and a chain where Multicall3 is deployed elsewhere needs its own
+entry. The script passes the addresses in `whitelisted-callees.json` to the constructor as
+`initialWhitelistedCallees`. It writes the hub's address to `allowance-hub-v2.json`, which
 `AddWhitelistedCalleesV2` reads.
 
 `AddWhitelistedCalleesV2` grants `WHITELISTED_CALLEE_ROLE` to the callees in

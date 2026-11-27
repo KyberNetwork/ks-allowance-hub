@@ -21,8 +21,8 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
  * {AHV2Solution} specifies a target and an amount for each transfer, and the amount
  * transferred is at most `amount`.
  * @param token The ERC20 token
- * @param amount Largest amount the transfer sends in one settlement, with the width of a Permit2
- * allowance
+ * @param amount Largest amount the transfer sends in one settlement. Its type matches a Permit2
+ * allowance.
  */
 struct ERC20Allowance {
   address token;
@@ -59,11 +59,11 @@ library ERC20AllowanceLib {
     return allowanceHashes.hash();
   }
 
-  /// @dev Transfers `amounts[i]` of each allowance from `owner` to `targets[i]`, the first
-  /// `numPermit2Transfers`, at most the number of allowances, through the owner's Permit2
-  /// allowances at `permit2` and the rest from the owner's allowances to this contract; reverts
-  /// above 255 allowances, above a count of the number of allowances, or when an amount exceeds
-  /// its allowance
+  /// @dev Transfers `amounts[i]` of each allowance from `owner` to `targets[i]`. The first
+  /// `numPermit2Transfers` allowances move through the owner's Permit2 allowances at `permit2`,
+  /// and the rest move through the owner's allowances to this contract. Reverts above 255
+  /// allowances, when `numPermit2Transfers` exceeds the number of allowances, or when an amount
+  /// exceeds its allowance.
   function execute(
     ERC20Allowance[] calldata allowances,
     address owner,
@@ -79,7 +79,8 @@ library ERC20AllowanceLib {
       revert IKSAllowanceHubV2.TooManyPermit2Transfers(numPermit2Transfers, allowances.length);
     }
 
-    // The leading allowances move in one Permit2 call, which is not made when there are none
+    // The leading allowances move in one Permit2 call. The call is not made when
+    // `numPermit2Transfers` is zero.
     if (numPermit2Transfers > 0) {
       IAllowanceTransfer.AllowanceTransferDetails[] memory details;
       bytes32[] memory buffer = numPermit2Transfers.malloc();

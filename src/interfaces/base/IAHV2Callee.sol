@@ -5,8 +5,8 @@ pragma solidity ^0.8.0;
 /// @notice Interface a contract must implement to be called by the allowance hub
 interface IAHV2Callee {
   /**
-   * @notice Runs one action for the account {ISettlementContext-msgSender} returns
-   * @dev {ISettlementContext-solver} returns the order's solver. `solverData` is not signed by the owner, so a callee must treat it as untrusted input
+   * @notice Runs one action for the order's owner
+   * @dev `solverData` is not signed by the owner, so a callee must treat it as untrusted input
    * within the limits `ownerData` sets.
    * @param ownerData Callee-specific payload signed by the owner
    * @param solverData Callee-specific payload chosen by the solver

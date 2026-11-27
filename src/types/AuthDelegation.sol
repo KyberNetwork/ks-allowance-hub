@@ -2,8 +2,8 @@
 pragma solidity ^0.8.0;
 
 /**
- * @notice An owner's signed decision to delegate an authenticator or withdraw it, required when the
- * decision is submitted by another account
+ * @notice An owner's signed decision to delegate an authenticator or withdraw it. The signature
+ * is required when another account submits the decision.
  * @param owner Account whose orders the authenticator may authenticate
  * @param authenticator Authenticator contract
  * @param delegated True to delegate, false to withdraw

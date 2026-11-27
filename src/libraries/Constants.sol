@@ -16,7 +16,7 @@ library Constants {
   /// @dev Transient slot of {SettlementContext-solver}
   bytes32 internal constant SOLVER_SLOT = bytes32(erc7201('ks-allowance-hub.solver'));
 
-  /// @dev Largest number of ERC20 transfers in an order
+  /// @dev Largest number of ERC20 transfers in an order outside the Permit2 signature transfer flow
   uint256 internal constant MAX_ERC20S = 255;
 
   /// @dev Largest number of hooks in an order
@@ -25,7 +25,7 @@ library Constants {
   /// @dev Offset in {AHV2Order-flags} of the bits that select {IAHV2Hook-afterSettlement}
   uint256 internal constant AFTER_SETTLEMENT_HOOKS_OFFSET = 64;
 
-  /// @dev Offset of the high byte of {AHV2Order-flags}, the number of leading ERC20 transfers
-  /// drawn from the owner's Permit2 allowance
+  /// @dev Offset of the high byte of {AHV2Order-flags}. The byte is the number of leading ERC20
+  /// transfers drawn from the owner's Permit2 allowance.
   uint256 internal constant PERMIT2_TRANSFERS_OFFSET = 248;
 }

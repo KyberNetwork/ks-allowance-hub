@@ -51,8 +51,8 @@ library CallParamsLib {
     return IAHV2Callee(self.callee).execute{value: value}(self.ownerData, solverData);
   }
 
-  /// @dev The calls given native value by `values`, as native transfers to their callees, in order;
-  /// reverts unless there is one value for each call
+  /// @dev A native transfer, in order, to the callee of each call to which `values` gives native
+  /// value. Reverts unless there is one value for each call.
   function toNativeTransfers(CallParams[] calldata calls, uint256[] calldata values)
     internal
     pure

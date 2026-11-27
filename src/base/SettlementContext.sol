@@ -9,10 +9,10 @@ import {TransientSlot} from 'openzeppelin-contracts/contracts/utils/TransientSlo
 
 /**
  * @title SettlementContext
- * @notice Records the owner and the solver of the order being settled, for the contracts its
- * settlement calls
- * @dev A settlement may run inside another, and the values set before it are restored when it
- * returns.
+ * @notice Records the owner and the solver of the order being settled, for the contracts that
+ * the settlement calls
+ * @dev A settlement may run inside another settlement. When the inner settlement returns, the
+ * values set before it are restored.
  */
 abstract contract SettlementContext is ISettlementContext {
   using TransientSlot for *;

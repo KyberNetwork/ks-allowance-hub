@@ -105,21 +105,20 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, AuthDelegator, Multicall, Settle
       revert NotExclusiveCallerOrOwner(msg.sender);
     }
 
-    // The zero address requires the owner's EIP-712 signature over the order, the Permit2 address
-    // the owner's Permit2 signature, and any other address a delegated {IAHV2Authenticator}
+    // The zero address requires the owner's EIP-712 signature over the order. The Permit2 address
+    // requires the owner's Permit2 signature. Any other address must be an {IAHV2Authenticator}
+    // that the owner has delegated.
     if (order.authenticator == Constants.ADDRESS_ZERO) {
-      if (msg.sender == order.owner) {
-        // The owner's own call needs no signature. A zero nonce is not spent, so the order may
-        // settle more than once.
-        if (authenticationData.length != 0) {
-          revert UnexpectedSignature();
-        }
+      if (msg.sender == order.owner && authenticationData.length == 0) {
+        // The owner may call without a signature. A non-zero nonce is then spent and a zero nonce
+        // is not, so an order with a zero nonce may settle more than once.
         if (order.nonce != 0) {
           _useUnorderedNonce(order.owner, order.nonce);
         }
       } else {
-        // The owner's signature over the order spends `order.nonce` in the owner's namespace, so
-        // each signed order settles at most once
+        // A caller other than the owner, or the owner passing data, must give the owner's
+        // signature over the order. The check spends `order.nonce` in the owner's namespace, so
+        // each signed order settles at most once.
         if (!_verifySignature(order.owner, order.nonce, orderHash, authenticationData)) {
           revert InvalidOrderSignature();
         }
@@ -128,7 +127,7 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, AuthDelegator, Multicall, Settle
       if (order.authenticator != PERMIT2) {
         // The owner must have delegated the authenticator. The hub spends no `order.nonce`, so the
         // authenticator determines whether an order may be settled more than once. The owner has
-        // not signed `solution`, so the authenticator reads it here when it needs to.
+        // not signed `solution`, so the hub passes it to the authenticator for checking.
         if (!authDelegated[order.owner][order.authenticator]) {
           revert AuthenticatorNotDelegated(order.authenticator);
         }
@@ -216,8 +215,8 @@ contract KSAllowanceHubV2 is IKSAllowanceHubV2, AuthDelegator, Multicall, Settle
   ) external onlyRoleOrDefaultAdmin(KSRoles.RESCUER_ROLE) {
     for (uint256 i = 0; i < erc20Transfers.length; i++) {
       ERC20Transfer memory transfer = erc20Transfers[i];
-      // A token that is the native-token address or the zero address transfers native value, and
-      // a zero `amount` transfers the whole balance. A zero `target` is not refused.
+      // A `token` of the native-token address or the zero address transfers native value. A zero
+      // `amount` transfers the whole balance of `token`. A zero `target` is not refused.
       if (transfer.amount == 0) {
         transfer.amount = transfer.token.selfBalance();
       }

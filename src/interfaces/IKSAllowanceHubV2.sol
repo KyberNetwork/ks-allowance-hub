@@ -44,11 +44,12 @@ interface IKSAllowanceHubV2 {
   /**
    * @notice Emitted once for each settled order, before its assets move and its calls run
    * @dev Each ERC20 and ERC721 entry pairs a transfer of the order with the target the solution
-   * specifies for it. `nativeTransfers` lists only the calls to which the solution's `callValues`
-   * give native value, in order, and is empty when it gives none.
+   * specifies for it. `nativeTransfers` lists, in order, only the calls to which the solution's
+   * `callValues` give native value. It is empty when `callValues` gives none.
    *
-   * An order settled by a callee call of another order emits its event after the other order's
-   * and before that order's remaining calls run.
+   * When a callee call of one order settles another order, the event of the second order is
+   * emitted after the event of the first order and before the remaining calls of the first order
+   * run.
    */
   event SettleOrder(
     address indexed caller,
@@ -60,15 +61,17 @@ interface IKSAllowanceHubV2 {
     bytes clientData
   );
 
-  /// @notice Emitted when assets held by the hub are transferred out, with the amount each ERC20
-  /// entry transferred
+  /// @notice Emitted when assets held by the hub are transferred out. Each ERC20 entry carries
+  /// the amount transferred.
   event RescueTokens(ERC20Transfer[] erc20Transfers, ERC721Transfer[] erc721Transfers);
 
   /**
    * @notice Settles an order with the targets, amounts and solver data in `solution`, authorized
    * as `order.authenticator` specifies
-   * @dev The owner's own call bypasses `order.exclusiveCaller`, and with the zero address as
-   * `order.authenticator` does not spend a zero `order.nonce`.
+   * @dev The owner's own call bypasses `order.exclusiveCaller`. When `order.authenticator` is the
+   * zero address, the owner may pass empty `authenticationData`, and a zero `order.nonce` is then
+   * not spent. In that case non-empty `authenticationData` is always checked as the owner's
+   * signature.
    * @param order The order to settle
    * @param authenticationData The owner's signature over the order, the owner's Permit2 signature,
    * or the credential the authenticator reads
@@ -96,8 +99,8 @@ interface IKSAllowanceHubV2 {
     returns (IMulticall3.Result[] memory results);
 
   /**
-   * @notice Transfers assets held by the hub to the given targets; callable by an account with the
-   * rescuer role or by the default admin
+   * @notice Transfers assets held by the hub to the given targets. Only an account with the
+   * rescuer role or the default admin may call it.
    * @dev An ERC20 entry with a zero `amount` transfers the hub's whole balance of `token`.
    * @param erc20Transfers ERC20 and native entries
    * @param erc721Transfers ERC721 entries

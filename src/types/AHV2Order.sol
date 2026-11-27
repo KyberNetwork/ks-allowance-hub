@@ -20,33 +20,35 @@ import {EfficientHashLib} from 'solady/utils/EfficientHashLib.sol';
 /**
  * @notice An owner's order to transfer assets and call callees, settled with data a solver
  * chooses
- * @dev The order specifies neither the targets of its transfers, nor the amounts of its ERC20
- * transfers, nor the solver data of its calls; an {AHV2Solution} supplies them. The hooks
- * constrain the result of the solution, and `solutionApprover` may be required to approve it.
+ * @dev An {AHV2Solution} supplies the targets of the order's transfers, the amounts of its ERC20
+ * transfers and the solver data of its calls. The hooks constrain the result of the solution.
+ * When `solutionApprover` is set, it must approve the solution.
  * @param owner Account the assets are transferred from
- * @param authenticator How the order is authorized when another account submits it: the zero
- * address requires the owner's EIP-712 signature over the order, the Permit2 address requires the
- * owner's Permit2 signature, and any other address is an {IAHV2Authenticator} the owner delegated
+ * @param authenticator How the order is authorized. The zero address requires the owner's EIP-712
+ * signature over the order, unless the owner submits the order without one. The Permit2 address
+ * requires the owner's Permit2 signature. Any other address is an {IAHV2Authenticator} the owner
+ * delegated, called for every submitter.
  * @param exclusiveCaller Account that may submit the order besides the owner; the zero address
  * allows any account
- * @param erc20Allowances ERC20 transfers, at most 255 outside the Permit2 signature transfer flow,
- * each of at most its `amount`, sent from the owner to the target and in the amount the solution
- * specifies for it
+ * @param erc20Allowances ERC20 transfers from the owner. Each goes to the target and in the amount
+ * the solution specifies for it, at most the entry's `amount`. Outside the Permit2 signature
+ * transfer flow, an order has at most 255 of them.
  * @param erc721Approvals ERC721 transfers, each sent from the owner to the target the solution
  * specifies for it
  * @param hooks At most 64 hooks, called before the assets move and after the calls
  * @param calls Callee calls fixed by the owner, each run with the solution's `callValues` and
  * `solverData` entries
  * @param flags The high byte is the number of leading `erc20Allowances` drawn from the owner's
- * Permit2 allowance, the rest from the owner's allowance to the hub, and is at most the number of
- * entries; the Permit2 signature transfer flow neither uses nor checks it. Bits `j` and `64 + j`
- * select {IAHV2Hook-beforeSettlement} and {IAHV2Hook-afterSettlement} for hook `j`. Other bits are
- * ignored.
+ * Permit2 allowance. The rest are drawn from the owner's allowance to the hub. The number is at
+ * most the number of entries, and the Permit2 signature transfer flow neither uses nor checks it.
+ * Bits `j` and `64 + j` select {IAHV2Hook-beforeSettlement} and {IAHV2Hook-afterSettlement} for
+ * hook `j`. Other bits are ignored.
  * @param solutionApprover Account whose signature the solution requires; the zero address requires
  * none
- * @param nonce Spent in the owner's namespace of the hub's nonces when `authenticator` is the zero
- * address, used as the Permit2 nonce when it is the Permit2 address, and for the authenticator to
- * spend otherwise
+ * @param nonce When `authenticator` is the zero address, the hub spends it in the owner's
+ * namespace, except when the owner calls with empty authentication data and the nonce is zero.
+ * When `authenticator` is the Permit2 address, it is the Permit2 nonce. Otherwise the
+ * authenticator spends it.
  * @param expiration Last timestamp at which the order may settle
  * @param clientData Data for off-chain clients, emitted in {IKSAllowanceHubV2-SettleOrder}
  */
@@ -140,8 +142,8 @@ library AHV2OrderLib {
 
   /**
    * @dev Transfers the order's ERC20 tokens as `solution` specifies, through a Permit2 signature
-   * transfer at `permit2`, with `signature` by the owner over the permit. When the caller is not
-   * the owner, the permit also covers the order, of hash `orderHash`.
+   * transfer at `permit2`. `signature` is the owner's signature over the permit. When the caller
+   * is not the owner, the permit also covers the order that has hash `orderHash`.
    */
   function executeSignatureTransfer(
     AHV2Order calldata order,
@@ -165,8 +167,9 @@ library AHV2OrderLib {
     }
   }
 
-  /// @dev Calls `beforeSettlement` on each hook whose bit `order.flags` sets and returns the
-  /// results, in order; the result of any other hook is empty. Reverts above 64 hooks.
+  /// @dev Calls `beforeSettlement` on each hook whose bit is set in `order.flags`. Returns the
+  /// results in hook order, with an empty result for each other hook. Reverts when the order
+  /// has more than 64 hooks.
   function beforeSettlement(
     AHV2Order calldata order,
     bytes32 orderHash,
@@ -189,8 +192,8 @@ library AHV2OrderLib {
     }
   }
 
-  /// @dev Calls `afterSettlement` on each hook whose bit `order.flags` sets, with the result of its
-  /// `beforeSettlement`
+  /// @dev Calls `afterSettlement` on each hook whose bit is set in `order.flags`, passing the
+  /// result of that hook's `beforeSettlement`
   function afterSettlement(
     AHV2Order calldata order,
     bytes32 orderHash,

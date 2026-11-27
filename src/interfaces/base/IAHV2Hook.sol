@@ -6,12 +6,11 @@ import {AHV2Solution} from '../../types/AHV2Solution.sol';
 
 /// @title IAHV2Hook
 /// @notice Interface a hook in an order's `hooks` must implement
-/// @dev A hook reverts to refuse the order. {ISettlementContext-msgSender} returns the order's owner
-/// and {ISettlementContext-solver} its solver during both calls.
+/// @dev A hook reverts to refuse the order.
 interface IAHV2Hook {
   /**
-   * @notice Called before any asset moves, and on the Permit2 signature transfer flow before
-   * Permit2 checks the owner's signature
+   * @notice Called before any asset moves. On the Permit2 signature transfer flow, the call
+   * also precedes Permit2's check of the owner's signature.
    * @param order The order being settled
    * @param orderHash EIP-712 struct hash of `order`
    * @param solution The solution the order settles with

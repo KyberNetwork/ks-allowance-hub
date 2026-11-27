@@ -6,8 +6,8 @@ import {IUnorderedNonce} from '../interfaces/base/IUnorderedNonce.sol';
 /**
  * @title UnorderedNonce
  * @notice Bitmap of spent nonces in the manner of Permit2; nonces may be spent in any order
- * @dev Nonces are grouped by namespace, which identifies the signer of the data a nonce protects:
- * an account's address as a 32-byte word, or a key's credential hash.
+ * @dev Nonces are grouped by namespace. A namespace identifies the signer of the data that a
+ * nonce protects, and is an account's address as a 32-byte word or a key's credential hash.
  */
 abstract contract UnorderedNonce is IUnorderedNonce {
   /// @inheritdoc IUnorderedNonce
@@ -25,7 +25,7 @@ abstract contract UnorderedNonce is IUnorderedNonce {
     uint256 bitPos = uint8(nonce);
 
     uint256 bit = 1 << bitPos;
-    // The XOR clears a bit that was already set, which identifies a spent nonce
+    // The XOR clears a bit that was already set, so a clear bit after the XOR marks a spent nonce
     uint256 flipped = nonces[namespace][wordPos] ^= bit;
     if (flipped & bit == 0) {
       revert NonceAlreadyUsed(namespace, nonce);
